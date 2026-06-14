@@ -1,0 +1,29 @@
+{
+  "app": {
+    "name": "GastroKit",
+    "tagline": "Financial management for chefs and food businesses"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "recipes": "Recipes",
+    "ingredients": "Ingredients",
+    "inventory": "Inventory",
+    "breakEven": "Break-even",
+    "payroll": "Payroll",
+    "invoices": "Invoices"
+  },
+  "common": {
+    "comingSoon": "Coming soon",
+    "comingSoonDescription": "This module will be built in an upcoming sprint."
+  },
+  "marketing": {
+    "headline": "Stop guessing. Know what every dish really costs.",
+    "subhead": "GastroKit replaces your spreadsheets with a financial dashboard built for kitchens.",
+    "ctaPrimary": "Start 14-day free trial",
+    "ctaSecondary": "Sign in"
+  },
+  "selectOrg": {
+    "title": "Choose or create an organization",
+    "description": "Your data is isolated per organization."
+  }
+}

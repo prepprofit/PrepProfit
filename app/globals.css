@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/*
+ * PrepProfit / GastroKit design tokens — ver DESIGN.md.
+ * Escala Slate para a estética profissional + escala "brand" (Emerald)
+ * reservada a lucros, destaques positivos e CTAs.
+ */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #effdf4;
+  --color-brand-100: #d9fbe6;
+  --color-brand-200: #b5f5d1;
+  --color-brand-300: #7decb5;
+  --color-brand-400: #3fda91;
+  --color-brand-500: #1abf73;
+  --color-brand-600: #109b5a;
+  --color-brand-700: #0f7a49;
+  --color-brand-800: #10603d;
+  --color-brand-900: #0e4f33;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}

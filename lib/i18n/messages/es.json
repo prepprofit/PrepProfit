@@ -1,0 +1,29 @@
+{
+  "app": {
+    "name": "GastroKit",
+    "tagline": "Gestión financiera para chefs y negocios de comida"
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "recipes": "Recetas",
+    "ingredients": "Ingredientes",
+    "inventory": "Inventario",
+    "breakEven": "Punto de equilibrio",
+    "payroll": "Nómina",
+    "invoices": "Facturas"
+  },
+  "common": {
+    "comingSoon": "Próximamente",
+    "comingSoonDescription": "Este módulo se construirá en un próximo sprint."
+  },
+  "marketing": {
+    "headline": "Deja de adivinar. Sabe cuánto cuesta realmente cada plato.",
+    "subhead": "GastroKit reemplaza tus hojas de cálculo con un panel financiero hecho para cocinas.",
+    "ctaPrimary": "Empezar prueba gratis de 14 días",
+    "ctaSecondary": "Iniciar sesión"
+  },
+  "selectOrg": {
+    "title": "Elige o crea una organización",
+    "description": "Tus datos están aislados por organización."
+  }
+}
