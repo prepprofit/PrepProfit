@@ -1,6 +1,14 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 
-export type UserRole = 'manager' | 'kitchen';
+export const USER_ROLES = ['manager', 'kitchen'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+function isUserRole(value: unknown): value is UserRole {
+  return (
+    typeof value === 'string' &&
+    (USER_ROLES as readonly string[]).includes(value)
+  );
+}
 
 /**
  * RULE #1 (CLAUDE.md): the `organization_id` ALWAYS comes from the server, via
@@ -27,13 +35,14 @@ export async function getUserId(): Promise<string> {
 }
 
 /**
- * User role from Clerk publicMetadata.
- * Safe default: 'kitchen' (least privilege).
+ * User role from Clerk publicMetadata, validated against the known set — never
+ * trust raw metadata. Safe default: 'kitchen' (least privilege) for missing or
+ * unexpected values.
  */
 export async function getUserRole(): Promise<UserRole> {
   const user = await currentUser();
-  const role = user?.publicMetadata?.role as UserRole | undefined;
-  return role ?? 'kitchen';
+  const role = user?.publicMetadata?.role;
+  return isUserRole(role) ? role : 'kitchen';
 }
 
 export async function isManager(): Promise<boolean> {

@@ -6,6 +6,8 @@ import {
   numeric,
   timestamp,
   index,
+  unique,
+  foreignKey,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -23,7 +25,12 @@ const id = () =>
 const createdAt = () =>
   timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 const updatedAt = () =>
-  timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
+  timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    // ORM-level: stamps `now()` on every Drizzle .update() (the DB default only
+    // covers inserts).
+    .$onUpdate(() => new Date());
 
 export const ingredients = pgTable(
   'ingredients',
@@ -44,6 +51,8 @@ export const ingredients = pgTable(
   (t) => [
     index('ingredients_org_idx').on(t.organizationId),
     index('ingredients_org_name_idx').on(t.organizationId, t.name),
+    // FK target for the composite (organization_id, ingredient_id) reference.
+    unique('ingredients_org_id_key').on(t.organizationId, t.id),
   ],
 );
 
@@ -62,6 +71,8 @@ export const recipes = pgTable(
   (t) => [
     index('recipes_org_idx').on(t.organizationId),
     index('recipes_org_name_idx').on(t.organizationId, t.name),
+    // FK target for the composite (organization_id, recipe_id) reference.
+    unique('recipes_org_id_key').on(t.organizationId, t.id),
   ],
 );
 
@@ -70,12 +81,8 @@ export const recipeIngredients = pgTable(
   {
     id: id(),
     organizationId: orgId(),
-    recipeId: text('recipe_id')
-      .notNull()
-      .references(() => recipes.id, { onDelete: 'cascade' }),
-    ingredientId: text('ingredient_id')
-      .notNull()
-      .references(() => ingredients.id, { onDelete: 'restrict' }),
+    recipeId: text('recipe_id').notNull(),
+    ingredientId: text('ingredient_id').notNull(),
     quantityGrams: numeric('quantity_grams', { precision: 10, scale: 2 })
       .notNull()
       .default(sql`0`),
@@ -84,6 +91,25 @@ export const recipeIngredients = pgTable(
   (t) => [
     index('recipe_ingredients_org_idx').on(t.organizationId),
     index('recipe_ingredients_recipe_idx').on(t.recipeId),
+    // One row per ingredient per recipe.
+    unique('recipe_ingredients_recipe_ingredient_key').on(
+      t.recipeId,
+      t.ingredientId,
+    ),
+    // Composite FKs force the referenced recipe/ingredient to share THIS row's
+    // organization_id — cross-tenant links are impossible at the DB level, not
+    // just discouraged by the app layer. Delete semantics preserved: removing a
+    // recipe cascades to its lines; an ingredient in use cannot be deleted.
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_ingredients_recipe_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'recipe_ingredients_ingredient_fk',
+    }).onDelete('restrict'),
   ],
 );
 

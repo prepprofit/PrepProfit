@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
-import { ingredients, recipes } from '@/lib/db/schema';
+import { ingredients, recipes, recipeIngredients } from '@/lib/db/schema';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import {
@@ -17,7 +17,9 @@ const ORG_B = 'org_b';
 
 let client: PGlite;
 let db: TenantDb;
+let ingredientAId: string;
 let ingredientBId: string;
+let recipeAId: string;
 
 beforeAll(async () => {
   const test = await createTestDb();
@@ -25,12 +27,13 @@ beforeAll(async () => {
   db = test.db as unknown as TenantDb;
 
   // Seed as superuser (bypasses RLS) — distinct data per organization.
-  await createIngredient(db, ORG_A, {
+  const a = await createIngredient(db, ORG_A, {
     name: 'Flour A',
     unit: 'kg',
     priceType: 'per_kg',
     priceCents: 120,
   });
+  ingredientAId = a.id;
 
   const b = await createIngredient(db, ORG_B, {
     name: 'Chocolate B',
@@ -40,10 +43,16 @@ beforeAll(async () => {
   });
   ingredientBId = b.id;
 
-  await db.insert(recipes).values([
-    { organizationId: ORG_A, name: 'Bread A' },
-    { organizationId: ORG_B, name: 'Cake B' },
-  ]);
+  const insertedRecipes = await db
+    .insert(recipes)
+    .values([
+      { organizationId: ORG_A, name: 'Bread A' },
+      { organizationId: ORG_B, name: 'Cake B' },
+    ])
+    .returning();
+  const recipeA = insertedRecipes.find((r) => r.organizationId === ORG_A);
+  if (!recipeA) throw new Error('seed: missing org A recipe');
+  recipeAId = recipeA.id;
 });
 
 afterAll(async () => {
@@ -71,6 +80,33 @@ describe('application layer — scoped by organization_id', () => {
     const recipesB = await listRecipes(db, ORG_B);
     expect(recipesA.map((r) => r.name)).toEqual(['Bread A']);
     expect(recipesB.map((r) => r.name)).toEqual(['Cake B']);
+  });
+});
+
+describe('database layer — cross-org referential integrity', () => {
+  it('allows a recipe_ingredient within one organization', async () => {
+    const [row] = await db
+      .insert(recipeIngredients)
+      .values({
+        organizationId: ORG_A,
+        recipeId: recipeAId,
+        ingredientId: ingredientAId,
+      })
+      .returning();
+    expect(row?.organizationId).toBe(ORG_A);
+  });
+
+  it('rejects a recipe_ingredient that links across organizations', async () => {
+    // An org A line pointing at org B's ingredient: the composite
+    // (organization_id, ingredient_id) FK has no matching parent row, so the DB
+    // itself rejects the cross-tenant link.
+    await expect(
+      db.insert(recipeIngredients).values({
+        organizationId: ORG_A,
+        recipeId: recipeAId,
+        ingredientId: ingredientBId,
+      }),
+    ).rejects.toThrow();
   });
 });
 
