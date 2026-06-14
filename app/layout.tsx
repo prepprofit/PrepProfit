@@ -3,6 +3,7 @@ import { Inter, Space_Grotesk } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
+import { ThemeProvider } from '@/components/theme-provider';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
@@ -25,9 +26,20 @@ export default async function RootLayout({
 
   return (
     <ClerkProvider>
-      <html lang={locale} className={`${inter.variable} ${spaceGrotesk.variable}`}>
+      <html
+        lang={locale}
+        className={`${inter.variable} ${spaceGrotesk.variable}`}
+        suppressHydrationWarning
+      >
         <body className="font-sans" suppressHydrationWarning>
-          <NextIntlClientProvider>{children}</NextIntlClientProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="light"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <NextIntlClientProvider>{children}</NextIntlClientProvider>
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>

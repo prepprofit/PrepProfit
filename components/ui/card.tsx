@@ -1,13 +1,37 @@
 import * as React from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+const cardVariants = cva(
+  'rounded-xl border text-foreground transition',
+  {
+    variants: {
+      variant: {
+        default: 'border-border bg-surface shadow-sm',
+        // Frosted surface for floating / highlighted tiles — light keeps a high
+        // opacity so text stays readable (see DESIGN.md glass tokens).
+        glass: 'border-glass-border bg-glass shadow-sm backdrop-blur-xl',
+      },
+      interactive: {
+        true: 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md',
+        false: '',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+      interactive: false,
+    },
+  },
+);
+
+interface CardProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof cardVariants> {}
+
+function Card({ className, variant, interactive, ...props }: CardProps) {
   return (
     <div
-      className={cn(
-        'rounded-xl border border-slate-200 bg-white shadow-sm',
-        className,
-      )}
+      className={cn(cardVariants({ variant, interactive, className }))}
       {...props}
     />
   );
@@ -27,7 +51,7 @@ function CardTitle({
   return (
     <h3
       className={cn(
-        'font-display text-lg font-semibold text-slate-900',
+        'font-display text-lg font-semibold text-foreground',
         className,
       )}
       {...props}
@@ -40,7 +64,7 @@ function CardDescription({
   ...props
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={cn('text-sm text-slate-500', className)} {...props} />
+    <p className={cn('text-sm text-muted-foreground', className)} {...props} />
   );
 }
 
@@ -51,4 +75,11 @@ function CardContent({
   return <div className={cn('p-6 pt-0', className)} {...props} />;
 }
 
-export { Card, CardHeader, CardTitle, CardDescription, CardContent };
+export {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  cardVariants,
+};

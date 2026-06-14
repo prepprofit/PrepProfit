@@ -14,7 +14,7 @@ export async function ComingSoon({ titleKey }: { titleKey: NavKey }) {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="font-display text-2xl font-semibold text-slate-900">
+      <h1 className="font-display text-2xl font-semibold text-foreground">
         {tNav(titleKey)}
       </h1>
       <Card className="mt-6">

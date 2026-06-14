@@ -7,16 +7,16 @@ sidebar, orange accent, data-dense charts). We copy the **visual language**, not
 the reference's information architecture: it maps onto PrepProfit's own modules
 (Recipes, Ingredients, Inventory, Break-even, Payroll, Invoices).
 
-> **Two themes are first-class: light AND dark.** Dark is the default/primary
-> look (matches the reference); a toggle lets users switch. Every token below has
-> a value for both themes.
+> **Two themes are first-class: light AND dark.** Light is the default; a toggle
+> lets users switch to dark (and system). Every token below has a value for both
+> themes.
 
 ---
 
 ## 1. Theming strategy
 
 - **`next-themes`**, class-based: `.dark` on `<html>` (`attribute="class"`),
-  `defaultTheme="dark"`, `enableSystem`. Toggle lives in the top bar.
+  `defaultTheme="light"`, `enableSystem`. Toggle lives in the top bar.
 - Colors are **semantic CSS variables** that change per theme; Tailwind v4 maps
   them to utilities (`bg-background`, `bg-surface`, `text-foreground`,
   `border-border`, …) via `@theme inline`.
@@ -38,7 +38,10 @@ the reference's information architecture: it maps onto PrepProfit's own modules
 --color-accent-600:#ea580c --color-accent-700:#c2410c --color-accent-800:#9a3412
 --color-accent-900:#7c2d12
 ```
-Primary action color: `accent-500` (hover `accent-600`).
+Primary action color: solid CTAs use `accent-700` + white text (WCAG AA, 4.5:1;
+`accent-500`/`accent-600` + white fail at ~2.3–3.6:1). The brighter `accent-500`
+is reserved for **non-text** accents: active nav marker, icons, chart series,
+focus ring, glow.
 
 `brand` = **Emerald** — reserved for **profit / positive / success** (e.g. "+12%"
 deltas, margin in the green, completed states). This keeps PrepProfit's
@@ -162,6 +165,10 @@ components will be migrated to these tokens.)
 **Cards & surfaces**
 - `rounded-xl`, `bg-surface`, `border border-border`, `shadow-sm`. Floating
   elements (toasts, popovers) get `shadow-xl`. Generous padding (`p-5/p-6`).
+- **Glass** card variant (frosted: `bg-glass` + `border-glass-border` +
+  `backdrop-blur`) for floating / highlighted tiles; light mode keeps a high
+  opacity so text stays readable. **Glow** (`shadow-glow`) for accent-highlighted
+  surfaces. Both tokens are defined in `app/globals.css`.
 
 **Data viz (built with real data in Sprint 2; mock visually now)**
 - Bar chart (Time-tracked style): rounded-top bars, one highlighted series in
@@ -183,10 +190,12 @@ components will be migrated to these tokens.)
 
 ---
 
-## 8. Dependencies to add (next session)
-- **`next-themes`** — light/dark switching.
-- A chart library for Sprint 2 dashboards — evaluate **Recharts** or **visx**
-  (Tremor was deferred due to React 19 peer friction; decide during planning).
+## 8. Dependencies
+- **`next-themes`** — light/dark switching. **Added.**
+- Charts are **deferred to Sprint 2**: the dashboard ships styled placeholders
+  now (see §9). Leading candidate is **Recharts** (design research rates it 9/10
+  for every dashboard style; Tremor was dropped for React 19 peer friction) —
+  finalised when real data lands in Sprint 2.
 - Icons: `lucide-react` (already installed).
 
 ## 9. Scope note
