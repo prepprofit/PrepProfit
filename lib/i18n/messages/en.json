@@ -12,11 +12,43 @@
     "payroll": "Payroll",
     "invoices": "Invoices"
   },
+  "navGroups": {
+    "operations": "Operations",
+    "finance": "Finance",
+    "team": "Team"
+  },
+  "topbar": {
+    "openMenu": "Open menu",
+    "notifications": "Notifications"
+  },
+  "theme": {
+    "toggle": "Toggle theme"
+  },
   "common": {
     "comingSoon": "Coming soon",
     "comingSoonDescription": "This module will be built in an upcoming sprint."
   },
+  "dashboard": {
+    "subtitle": "Here's how your kitchen is performing this month.",
+    "sprint2": "Sprint 2",
+    "topRecipes": "Top recipes by margin",
+    "kpi": {
+      "revenue": "Revenue",
+      "foodCost": "Food cost",
+      "margin": "Avg. margin",
+      "recipes": "Active recipes",
+      "vsLastMonth": "vs last month",
+      "thisMonth": "this month"
+    },
+    "charts": {
+      "sales": { "title": "Sales by day", "subtitle": "Last 7 days" },
+      "margin": { "title": "Margin trend", "subtitle": "Last 6 months" },
+      "costs": { "title": "Cost breakdown", "subtitle": "By category" },
+      "cashflow": { "title": "Cash flow", "subtitle": "Income vs expenses" }
+    }
+  },
   "marketing": {
+    "eyebrow": "Built for kitchens",
     "headline": "Stop guessing. Know what every dish really costs.",
     "subhead": "PrepProfit replaces your spreadsheets with a financial dashboard built for kitchens.",
     "ctaPrimary": "Start 14-day free trial",

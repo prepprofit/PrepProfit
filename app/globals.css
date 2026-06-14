@@ -1,14 +1,31 @@
 @import "tailwindcss";
 
 /*
- * PrepProfit design tokens — see DESIGN.md.
- * Slate scale for the professional aesthetic + a "brand" (Emerald) scale
- * reserved for profits, positive highlights and CTAs.
+ * PrepProfit design system — see DESIGN.md.
+ * Two first-class themes (light is the default, dark via the top-bar toggle).
+ * Tailwind v4 class-based dark variant:
  */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
 
+  /* Accent (Orange) — primary actions, active nav, primary chart series, glow.
+     For solid CTAs use accent-600+ with white text (WCAG); the bright accent-500
+     is reserved for non-text accents (markers, icons, chart fills, glow). */
+  --color-accent-50: #fff7ed;
+  --color-accent-100: #ffedd5;
+  --color-accent-200: #fed7aa;
+  --color-accent-300: #fdba74;
+  --color-accent-400: #fb923c;
+  --color-accent-500: #f97316;
+  --color-accent-600: #ea580c;
+  --color-accent-700: #c2410c;
+  --color-accent-800: #9a3412;
+  --color-accent-900: #7c2d12;
+
+  /* Brand (Emerald) — profit / positive / success. Never use orange for "good". */
   --color-brand-50: #effdf4;
   --color-brand-100: #d9fbe6;
   --color-brand-200: #b5f5d1;
@@ -19,8 +36,79 @@
   --color-brand-700: #0f7a49;
   --color-brand-800: #10603d;
   --color-brand-900: #0e4f33;
+
+  /* Categorical chart palette (use in order for multi-series charts & rings). */
+  --color-chart-1: #f97316; /* orange  */
+  --color-chart-2: #10b981; /* emerald */
+  --color-chart-3: #8b5cf6; /* violet  */
+  --color-chart-4: #14b8a6; /* teal    */
+  --color-chart-5: #3b82f6; /* blue    */
+  --color-chart-6: #f59e0b; /* amber   */
+
+  /* Subtle accent "glow" for highlighted / floating surfaces (reference look). */
+  --shadow-glow: 0 0 0 1px color-mix(in oklab, var(--color-accent-500) 35%, transparent),
+    0 12px 32px -12px color-mix(in oklab, var(--color-accent-500) 55%, transparent);
+}
+
+/* Semantic, theme-aware tokens. Light is the default theme. */
+:root {
+  color-scheme: light;
+  --background: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --border: #e2e8f0;
+  --foreground: #0f172a;
+  --muted-foreground: #64748b;
+  --ring: #ea580c;
+  /* Glass (frosted) surfaces — light needs high opacity to stay readable. */
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(15, 23, 42, 0.08);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0a0a0b;
+  --surface: #161618;
+  --surface-2: #1f1f23;
+  --border: #262629;
+  --foreground: #fafafa;
+  --muted-foreground: #a1a1aa;
+  --ring: #f97316;
+  --glass-bg: rgba(22, 22, 24, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+}
+
+/* Expose semantic vars as Tailwind color utilities (bg-background, text-foreground,
+   border-border, bg-surface, bg-surface-2, ring-ring, bg-glass, …). */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-ring: var(--ring);
+  --color-glass: var(--glass-bg);
+  --color-glass-border: var(--glass-border);
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-background text-foreground antialiased;
+}
+
+/* Accessible focus fallback (components may override with ring utilities). */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
