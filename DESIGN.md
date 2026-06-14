@@ -1,84 +1,196 @@
 # PrepProfit Design System & UI Guidelines
 
-This document contains strictly defined design specifications, exact color palettes, typography settings, and UI component guidelines for the **PrepProfit SaaS**.
+Design specifications, color tokens, typography, and component rules for the
+**PrepProfit SaaS**. The target look is a **modern productivity dashboard**
+(reference: a "HorizonHub"-style app — dark-first, elevated cards, grouped
+sidebar, orange accent, data-dense charts). We copy the **visual language**, not
+the reference's information architecture: it maps onto PrepProfit's own modules
+(Recipes, Ingredients, Inventory, Break-even, Payroll, Invoices).
 
+> **Two themes are first-class: light AND dark.** Dark is the default/primary
+> look (matches the reference); a toggle lets users switch. Every token below has
+> a value for both themes.
 
-## 1. Exact Color Palette & Mapping
+---
 
-The app drops common grays (`gray`, `zinc`, `neutral`) in favor of the **Slate** scale for a professional, "cool/clean" Scandinavian aesthetic. A custom **Emerald Green** scale (named `brand`) is used strictly for profits, positive highlights, and CTAs (as seen in the primary button and the "+14%" indicators).
+## 1. Theming strategy
 
-### CSS Variables (add to `app/globals.css` — Tailwind v4)
+- **`next-themes`**, class-based: `.dark` on `<html>` (`attribute="class"`),
+  `defaultTheme="dark"`, `enableSystem`. Toggle lives in the top bar.
+- Colors are **semantic CSS variables** that change per theme; Tailwind v4 maps
+  them to utilities (`bg-background`, `bg-surface`, `text-foreground`,
+  `border-border`, …) via `@theme inline`.
+- Tailwind v4 class-based dark variant: add
+  `@custom-variant dark (&:where(.dark, .dark *));` in `globals.css`.
+
+---
+
+## 2. Color tokens
+
+### Brand & accent scales (theme-independent)
+
+`accent` = **Orange** — primary actions, active nav, primary chart series, the
+"running timer" affordance. Matches the reference's main accent.
+
+```
+--color-accent-50:#fff7ed --color-accent-100:#ffedd5 --color-accent-200:#fed7aa
+--color-accent-300:#fdba74 --color-accent-400:#fb923c --color-accent-500:#f97316
+--color-accent-600:#ea580c --color-accent-700:#c2410c --color-accent-800:#9a3412
+--color-accent-900:#7c2d12
+```
+Primary action color: `accent-500` (hover `accent-600`).
+
+`brand` = **Emerald** — reserved for **profit / positive / success** (e.g. "+12%"
+deltas, margin in the green, completed states). This keeps PrepProfit's
+"profit = green" semantic, which is ideal for a finance product.
+
+```
+--color-brand-50:#effdf4 --color-brand-100:#d9fbe6 --color-brand-200:#b5f5d1
+--color-brand-300:#7decb5 --color-brand-400:#3fda91 --color-brand-500:#1abf73
+--color-brand-600:#109b5a --color-brand-700:#0f7a49 --color-brand-800:#10603d
+--color-brand-900:#0e4f33
+```
+
+**Chart categorical palette** (use in this order for multi-series charts & rings):
+```
+--color-chart-1:#f97316  /* orange  */
+--color-chart-2:#10b981  /* emerald */
+--color-chart-3:#8b5cf6  /* violet  */
+--color-chart-4:#14b8a6  /* teal    */
+--color-chart-5:#3b82f6  /* blue    */
+--color-chart-6:#f59e0b  /* amber   */
+```
+Semantic: red `#ef4444` (negative/loss), amber `#f59e0b` (warning/low stock).
+
+### Semantic tokens (theme-aware)
+
+| Token | Light | Dark | Use |
+|-------|-------|------|-----|
+| `--background` | `#f8fafc` | `#0a0a0b` | app background |
+| `--surface` | `#ffffff` | `#161618` | cards / panels |
+| `--surface-2` | `#f1f5f9` | `#1f1f23` | insets, chart bg, hover |
+| `--border` | `#e2e8f0` | `#262629` | borders / dividers |
+| `--foreground` | `#0f172a` | `#fafafa` | primary text / numbers |
+| `--muted-foreground` | `#64748b` | `#a1a1aa` | secondary text |
+| `--ring` | `#f97316` | `#f97316` | focus ring (accent) |
+
+---
+
+## 3. `app/globals.css` (Tailwind v4) — implementation
+
 ```css
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  /* Custom fonts */
-  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
 
-  /* Primary color system (PrepProfit Emerald) */
-  --color-brand-50: #effdf4;  /* Subtle background: active menu items, light badge backgrounds */
-  --color-brand-100: #d9fbe6; /* Hover states, avatars or highlighted icons */
-  --color-brand-200: #b5f5d1;
-  --color-brand-300: #7decb5;
-  --color-brand-400: #3fda91; /* Contrasting icons and graphics on dark backgrounds */
-  --color-brand-500: #1abf73; /* Progress bars, "View Income Statement" button (dark background) */
-  --color-brand-600: #109b5a; /* PRIMARY COLOR: "Start 14-day free trial" button, main icon, active text */
-  --color-brand-700: #0f7a49; /* Hover for primary buttons */
-  --color-brand-800: #10603d;
-  --color-brand-900: #0e4f33;
+  /* accent (orange) + brand (emerald) + chart-* scales here (see section 2) */
 }
+
+:root {
+  --background:#f8fafc; --surface:#ffffff; --surface-2:#f1f5f9;
+  --border:#e2e8f0; --foreground:#0f172a; --muted-foreground:#64748b; --ring:#f97316;
+}
+.dark {
+  --background:#0a0a0b; --surface:#161618; --surface-2:#1f1f23;
+  --border:#262629; --foreground:#fafafa; --muted-foreground:#a1a1aa; --ring:#f97316;
+}
+
+/* Expose semantic vars as Tailwind color utilities (bg-background, text-foreground, …) */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-ring: var(--ring);
+}
+
+body { @apply bg-background text-foreground antialiased; }
 ```
 
-### Where to apply the colors (faithful to the screenshot/image):
-1.  **Backgrounds:**
-    *   **Global app background:** `bg-slate-50` (`#f8fafc`). Note how the area around the dashboard cards/sidebar has a continuous very light color — it is not 100% white!
-    *   **Main cards and panels:** `bg-white` (`#ffffff`) with divider lines and `border-slate-200` (`#e2e8f0`) borders.
-    *   **Dark cards (e.g. Monthly Profit Goal):** `bg-slate-900` (`#0f172a`), using text from `text-slate-300` to `text-white`.
-2.  **Text and Typography (Slate scale):**
-    *   Prominent titles (e.g. "Financial Overview") and key numbers (e.g. "$24,500"): `text-slate-900`.
-    *   Secondary text and list-item descriptions: `text-slate-500` to `text-slate-600`.
-3.  **Growth indicators / Badges:**
-    *   Use a positive badge with a very light green background and vibrant text: `bg-brand-50 text-brand-600 font-semibold px-2 py-0.5 rounded-full`.
-4.  **Sidebar:**
-    *   Active (selected) menu item: white rounded shape with a background and border (`bg-white shadow-sm border border-slate-200/60`), using `text-brand-700` on the icon (`LayoutDashboard`) and the main font.
-    *   Inactive sidebar links: low-opacity text, `text-slate-600 hover:bg-slate-100`.
+Stop hardcoding `bg-white` / `bg-slate-50` / `text-slate-900` in components — use
+the semantic utilities so both themes work automatically. (Existing Sprint 0
+components will be migrated to these tokens.)
 
-## 2. Typography
+---
 
-The interface mixes a modern technical font (Space Grotesk) for reading prominent numbers/headings, and a highly legible sans-serif (Inter) for repetitive UI components.
+## 4. Color usage rules
 
-*   **Display Font**: **Space Grotesk** (used for `h1`, `h2`, module titles, and large financial values).
-*   **Body Font**: **Inter** (used for list items, ingredient descriptions, margins). Configured as `--font-sans`.
+- **Orange (`accent`)**: primary buttons/CTAs, active sidebar item, primary chart
+  series, the timer/play control, the avatar ring.
+- **Emerald (`brand`)**: positive deltas, profit/margin in the green, completed
+  badges, success. Never use orange to signal "good number" — that's green's job.
+- **Charts**: follow the categorical palette order. Rings (work-activity style)
+  use chart-1..3; area/step charts use an orange gradient fill over `surface-2`.
+- **Badges**: positive → `bg-brand-50 text-brand-600` (light) / tinted in dark;
+  warning → amber; negative → red.
 
-### Next.js App Router setup (`app/layout.tsx`):
-```tsx
-import { Inter, Space_Grotesk } from 'next/font/google';
+---
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
-const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-display' });
+## 5. Typography
 
-export default function RootLayout({children}: {children: React.ReactNode}) {
-  return (
-    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
-       <body className="font-sans text-slate-900 bg-slate-50 antialiased" suppressHydrationWarning>
-         {children}
-       </body>
-    </html>
-  );
-}
-```
+- **Display**: **Space Grotesk** — `h1`/`h2`, module titles, large financial
+  values (`--font-display`).
+- **Body**: **Inter** — UI, lists, descriptions (`--font-sans`).
+- Already wired in `app/layout.tsx` via `next/font` variables.
 
-## 3. Componentization Guidelines (Design Language System)
+---
 
-*   **Interface geometry (borders / radii):**
-    *   Large top-bar / landing-page buttons: "pill" shape (`rounded-full`).
-    *   Dashboard cards and modular panels: use `rounded-xl` with a delicate light border (`border border-slate-200`).
-*   **Depth (shadows):**
-    *   Most fixed cards show little or no shadow (`shadow-sm`).
-    *   Interactive elements that float over the interface (like simulated toasts and side pop-up bars) get elevated shadows like `shadow-xl border border-slate-200`.
-*   **Charts and Icons (Lucide React):**
-    *   The `lucide-react` library is explicitly recommended for pictograms — flexible stroke weight and a consistent visual style (key icons: `ChefHat`, `LayoutDashboard`, `BarChart3`, `CircleDollarSign`, `Calculator`, `TrendingUp`, `Package`, `Utensils`).
+## 6. Layout & components (match the reference)
 
-## 4. Assets and Brand
+**App shell**
+- **Sidebar**: grouped with small uppercase section labels (reference uses
+  "Management / Interaction / Payment"). For PrepProfit, group as:
+  *Operations* (Dashboard, Recipes, Ingredients, Inventory) ·
+  *Finance* (Break-even, Invoices) · *Team* (Payroll). Logo + product name at
+  top; OrganizationSwitcher (workspace) pinned at the bottom. Active item:
+  surface chip + orange icon/text + left accent marker.
+- **Top bar**: page title/context on the left; on the right: theme toggle,
+  notifications, and the Clerk `UserButton`. (A timer/project selector like the
+  reference is out of scope — it's HorizonHub-specific.)
 
-*   **The company logo (PrepProfit):** the generated logo file is at `public/logo_final.jpg`.
-*   In the top nav menu it should be implemented small, next to the name in display text, with `border-radius: 6px` (`rounded-md`), ensuring a premium SaaS consistency.
+**Responsiveness** (mobile-first)
+- Sidebar: persistent rail at `lg+`; below `lg` it collapses into a **drawer**
+  opened by a hamburger in the top bar (overlay + backdrop).
+- Card grids: 3-up at `xl`, 2-up at `md`, 1-up on mobile. Charts shrink, never
+  overflow. Tables scroll horizontally inside their card on small screens.
+
+**Cards & surfaces**
+- `rounded-xl`, `bg-surface`, `border border-border`, `shadow-sm`. Floating
+  elements (toasts, popovers) get `shadow-xl`. Generous padding (`p-5/p-6`).
+
+**Data viz (built with real data in Sprint 2; mock visually now)**
+- Bar chart (Time-tracked style): rounded-top bars, one highlighted series in
+  orange, rest muted.
+- Area/step chart (KPI style): orange gradient fill on `surface-2`.
+- Concentric **activity rings** (Work-activity style): chart-1..3.
+- **Segmented progress bar** (Task-overview style): multi-color segments.
+- **Completion ring + %** (Project-progress style).
+
+**Controls**
+- Buttons: pill (`rounded-full`); primary = orange, plus `outline` and `ghost`.
+- Inputs/selects: `surface-2` bg, `border`, focus `ring` (orange).
+
+---
+
+## 7. Assets & brand
+- Logo: `public/logo_final.jpg`, shown small (`rounded-md`) next to the product
+  name in display type.
+
+---
+
+## 8. Dependencies to add (next session)
+- **`next-themes`** — light/dark switching.
+- A chart library for Sprint 2 dashboards — evaluate **Recharts** or **visx**
+  (Tremor was deferred due to React 19 peer friction; decide during planning).
+- Icons: `lucide-react` (already installed).
+
+## 9. Scope note
+This doc defines the **design language**. The dashboard's data-driven charts need
+the financial tables from **Sprint 2**, so during the design phase we build the
+shell, theming, responsive layout, and styled components — with **mocked visuals**
+on the dashboard — then wire real data in the corresponding sprints.
