@@ -4,6 +4,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { useTheme } from 'next-themes';
+import { OrganizationSwitcher } from '@clerk/nextjs';
 import {
   LayoutDashboard,
   Utensils,
@@ -14,7 +16,8 @@ import {
   FileText,
   type LucideIcon,
 } from 'lucide-react';
-import { navModules, type NavKey } from '@/lib/nav';
+import { navGroups, type NavKey } from '@/lib/nav';
+import { clerkAppearance } from '@/lib/clerk-appearance';
 import { cn } from '@/lib/utils';
 
 const icons: Record<NavKey, LucideIcon> = {
@@ -27,52 +30,92 @@ const icons: Record<NavKey, LucideIcon> = {
   invoices: FileText,
 };
 
-export function Sidebar() {
+export function Sidebar({
+  className,
+  onNavigate,
+}: {
+  className?: string;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const t = useTranslations('nav');
+  const tGroups = useTranslations('navGroups');
   const tApp = useTranslations('app');
+  const { resolvedTheme } = useTheme();
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
+    <aside
+      className={cn(
+        'flex w-64 shrink-0 flex-col border-r border-border bg-surface',
+        className,
+      )}
+    >
       <div className="flex items-center gap-2 px-6 py-5">
         <Image
           src="/logo_final.jpg"
-          alt="PrepProfit"
+          alt={tApp('name')}
           width={32}
           height={32}
           className="rounded-md"
         />
-        <span className="font-display text-lg font-semibold text-slate-900">
+        <span className="font-display text-lg font-semibold text-foreground">
           {tApp('name')}
         </span>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 px-3 py-2">
-        {navModules.map(({ key, href }) => {
-          const Icon = icons[key];
-          const active = pathname === href || pathname.startsWith(`${href}/`);
-          return (
-            <Link
-              key={key}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                active
-                  ? 'border border-slate-200/60 bg-white text-brand-700 shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-100',
-              )}
-            >
-              <Icon
-                className={cn(
-                  'size-4',
-                  active ? 'text-brand-600' : 'text-slate-400',
-                )}
-              />
-              {t(key)}
-            </Link>
-          );
-        })}
+      <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-2">
+        {navGroups.map((group) => (
+          <div key={group.key} className="flex flex-col gap-1">
+            <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {tGroups(group.key)}
+            </p>
+            {group.items.map(({ key, href }) => {
+              const Icon = icons[key];
+              const active =
+                pathname === href || pathname.startsWith(`${href}/`);
+              return (
+                <Link
+                  key={key}
+                  href={href}
+                  onClick={onNavigate}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    active
+                      ? 'bg-surface-2 text-accent-700 dark:text-accent-400'
+                      : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',
+                  )}
+                >
+                  {active && (
+                    <span
+                      className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-accent-500"
+                      aria-hidden
+                    />
+                  )}
+                  <Icon
+                    className={cn(
+                      'size-4 shrink-0',
+                      active
+                        ? 'text-accent-500'
+                        : 'text-muted-foreground group-hover:text-foreground',
+                    )}
+                  />
+                  {t(key)}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
+
+      <div className="border-t border-border p-3">
+        <OrganizationSwitcher
+          hidePersonal
+          afterCreateOrganizationUrl="/dashboard"
+          afterSelectOrganizationUrl="/dashboard"
+          appearance={clerkAppearance(resolvedTheme === 'dark')}
+        />
+      </div>
     </aside>
   );
 }
