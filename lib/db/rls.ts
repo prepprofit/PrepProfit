@@ -1,18 +1,18 @@
 import { businessTables } from './schema';
 
 /**
- * Row-Level Security — segunda camada de defesa do multi-tenancy.
+ * Row-Level Security — the second layer of multi-tenant defense.
  *
- * Cada tabela de negócio só expõe linhas cuja `organization_id` casa com o
- * valor da GUC `app.current_org_id`, definida por transação via `runInOrg()`
- * (ver lib/db/tenant.ts). Se a GUC não estiver setada, `current_setting(..., true)`
- * retorna NULL e nenhuma linha passa — seguro por padrão.
+ * Each business table only exposes rows whose `organization_id` matches the
+ * `app.current_org_id` GUC, set per transaction by `runInOrg()` (see
+ * lib/db/tenant.ts). If the GUC is not set, `current_setting(..., true)` returns
+ * NULL and no row passes — secure by default.
  *
- * `FORCE ROW LEVEL SECURITY` faz a policy valer inclusive para o dono da tabela
- * (o papel que o app usa no Neon), não só para papéis sem privilégio.
+ * `FORCE ROW LEVEL SECURITY` makes the policy apply even to the table owner
+ * (the role the app uses on Neon), not only to non-privileged roles.
  *
- * Geramos as instruções a partir de `businessTables` para garantir que nenhuma
- * tabela de negócio fique sem isolamento.
+ * Statements are generated from `businessTables` so no business table can be
+ * left without isolation.
  */
 export const rlsStatements: string[] = businessTables.flatMap((table) => [
   `ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`,

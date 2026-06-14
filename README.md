@@ -3,8 +3,8 @@
 
   <h1>PrepProfit</h1>
 
-  <p><strong>Gestão financeira multi-tenant para chefs e negócios de comida.</strong><br/>
-  O kit de planilhas <em>GastroKit</em> reimaginado como um SaaS por assinatura.</p>
+  <p><strong>Multi-tenant financial management for chefs and food businesses.</strong><br/>
+  A spreadsheet kit reimagined as a subscription SaaS.</p>
 
   <p>
     <img alt="CI" src="https://github.com/Napster13Nord/PrepProfit/actions/workflows/ci.yml/badge.svg" />
@@ -16,130 +16,130 @@
 
 ---
 
-## Visão geral
+## Overview
 
-PrepProfit substitui o kit de planilhas (Excel/Google Sheets) do **GastroKit** por
-um web app por assinatura, multi-tenant, feito para a realidade de restaurantes,
-padarias e confeitarias. Cada organização tem seus dados **completamente isolados**;
-os cálculos de custo, margem e ponto de equilíbrio — o coração do produto — vivem em
-funções puras e testadas.
+PrepProfit replaces the spreadsheet kit (Excel/Google Sheets) with a multi-tenant
+subscription web app built for the reality of restaurants, bakeries and
+patisseries. Each organization's data is **fully isolated**; the cost, margin and
+break-even calculations — the heart of the product — live in pure, tested
+functions.
 
-## Módulos do produto
+## Product modules
 
-| # | Módulo | Descrição |
-|---|--------|-----------|
-| 1 | **Receitas** | Custo de receita (ingredientes → custo total, por porção, margem) |
-| 2 | **Financeiro** | Receitas, despesas e dashboard mensal/anual |
-| 3 | **Inventário** | Entradas/saídas de estoque e alerta de estoque baixo |
-| 4 | **Ponto de equilíbrio** | Break-even com simulação de cenários |
-| 5 | **Folha de pagamento** | Turnos, horas e pagamentos por funcionário |
-| 6 | **Faturas** | Geração de faturas em PDF |
+| # | Module | Description |
+|---|--------|-------------|
+| 1 | **Recipes** | Recipe cost (ingredients → total cost, per portion, margin) |
+| 2 | **Financials** | Income, expenses and a monthly/annual dashboard |
+| 3 | **Inventory** | Stock in/out and low-stock alerts |
+| 4 | **Break-even** | Break-even with scenario simulation |
+| 5 | **Payroll** | Shifts, hours and per-employee pay |
+| 6 | **Invoices** | PDF invoice generation |
 
-Os planos de assinatura (Starter / Pro / Business) liberam os módulos via Clerk Billing.
+Subscription plans (Starter / Pro / Business) unlock modules via Clerk Billing.
 
 ## Stack
 
-- **Next.js 15** (App Router) · **React 19** · **TypeScript** estrito
+- **Next.js 15** (App Router) · **React 19** · strict **TypeScript**
 - **PostgreSQL** (Neon) + **Drizzle ORM**
-- **Clerk** (auth + Organizations) e **Clerk Billing** sobre **Stripe**
-- **Tailwind CSS v4** + **shadcn/ui** (+ Tremor para dashboards)
-- **next-intl** (pt, en, es) · **Zod** (validação no servidor)
-- **Vitest** + **PGlite** (testes de banco sem dependências externas)
-- Deploy na **Vercel**
+- **Clerk** (auth + Organizations) and **Clerk Billing** over **Stripe**
+- **Tailwind CSS v4** + **shadcn/ui** (+ Tremor for dashboards)
+- **next-intl** (English to start) · **Zod** (server-side validation)
+- **Vitest** + **PGlite** (database tests with no external dependencies)
+- Deployed on **Vercel**
 
-## Arquitetura multi-tenant (a regra nº 1)
+## Multi-tenant architecture (rule #1)
 
-Isolamento por organização em **duas camadas independentes**:
+Per-organization isolation in **two independent layers**:
 
-1. **Camada de aplicação (primária)** — o `organization_id` **sempre** vem do Clerk no
-   servidor (`getOrgId()` em [`lib/auth.ts`](lib/auth.ts)); nunca do client. Todo acesso
-   a dados passa por helpers em [`lib/data/`](lib/data) que injetam o `organization_id`
-   no `WHERE`/`INSERT`.
-2. **Camada de banco (defesa em profundidade)** — **Row-Level Security** com `FORCE` em
-   cada tabela ([`lib/db/rls.ts`](lib/db/rls.ts)). A policy só expõe linhas cuja
-   `organization_id` casa com a GUC `app.current_org_id`, definida por transação em
-   [`runInOrg()`](lib/db/tenant.ts). Sem contexto de organização, **nenhuma linha passa**
-   (seguro por padrão).
+1. **Application layer (primary)** — `organization_id` **always** comes from Clerk
+   on the server (`getOrgId()` in [`lib/auth.ts`](lib/auth.ts)); never from the
+   client. All data access goes through helpers in [`lib/data/`](lib/data) that
+   inject `organization_id` into the `WHERE`/`INSERT`.
+2. **Database layer (defense in depth)** — **Row-Level Security** with `FORCE` on
+   every table ([`lib/db/rls.ts`](lib/db/rls.ts)). The policy only exposes rows
+   whose `organization_id` matches the `app.current_org_id` GUC, set per
+   transaction in [`runInOrg()`](lib/db/tenant.ts). With no organization context,
+   **no row passes** (secure by default).
 
-> Valores monetários são sempre `integer` em centavos — nunca float.
+> Monetary values are always `integer` cents — never float.
 
-## Estrutura do projeto
+## Project structure
 
 ```
 app/
-  (marketing)/        Landing page pública
-  (app)/              Shell autenticado (sidebar + OrganizationSwitcher) + módulos
-  sign-in, sign-up    Páginas do Clerk
-  select-organization Seleção/criação de organização
+  (marketing)/        Public landing page
+  (app)/              Authenticated shell (sidebar + OrganizationSwitcher) + modules
+  sign-in, sign-up    Clerk pages
+  select-organization Organization selection/creation
 components/
-  ui/                 Primitivos shadcn/ui (button, card, …)
-  app/                Sidebar, placeholders de módulo
+  ui/                 shadcn/ui primitives (button, card, …)
+  app/                Sidebar, module placeholders
 lib/
   auth.ts             getOrgId(), roles
-  db/                 schema (Drizzle), RLS, cliente Neon, runInOrg()
-  data/               Acesso a dados — sempre escopado por organização
-  i18n/               Configuração + catálogos pt/en/es
-drizzle/              Migrations geradas
-scripts/              migrate.ts (schema + RLS), seed.ts (2 organizações)
-tests/                isolation.test.ts — prova o isolamento entre orgs
+  db/                 schema (Drizzle), RLS, Neon client, runInOrg()
+  data/               Data access — always scoped by organization
+  i18n/               Configuration + message catalog (English)
+drizzle/              Generated migrations
+scripts/              migrate.ts (schema + RLS), seed.ts (2 organizations)
+tests/                isolation.test.ts — proves isolation between orgs
 ```
 
-## Começando
+## Getting started
 
 ```bash
 npm install
-npm test          # roda já, sem credenciais (Postgres em memória via PGlite)
+npm test          # runs now, no credentials (in-memory Postgres via PGlite)
 ```
 
-Para rodar o app de verdade, configure Neon e Clerk e preencha o `.env.local` —
-o passo a passo completo está em **[SETUP.md](SETUP.md)**.
+To run the real app, set up Neon and Clerk and fill in `.env.local` — the full
+walkthrough is in **[SETUP.md](SETUP.md)**.
 
 ```bash
-cp .env.example .env.local   # preencha DATABASE_URL e as chaves do Clerk
-npm run db:migrate           # cria tabelas + aplica RLS
-npm run seed                 # (opcional) popula 2 organizações de exemplo
+cp .env.example .env.local   # fill in DATABASE_URL and the Clerk keys
+npm run db:migrate           # create tables + apply RLS
+npm run seed                 # (optional) seed 2 example organizations
 npm run dev                  # http://localhost:3000
 ```
 
 ## Scripts
 
-| Comando | O que faz |
-|---------|-----------|
-| `npm run dev` | Servidor de desenvolvimento |
-| `npm run build` | Build de produção |
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Testes (Vitest + PGlite) |
-| `npm run db:generate` | Gera migration a partir do schema |
-| `npm run db:migrate` | Aplica migrations + policies de RLS |
-| `npm run seed` | Popula duas organizações com dados isolados |
+| `npm test` | Tests (Vitest + PGlite) |
+| `npm run db:generate` | Generate a migration from the schema |
+| `npm run db:migrate` | Apply migrations + RLS policies |
+| `npm run seed` | Seed two organizations with isolated data |
 
-## Testes
+## Testing
 
-O isolamento multi-tenant é verificado automaticamente em
-[`tests/isolation.test.ts`](tests/isolation.test.ts): um Postgres em memória (PGlite)
-recebe as **mesmas** migrations e policies de produção, e o teste prova — nas duas
-camadas — que a organização A jamais enxerga dados da B. Não exige banco externo, então
-roda no CI sem segredos.
+Multi-tenant isolation is verified automatically in
+[`tests/isolation.test.ts`](tests/isolation.test.ts): an in-memory Postgres
+(PGlite) receives the **same** production migrations and policies, and the test
+proves — on both layers — that organization A can never see organization B's data.
+It needs no external database, so it runs in CI without secrets.
 
-## Deploy
+## Deployment
 
-Importe o repositório na **Vercel**, defina as variáveis de ambiente (ver
-[SETUP.md](SETUP.md)) e rode `npm run db:migrate` contra o Neon de produção antes do
-primeiro deploy. A integração contínua (lint + typecheck + test) roda em cada push via
-[GitHub Actions](.github/workflows/ci.yml).
+Import the repository on **Vercel**, set the environment variables (see
+[SETUP.md](SETUP.md)), and run `npm run db:migrate` against the production Neon
+before the first deploy. Continuous integration (lint + typecheck + test) runs on
+every push via [GitHub Actions](.github/workflows/ci.yml).
 
 ## Roadmap
 
-O desenvolvimento segue o **[PLANO.md](PLANO.md)**, sprint por sprint:
+Development follows **[PLANO.md](PLANO.md)**, sprint by sprint:
 
-- [x] **Sprint 0** — Fundação multi-tenant (schema, RLS, auth, shell, isolamento testado)
-- [ ] **Sprint 1** — Receitas e ingredientes (CRUD, custo real, margem)
-- [ ] **Sprint 2** — Financeiro e ponto de equilíbrio
-- [ ] **Sprint 3** — Faturas e folha de pagamento
-- [ ] **Sprint 4** — Cobrança (Clerk Billing + Stripe)
-- [ ] **Sprint 5** — Polimento para lançamento
+- [x] **Sprint 0** — Multi-tenant foundation (schema, RLS, auth, shell, isolation tested)
+- [ ] **Sprint 1** — Recipes and ingredients (CRUD, real cost, margin)
+- [ ] **Sprint 2** — Financials and break-even
+- [ ] **Sprint 3** — Invoices and payroll
+- [ ] **Sprint 4** — Billing (Clerk Billing + Stripe)
+- [ ] **Sprint 5** — Launch polish
 
 ---
 
-<div align="center"><sub>Convenções e regras do projeto em <a href="CLAUDE.md">CLAUDE.md</a> · Design system em <a href="DESIGN.md">DESIGN.md</a></sub></div>
+<div align="center"><sub>Project conventions and rules in <a href="CLAUDE.md">CLAUDE.md</a> · Design system in <a href="DESIGN.md">DESIGN.md</a></sub></div>

@@ -12,8 +12,8 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: 'GastroKit',
-  description: 'Gestão financeira para chefs e negócios de comida',
+  title: 'PrepProfit',
+  description: 'Financial management for chefs and food businesses',
 };
 
 export default async function RootLayout({

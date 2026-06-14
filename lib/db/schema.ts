@@ -9,10 +9,10 @@ import {
 } from 'drizzle-orm/pg-core';
 
 /**
- * REGRA Nº 1 (CLAUDE.md): toda tabela de dados de negócio tem `organization_id`
- * (texto, vem do Clerk) e um índice composto começando por ele. Valores
- * monetários são SEMPRE integer em centavos — nunca float. Quantidades físicas
- * (gramas) não são dinheiro e podem usar numeric.
+ * RULE #1 (CLAUDE.md): every business-data table has an `organization_id`
+ * (text, from Clerk) and a composite index starting with it. Monetary values
+ * are ALWAYS stored as integer cents — never float. Physical quantities (grams)
+ * are not money and may use numeric.
  */
 
 const orgId = () => text('organization_id').notNull();
@@ -35,7 +35,7 @@ export const ingredients = pgTable(
     priceType: text('price_type', { enum: ['per_kg', 'per_unit'] })
       .notNull()
       .default('per_kg'),
-    // preço por kg (ou por unidade), em centavos
+    // price per kg (or per unit), in cents
     priceCents: integer('price_cents').notNull().default(0),
     supplier: text('supplier'),
     createdAt: createdAt(),
@@ -94,5 +94,5 @@ export type NewRecipe = InferInsertModel<typeof recipes>;
 export type RecipeIngredient = InferSelectModel<typeof recipeIngredients>;
 export type NewRecipeIngredient = InferInsertModel<typeof recipeIngredients>;
 
-/** Todas as tabelas de negócio, para aplicar RLS em massa. */
+/** All business tables, for applying RLS in bulk. */
 export const businessTables = ['ingredients', 'recipes', 'recipe_ingredients'] as const;

@@ -10,9 +10,9 @@ function loadEnv() {
 }
 
 /**
- * Para que os dados apareçam no app, estes ids devem casar com os ids reais das
- * suas organizações no Clerk (visíveis no OrganizationSwitcher / dashboard do
- * Clerk). Sobrescreva via env SEED_ORG_A / SEED_ORG_B. Ver SETUP.md.
+ * For the data to show up in the app, these ids must match your real Clerk
+ * organization ids (visible in the OrganizationSwitcher / Clerk dashboard).
+ * Override with env SEED_ORG_A / SEED_ORG_B. See SETUP.md.
  */
 const ORG_A = process.env.SEED_ORG_A ?? 'org_demo_a';
 const ORG_B = process.env.SEED_ORG_B ?? 'org_demo_b';
@@ -22,27 +22,27 @@ type Seed = {
   recipes: { name: string; yieldPortions: number }[];
 };
 
-const padaria: Seed = {
+const bakery: Seed = {
   ingredients: [
-    { name: 'Farinha de trigo', unit: 'kg', priceType: 'per_kg', priceCents: 120 },
-    { name: 'Fermento biológico', unit: 'kg', priceType: 'per_kg', priceCents: 1800 },
-    { name: 'Sal', unit: 'kg', priceType: 'per_kg', priceCents: 90 },
+    { name: 'Wheat flour', unit: 'kg', priceType: 'per_kg', priceCents: 120 },
+    { name: 'Fresh yeast', unit: 'kg', priceType: 'per_kg', priceCents: 1800 },
+    { name: 'Salt', unit: 'kg', priceType: 'per_kg', priceCents: 90 },
   ],
-  recipes: [{ name: 'Pão francês', yieldPortions: 50 }],
+  recipes: [{ name: 'French bread', yieldPortions: 50 }],
 };
 
-const confeitaria: Seed = {
+const patisserie: Seed = {
   ingredients: [
-    { name: 'Chocolate 70%', unit: 'kg', priceType: 'per_kg', priceCents: 4500 },
-    { name: 'Manteiga', unit: 'kg', priceType: 'per_kg', priceCents: 3200 },
-    { name: 'Framboesa', unit: 'kg', priceType: 'per_kg', priceCents: 6000 },
+    { name: 'Dark chocolate 70%', unit: 'kg', priceType: 'per_kg', priceCents: 4500 },
+    { name: 'Butter', unit: 'kg', priceType: 'per_kg', priceCents: 3200 },
+    { name: 'Raspberry', unit: 'kg', priceType: 'per_kg', priceCents: 6000 },
   ],
-  recipes: [{ name: 'Mousse de framboesa', yieldPortions: 12 }],
+  recipes: [{ name: 'Raspberry mousse', yieldPortions: 12 }],
 };
 
 async function seedOrg(organizationId: string, seed: Seed) {
   await withOrg(organizationId, async (tx) => {
-    // idempotente: limpa dados anteriores desta org antes de semear
+    // idempotent: clear this org's previous data before seeding
     await tx.delete(recipes);
     await tx.delete(ingredients);
 
@@ -64,8 +64,8 @@ async function main() {
     );
   }
   console.log('▶ Seeding two organizations with isolated data...');
-  await seedOrg(ORG_A, padaria);
-  await seedOrg(ORG_B, confeitaria);
+  await seedOrg(ORG_A, bakery);
+  await seedOrg(ORG_B, patisserie);
   console.log('✓ Seed complete.');
   process.exit(0);
 }

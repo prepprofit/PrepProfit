@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "GastroKit",
+    "name": "PrepProfit",
     "tagline": "Financial management for chefs and food businesses"
   },
   "nav": {
@@ -18,7 +18,7 @@
   },
   "marketing": {
     "headline": "Stop guessing. Know what every dish really costs.",
-    "subhead": "GastroKit replaces your spreadsheets with a financial dashboard built for kitchens.",
+    "subhead": "PrepProfit replaces your spreadsheets with a financial dashboard built for kitchens.",
     "ctaPrimary": "Start 14-day free trial",
     "ctaSecondary": "Sign in"
   },

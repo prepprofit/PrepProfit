@@ -5,51 +5,51 @@ This document contains strictly defined design specifications, exact color palet
 
 ## 1. Exact Color Palette & Mapping
 
-A aplicação abandona cinzas comuns (`gray`, `zinc`, `neutral`) em favor da escala **Slate** para uma estética profissional, "fria/limpa" e escandinava. Uma escala customizada de **Emerald Green** (nomeada de `brand`) é usada rigorosamente para os lucros, destaques positivos e CTAs (como visto no botão principal e indicadores "+14%"). 
+The app drops common grays (`gray`, `zinc`, `neutral`) in favor of the **Slate** scale for a professional, "cool/clean" Scandinavian aesthetic. A custom **Emerald Green** scale (named `brand`) is used strictly for profits, positive highlights, and CTAs (as seen in the primary button and the "+14%" indicators).
 
-### CSS Variables (Adicione no `app/globals.css` - Tailwind v4)
+### CSS Variables (add to `app/globals.css` — Tailwind v4)
 ```css
 @theme {
-  /* Fontes Customizadas */
+  /* Custom fonts */
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
-  
-  /* Sistema de Cores Primário (PrepProfit Emerald) */
-  --color-brand-50: #effdf4;  /* Fundo sutil: Itens ativos do menu, fundo de badges claros */
-  --color-brand-100: #d9fbe6; /* Hover states, avatares ou ícones em highlight */
+
+  /* Primary color system (PrepProfit Emerald) */
+  --color-brand-50: #effdf4;  /* Subtle background: active menu items, light badge backgrounds */
+  --color-brand-100: #d9fbe6; /* Hover states, avatars or highlighted icons */
   --color-brand-200: #b5f5d1;
   --color-brand-300: #7decb5;
-  --color-brand-400: #3fda91; /* Ícones contrastantes e grafismos em fundos escuros */
-  --color-brand-500: #1abf73; /* Progress bars, botão "View Income Statement" (fundo escuro) */
-  --color-brand-600: #109b5a; /* COR PRIMÁRIA: Botão "Start 14-day free trial", Ícone principal, Textos ativos */
-  --color-brand-700: #0f7a49; /* Hover para os botões primários */
+  --color-brand-400: #3fda91; /* Contrasting icons and graphics on dark backgrounds */
+  --color-brand-500: #1abf73; /* Progress bars, "View Income Statement" button (dark background) */
+  --color-brand-600: #109b5a; /* PRIMARY COLOR: "Start 14-day free trial" button, main icon, active text */
+  --color-brand-700: #0f7a49; /* Hover for primary buttons */
   --color-brand-800: #10603d;
   --color-brand-900: #0e4f33;
 }
 ```
 
-### Onde aplicar as cores (Baseado fielmente na captura de ecrã/imagem):
-1.  **Fundos (Backgrounds):**
-    *   **Fundo da Aplicação Global:** `bg-slate-50` (`#f8fafc`). Note como a área em torno dos cartões de dashboard/sidebar tem uma cor contínua muito clara, não é 100% branca!
-    *   **Cards e Painéis Principais:** `bg-white` (`#ffffff`) com linhas divisórias e bordas `border-slate-200` (`#e2e8f0`).
-    *   **Cartões Escuros (ex: Monthly Profit Goal):** `bg-slate-900` (`#0f172a`), utilizando texto com `text-slate-300` a `text-white`.
-2.  **Textos e Tipografia (Slate Scale):**
-    *   Títulos proeminentes (ex: "Financial Overview") e Números-Chave (ex: "$24,500"): `text-slate-900`.
-    *   Textos secundários e Descrições de itens de lista: `text-slate-500` a `text-slate-600`.
-3.  **Indicadores de Crescimento / Badges:**
-    *   Usar badge positiva com fundo verde bem claro e texto vibrante: `bg-brand-50 text-brand-600 font-semibold px-2 py-0.5 rounded-full`.
-4.  **Sidebar (Menu Lateral):**
-    *   Menu ativo (selecionado): Fundo e borda arredondada num *shape* branco (`bg-white shadow-sm border border-slate-200/60`), usando `text-brand-700` no ícone (`LayoutDashboard`) e fonte principal.
-    *   Links Inativos do Menu Lateral: Textos com pouca opacidade, `text-slate-600 hover:bg-slate-100`.
+### Where to apply the colors (faithful to the screenshot/image):
+1.  **Backgrounds:**
+    *   **Global app background:** `bg-slate-50` (`#f8fafc`). Note how the area around the dashboard cards/sidebar has a continuous very light color — it is not 100% white!
+    *   **Main cards and panels:** `bg-white` (`#ffffff`) with divider lines and `border-slate-200` (`#e2e8f0`) borders.
+    *   **Dark cards (e.g. Monthly Profit Goal):** `bg-slate-900` (`#0f172a`), using text from `text-slate-300` to `text-white`.
+2.  **Text and Typography (Slate scale):**
+    *   Prominent titles (e.g. "Financial Overview") and key numbers (e.g. "$24,500"): `text-slate-900`.
+    *   Secondary text and list-item descriptions: `text-slate-500` to `text-slate-600`.
+3.  **Growth indicators / Badges:**
+    *   Use a positive badge with a very light green background and vibrant text: `bg-brand-50 text-brand-600 font-semibold px-2 py-0.5 rounded-full`.
+4.  **Sidebar:**
+    *   Active (selected) menu item: white rounded shape with a background and border (`bg-white shadow-sm border border-slate-200/60`), using `text-brand-700` on the icon (`LayoutDashboard`) and the main font.
+    *   Inactive sidebar links: low-opacity text, `text-slate-600 hover:bg-slate-100`.
 
 ## 2. Typography
 
-A interface mistura uma fonte técnica moderna (Space Grotesk) para leitura de números em destaque/Headings, e uma sem-serifa hiper-legível (Inter) para componentes de UI repetitivos.
+The interface mixes a modern technical font (Space Grotesk) for reading prominent numbers/headings, and a highly legible sans-serif (Inter) for repetitive UI components.
 
-*   **Display Font**: **Space Grotesk** (Usado para `h1`, `h2`, Títulos dos Módulos, e Valores Financeiros gigantes).
-*   **Body Font**: **Inter** (Usado para os itens da lista, descrições dos ingredientes, margens). Configurado como `--font-sans`.
+*   **Display Font**: **Space Grotesk** (used for `h1`, `h2`, module titles, and large financial values).
+*   **Body Font**: **Inter** (used for list items, ingredient descriptions, margins). Configured as `--font-sans`.
 
-### Setup do Next.js App Router (`app/layout.tsx`):
+### Next.js App Router setup (`app/layout.tsx`):
 ```tsx
 import { Inter, Space_Grotesk } from 'next/font/google';
 
@@ -67,18 +67,18 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
 }
 ```
 
-## 3. Guias de Componentização (Design Language System)
+## 3. Componentization Guidelines (Design Language System)
 
-*   **Geometria da Interface (Bordas / Raios):**
-    *   Botões grandes de Top Bar / Landing page: Formato "Pílula" (`rounded-full`).
-    *   Cartões de Dashboard e painéis modulares: Use `rounded-xl` com uma borda delicada de marcação leve (`border border-slate-200`).
-*   **Profundidade (Shadows):**
-    *   A maior parte das cartas fixas apresenta pouca ou nenhuma sombra (`shadow-sm`).
-    *   Elementos interativos que flutuam sobre a interface (como os toasts simulados e barras pop-ups laterais) ganham sombras elevadas tipo `shadow-xl border border-slate-200`.
-*   **Gráficos e Ícones (Lucide React):**
-    *   É expressamente recomendado o uso da biblioteca `lucide-react` para os pictos, espessura flexível no traço e estilo consistenre na visualização (Icons chave: `ChefHat`, `LayoutDashboard`, `BarChart3`, `CircleDollarSign`, `Calculator`, `TrendingUp`, `Package`, `Utensils`).
+*   **Interface geometry (borders / radii):**
+    *   Large top-bar / landing-page buttons: "pill" shape (`rounded-full`).
+    *   Dashboard cards and modular panels: use `rounded-xl` with a delicate light border (`border border-slate-200`).
+*   **Depth (shadows):**
+    *   Most fixed cards show little or no shadow (`shadow-sm`).
+    *   Interactive elements that float over the interface (like simulated toasts and side pop-up bars) get elevated shadows like `shadow-xl border border-slate-200`.
+*   **Charts and Icons (Lucide React):**
+    *   The `lucide-react` library is explicitly recommended for pictograms — flexible stroke weight and a consistent visual style (key icons: `ChefHat`, `LayoutDashboard`, `BarChart3`, `CircleDollarSign`, `Calculator`, `TrendingUp`, `Package`, `Utensils`).
 
-## 4. Assets e Marca
+## 4. Assets and Brand
 
-*   **O Logo da Empresa (PrepProfit):** O arquivo de logotipo gerado encontra-se em `public/logo_final.jpg`.
-*   No Top Nav Menu, deve ser implementado no formato pequeno, ao lado do nome em Display text, aplicando `border-radius: 6px` (`rounded-md`), garantindo consistência SaaS premium.
+*   **The company logo (PrepProfit):** the generated logo file is at `public/logo_final.jpg`.
+*   In the top nav menu it should be implemented small, next to the name in display text, with `border-radius: 6px` (`rounded-md`), ensuring a premium SaaS consistency.

@@ -24,6 +24,6 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # Os testes usam PGlite (Postgres em memória) — não precisam de segredos.
+      # Tests use PGlite (in-memory Postgres) — no secrets required.
       - name: Test
         run: npm test

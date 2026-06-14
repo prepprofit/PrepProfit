@@ -40,3 +40,8 @@ Wibox-dashboard-app-main.zip
 
 # source logo (canonical copy lives in public/logo_final.jpg)
 /logo_final.jpg
+
+# agent skills (tooling assets — reproducible via `npx skills add`)
+/.agents/
+/.claude/
+/skills-lock.json

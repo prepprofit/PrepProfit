@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/card';
 import type { NavKey } from '@/lib/nav';
 
-/** Placeholder de módulo para o Sprint 0 — cada módulo ganha conteúdo real depois. */
+/** Module placeholder for Sprint 0 — each module gets real content later. */
 export async function ComingSoon({ titleKey }: { titleKey: NavKey }) {
   const tNav = await getTranslations('nav');
   const tCommon = await getTranslations('common');

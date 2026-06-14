@@ -3,7 +3,7 @@ import { recipes } from '@/lib/db/schema';
 import type { Recipe, NewRecipe } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 
-/** Acesso a `recipes` SEMPRE escopado por `organizationId`. Ver lib/data/ingredients.ts. */
+/** Access to `recipes` is ALWAYS scoped by `organizationId`. See lib/data/ingredients.ts. */
 
 export type RecipeInput = Omit<
   NewRecipe,

@@ -6,9 +6,9 @@ import * as schema from '@/lib/db/schema';
 import { rlsStatements } from '@/lib/db/rls';
 
 /**
- * Cria um Postgres real em memória (PGlite/WASM), aplica as MESMAS migrations
- * de produção (drizzle/) e as policies de RLS. Permite testar o isolamento
- * multi-tenant sem depender de um banco externo (roda em CI sem segredos).
+ * Creates a real in-memory Postgres (PGlite/WASM), applies the SAME production
+ * migrations (drizzle/) and the RLS policies. Lets us test multi-tenant
+ * isolation without an external database (runs in CI without secrets).
  */
 export async function createTestDb() {
   const client = new PGlite();
@@ -20,8 +20,8 @@ export async function createTestDb() {
     await db.execute(sql.raw(statement));
   }
 
-  // Papel sem privilégios para exercitar RLS de verdade — o superusuário padrão
-  // do PGlite ignora RLS (inclusive FORCE), igual a um superuser no Postgres.
+  // Non-privileged role to actually exercise RLS — PGlite's default superuser
+  // bypasses RLS (including FORCE), just like a superuser in Postgres.
   await db.execute(sql.raw('CREATE ROLE tenant_app NOLOGIN;'));
   await db.execute(
     sql.raw(

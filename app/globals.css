@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 /*
- * PrepProfit / GastroKit design tokens — ver DESIGN.md.
- * Escala Slate para a estética profissional + escala "brand" (Emerald)
- * reservada a lucros, destaques positivos e CTAs.
+ * PrepProfit design tokens — see DESIGN.md.
+ * Slate scale for the professional aesthetic + a "brand" (Emerald) scale
+ * reserved for profits, positive highlights and CTAs.
  */
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;

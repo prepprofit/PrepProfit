@@ -37,7 +37,7 @@ export function Sidebar() {
       <div className="flex items-center gap-2 px-6 py-5">
         <Image
           src="/logo_final.jpg"
-          alt="GastroKit"
+          alt="PrepProfit"
           width={32}
           height={32}
           className="rounded-md"

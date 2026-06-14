@@ -3,9 +3,9 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 export type UserRole = 'manager' | 'kitchen';
 
 /**
- * REGRA Nº 1 (CLAUDE.md): o `organization_id` SEMPRE vem do servidor, via Clerk,
- * nunca do client. Lança erro se não houver organização ativa — o middleware
- * deve garantir que o usuário escolha/crie uma org antes de acessar /app.
+ * RULE #1 (CLAUDE.md): the `organization_id` ALWAYS comes from the server, via
+ * Clerk, never from the client. Throws if there is no active organization — the
+ * middleware must ensure the user selects/creates an org before reaching /app.
  */
 export async function getOrgId(): Promise<string> {
   const { orgId } = await auth();
@@ -17,7 +17,7 @@ export async function getOrgId(): Promise<string> {
   return orgId;
 }
 
-/** Id do usuário autenticado (lança erro se não autenticado). */
+/** Authenticated user id (throws if not authenticated). */
 export async function getUserId(): Promise<string> {
   const { userId } = await auth();
   if (!userId) {
@@ -27,8 +27,8 @@ export async function getUserId(): Promise<string> {
 }
 
 /**
- * Papel do usuário a partir do publicMetadata do Clerk.
- * Default seguro: 'kitchen' (menos privilégio).
+ * User role from Clerk publicMetadata.
+ * Safe default: 'kitchen' (least privilege).
  */
 export async function getUserRole(): Promise<UserRole> {
   const user = await currentUser();

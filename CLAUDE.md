@@ -1,60 +1,61 @@
-# GastroKit SaaS — Regras do Projeto
+# PrepProfit SaaS — Project Rules
 
-## O que é este projeto
-SaaS multi-tenant de gestão financeira para chefs e donos de negócios de comida
-(restaurantes, padarias, confeitarias). Substitui o kit de planilhas "GastroKit"
-por um web app por assinatura. Base de código inicial: projeto Wibox (Next.js).
+## What this project is
+Multi-tenant SaaS for financial management aimed at chefs and food-business owners
+(restaurants, bakeries, patisseries). It replaces a spreadsheet kit with a
+subscription web app. Initial codebase: built fresh from the Wibox base
+(Next.js), cherry-picked where it made sense.
 
-## Stack (não mudar sem aprovação explícita)
-- Next.js 15 (App Router) + React 19 + TypeScript estrito
-- PostgreSQL no Neon + Drizzle ORM
-- Clerk (auth + Organizations) e Clerk Billing conectado ao Stripe
+## Stack (do not change without explicit approval)
+- Next.js 15 (App Router) + React 19 + strict TypeScript
+- PostgreSQL on Neon + Drizzle ORM
+- Clerk (auth + Organizations) and Clerk Billing connected to Stripe
 - Tailwind CSS + shadcn/ui + Tremor (dashboards)
-- TanStack Table (grids editáveis), react-pdf (faturas)
-- Resend (emails), next-intl (i18n: en, es, pt)
+- TanStack Table (editable grids), react-pdf (invoices)
+- Resend (emails), next-intl (i18n: English to start; more locales later)
 - Deploy: Vercel
 
-## REGRA Nº 1 — Multi-tenancy (inegociável)
-- TODA tabela de dados de negócio tem coluna `organization_id` (texto, vem do Clerk).
-- TODA query (select, insert, update, delete) filtra por `organization_id`.
-- Nunca confiar em `organization_id` vindo do client. Sempre obter via
-  `auth()` do Clerk no servidor (Server Action ou Route Handler).
-- Criar helper `getOrgId()` em `lib/auth.ts` e usá-lo em todo acesso a dados.
-- Se uma query não tiver filtro de org, isso é um bug de segurança: parar e corrigir.
+## RULE #1 — Multi-tenancy (non-negotiable)
+- EVERY business-data table has an `organization_id` column (text, from Clerk).
+- EVERY query (select, insert, update, delete) filters by `organization_id`.
+- Never trust `organization_id` coming from the client. Always derive it on the
+  server via Clerk's `auth()` (Server Action or Route Handler).
+- Use the `getOrgId()` helper in `lib/auth.ts` for all data access.
+- A query without an org filter is a security bug: stop and fix it.
 
-## Regras de código
-- Server Actions para mutações; sem rotas de API desnecessárias.
-- Validação com Zod em toda entrada de usuário (servidor, não só client).
-- Valores monetários: armazenar como integer em centavos. Nunca float.
-- Cálculos de custo/margem/break-even em funções puras em `lib/calculations/`
-  com testes unitários (Vitest). Esses cálculos são o coração do produto.
-- Componentes: shadcn/ui primeiro; criar custom só quando necessário.
-- Sem `any`. Sem `@ts-ignore`. Tipos derivados do schema Drizzle.
-- Strings de UI sempre via next-intl, nunca hardcoded.
+## Code rules
+- Server Actions for mutations; no unnecessary API routes.
+- Zod validation on all user input (server, not just client).
+- Monetary values: store as integer cents. Never float.
+- Cost/margin/break-even calculations as pure functions in `lib/calculations/`
+  with unit tests (Vitest). These calculations are the heart of the product.
+- Components: shadcn/ui first; build custom only when necessary.
+- No `any`. No `@ts-ignore`. Types derived from the Drizzle schema.
+- UI strings always via next-intl, never hardcoded.
 
-## Módulos do produto (paridade com as planilhas GastroKit)
-1. Calculadora de custo de receitas (ingredientes → custo total, por porção, margem)
-2. Painel financeiro: receitas, despesas, dashboard mensal/anual
-3. Inventário de ingredientes e receitas (entradas/saídas, alerta de estoque baixo)
-4. Calculadora de ponto de equilíbrio (com simulações de cenário)
-5. Folha de pagamento: turnos, horas, pagamentos por funcionário
-6. Gerador de faturas em PDF
+## Product modules (parity with the original spreadsheet kit)
+1. Recipe cost calculator (ingredients → total cost, per portion, margin)
+2. Financial panel: income, expenses, monthly/annual dashboard
+3. Ingredient and recipe inventory (in/out, low-stock alert)
+4. Break-even calculator (with scenario simulations)
+5. Payroll: shifts, hours, per-employee pay
+6. PDF invoice generator
 
-## Planos de assinatura (gating via Clerk `has()`)
-- Starter: 1 usuário, até 50 receitas, módulos 1–3
-- Pro: 5 usuários, receitas ilimitadas, módulos 1–4 + faturas
-- Business: usuários ilimitados, todos os módulos incl. folha de pagamento
+## Subscription plans (gating via Clerk `has()`)
+- Starter: 1 user, up to 50 recipes, modules 1–3
+- Pro: 5 users, unlimited recipes, modules 1–4 + invoices
+- Business: unlimited users, all modules incl. payroll
 
 ## Workflow
-- Seguir o PLANO.md sprint por sprint. Não pular etapas.
-- Antes de cada sprint: entrar em plan mode, propor o plano, aguardar aprovação.
-- Ao concluir uma tarefa: marcar no PLANO.md como [x].
-- Commits pequenos e frequentes com mensagens em inglês (conventional commits).
-- Rodar `npm run lint && npm run typecheck && npm test` antes de cada commit.
-- Nunca commitar secrets. `.env.local` está no .gitignore.
+- Follow PLANO.md sprint by sprint. Do not skip steps.
+- Before each sprint: enter plan mode, propose the plan, wait for approval.
+- When a task is done: mark it `[x]` in PLANO.md.
+- Small, frequent commits with English messages (conventional commits).
+- Run `npm run lint && npm run typecheck && npm test` before every commit.
+- Never commit secrets. `.env.local` is gitignored.
 
-## Comandos
+## Commands
 - dev: `npm run dev`
 - build: `npm run build`
-- testes: `npm test`
-- migrations: `npx drizzle-kit generate` e `npx drizzle-kit migrate`
+- tests: `npm test`
+- migrations: `npx drizzle-kit generate` and `npm run db:migrate`

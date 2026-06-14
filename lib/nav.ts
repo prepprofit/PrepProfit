@@ -1,4 +1,4 @@
-/** Módulos do produto (paridade com as planilhas GastroKit). `key` = chave i18n em `nav`. */
+/** Product modules (parity with the original PrepProfit spreadsheet kit). `key` = i18n key under `nav`. */
 export const navModules = [
   { key: 'dashboard', href: '/dashboard' },
   { key: 'recipes', href: '/recipes' },

@@ -8,27 +8,27 @@ import type * as schema from './schema';
 
 type Schema = typeof schema;
 
-/** Cliente Drizzle (qualquer driver Postgres) com o nosso schema. */
+/** Drizzle client (any Postgres driver) bound to our schema. */
 export type TenantDb = PgDatabase<
   PgQueryResultHKT,
   Schema,
   ExtractTablesWithRelations<Schema>
 >;
 
-/** Transação Drizzle escopada a uma organização. */
+/** Drizzle transaction scoped to one organization. */
 export type TenantTx = PgTransaction<
   PgQueryResultHKT,
   Schema,
   ExtractTablesWithRelations<Schema>
 >;
 
-/** Cliente OU transação — o que as funções de acesso a dados aceitam. */
+/** Client OR transaction — what the data-access functions accept. */
 export type TenantClient = TenantDb | TenantTx;
 
 /**
- * Executa `fn` dentro de uma transação com a GUC `app.current_org_id` definida,
- * ativando as policies de RLS (lib/db/rls.ts) para a organização informada.
- * Toda leitura/escrita de dados de negócio em runtime deve passar por aqui.
+ * Runs `fn` inside a transaction with the `app.current_org_id` GUC set,
+ * activating the RLS policies (lib/db/rls.ts) for the given organization. Every
+ * runtime read/write of business data must go through here.
  */
 export async function runInOrg<T>(
   database: TenantDb,
@@ -36,8 +36,8 @@ export async function runInOrg<T>(
   fn: (tx: TenantTx) => Promise<T>,
 ): Promise<T> {
   return database.transaction(async (tx) => {
-    // `set_config(..., true)` = escopo da transação (equivalente a SET LOCAL),
-    // e aceita parâmetro vinculado (SET LOCAL não aceita).
+    // `set_config(..., true)` = transaction scope (equivalent to SET LOCAL),
+    // and accepts a bound parameter (SET LOCAL does not).
     await tx.execute(
       sql`select set_config('app.current_org_id', ${organizationId}, true)`,
     );

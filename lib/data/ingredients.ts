@@ -4,9 +4,9 @@ import type { Ingredient, NewIngredient } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 
 /**
- * Acesso a `ingredients` SEMPRE escopado por `organizationId` (camada de app,
- * defesa primária). O `organizationId` é injetado pelo servidor — nunca confiar
- * no client. RLS (lib/db/rls.ts) é a segunda camada.
+ * Access to `ingredients` is ALWAYS scoped by `organizationId` (application
+ * layer, primary defense). The `organizationId` is injected by the server —
+ * never trust the client. RLS (lib/db/rls.ts) is the second layer.
  */
 
 export type IngredientInput = Omit<

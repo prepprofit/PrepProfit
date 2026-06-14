@@ -8,9 +8,9 @@ export * from './schema';
 export { runInOrg } from './tenant';
 export type { TenantClient, TenantDb, TenantTx } from './tenant';
 
-// Em ambiente Node sem WebSocket global, o driver serverless precisa de um.
-// O driver Pool (WebSocket) suporta transações reais — necessárias para o
-// `SET LOCAL`/`set_config` que ativa as policies de RLS (ver lib/db/tenant.ts).
+// In a Node environment without a global WebSocket, the serverless driver needs
+// one. The Pool (WebSocket) driver supports real transactions — required for the
+// SET LOCAL / set_config that activates the RLS policies (see lib/db/tenant.ts).
 if (typeof globalThis.WebSocket === 'undefined') {
   neonConfig.webSocketConstructor = ws;
 }
@@ -18,8 +18,8 @@ if (typeof globalThis.WebSocket === 'undefined') {
 let cached: NeonDatabase<typeof schema> | null = null;
 
 /**
- * Cliente Drizzle de produção (Neon, via Pool). Lazy: só lê DATABASE_URL quando
- * usado, para não quebrar build/import quando a env não está presente.
+ * Production Drizzle client (Neon, via Pool). Lazy: only reads DATABASE_URL when
+ * used, so it does not break build/import when the env var is absent.
  */
 export function getDb(): NeonDatabase<typeof schema> {
   if (!cached) {
@@ -30,7 +30,7 @@ export function getDb(): NeonDatabase<typeof schema> {
   return cached;
 }
 
-/** Atalho: roda `fn` escopado à organização (RLS) usando o cliente de produção. */
+/** Shortcut: run `fn` scoped to the organization (RLS) using the prod client. */
 export function withOrg<T>(
   organizationId: string,
   fn: (tx: TenantTx) => Promise<T>,

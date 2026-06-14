@@ -1,101 +1,101 @@
-# PLANO.md — GastroKit SaaS: roadmap executável
+# PLANO.md — PrepProfit SaaS: executable roadmap
 
-Instruções para o Claude Code: trabalhe um sprint por vez, na ordem.
-Marque tarefas concluídas com [x]. Não inicie um sprint sem o anterior completo.
-
----
-
-## Sprint 0 — Fundação multi-tenant
-Objetivo: esqueleto do SaaS com isolamento de dados por organização funcionando.
-
-- [x] Inicializar projeto Next.js 15 + TypeScript + Tailwind (ou importar base Wibox se fornecida)
-- [x] Instalar e configurar Drizzle ORM apontando para Neon Postgres
-- [x] Configurar Clerk com Organizations habilitado; middleware protegendo /app/*
-      (código pronto; habilitar Organizations no dashboard do Clerk — ver SETUP.md)
-- [x] Criar `lib/auth.ts` com `getOrgId()` (lança erro se sem org ativa)
-- [x] Schema inicial Drizzle: tabelas `ingredients`, `recipes`, `recipe_ingredients`,
-      todas com `organization_id` + índice composto
-- [x] Habilitar Row-Level Security no Postgres como segunda camada de defesa
-- [x] Seed script com dados de exemplo para 2 organizações distintas
-- [x] Teste automatizado: org A nunca enxerga dados da org B
-- [x] Layout base: sidebar com módulos, OrganizationSwitcher do Clerk, página vazia por módulo
-- [~] Deploy na Vercel com Neon de produção; CI simples (lint + typecheck + test)
-      (CI pronto em .github/workflows/ci.yml; deploy na Vercel pendente de credenciais — ver SETUP.md)
-
-Critério de aceite: dois usuários de orgs diferentes logam e veem dados isolados.
+Instructions for Claude Code: work one sprint at a time, in order.
+Mark completed tasks with [x]. Do not start a sprint before the previous one is done.
 
 ---
 
-## Sprint 1 — Receitas e ingredientes (módulos 1 e 3)
-Objetivo: chef cadastra ingredientes, monta receitas e vê custo real.
+## Sprint 0 — Multi-tenant foundation
+Goal: the SaaS skeleton with per-organization data isolation working.
 
-- [ ] CRUD de ingredientes (nome, unidade, preço por unidade/kg, fornecedor opcional)
-- [ ] Grid editável de ingredientes com TanStack Table (edição inline)
-- [ ] CRUD de receitas: ingredientes + quantidades, rendimento (porções), % de perda
-- [ ] `lib/calculations/recipeCost.ts`: custo total, custo por porção,
-      custos ocultos (mão de obra, energia, embalagem) — com testes Vitest
-- [ ] Preço de venda sugerido + margem com semáforo (verde/amarelo/vermelho)
-- [ ] Atualização em cascata: mudou preço do ingrediente → recalcula receitas
-- [ ] Inventário: registro de entrada/saída de estoque por ingrediente
-- [ ] Alerta visual de estoque baixo (limite configurável por ingrediente)
+- [x] Initialize Next.js 15 + TypeScript + Tailwind project (or import the Wibox base if provided)
+- [x] Install and configure Drizzle ORM pointing at Neon Postgres
+- [x] Configure Clerk with Organizations enabled; middleware protecting /app/*
+      (code ready; enable Organizations in the Clerk dashboard — see SETUP.md)
+- [x] Create `lib/auth.ts` with `getOrgId()` (throws if no active org)
+- [x] Initial Drizzle schema: `ingredients`, `recipes`, `recipe_ingredients`
+      tables, all with `organization_id` + composite index
+- [x] Enable Row-Level Security in Postgres as a second layer of defense
+- [x] Seed script with example data for 2 distinct organizations
+- [x] Automated test: org A never sees org B's data
+- [x] Base layout: sidebar with modules, Clerk OrganizationSwitcher, empty page per module
+- [~] Deploy to Vercel with production Neon; simple CI (lint + typecheck + test)
+      (CI ready in .github/workflows/ci.yml; Vercel deploy pending credentials — see SETUP.md)
 
-Critério de aceite: criar receita com 5 ingredientes e ver custo e margem corretos.
-
----
-
-## Sprint 2 — Financeiro e break-even (módulos 2 e 4)
-Objetivo: responder "quanto eu realmente ganhei este mês?".
-
-- [ ] Tabelas `transactions` (receita/despesa, categoria, data, valor em centavos)
-- [ ] CRUD de transações com categorias predefinidas + customizáveis
-- [ ] Dashboard mensal: receita, despesas, lucro, top produtos (Tremor)
-- [ ] Dashboard anual: evolução mês a mês, comparativo
-- [ ] `lib/calculations/breakEven.ts`: custos fixos + margem média → unidades
-      necessárias para empatar — com testes
-- [ ] Página de break-even com simulador de cenários (sliders de preço/custo)
-
-Critério de aceite: lançar 10 transações e ver dashboards e break-even coerentes.
+Acceptance criterion: two users from different orgs sign in and see isolated data.
 
 ---
 
-## Sprint 3 — Faturas e folha de pagamento (módulos 5 e 6)
-Objetivo: completar paridade com as 5 planilhas do GastroKit.
+## Sprint 1 — Recipes and ingredients (modules 1 and 3)
+Goal: chef registers ingredients, builds recipes, and sees real cost.
 
-- [ ] Tabela `invoices` + `invoice_items`; numeração sequencial por organização
-- [ ] Criador de fatura: cliente, itens, impostos, total
-- [ ] Geração de PDF da fatura (react-pdf) com logo da organização
-- [ ] Tabelas `employees` e `shifts` (check-in/check-out, valor hora)
-- [ ] Registro de turnos + cálculo automático de horas e pagamento devido
-- [ ] Resumo por funcionário por período (semana/mês)
+- [ ] Ingredient CRUD (name, unit, price per unit/kg, optional supplier)
+- [ ] Editable ingredient grid with TanStack Table (inline editing)
+- [ ] Recipe CRUD: ingredients + quantities, yield (portions), % loss
+- [ ] `lib/calculations/recipeCost.ts`: total cost, cost per portion,
+      hidden costs (labor, energy, packaging) — with Vitest tests
+- [ ] Suggested selling price + margin with a traffic light (green/yellow/red)
+- [ ] Cascade update: ingredient price changed → recalculate recipes
+- [ ] Inventory: stock in/out per ingredient
+- [ ] Low-stock visual alert (configurable threshold per ingredient)
 
-Critério de aceite: gerar PDF de fatura e fechar a folha de um funcionário no mês.
-
----
-
-## Sprint 4 — Cobrança com Clerk Billing + Stripe
-Objetivo: o produto aceita pagamentos.
-
-- [ ] Habilitar Clerk Billing (B2B, planos por Organization) e conectar conta Stripe
-- [ ] Criar planos Starter / Pro / Business no dashboard da Clerk com Features
-- [ ] Página /pricing com <PricingTable /> do Clerk
-- [ ] Gating: `has({plan})` / <Protect> nos módulos conforme CLAUDE.md
-- [ ] Limites do Starter (50 receitas, 1 usuário) aplicados no servidor
-- [ ] Fluxo de onboarding pós-signup: criar org → escolher plano → tour de 3 passos
-- [ ] Página de billing dentro do app (gerenciar assinatura via componentes Clerk)
-
-Critério de aceite: assinar o plano Pro com cartão de teste e desbloquear módulos.
+Acceptance criterion: create a recipe with 5 ingredients and see correct cost and margin.
 
 ---
 
-## Sprint 5 — Polimento para lançamento
-Objetivo: pronto para os primeiros clientes reais.
+## Sprint 2 — Financials and break-even (modules 2 and 4)
+Goal: answer "how much did I really make this month?".
 
-- [ ] Resend: emails de boas-vindas, recibo, alerta de estoque baixo
-- [ ] Sentry configurado (client + server)
-- [ ] PostHog: eventos-chave (criou receita, gerou fatura, viu break-even)
-- [ ] next-intl completo: en, es, pt — zero strings hardcoded
-- [ ] Landing page pública com proposta de valor + CTA para /pricing
-- [ ] Revisão de acessibilidade e responsividade mobile dos módulos principais
-- [ ] Checklist de produção: env vars, domínio, backups Neon, página de status
+- [ ] `transactions` table (income/expense, category, date, value in cents)
+- [ ] Transaction CRUD with predefined + customizable categories
+- [ ] Monthly dashboard: income, expenses, profit, top products (Tremor)
+- [ ] Annual dashboard: month-over-month evolution, comparison
+- [ ] `lib/calculations/breakEven.ts`: fixed costs + average margin → units
+      needed to break even — with tests
+- [ ] Break-even page with a scenario simulator (price/cost sliders)
 
-Critério de aceite: convidar 3 chefs beta e eles completarem onboarding sem ajuda.
+Acceptance criterion: enter 10 transactions and see coherent dashboards and break-even.
+
+---
+
+## Sprint 3 — Invoices and payroll (modules 5 and 6)
+Goal: complete parity with the 5 spreadsheets of the original kit.
+
+- [ ] `invoices` + `invoice_items` tables; sequential numbering per organization
+- [ ] Invoice builder: customer, items, taxes, total
+- [ ] Invoice PDF generation (react-pdf) with the organization's logo
+- [ ] `employees` and `shifts` tables (check-in/check-out, hourly rate)
+- [ ] Shift logging + automatic hours and pay-due calculation
+- [ ] Per-employee summary per period (week/month)
+
+Acceptance criterion: generate an invoice PDF and close an employee's payroll for the month.
+
+---
+
+## Sprint 4 — Billing with Clerk Billing + Stripe
+Goal: the product accepts payments.
+
+- [ ] Enable Clerk Billing (B2B, per-Organization plans) and connect the Stripe account
+- [ ] Create Starter / Pro / Business plans in the Clerk dashboard with Features
+- [ ] /pricing page with Clerk's <PricingTable />
+- [ ] Gating: `has({plan})` / <Protect> on modules per CLAUDE.md
+- [ ] Starter limits (50 recipes, 1 user) enforced on the server
+- [ ] Post-signup onboarding flow: create org → choose plan → 3-step tour
+- [ ] In-app billing page (manage subscription via Clerk components)
+
+Acceptance criterion: subscribe to the Pro plan with a test card and unlock modules.
+
+---
+
+## Sprint 5 — Launch polish
+Goal: ready for the first real customers.
+
+- [ ] Resend: welcome, receipt, and low-stock alert emails
+- [ ] Sentry configured (client + server)
+- [ ] PostHog: key events (created recipe, generated invoice, viewed break-even)
+- [ ] Full next-intl: en, es, pt — zero hardcoded strings
+- [ ] Public landing page with value proposition + CTA to /pricing
+- [ ] Accessibility and mobile responsiveness review of the main modules
+- [ ] Production checklist: env vars, domain, Neon backups, status page
+
+Acceptance criterion: invite 3 beta chefs and have them complete onboarding without help.

@@ -24,9 +24,9 @@ beforeAll(async () => {
   client = test.client;
   db = test.db as unknown as TenantDb;
 
-  // Seed como superusuário (ignora RLS) — dados distintos por organização.
+  // Seed as superuser (bypasses RLS) — distinct data per organization.
   await createIngredient(db, ORG_A, {
-    name: 'Farinha A',
+    name: 'Flour A',
     unit: 'kg',
     priceType: 'per_kg',
     priceCents: 120,
@@ -41,8 +41,8 @@ beforeAll(async () => {
   ingredientBId = b.id;
 
   await db.insert(recipes).values([
-    { organizationId: ORG_A, name: 'Pão A' },
-    { organizationId: ORG_B, name: 'Bolo B' },
+    { organizationId: ORG_A, name: 'Bread A' },
+    { organizationId: ORG_B, name: 'Cake B' },
   ]);
 });
 
@@ -50,32 +50,32 @@ afterAll(async () => {
   await client.close();
 });
 
-describe('camada de aplicação — escopo por organization_id', () => {
-  it('org A só enxerga os próprios ingredientes', async () => {
+describe('application layer — scoped by organization_id', () => {
+  it('org A only sees its own ingredients', async () => {
     const rows = await listIngredients(db, ORG_A);
-    expect(rows.map((r) => r.name)).toEqual(['Farinha A']);
+    expect(rows.map((r) => r.name)).toEqual(['Flour A']);
   });
 
-  it('org B só enxerga os próprios ingredientes', async () => {
+  it('org B only sees its own ingredients', async () => {
     const rows = await listIngredients(db, ORG_B);
     expect(rows.map((r) => r.name)).toEqual(['Chocolate B']);
   });
 
-  it('org A NÃO consegue buscar um ingrediente da org B pelo id', async () => {
+  it('org A CANNOT fetch an org B ingredient by id', async () => {
     const stolen = await getIngredientById(db, ORG_A, ingredientBId);
     expect(stolen).toBeNull();
   });
 
-  it('cada org vê apenas as próprias receitas', async () => {
+  it('each org only sees its own recipes', async () => {
     const recipesA = await listRecipes(db, ORG_A);
     const recipesB = await listRecipes(db, ORG_B);
-    expect(recipesA.map((r) => r.name)).toEqual(['Pão A']);
-    expect(recipesB.map((r) => r.name)).toEqual(['Bolo B']);
+    expect(recipesA.map((r) => r.name)).toEqual(['Bread A']);
+    expect(recipesB.map((r) => r.name)).toEqual(['Cake B']);
   });
 });
 
-describe('camada de banco — Row-Level Security (segunda defesa)', () => {
-  // Assume o papel sem privilégio para que as policies de RLS sejam aplicadas.
+describe('database layer — Row-Level Security (second defense)', () => {
+  // Assume the non-privileged role so the RLS policies are enforced.
   beforeAll(async () => {
     await db.execute(sql.raw('SET ROLE tenant_app;'));
   });
@@ -83,7 +83,7 @@ describe('camada de banco — Row-Level Security (segunda defesa)', () => {
     await db.execute(sql.raw('RESET ROLE;'));
   });
 
-  it('com a org A no contexto, um SELECT sem filtro só retorna linhas da org A', async () => {
+  it('with org A in context, an unfiltered SELECT only returns org A rows', async () => {
     const orgIds = await runInOrg(db, ORG_A, async (tx) => {
       const result = await tx
         .select({ organizationId: ingredients.organizationId })
@@ -94,7 +94,7 @@ describe('camada de banco — Row-Level Security (segunda defesa)', () => {
     expect(orgIds.every((id) => id === ORG_A)).toBe(true);
   });
 
-  it('com a org B no contexto, um SELECT sem filtro só retorna linhas da org B', async () => {
+  it('with org B in context, an unfiltered SELECT only returns org B rows', async () => {
     const orgIds = await runInOrg(db, ORG_B, async (tx) => {
       const result = await tx
         .select({ organizationId: ingredients.organizationId })
@@ -105,7 +105,7 @@ describe('camada de banco — Row-Level Security (segunda defesa)', () => {
     expect(orgIds).not.toContain(ORG_A);
   });
 
-  it('sem contexto de organização, RLS bloqueia tudo (seguro por padrão)', async () => {
+  it('without an organization context, RLS blocks everything (secure by default)', async () => {
     const rows = await db.select().from(ingredients);
     expect(rows).toHaveLength(0);
   });
