@@ -86,7 +86,14 @@ export const recipes = pgTable(
     organizationId: orgId(),
     name: text('name').notNull(),
     yieldPortions: integer('yield_portions').notNull().default(1),
+    // Usable yield after trim/loss, as a percentage (100 = no loss).
     yieldPercentage: integer('yield_percentage').notNull().default(100),
+    // Hidden per-recipe costs beyond ingredients, in integer cents (CLAUDE.md).
+    laborCostCents: integer('labor_cost_cents').notNull().default(0),
+    energyCostCents: integer('energy_cost_cents').notNull().default(0),
+    packagingCostCents: integer('packaging_cost_cents').notNull().default(0),
+    // Optional selling price per portion, in cents — drives margin + traffic light.
+    sellingPriceCents: integer('selling_price_cents'),
     notes: text('notes'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

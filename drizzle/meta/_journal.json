@@ -29,6 +29,13 @@
       "when": 1781600100000,
       "tag": "0003_quantity_dimensions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781514480743,
+      "tag": "0004_rapid_spiral",
+      "breakpoints": true
     }
   ]
 }
