@@ -16,10 +16,12 @@ jobs:
           node-version: 22
           cache: npm
 
-      # package-lock.json is regenerated with npm 10 (CI's bundled version) so
-      # `npm ci` validates here; it also stays compatible with npm 11 locally.
-      # Earlier failures were npm 11's optional-dep tree (@emnapi/*, @swc/helpers)
-      # reading as out-of-sync under npm 10.
+      # Corepack pins npm to the package.json `packageManager` version (npm@10.9.2)
+      # so CI and local dev use the SAME npm — preventing the lockfile drift that
+      # broke `npm ci` (npm 10 vs 11 record @emnapi/*, @swc/helpers differently).
+      - run: corepack enable
+      - run: npm -v
+
       - run: npm ci
 
       - name: Lint
