@@ -15,9 +15,25 @@ export const folderNameSchema = z.string().trim().min(1).max(80);
  * arbitrary text.
  */
 export const FOLDER_ICONS = [
-  '🍳', '🔪', '🥘', '🍲', '🥗', '🍰', '🧁', '🥐',
-  '🍞', '🧀', '🥩', '🍗', '🐟', '🦐', '🥦', '🥕',
-  '🍅', '🌶️', '🧂', '🍷', '☕', '🍫', '🍝', '🍕',
+  // Prep & cooking
+  '🍳', '🔪', '🍴', '🥄', '🍽️', '🧑‍🍳',
+  // Breads & baking
+  '🍞', '🥖', '🥐', '🥨', '🧇', '🥞',
+  // Meat & dairy
+  '🥩', '🍗', '🥓', '🍖', '🥚', '🧀',
+  // Seafood
+  '🐟', '🦐', '🦞', '🦀', '🦑', '🍣',
+  // Vegetables
+  '🥦', '🥕', '🌽', '🍄', '🧄', '🧅',
+  '🍅', '🍆', '🥑', '🌶️', '🥒', '🥗',
+  // Fruit
+  '🍎', '🍓', '🍋', '🍌', '🍇', '🍑',
+  // Desserts & sweets
+  '🍰', '🧁', '🍪', '🍩', '🍫', '🍮',
+  // Dishes
+  '🍕', '🍝', '🍜', '🌮', '🥙', '🍱',
+  // Drinks & pantry
+  '☕', '🍷', '🍵', '🍺', '🥤', '🍯',
 ] as const;
 
 export const folderIconSchema = z.enum(FOLDER_ICONS).nullable();

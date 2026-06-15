@@ -417,7 +417,7 @@ function EmojiPicker({
       {open && (
         <div
           role="menu"
-          className="absolute bottom-full left-0 z-20 mb-1 w-56 rounded-xl border border-border bg-surface p-2 shadow-lg"
+          className="absolute left-0 top-full z-20 mt-1 max-h-72 w-56 overflow-y-auto rounded-xl border border-border bg-surface p-2 shadow-lg"
         >
           <div className="grid grid-cols-6 gap-0.5">
             <button
