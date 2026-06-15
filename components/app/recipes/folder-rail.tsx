@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
+  Check,
   ChevronDown,
   ChevronUp,
   Folder,
@@ -13,6 +14,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  X,
 } from 'lucide-react';
 import type { FolderListing } from '@/lib/data/recipe-folders';
 import { cn } from '@/lib/utils';
@@ -179,6 +181,20 @@ export function FolderRail({
                   if (e.key === 'Escape') setRenamingId(null);
                 }}
               />
+              <RailIcon
+                label={t('renameSave')}
+                disabled={pending}
+                onClick={commitRename}
+              >
+                <Check className="size-4" />
+              </RailIcon>
+              <RailIcon
+                label={tCommon('cancel')}
+                disabled={pending}
+                onClick={() => setRenamingId(null)}
+              >
+                <X className="size-4" />
+              </RailIcon>
             </div>
           );
         }
