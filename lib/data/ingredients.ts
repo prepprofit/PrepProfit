@@ -55,3 +55,42 @@ export async function createIngredient(
   if (!row) throw new Error('Failed to create ingredient.');
   return row;
 }
+
+export async function updateIngredient(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+  input: IngredientInput,
+): Promise<Ingredient | null> {
+  const [row] = await db
+    .update(ingredients)
+    .set(input)
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, id),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+/**
+ * Deletes an ingredient. The composite FK on `recipe_ingredients` is
+ * `ON DELETE restrict`, so an ingredient still used by a recipe makes the DB
+ * raise a foreign-key violation — callers surface that as a friendly message.
+ */
+export async function deleteIngredient(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<void> {
+  await db
+    .delete(ingredients)
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, id),
+      ),
+    );
+}
