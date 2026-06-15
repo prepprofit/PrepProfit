@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/logo_final.jpg" alt="PrepProfit" width="80" height="80" style="border-radius:12px" />
+  <img src="public/logo.webp" alt="PrepProfit" width="240" />
 
   <h1>PrepProfit</h1>
 

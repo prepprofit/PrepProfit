@@ -185,8 +185,9 @@ components will be migrated to these tokens.)
 ---
 
 ## 7. Assets & brand
-- Logo: `public/logo_final.jpg`, shown small (`rounded-md`) next to the product
-  name in display type.
+- Logo: full wordmark in `public/logo.webp` (light mode) and
+  `public/logo-white.webp` (dark mode), swapped via the `dark:` variant. The
+  square icon mark lives in `app/icon.png` / `app/apple-icon.png` (favicon).
 
 ---
 

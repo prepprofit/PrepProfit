@@ -50,17 +50,23 @@ export function Sidebar({
         className,
       )}
     >
-      <div className="flex items-center gap-2 px-6 py-5">
+      <div className="flex items-center px-6 py-5">
         <Image
-          src="/logo_final.jpg"
+          src="/logo.webp"
           alt={tApp('name')}
-          width={32}
-          height={32}
-          className="rounded-md"
+          width={512}
+          height={112}
+          priority
+          className="h-7 w-auto dark:hidden"
         />
-        <span className="font-display text-lg font-semibold text-foreground">
-          {tApp('name')}
-        </span>
+        <Image
+          src="/logo-white.webp"
+          alt={tApp('name')}
+          width={512}
+          height={113}
+          priority
+          className="hidden h-7 w-auto dark:block"
+        />
       </div>
 
       <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-2">

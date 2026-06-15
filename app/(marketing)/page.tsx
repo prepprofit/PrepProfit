@@ -22,17 +22,23 @@ export default async function MarketingPage() {
       />
 
       <header className="flex items-center justify-between px-6 py-5 md:px-10">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center">
           <Image
-            src="/logo_final.jpg"
+            src="/logo.webp"
             alt={tApp('name')}
-            width={32}
-            height={32}
-            className="rounded-md"
+            width={512}
+            height={112}
+            priority
+            className="h-8 w-auto dark:hidden"
           />
-          <span className="font-display text-lg font-semibold text-foreground">
-            {tApp('name')}
-          </span>
+          <Image
+            src="/logo-white.webp"
+            alt={tApp('name')}
+            width={512}
+            height={113}
+            priority
+            className="hidden h-8 w-auto dark:block"
+          />
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />

@@ -38,7 +38,8 @@ yarn-error.log*
 # the original base zip (kept locally, not versioned)
 Wibox-dashboard-app-main.zip
 
-# source logo (canonical copy lives in public/logo_final.jpg)
+# source brand assets (canonical copies live in public/ and app/)
+/logo/
 /logo_final.jpg
 
 # agent skills (tooling assets — reproducible via `npx skills add`)
