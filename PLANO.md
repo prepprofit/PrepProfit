@@ -35,7 +35,7 @@ migration later, once money and quantities exist across every table):
 - [x] `organization_settings` table (org_id PK, `currency` ISO-4217,
       `measurement_system` metric|imperial) + `getOrgSettings()` helper; small
       settings page to edit them. Follows RULE #1 (per-org, derived server-side)
-- [ ] `lib/format/money.ts`: `formatMoney(cents, currency)` via `Intl.NumberFormat`.
+- [x] `lib/format/money.ts`: `formatMoney(cents, currency)` via `Intl.NumberFormat`.
       ALL monetary display goes through it. Single currency per org — NO currency
       conversion (storage stays integer cents)
 - [ ] `lib/units/` pure conversion helpers with Vitest tests: canonical storage in
