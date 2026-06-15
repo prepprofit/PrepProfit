@@ -14,6 +14,15 @@ type ClerkAppearance = NonNullable<
  */
 export function clerkAppearance(isDark: boolean): ClerkAppearance {
   return {
+    // PrepProfit is one organization per customer, so members never create
+    // their own orgs — hide the "Create organization" action in the switcher.
+    // (Real enforcement is the instance-level org-creation setting in Clerk;
+    // this just removes the affordance from the UI.)
+    elements: {
+      organizationSwitcherPopoverActionButton__createOrganization: {
+        display: 'none',
+      },
+    },
     variables: {
       colorPrimary: '#c2410c',
       colorPrimaryForeground: '#ffffff',
