@@ -28,10 +28,17 @@ import {
 
 /**
  * Left rail for /recipes: "All recipes" + each folder + "No folder", each with a
- * live count. Navigation is by `?folder=` (a Link per view), so it is server-
- * rendered and refresh-stable. Folder management (create / rename / reorder /
+ * live count. Navigation is by `?folder=` (a Link per view) so it is server-
+ * rendered and refresh-stable; folder management (create / rename / reorder /
  * delete) calls the server actions and `router.refresh()`s to repaint counts.
- * Native controls only; the destructive delete reuses the shared ConfirmDialog.
+ *
+ * Layout: every row is a fixed-height `h-9` item, and the rail is `self-start`
+ * so it never stretches to the (tall) recipe grid beside it. On a folder row the
+ * count and the action toolbar share the right slot — the count shows by default
+ * (the name keeps full width) and swaps to the actions on hover/focus, so the
+ * name stays readable. On mobile (the rail is full-width) both are shown, so the
+ * actions never depend on hover alone. Native controls only; the destructive
+ * delete reuses the shared ConfirmDialog.
  */
 export function FolderRail({
   listing,
@@ -125,7 +132,7 @@ export function FolderRail({
   return (
     <nav
       aria-label={t('title')}
-      className="flex flex-col gap-1 rounded-xl border border-border bg-surface p-2"
+      className="flex flex-col gap-0.5 self-start rounded-xl border border-border bg-surface p-2"
     >
       {error && (
         <div
@@ -136,7 +143,7 @@ export function FolderRail({
         </div>
       )}
 
-      <FolderLink
+      <RowLink
         href="/recipes"
         active={activeKey === 'all'}
         icon={<Layers className="size-4 shrink-0" />}
@@ -146,20 +153,13 @@ export function FolderRail({
 
       {folders.map((folder, index) => {
         const active = activeKey === folder.id;
-        const isRenaming = renamingId === folder.id;
-        return (
-          <div
-            key={folder.id}
-            className={cn(
-              'group flex items-center gap-1 rounded-lg pr-1',
-              active && 'bg-accent-50 dark:bg-accent-500/15',
-            )}
-          >
-            {isRenaming ? (
+        if (renamingId === folder.id) {
+          return (
+            <div key={folder.id} className="flex h-9 items-center px-1">
               <Input
                 aria-label={t('rename')}
                 autoFocus
-                className="h-8 flex-1"
+                className="h-8"
                 value={renameText}
                 disabled={pending}
                 onChange={(e) => setRenameText(e.target.value)}
@@ -169,60 +169,79 @@ export function FolderRail({
                 }}
                 onBlur={commitRename}
               />
-            ) : (
-              <FolderLink
-                href={`/recipes?folder=${folder.id}`}
-                active={active}
-                bare
-                icon={<Folder className="size-4 shrink-0" />}
-                label={folder.name}
-                count={folder.recipeCount}
-              />
+            </div>
+          );
+        }
+        return (
+          <div
+            key={folder.id}
+            className={cn(
+              'group flex h-9 items-center rounded-lg transition-colors',
+              active
+                ? 'bg-accent-50 dark:bg-accent-500/15'
+                : 'hover:bg-surface-2',
             )}
+          >
+            <Link
+              href={`/recipes?folder=${folder.id}`}
+              className={cn(
+                'flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 text-sm transition-colors',
+                active
+                  ? 'font-medium text-accent-700 dark:text-accent-300'
+                  : 'text-foreground',
+              )}
+            >
+              <Folder className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+            </Link>
 
-            {!isRenaming && (
-              <div className="flex shrink-0 items-center opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                <RailIcon
-                  label={t('moveUp')}
-                  disabled={pending || index === 0}
-                  onClick={() => reorder(folder.id, 'up')}
-                >
-                  <ChevronUp className="size-4" />
-                </RailIcon>
-                <RailIcon
-                  label={t('moveDown')}
-                  disabled={pending || index === folders.length - 1}
-                  onClick={() => reorder(folder.id, 'down')}
-                >
-                  <ChevronDown className="size-4" />
-                </RailIcon>
-                <RailIcon
-                  label={t('rename')}
-                  disabled={pending}
-                  onClick={() => {
-                    setError(null);
-                    setRenamingId(folder.id);
-                    setRenameText(folder.name);
-                  }}
-                >
-                  <Pencil className="size-4" />
-                </RailIcon>
-                <RailIcon
-                  label={t('delete')}
-                  disabled={pending}
-                  onClick={() =>
-                    setDeleteTarget({ id: folder.id, name: folder.name })
-                  }
-                >
-                  <Trash2 className="size-4" />
-                </RailIcon>
-              </div>
-            )}
+            {/* Count: shown by default; hidden on hover/focus to free room. */}
+            <span className="shrink-0 px-2.5 text-xs tabular-nums text-muted-foreground sm:group-hover:hidden sm:group-focus-within:hidden">
+              {folder.recipeCount}
+            </span>
+
+            {/* Actions: always shown on mobile; revealed on hover/focus on sm+. */}
+            <div className="flex shrink-0 items-center gap-0.5 pr-1 sm:hidden sm:group-hover:flex sm:group-focus-within:flex">
+              <RailIcon
+                label={t('moveUp')}
+                disabled={pending || index === 0}
+                onClick={() => reorder(folder.id, 'up')}
+              >
+                <ChevronUp className="size-4" />
+              </RailIcon>
+              <RailIcon
+                label={t('moveDown')}
+                disabled={pending || index === folders.length - 1}
+                onClick={() => reorder(folder.id, 'down')}
+              >
+                <ChevronDown className="size-4" />
+              </RailIcon>
+              <RailIcon
+                label={t('rename')}
+                disabled={pending}
+                onClick={() => {
+                  setError(null);
+                  setRenamingId(folder.id);
+                  setRenameText(folder.name);
+                }}
+              >
+                <Pencil className="size-4" />
+              </RailIcon>
+              <RailIcon
+                label={t('delete')}
+                disabled={pending}
+                onClick={() =>
+                  setDeleteTarget({ id: folder.id, name: folder.name })
+                }
+              >
+                <Trash2 className="size-4" />
+              </RailIcon>
+            </div>
           </div>
         );
       })}
 
-      <FolderLink
+      <RowLink
         href="/recipes?folder=none"
         active={activeKey === 'none'}
         icon={<Inbox className="size-4 shrink-0" />}
@@ -234,7 +253,7 @@ export function FolderRail({
         <Input
           aria-label={t('create')}
           placeholder={t('newPlaceholder')}
-          className="h-8"
+          className="h-9"
           value={newName}
           disabled={pending}
           onChange={(e) => setNewName(e.target.value)}
@@ -246,7 +265,7 @@ export function FolderRail({
           type="button"
           variant="outline"
           size="sm"
-          className="size-8 shrink-0 px-0"
+          className="size-9 shrink-0 px-0"
           aria-label={t('create')}
           disabled={pending}
           onClick={onCreate}
@@ -270,31 +289,28 @@ export function FolderRail({
   );
 }
 
-function FolderLink({
+/** A non-managed rail row (All recipes / No folder): icon · label · count. */
+function RowLink({
   href,
   active,
   icon,
   label,
   count,
-  bare = false,
 }: {
   href: string;
   active: boolean;
   icon: React.ReactNode;
   label: string;
   count: number;
-  /** When inside an already-highlighted folder row, skip the own background. */
-  bare?: boolean;
 }) {
   return (
     <Link
       href={href}
       className={cn(
-        'flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors',
+        'flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm transition-colors',
         active
-          ? 'font-medium text-accent-700 dark:text-accent-300'
+          ? 'bg-accent-50 font-medium text-accent-700 dark:bg-accent-500/15 dark:text-accent-300'
           : 'text-foreground hover:bg-surface-2',
-        !bare && active && 'bg-accent-50 dark:bg-accent-500/15',
       )}
     >
       {icon}
@@ -306,6 +322,7 @@ function FolderLink({
   );
 }
 
+/** Compact icon-only button for the per-folder hover toolbar. */
 function RailIcon({
   label,
   disabled,
@@ -324,7 +341,7 @@ function RailIcon({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
