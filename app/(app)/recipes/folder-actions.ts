@@ -7,13 +7,13 @@ import { isForeignKeyViolation, isUniqueViolation } from '@/lib/db/errors';
 import {
   createFolder,
   deleteFolder,
-  renameFolder,
+  updateFolder,
   reorderFolder,
 } from '@/lib/data/recipe-folders';
 import { moveRecipeToFolder } from '@/lib/data/recipes';
 import {
   folderCreateSchema,
-  folderRenameSchema,
+  folderUpdateSchema,
   folderReorderSchema,
   moveRecipeSchema,
 } from '@/lib/validation/recipe-folders';
@@ -36,7 +36,7 @@ export async function createFolderAction(
   const organizationId = await getOrgId();
   try {
     const row = await withOrg(organizationId, (tx) =>
-      createFolder(tx, organizationId, parsed.data.name),
+      createFolder(tx, organizationId, parsed.data.name, parsed.data.icon ?? null),
     );
     revalidatePath('/recipes');
     return { ok: true, data: { id: row.id } };
@@ -50,13 +50,13 @@ export async function renameFolderAction(
   id: string,
   input: unknown,
 ): Promise<ActionResult> {
-  const parsed = folderRenameSchema.safeParse(input);
+  const parsed = folderUpdateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Invalid folder name.' };
 
   const organizationId = await getOrgId();
   try {
     const row = await withOrg(organizationId, (tx) =>
-      renameFolder(tx, organizationId, id, parsed.data.name),
+      updateFolder(tx, organizationId, id, parsed.data.name, parsed.data.icon ?? null),
     );
     if (!row) return { ok: false, error: 'Folder not found.' };
     revalidatePath('/recipes');

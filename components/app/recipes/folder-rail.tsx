@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { FOLDER_ICONS } from '@/lib/validation/recipe-folders';
 import {
   createFolderAction,
   deleteFolderAction,
@@ -54,8 +55,10 @@ export function FolderRail({
 
   const [error, setError] = React.useState<string | null>(null);
   const [newName, setNewName] = React.useState('');
+  const [newIcon, setNewIcon] = React.useState<string | null>(null);
   const [renamingId, setRenamingId] = React.useState<string | null>(null);
   const [renameText, setRenameText] = React.useState('');
+  const [renameIcon, setRenameIcon] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<{
     id: string;
     name: string;
@@ -72,9 +75,10 @@ export function FolderRail({
     }
     setError(null);
     startTransition(async () => {
-      const result = await createFolderAction({ name });
+      const result = await createFolderAction({ name, icon: newIcon });
       if (result.ok) {
         setNewName('');
+        setNewIcon(null);
         router.push(`/recipes?folder=${result.data.id}`);
         router.refresh();
       } else {
@@ -93,7 +97,7 @@ export function FolderRail({
     const id = renamingId;
     setError(null);
     startTransition(async () => {
-      const result = await renameFolderAction(id, { name });
+      const result = await renameFolderAction(id, { name, icon: renameIcon });
       if (result.ok) {
         setRenamingId(null);
         router.refresh();
@@ -155,7 +159,14 @@ export function FolderRail({
         const active = activeKey === folder.id;
         if (renamingId === folder.id) {
           return (
-            <div key={folder.id} className="flex h-9 items-center px-1">
+            <div key={folder.id} className="flex h-9 items-center gap-1 px-1">
+              <EmojiPicker
+                value={renameIcon}
+                disabled={pending}
+                label={t('icon')}
+                noneLabel={t('noIcon')}
+                onChange={setRenameIcon}
+              />
               <Input
                 aria-label={t('rename')}
                 autoFocus
@@ -167,7 +178,6 @@ export function FolderRail({
                   if (e.key === 'Enter') commitRename();
                   if (e.key === 'Escape') setRenamingId(null);
                 }}
-                onBlur={commitRename}
               />
             </div>
           );
@@ -191,7 +201,16 @@ export function FolderRail({
                   : 'text-foreground',
               )}
             >
-              <Folder className="size-4 shrink-0" />
+              {folder.icon ? (
+                <span
+                  aria-hidden
+                  className="grid size-4 shrink-0 place-items-center text-sm leading-none"
+                >
+                  {folder.icon}
+                </span>
+              ) : (
+                <Folder className="size-4 shrink-0" />
+              )}
               <span className="min-w-0 flex-1 truncate">{folder.name}</span>
             </Link>
 
@@ -223,6 +242,7 @@ export function FolderRail({
                   setError(null);
                   setRenamingId(folder.id);
                   setRenameText(folder.name);
+                  setRenameIcon(folder.icon);
                 }}
               >
                 <Pencil className="size-4" />
@@ -250,6 +270,13 @@ export function FolderRail({
       />
 
       <div className="mt-2 flex items-center gap-1.5 border-t border-border pt-2">
+        <EmojiPicker
+          value={newIcon}
+          disabled={pending}
+          label={t('icon')}
+          noneLabel={t('noIcon')}
+          onChange={setNewIcon}
+        />
         <Input
           aria-label={t('create')}
           placeholder={t('newPlaceholder')}
@@ -319,6 +346,112 @@ function RowLink({
         {count}
       </span>
     </Link>
+  );
+}
+
+/**
+ * Compact emoji picker: a 9×9 trigger showing the current emoji (or the default
+ * Folder glyph when null) that toggles an inline grid of the curated
+ * {@link FOLDER_ICONS} plus a "None" cell. No radix dependency — a positioned
+ * panel closed on outside click / Escape, matching the rail's native-controls
+ * style.
+ */
+function EmojiPicker({
+  value,
+  disabled,
+  label,
+  noneLabel,
+  onChange,
+}: {
+  value: string | null;
+  disabled: boolean;
+  label: string;
+  noneLabel: string;
+  onChange: (icon: string | null) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const choose = (icon: string | null) => {
+    onChange(icon);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        aria-label={label}
+        aria-haspopup="true"
+        aria-expanded={open}
+        title={label}
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      >
+        {value ? (
+          <span aria-hidden className="text-base leading-none">
+            {value}
+          </span>
+        ) : (
+          <Folder className="size-4" />
+        )}
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute bottom-full left-0 z-20 mb-1 w-56 rounded-xl border border-border bg-surface p-2 shadow-lg"
+        >
+          <div className="grid grid-cols-6 gap-0.5">
+            <button
+              type="button"
+              role="menuitem"
+              title={noneLabel}
+              aria-label={noneLabel}
+              onClick={() => choose(null)}
+              className={cn(
+                'inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground',
+                value === null && 'bg-accent-50 dark:bg-accent-500/15',
+              )}
+            >
+              <Folder className="size-4" />
+            </button>
+            {FOLDER_ICONS.map((icon) => (
+              <button
+                key={icon}
+                type="button"
+                role="menuitem"
+                aria-label={icon}
+                onClick={() => choose(icon)}
+                className={cn(
+                  'inline-flex size-8 items-center justify-center rounded-md text-lg leading-none transition-colors hover:bg-surface-2',
+                  value === icon && 'bg-accent-50 dark:bg-accent-500/15',
+                )}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

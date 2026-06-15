@@ -18,6 +18,7 @@ import type { TenantClient } from '@/lib/db/tenant';
 export type FolderWithCount = {
   id: string;
   name: string;
+  icon: string | null;
   sortOrder: number;
   recipeCount: number;
 };
@@ -74,6 +75,7 @@ export async function listFoldersWithCounts(
     folders: folders.map((f) => ({
       id: f.id,
       name: f.name,
+      icon: f.icon,
       sortOrder: f.sortOrder,
       recipeCount: byFolder.get(f.id) ?? 0,
     })),
@@ -92,6 +94,7 @@ export async function createFolder(
   db: TenantClient,
   organizationId: string,
   name: string,
+  icon: string | null = null,
 ): Promise<RecipeFolder> {
   const [maxRow] = await db
     .select({ value: max(recipeFolders.sortOrder) })
@@ -101,22 +104,26 @@ export async function createFolder(
 
   const [row] = await db
     .insert(recipeFolders)
-    .values({ organizationId, name, sortOrder: nextOrder })
+    .values({ organizationId, name, icon, sortOrder: nextOrder })
     .returning();
   if (!row) throw new Error('Failed to create folder.');
   return row;
 }
 
-/** Renames a folder. Returns null if it does not exist; unique violation bubbles up. */
-export async function renameFolder(
+/**
+ * Updates a folder's name and icon. Returns null if it does not exist; a unique
+ * violation (duplicate name) bubbles up to the action.
+ */
+export async function updateFolder(
   db: TenantClient,
   organizationId: string,
   id: string,
   name: string,
+  icon: string | null = null,
 ): Promise<RecipeFolder | null> {
   const [row] = await db
     .update(recipeFolders)
-    .set({ name })
+    .set({ name, icon })
     .where(
       and(
         eq(recipeFolders.organizationId, organizationId),

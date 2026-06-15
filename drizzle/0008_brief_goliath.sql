@@ -1,0 +1,1 @@
+ALTER TABLE "recipe_folders" ADD COLUMN "icon" text;

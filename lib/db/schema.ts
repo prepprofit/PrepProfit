@@ -110,6 +110,9 @@ export const recipeFolders = pgTable(
     id: id(),
     organizationId: orgId(),
     name: text('name').notNull(),
+    // Optional chef/kitchen emoji shown in the rail; NULL = default Folder glyph.
+    // Constrained to the curated FOLDER_ICONS set server-side (validation layer).
+    icon: text('icon'),
     // Manual ordering in the folder rail (move up / down). Lower sorts first.
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),

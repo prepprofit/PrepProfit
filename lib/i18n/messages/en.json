@@ -106,6 +106,8 @@
       "moveUp": "Move folder up",
       "moveDown": "Move folder down",
       "moveTo": "Move to folder",
+      "icon": "Choose folder icon",
+      "noIcon": "Default",
       "emptyFolder": "No recipes in this folder yet. Create one above or move recipes here.",
       "deleteConfirm": {
         "title": "Delete folder?",

@@ -57,6 +57,13 @@
       "when": 1781602000000,
       "tag": "0007_noisy_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781603000000,
+      "tag": "0008_brief_goliath",
+      "breakpoints": true
     }
   ]
 }

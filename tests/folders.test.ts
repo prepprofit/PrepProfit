@@ -10,7 +10,7 @@ import {
   deleteFolder,
   listFolders,
   listFoldersWithCounts,
-  renameFolder,
+  updateFolder,
   reorderFolder,
 } from '@/lib/data/recipe-folders';
 import {
@@ -60,8 +60,29 @@ describe('recipe folders data layer', () => {
 
     const pastries = await createFolder(db, ORG_A, 'Pastries');
     await expect(
-      renameFolder(db, ORG_A, pastries.id, 'Breads'),
+      updateFolder(db, ORG_A, pastries.id, 'Breads'),
     ).rejects.toThrow();
+  });
+
+  it('round-trips a folder icon on create, update, and listing', async () => {
+    const breads = await createFolder(db, ORG_A, 'Breads', '🍞');
+    expect(breads.icon).toBe('🍞');
+
+    // The icon surfaces in the rail listing shape.
+    const listing = await listFoldersWithCounts(db, ORG_A);
+    expect(listing.folders[0]?.icon).toBe('🍞');
+
+    // Update can change the icon...
+    const updated = await updateFolder(db, ORG_A, breads.id, 'Breads', '🥐');
+    expect(updated?.icon).toBe('🥐');
+
+    // ...and clear it back to the default (null) glyph.
+    const cleared = await updateFolder(db, ORG_A, breads.id, 'Breads', null);
+    expect(cleared?.icon).toBeNull();
+
+    // A folder created without an icon defaults to null.
+    const plain = await createFolder(db, ORG_A, 'Pastries');
+    expect(plain.icon).toBeNull();
   });
 
   it('reorders folders by swapping with the neighbour, and no-ops at the ends', async () => {
