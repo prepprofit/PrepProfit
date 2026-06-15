@@ -52,7 +52,7 @@ export default async function RecipesPage({
   return (
     <div className="flex flex-col gap-5">
       <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
-      <div className="grid items-start gap-5 lg:grid-cols-[16rem_1fr]">
+      <div className="grid items-start gap-5 lg:grid-cols-[20rem_1fr]">
         <FolderRail listing={listing} activeKey={activeKey} />
         <RecipeList
           // Re-mount per view so the grid resets to the freshly filtered list.
