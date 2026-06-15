@@ -33,6 +33,33 @@
     "delete": "Delete",
     "add": "Add"
   },
+  "dimensions": {
+    "weight": "Weight",
+    "volume": "Volume",
+    "count": "Count"
+  },
+  "ingredients": {
+    "title": "Ingredients",
+    "subtitle": "Your pantry. Prices feed straight into recipe costs.",
+    "empty": "No ingredients yet. Add your first one below.",
+    "columns": {
+      "name": "Name",
+      "dimension": "Type",
+      "price": "Price",
+      "supplier": "Supplier"
+    },
+    "placeholders": {
+      "name": "e.g. Wheat flour",
+      "supplier": "Optional"
+    },
+    "actions": {
+      "add": "Add",
+      "delete": "Delete ingredient"
+    },
+    "errors": {
+      "nameRequired": "Give the ingredient a name."
+    }
+  },
   "settings": {
     "title": "Settings",
     "subtitle": "Configure how money and quantities appear across your workspace.",

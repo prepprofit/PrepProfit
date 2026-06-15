@@ -48,7 +48,7 @@ migration later, once money and quantities exist across every table):
 Then the module work:
 
 - [x] Ingredient CRUD (name, unit, price per unit/kg, optional supplier)
-- [ ] Editable ingredient grid with TanStack Table (inline editing)
+- [x] Editable ingredient grid with TanStack Table (inline editing)
 - [ ] Recipe CRUD: ingredients + quantities, yield (portions), % loss
 - [ ] `lib/calculations/recipeCost.ts`: total cost, cost per portion,
       hidden costs (labor, energy, packaging) — with Vitest tests
