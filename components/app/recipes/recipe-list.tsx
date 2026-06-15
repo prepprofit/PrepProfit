@@ -8,23 +8,47 @@ import { ChevronRight, Plus, Trash2 } from 'lucide-react';
 import type { Recipe } from '@/lib/db/schema';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   createRecipeAction,
   deleteRecipeAction,
 } from '@/app/(app)/recipes/actions';
+import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
 
-export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
+export type FolderOption = { id: string; name: string };
+
+/**
+ * Recipe grid for the active folder view. Server-driven: it renders the recipes
+ * the page already filtered (by org, `deleted_at IS NULL`, and the selected
+ * folder), and every mutation calls a Server Action then `router.refresh()` so
+ * the grid and the folder rail's counts stay in sync. The page keys this on the
+ * active view, so switching folders re-mounts it with the right list.
+ */
+export function RecipeList({
+  recipes,
+  folders,
+  createFolderId,
+  activeKey,
+}: {
+  recipes: Recipe[];
+  folders: FolderOption[];
+  /** Folder a newly created recipe is filed into (null = "No folder"). */
+  createFolderId: string | null;
+  /** 'all' | 'none' | a folder id — drives the empty-state copy. */
+  activeKey: string;
+}) {
   const t = useTranslations('recipes');
+  const tFolders = useTranslations('recipes.folders');
   const tCommon = useTranslations('common');
   const router = useRouter();
-  const [rows, setRows] = React.useState<Recipe[]>(initialRecipes);
   const [name, setName] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
 
-  const confirmTarget = rows.find((r) => r.id === confirmId) ?? null;
+  const confirmTarget = recipes.find((r) => r.id === confirmId) ?? null;
+  const inFolder = activeKey !== 'all' && activeKey !== 'none';
 
   const onCreate = () => {
     const trimmed = name.trim();
@@ -36,6 +60,7 @@ export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
     startTransition(async () => {
       const result = await createRecipeAction({
         name: trimmed,
+        folderId: createFolderId,
         yieldPortions: 1,
         yieldPercentage: 100,
         laborCostCents: 0,
@@ -56,12 +81,20 @@ export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
     setError(null);
     startTransition(async () => {
       const result = await deleteRecipeAction(id);
-      if (result.ok) {
-        setRows((prev) => prev.filter((r) => r.id !== id));
-      } else {
-        setError(result.error);
-      }
+      if (result.ok) router.refresh();
+      else setError(result.error);
       setConfirmId(null);
+    });
+  };
+
+  const move = (recipeId: string, value: string) => {
+    setError(null);
+    startTransition(async () => {
+      const result = await moveRecipeToFolderAction(recipeId, {
+        folderId: value === '' ? null : value,
+      });
+      if (result.ok) router.refresh();
+      else setError(result.error);
     });
   };
 
@@ -93,20 +126,20 @@ export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
         </Button>
       </div>
 
-      {rows.length === 0 ? (
+      {recipes.length === 0 ? (
         <p className="px-1 py-8 text-center text-sm text-muted-foreground">
-          {t('empty')}
+          {inFolder ? tFolders('emptyFolder') : t('empty')}
         </p>
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {rows.map((recipe) => (
+          {recipes.map((recipe) => (
             <li
               key={recipe.id}
-              className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4"
+              className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4"
             >
               <Link
                 href={`/recipes/${recipe.id}`}
-                className="group flex min-w-0 flex-1 items-center justify-between gap-2"
+                className="group flex min-w-0 items-center justify-between gap-2"
               >
                 <span className="min-w-0">
                   <span className="block truncate font-medium text-foreground">
@@ -118,16 +151,33 @@ export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
                 </span>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </Link>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label={t('actions.delete')}
-                disabled={pending}
-                onClick={() => setConfirmId(recipe.id)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Select
+                  aria-label={tFolders('moveTo')}
+                  className="h-9 flex-1 text-xs"
+                  value={recipe.folderId ?? ''}
+                  disabled={pending}
+                  onChange={(e) => move(recipe.id, e.target.value)}
+                >
+                  <option value="">{tFolders('noFolder')}</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="size-9 shrink-0 px-0"
+                  aria-label={t('actions.delete')}
+                  disabled={pending}
+                  onClick={() => setConfirmId(recipe.id)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
             </li>
           ))}
         </ul>

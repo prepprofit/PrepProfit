@@ -3,6 +3,7 @@ import { getOrgId } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { getRecipeWithIngredients } from '@/lib/data/recipes';
 import { listIngredients } from '@/lib/data/ingredients';
+import { listFolders } from '@/lib/data/recipe-folders';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { RecipeEditor } from '@/components/app/recipes/recipe-editor';
 
@@ -14,11 +15,12 @@ export default async function RecipeEditorPage({
   const { id } = await params;
   const organizationId = await getOrgId();
 
-  const [data, ingredients, settings] = await Promise.all([
+  const [data, ingredients, folders, settings] = await Promise.all([
     withOrg(organizationId, (tx) =>
       getRecipeWithIngredients(tx, organizationId, id),
     ),
     withOrg(organizationId, (tx) => listIngredients(tx, organizationId)),
+    withOrg(organizationId, (tx) => listFolders(tx, organizationId)),
     getOrgSettings(),
   ]);
 
@@ -29,6 +31,7 @@ export default async function RecipeEditorPage({
       recipe={data.recipe}
       initialLines={data.lines}
       ingredients={ingredients}
+      folders={folders}
       currency={settings.currency}
       measurementSystem={settings.measurementSystem}
     />

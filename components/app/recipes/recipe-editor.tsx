@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ArrowLeft, Check, Plus, Trash2 } from 'lucide-react';
-import type { Ingredient, Recipe } from '@/lib/db/schema';
+import type { Ingredient, Recipe, RecipeFolder } from '@/lib/db/schema';
 import type { RecipeLineWithIngredient } from '@/lib/data/recipes';
 import {
   type MeasurementSystem,
@@ -47,6 +47,7 @@ import {
   updateRecipeAction,
   updateRecipeIngredientAction,
 } from '@/app/(app)/recipes/actions';
+import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
 
 /** Target gross margin used for the suggested price. */
 const TARGET_MARGIN = 70;
@@ -71,17 +72,20 @@ export function RecipeEditor({
   recipe,
   initialLines,
   ingredients,
+  folders,
   currency,
   measurementSystem,
 }: {
   recipe: Recipe;
   initialLines: RecipeLineWithIngredient[];
   ingredients: Ingredient[];
+  folders: RecipeFolder[];
   currency: string;
   measurementSystem: MeasurementSystem;
 }) {
   const t = useTranslations('recipes');
   const tDim = useTranslations('dimensions');
+  const tFolders = useTranslations('recipes.folders');
   const tCommon = useTranslations('common');
   const router = useRouter();
 
@@ -119,7 +123,26 @@ export function RecipeEditor({
   const [error, setError] = React.useState<string | null>(null);
   const [saved, setSaved] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [folderId, setFolderId] = React.useState<string | null>(recipe.folderId);
   const [pending, startTransition] = React.useTransition();
+
+  // Filing the recipe is applied immediately (consistent with the list's move
+  // control); on failure we revert the select to its previous value.
+  const onChangeFolder = (value: string) => {
+    const next = value === '' ? null : value;
+    const previous = folderId;
+    setFolderId(next);
+    setError(null);
+    startTransition(async () => {
+      const result = await moveRecipeToFolderAction(recipe.id, {
+        folderId: next,
+      });
+      if (!result.ok) {
+        setFolderId(previous);
+        setError(result.error);
+      }
+    });
+  };
 
   const setField = (patch: Partial<typeof form>) => {
     setForm((prev) => ({ ...prev, ...patch }));
@@ -512,6 +535,20 @@ export function RecipeEditor({
               <CardTitle>{t('parameters.title')}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
+              <Field label={t('fields.folder')}>
+                <Select
+                  value={folderId ?? ''}
+                  disabled={pending}
+                  onChange={(e) => onChangeFolder(e.target.value)}
+                >
+                  <option value="">{tFolders('noFolder')}</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <Field label={t('fields.yieldPortions')}>
                 <Input
                   type="number"

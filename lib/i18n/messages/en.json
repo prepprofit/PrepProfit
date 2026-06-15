@@ -86,12 +86,34 @@
     },
     "fields": {
       "name": "Recipe name",
+      "folder": "Folder",
       "yieldPortions": "Portions (yield)",
       "yieldPercentage": "Usable yield (%)",
       "labor": "Labor cost",
       "energy": "Energy cost",
       "packaging": "Packaging cost",
       "notes": "Notes"
+    },
+    "folders": {
+      "title": "Folders",
+      "allRecipes": "All recipes",
+      "noFolder": "No folder",
+      "newPlaceholder": "New folder",
+      "create": "Add folder",
+      "rename": "Rename folder",
+      "renameSave": "Save folder name",
+      "delete": "Delete folder",
+      "moveUp": "Move folder up",
+      "moveDown": "Move folder down",
+      "moveTo": "Move to folder",
+      "emptyFolder": "No recipes in this folder yet. Create one above or move recipes here.",
+      "deleteConfirm": {
+        "title": "Delete folder?",
+        "body": "“{name}” will be deleted. Its recipes move to “No folder” — they are not deleted."
+      },
+      "errors": {
+        "nameRequired": "Give the folder a name."
+      }
     },
     "ingredients": {
       "title": "Ingredients",
