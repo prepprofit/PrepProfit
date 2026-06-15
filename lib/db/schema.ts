@@ -32,6 +32,27 @@ const updatedAt = () =>
     // covers inserts).
     .$onUpdate(() => new Date());
 
+/**
+ * Per-organization settings: exactly one row per org (the Clerk org id is the
+ * primary key). RULE #1 still holds — the row carries `organization_id`, so the
+ * shared RLS policy isolates it like every other business table. Single currency
+ * per org (no conversion; money stays integer cents); `measurement_system`
+ * drives unit display only — quantities are always stored canonically (g/ml).
+ */
+export const organizationSettings = pgTable('organization_settings', {
+  organizationId: text('organization_id').primaryKey(),
+  // ISO-4217 currency code (validated against a curated list, see
+  // lib/validation/org-settings.ts).
+  currency: text('currency').notNull().default('EUR'),
+  measurementSystem: text('measurement_system', {
+    enum: ['metric', 'imperial'],
+  })
+    .notNull()
+    .default('metric'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
 export const ingredients = pgTable(
   'ingredients',
   {
@@ -119,6 +140,14 @@ export type Recipe = InferSelectModel<typeof recipes>;
 export type NewRecipe = InferInsertModel<typeof recipes>;
 export type RecipeIngredient = InferSelectModel<typeof recipeIngredients>;
 export type NewRecipeIngredient = InferInsertModel<typeof recipeIngredients>;
+export type OrganizationSettings = InferSelectModel<typeof organizationSettings>;
+export type NewOrganizationSettings = InferInsertModel<typeof organizationSettings>;
+export type MeasurementSystem = OrganizationSettings['measurementSystem'];
 
 /** All business tables, for applying RLS in bulk. */
-export const businessTables = ['ingredients', 'recipes', 'recipe_ingredients'] as const;
+export const businessTables = [
+  'organization_settings',
+  'ingredients',
+  'recipes',
+  'recipe_ingredients',
+] as const;

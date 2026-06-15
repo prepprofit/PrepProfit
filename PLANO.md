@@ -32,7 +32,7 @@ Goal: chef registers ingredients, builds recipes, and sees real cost.
 Foundations first (do these before the CRUD — they are cheap now and a painful
 migration later, once money and quantities exist across every table):
 
-- [ ] `organization_settings` table (org_id PK, `currency` ISO-4217,
+- [x] `organization_settings` table (org_id PK, `currency` ISO-4217,
       `measurement_system` metric|imperial) + `getOrgSettings()` helper; small
       settings page to edit them. Follows RULE #1 (per-org, derived server-side)
 - [ ] `lib/format/money.ts`: `formatMoney(cents, currency)` via `Intl.NumberFormat`.

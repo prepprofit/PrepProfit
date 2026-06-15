@@ -10,7 +10,8 @@
     "inventory": "Inventory",
     "breakEven": "Break-even",
     "payroll": "Payroll",
-    "invoices": "Invoices"
+    "invoices": "Invoices",
+    "settings": "Settings"
   },
   "navGroups": {
     "operations": "Operations",
@@ -26,7 +27,32 @@
   },
   "common": {
     "comingSoon": "Coming soon",
-    "comingSoonDescription": "This module will be built in an upcoming sprint."
+    "comingSoonDescription": "This module will be built in an upcoming sprint.",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "add": "Add"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Configure how money and quantities appear across your workspace.",
+    "regional": {
+      "title": "Currency & units",
+      "description": "Applies to every recipe, ingredient, and report in this organization."
+    },
+    "currency": {
+      "label": "Currency",
+      "help": "One currency per organization. Amounts are not converted between currencies."
+    },
+    "measurement": {
+      "label": "Measurement system",
+      "help": "Controls how weights and volumes are shown. Values are always stored the same way.",
+      "options": {
+        "metric": "Metric (g, kg, ml, l)",
+        "imperial": "Imperial (oz, lb, fl oz, cups)"
+      }
+    },
+    "save": "Save settings"
   },
   "dashboard": {
     "subtitle": "Here's how your kitchen is performing this month.",

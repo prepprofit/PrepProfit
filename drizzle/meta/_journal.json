@@ -15,6 +15,13 @@
       "when": 1781473134773,
       "tag": "0001_broken_nomad",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781513341010,
+      "tag": "0002_nasty_micromacro",
+      "breakpoints": true
     }
   ]
 }

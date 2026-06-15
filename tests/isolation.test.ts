@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
-import { ingredients, recipes, recipeIngredients } from '@/lib/db/schema';
+import {
+  ingredients,
+  organizationSettings,
+  recipes,
+  recipeIngredients,
+} from '@/lib/db/schema';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import {
@@ -11,6 +16,7 @@ import {
   listIngredients,
 } from '@/lib/data/ingredients';
 import { listRecipes } from '@/lib/data/recipes';
+import { getOrgSettingsRow, upsertOrgSettings } from '@/lib/data/org-settings';
 
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
@@ -53,6 +59,16 @@ beforeAll(async () => {
   const recipeA = insertedRecipes.find((r) => r.organizationId === ORG_A);
   if (!recipeA) throw new Error('seed: missing org A recipe');
   recipeAId = recipeA.id;
+
+  // Distinct settings per organization.
+  await upsertOrgSettings(db, ORG_A, {
+    currency: 'EUR',
+    measurementSystem: 'metric',
+  });
+  await upsertOrgSettings(db, ORG_B, {
+    currency: 'USD',
+    measurementSystem: 'imperial',
+  });
 });
 
 afterAll(async () => {
@@ -80,6 +96,15 @@ describe('application layer — scoped by organization_id', () => {
     const recipesB = await listRecipes(db, ORG_B);
     expect(recipesA.map((r) => r.name)).toEqual(['Bread A']);
     expect(recipesB.map((r) => r.name)).toEqual(['Cake B']);
+  });
+
+  it('each org only reads its own settings', async () => {
+    const settingsA = await getOrgSettingsRow(db, ORG_A);
+    const settingsB = await getOrgSettingsRow(db, ORG_B);
+    expect(settingsA?.currency).toBe('EUR');
+    expect(settingsA?.measurementSystem).toBe('metric');
+    expect(settingsB?.currency).toBe('USD');
+    expect(settingsB?.measurementSystem).toBe('imperial');
   });
 });
 
@@ -141,8 +166,20 @@ describe('database layer — Row-Level Security (second defense)', () => {
     expect(orgIds).not.toContain(ORG_A);
   });
 
+  it('with org A in context, settings reads only return org A', async () => {
+    const currencies = await runInOrg(db, ORG_A, async (tx) => {
+      const result = await tx
+        .select({ currency: organizationSettings.currency })
+        .from(organizationSettings);
+      return result.map((r) => r.currency);
+    });
+    expect(currencies).toEqual(['EUR']);
+  });
+
   it('without an organization context, RLS blocks everything (secure by default)', async () => {
     const rows = await db.select().from(ingredients);
     expect(rows).toHaveLength(0);
+    const settings = await db.select().from(organizationSettings);
+    expect(settings).toHaveLength(0);
   });
 });

@@ -14,6 +14,7 @@ import {
   Calculator,
   Users,
   FileText,
+  Settings,
   type LucideIcon,
 } from 'lucide-react';
 import { navGroups, type NavKey } from '@/lib/nav';
@@ -114,7 +115,25 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="border-t border-border p-3">
+      <div className="flex flex-col gap-2 border-t border-border p-3">
+        <Link
+          href="/settings"
+          onClick={onNavigate}
+          aria-current={
+            pathname === '/settings' || pathname.startsWith('/settings/')
+              ? 'page'
+              : undefined
+          }
+          className={cn(
+            'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+            pathname === '/settings' || pathname.startsWith('/settings/')
+              ? 'bg-surface-2 text-accent-700 dark:text-accent-400'
+              : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',
+          )}
+        >
+          <Settings className="size-4 shrink-0" />
+          {t('settings')}
+        </Link>
         <OrganizationSwitcher
           hidePersonal
           afterCreateOrganizationUrl="/dashboard"
