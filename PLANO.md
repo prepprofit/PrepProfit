@@ -63,6 +63,27 @@ Acceptance criterion: create a recipe with 5 ingredients and see correct cost an
 
 ---
 
+## Sprint 1.5 — Trash / soft-delete (foundations)
+Goal: no destructive delete; recipes and ingredients go to a 30-day trash, restorable.
+
+- [x] `deleted_at` column + index on `recipes` and `ingredients`; migration 0006
+- [x] Filter all active reads by `deleted_at IS NULL`; keep recipe-cost joins intact
+- [x] Soft-delete / restore / purge data fns + dependency guards (block in-use
+      ingredient; block restoring a recipe with trashed ingredients)
+- [x] Confirm-before-delete via a native `<dialog>` ConfirmDialog (no Radix)
+- [x] `/trash` page: restore + permanent delete + days-left; sidebar + top-bar wiring
+- [x] Auto-purge after 30 days: CRON_SECRET-protected route, Clerk per-org fan-out,
+      vercel.json daily schedule
+- [x] Tests: soft-delete/restore/purge, in-use block, restore guard, expiry, org isolation
+
+Acceptance criterion: delete a recipe → it leaves the list, appears in /trash with
+~30 days left, restores cleanly; an ingredient used by an active recipe cannot be trashed.
+
+Production note: Vercel does not run migrations — run `npm run db:migrate` against
+prod Neon after merge, and set `CRON_SECRET` in the Vercel project env.
+
+---
+
 ## Sprint 2 — Financials and break-even (modules 2 and 4)
 Goal: answer "how much did I really make this month?".
 

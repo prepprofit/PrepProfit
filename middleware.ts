@@ -5,6 +5,9 @@ const isPublicRoute = createRouteMatcher([
   '/',
   '/sign-in(.*)',
   '/sign-up(.*)',
+  // Cron jobs authenticate with CRON_SECRET (see lib/cron-auth.ts), not a
+  // Clerk session — keep them out of auth.protect().
+  '/api/cron(.*)',
 ]);
 
 const isOrgSelectionRoute = createRouteMatcher(['/select-organization(.*)']);
