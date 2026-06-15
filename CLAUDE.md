@@ -10,7 +10,7 @@ subscription web app. Initial codebase: built fresh from the Wibox base
 - Next.js 15 (App Router) + React 19 + strict TypeScript
 - PostgreSQL on Neon + Drizzle ORM
 - Clerk (auth + Organizations) and Clerk Billing connected to Stripe
-- Tailwind CSS + shadcn/ui + Tremor (dashboards)
+- Tailwind CSS + shadcn/ui (incl. shadcn/ui charts on Recharts, for dashboards)
 - TanStack Table (editable grids), react-pdf (invoices)
 - Resend (emails), next-intl (i18n: English to start; more locales later)
 - Deploy: Vercel

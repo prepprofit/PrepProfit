@@ -42,7 +42,7 @@ Subscription plans (Starter / Pro / Business) unlock modules via Clerk Billing.
 - **Next.js 15** (App Router) · **React 19** · strict **TypeScript**
 - **PostgreSQL** (Neon) + **Drizzle ORM**
 - **Clerk** (auth + Organizations) and **Clerk Billing** over **Stripe**
-- **Tailwind CSS v4** + **shadcn/ui** (+ Tremor for dashboards)
+- **Tailwind CSS v4** + **shadcn/ui** (+ shadcn/ui charts on Recharts for dashboards)
 - **next-intl** (English to start) · **Zod** (server-side validation)
 - **Vitest** + **PGlite** (database tests with no external dependencies)
 - Deployed on **Vercel**

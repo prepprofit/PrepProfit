@@ -194,9 +194,10 @@ components will be migrated to these tokens.)
 ## 8. Dependencies
 - **`next-themes`** — light/dark switching. **Added.**
 - Charts are **deferred to Sprint 2**: the dashboard ships styled placeholders
-  now (see §9). Leading candidate is **Recharts** (design research rates it 9/10
-  for every dashboard style; Tremor was dropped for React 19 peer friction) —
-  finalised when real data lands in Sprint 2.
+  now (see §9). **Decided (2026-06-16): shadcn/ui charts on Recharts** — it is
+  literally shadcn + Recharts, themes off our existing CSS-variable tokens, and
+  fits Tailwind v4 (no `tailwind.config` preset). Tremor was dropped (React 19
+  peer friction + Tailwind-v3 config dependency).
 - Icons: `lucide-react` (already installed).
 
 ## 9. Scope note

@@ -147,7 +147,7 @@ Goal: answer "how much did I really make this month?".
 
 - [ ] `transactions` table (income/expense, category, date, value in cents)
 - [ ] Transaction CRUD with predefined + customizable categories
-- [ ] Monthly dashboard: income, expenses, profit, top products (Tremor)
+- [ ] Monthly dashboard: income, expenses, profit, top products (shadcn/ui charts on Recharts)
 - [ ] Annual dashboard: month-over-month evolution, comparison
 - [ ] `lib/calculations/breakEven.ts`: fixed costs + average margin → units
       needed to break even — with tests
