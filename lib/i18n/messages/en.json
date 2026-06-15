@@ -165,16 +165,19 @@
     "save": "Save settings"
   },
   "dashboard": {
-    "subtitle": "Here's how your kitchen is performing this month.",
+    "subtitle": "An at-a-glance read on your recipes and margins.",
     "sprint2": "Sprint 2",
     "topRecipes": "Top recipes by margin",
+    "noRecipes": "No recipes yet. Create one to see your top margins.",
+    "chartEmpty": "Needs transaction data",
     "kpi": {
       "revenue": "Revenue",
-      "foodCost": "Food cost",
+      "foodCost": "Avg. food cost",
       "margin": "Avg. margin",
       "recipes": "Active recipes",
-      "vsLastMonth": "vs last month",
-      "thisMonth": "this month"
+      "availableSprint2": "Available in Sprint 2",
+      "noPricedRecipes": "No priced recipes yet",
+      "pricedRecipes": "{count, plural, =0 {No priced recipes} one {# priced recipe} other {# priced recipes}}"
     },
     "charts": {
       "sales": { "title": "Sales by day", "subtitle": "Last 7 days" },

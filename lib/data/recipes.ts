@@ -40,6 +40,65 @@ export async function listRecipes(
     .orderBy(recipes.name);
 }
 
+/**
+ * Every recipe in the org, each with its ingredient lines — for aggregate views
+ * (the dashboard) that need to cost the whole catalogue at once. Two org-scoped
+ * queries (recipes, then all their lines) grouped in memory, so there is no N+1.
+ */
+export async function listRecipesWithLines(
+  db: TenantClient,
+  organizationId: string,
+): Promise<RecipeWithIngredients[]> {
+  const recipeRows = await listRecipes(db, organizationId);
+  if (recipeRows.length === 0) return [];
+
+  const lineRows = await db
+    .select({
+      id: recipeIngredients.id,
+      recipeId: recipeIngredients.recipeId,
+      ingredientId: recipeIngredients.ingredientId,
+      quantity: recipeIngredients.quantity,
+      sortOrder: recipeIngredients.sortOrder,
+      name: ingredients.name,
+      dimension: ingredients.dimension,
+      priceCents: ingredients.priceCents,
+    })
+    .from(recipeIngredients)
+    .innerJoin(
+      ingredients,
+      and(
+        eq(recipeIngredients.ingredientId, ingredients.id),
+        eq(ingredients.organizationId, organizationId),
+      ),
+    )
+    .where(eq(recipeIngredients.organizationId, organizationId))
+    .orderBy(recipeIngredients.sortOrder);
+
+  const linesByRecipe = new Map<string, RecipeLineWithIngredient[]>();
+  for (const r of lineRows) {
+    const line: RecipeLineWithIngredient = {
+      id: r.id,
+      ingredientId: r.ingredientId,
+      // numeric columns come back as strings — convert at the data edge.
+      quantity: Number(r.quantity),
+      sortOrder: r.sortOrder,
+      ingredient: {
+        name: r.name,
+        dimension: r.dimension,
+        priceCents: r.priceCents,
+      },
+    };
+    const existing = linesByRecipe.get(r.recipeId);
+    if (existing) existing.push(line);
+    else linesByRecipe.set(r.recipeId, [line]);
+  }
+
+  return recipeRows.map((recipe) => ({
+    recipe,
+    lines: linesByRecipe.get(recipe.id) ?? [],
+  }));
+}
+
 export async function getRecipeById(
   db: TenantClient,
   organizationId: string,
