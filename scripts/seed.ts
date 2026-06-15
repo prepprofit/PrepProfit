@@ -22,20 +22,26 @@ type Seed = {
   recipes: { name: string; yieldPortions: number }[];
 };
 
+// priceCents is per canonical purchase unit: per kg (weight), per litre (volume),
+// or per piece (count). Each org gets all three dimensions for realistic demos.
 const bakery: Seed = {
   ingredients: [
-    { name: 'Wheat flour', unit: 'kg', priceType: 'per_kg', priceCents: 120 },
-    { name: 'Fresh yeast', unit: 'kg', priceType: 'per_kg', priceCents: 1800 },
-    { name: 'Salt', unit: 'kg', priceType: 'per_kg', priceCents: 90 },
+    { name: 'Wheat flour', dimension: 'weight', priceCents: 120 },
+    { name: 'Fresh yeast', dimension: 'weight', priceCents: 1800 },
+    { name: 'Salt', dimension: 'weight', priceCents: 90 },
+    { name: 'Olive oil', dimension: 'volume', priceCents: 800 },
+    { name: 'Eggs', dimension: 'count', priceCents: 30 },
   ],
   recipes: [{ name: 'French bread', yieldPortions: 50 }],
 };
 
 const patisserie: Seed = {
   ingredients: [
-    { name: 'Dark chocolate 70%', unit: 'kg', priceType: 'per_kg', priceCents: 4500 },
-    { name: 'Butter', unit: 'kg', priceType: 'per_kg', priceCents: 3200 },
-    { name: 'Raspberry', unit: 'kg', priceType: 'per_kg', priceCents: 6000 },
+    { name: 'Dark chocolate 70%', dimension: 'weight', priceCents: 4500 },
+    { name: 'Butter', dimension: 'weight', priceCents: 3200 },
+    { name: 'Raspberry', dimension: 'weight', priceCents: 6000 },
+    { name: 'Whole milk', dimension: 'volume', priceCents: 150 },
+    { name: 'Eggs', dimension: 'count', priceCents: 35 },
   ],
   recipes: [{ name: 'Raspberry mousse', yieldPortions: 12 }],
 };

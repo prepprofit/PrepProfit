@@ -22,6 +22,13 @@
       "when": 1781513341010,
       "tag": "0002_nasty_micromacro",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781600100000,
+      "tag": "0003_quantity_dimensions",
+      "breakpoints": true
     }
   ]
 }

@@ -59,11 +59,13 @@ export const ingredients = pgTable(
     id: id(),
     organizationId: orgId(),
     name: text('name').notNull(),
-    unit: text('unit').notNull().default('kg'),
-    priceType: text('price_type', { enum: ['per_kg', 'per_unit'] })
+    // Physical dimension of the ingredient. Determines the canonical unit of both
+    // its recipe quantities (g / ml / count) and its price reference (priceCents).
+    dimension: text('dimension', { enum: ['weight', 'volume', 'count'] })
       .notNull()
-      .default('per_kg'),
-    // price per kg (or per unit), in cents
+      .default('weight'),
+    // Price per canonical purchase unit, in integer cents:
+    //   weight → per kg, volume → per litre, count → per piece.
     priceCents: integer('price_cents').notNull().default(0),
     supplier: text('supplier'),
     createdAt: createdAt(),
@@ -104,7 +106,9 @@ export const recipeIngredients = pgTable(
     organizationId: orgId(),
     recipeId: text('recipe_id').notNull(),
     ingredientId: text('ingredient_id').notNull(),
-    quantityGrams: numeric('quantity_grams', { precision: 10, scale: 2 })
+    // Canonical amount in the linked ingredient's dimension: grams (weight),
+    // millilitres (volume), or a plain count.
+    quantity: numeric('quantity', { precision: 10, scale: 2 })
       .notNull()
       .default(sql`0`),
     sortOrder: integer('sort_order').notNull().default(0),

@@ -35,16 +35,14 @@ beforeAll(async () => {
   // Seed as superuser (bypasses RLS) — distinct data per organization.
   const a = await createIngredient(db, ORG_A, {
     name: 'Flour A',
-    unit: 'kg',
-    priceType: 'per_kg',
+    dimension: 'weight',
     priceCents: 120,
   });
   ingredientAId = a.id;
 
   const b = await createIngredient(db, ORG_B, {
     name: 'Chocolate B',
-    unit: 'kg',
-    priceType: 'per_kg',
+    dimension: 'weight',
     priceCents: 950,
   });
   ingredientBId = b.id;

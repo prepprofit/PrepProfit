@@ -41,7 +41,7 @@ migration later, once money and quantities exist across every table):
 - [x] `lib/units/` pure conversion helpers with Vitest tests: canonical storage in
       grams/ml, convert g/kg↔oz/lb and ml/l↔fl oz/cups at the UI edge, driven by
       the org `measurement_system`
-- [ ] Decide quantity dimensions in the schema: weight (grams) is in place — add
+- [x] Decide quantity dimensions in the schema: weight (grams) is in place — add
       volume (ml) and count so liquids (oil, milk, stock) and per-piece items
       (eggs) work; migration as needed
 
