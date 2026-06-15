@@ -90,7 +90,7 @@ export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
           {t('empty')}
         </p>
       ) : (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map((recipe) => (
             <li
               key={recipe.id}

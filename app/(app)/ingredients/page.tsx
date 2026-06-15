@@ -14,18 +14,12 @@ export default async function IngredientsPage() {
   ]);
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <h1 className="font-display text-2xl font-semibold text-foreground">
-        {t('title')}
-      </h1>
-      <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
-
-      <div className="mt-6">
-        <IngredientGrid
-          initialIngredients={ingredients}
-          currency={settings.currency}
-        />
-      </div>
+    <div className="flex flex-col gap-5">
+      <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+      <IngredientGrid
+        initialIngredients={ingredients}
+        currency={settings.currency}
+      />
     </div>
   );
 }
