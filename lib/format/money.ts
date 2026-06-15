@@ -23,6 +23,11 @@ export function formatMoney(
   }).format(cents / 100);
 }
 
+/** Integer cents → a plain, editable major-unit string. `1234` → `"12.34"`. */
+export function centsToAmountInput(cents: number): string {
+  return (cents / 100).toFixed(2);
+}
+
 /**
  * Parse a user-entered amount in major units into integer cents.
  * Tolerates currency symbols/whitespace and both decimal conventions:

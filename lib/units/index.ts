@@ -72,6 +72,11 @@ export function dimensionOf(unit: Unit): Dimension {
   return UNIT_DIMENSION[unit];
 }
 
+/** Short label for a unit (e.g. `'kg'`, `'fl oz'`). Count has no label. */
+export function unitLabel(unit: Unit): string {
+  return UNIT_LABEL[unit];
+}
+
 /** Value in `unit` → canonical amount (g / ml / count). */
 export function toCanonical(value: number, unit: Unit): number {
   return value * UNIT_TO_CANONICAL[unit];

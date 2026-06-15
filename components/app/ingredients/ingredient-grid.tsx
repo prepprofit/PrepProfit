@@ -11,7 +11,7 @@ import {
 } from '@tanstack/react-table';
 import type { Ingredient } from '@/lib/db/schema';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
-import { parseMoneyToCents } from '@/lib/format/money';
+import { centsToAmountInput, parseMoneyToCents } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -38,15 +38,11 @@ const PER_UNIT_SUFFIX: Record<Dimension, string> = {
   count: '/pc',
 };
 
-function centsToInput(cents: number): string {
-  return (cents / 100).toFixed(2);
-}
-
 function draftFromRow(row: Ingredient): Draft {
   return {
     name: row.name,
     dimension: row.dimension,
-    priceText: centsToInput(row.priceCents),
+    priceText: centsToAmountInput(row.priceCents),
     supplier: row.supplier ?? '',
   };
 }

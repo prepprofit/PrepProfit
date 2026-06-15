@@ -49,11 +49,13 @@ Then the module work:
 
 - [x] Ingredient CRUD (name, unit, price per unit/kg, optional supplier)
 - [x] Editable ingredient grid with TanStack Table (inline editing)
-- [ ] Recipe CRUD: ingredients + quantities, yield (portions), % loss
+- [x] Recipe CRUD: ingredients + quantities, yield (portions), % loss
 - [x] `lib/calculations/recipeCost.ts`: total cost, cost per portion,
       hidden costs (labor, energy, packaging) — with Vitest tests
-- [ ] Suggested selling price + margin with a traffic light (green/yellow/red)
-- [ ] Cascade update: ingredient price changed → recalculate recipes
+- [x] Suggested selling price + margin with a traffic light (green/yellow/red)
+- [x] Cascade update: ingredient price changed → recalculate recipes
+      (costs derived live from current ingredient prices; recipe pages are dynamic
+      and ingredient mutations revalidate /recipes — no stored cost to update)
 - [ ] Inventory: stock in/out per ingredient
 - [ ] Low-stock visual alert (configurable threshold per ingredient)
 

@@ -60,6 +60,67 @@
       "nameRequired": "Give the ingredient a name."
     }
   },
+  "recipes": {
+    "title": "Recipes",
+    "subtitle": "Build a recipe, see what it really costs, and price it with confidence.",
+    "empty": "No recipes yet. Create your first one above.",
+    "newName": "New recipe name",
+    "portions": "{count} portions",
+    "saved": "Saved",
+    "actions": {
+      "create": "Create recipe",
+      "save": "Save",
+      "delete": "Delete recipe",
+      "back": "Back to recipes"
+    },
+    "placeholders": {
+      "name": "e.g. Sourdough loaf",
+      "notes": "Method, allergens, plating…"
+    },
+    "fields": {
+      "name": "Recipe name",
+      "yieldPortions": "Portions (yield)",
+      "yieldPercentage": "Usable yield (%)",
+      "labor": "Labor cost",
+      "energy": "Energy cost",
+      "packaging": "Packaging cost",
+      "notes": "Notes"
+    },
+    "ingredients": {
+      "title": "Ingredients",
+      "name": "Ingredient",
+      "quantity": "Quantity",
+      "unit": "Unit",
+      "cost": "Cost",
+      "remove": "Remove ingredient",
+      "add": "Add",
+      "select": "Select an ingredient…",
+      "allAdded": "All ingredients added",
+      "empty": "No ingredients yet. Add one below."
+    },
+    "parameters": {
+      "title": "Parameters"
+    },
+    "cost": {
+      "title": "Cost",
+      "ingredients": "Ingredients",
+      "hidden": "Labor, energy, packaging",
+      "total": "Total batch cost",
+      "perPortion": "Cost per portion"
+    },
+    "pricing": {
+      "title": "Pricing",
+      "sellingPrice": "Selling price per portion",
+      "margin": "Margin",
+      "noPrice": "Set a price",
+      "suggested": "Suggested ({margin}% margin)",
+      "apply": "Apply"
+    },
+    "errors": {
+      "nameRequired": "Give the recipe a name.",
+      "pickIngredient": "Choose an ingredient first."
+    }
+  },
   "settings": {
     "title": "Settings",
     "subtitle": "Configure how money and quantities appear across your workspace.",
