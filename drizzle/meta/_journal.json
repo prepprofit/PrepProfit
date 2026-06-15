@@ -43,6 +43,13 @@
       "when": 1781515315358,
       "tag": "0005_brief_lady_ursula",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781541190870,
+      "tag": "0006_nebulous_silver_centurion",
+      "breakpoints": true
     }
   ]
 }

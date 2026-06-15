@@ -31,6 +31,11 @@ const updatedAt = () =>
     // ORM-level: stamps `now()` on every Drizzle .update() (the DB default only
     // covers inserts).
     .$onUpdate(() => new Date());
+// Soft-delete marker: NULL = active, a timestamp = in the trash since then. The
+// 30-day auto-purge and the "days left" UI both read it (see lib/trash.ts). Every
+// future deletable table should adopt this column + filter reads by `IS NULL`.
+const deletedAt = () =>
+  timestamp('deleted_at', { withTimezone: true });
 
 /**
  * Per-organization settings: exactly one row per org (the Clerk org id is the
@@ -77,10 +82,14 @@ export const ingredients = pgTable(
     lowStockThreshold: numeric('low_stock_threshold', { precision: 12, scale: 2 }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL`.
+    deletedAt: deletedAt(),
   },
   (t) => [
     index('ingredients_org_idx').on(t.organizationId),
     index('ingredients_org_name_idx').on(t.organizationId, t.name),
+    // Serves the /trash listing and keeps active-row filtering index-friendly.
+    index('ingredients_org_deleted_idx').on(t.organizationId, t.deletedAt),
     // FK target for the composite (organization_id, ingredient_id) reference.
     unique('ingredients_org_id_key').on(t.organizationId, t.id),
   ],
@@ -104,10 +113,14 @@ export const recipes = pgTable(
     notes: text('notes'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL`.
+    deletedAt: deletedAt(),
   },
   (t) => [
     index('recipes_org_idx').on(t.organizationId),
     index('recipes_org_name_idx').on(t.organizationId, t.name),
+    // Serves the /trash listing and keeps active-row filtering index-friendly.
+    index('recipes_org_deleted_idx').on(t.organizationId, t.deletedAt),
     // FK target for the composite (organization_id, recipe_id) reference.
     unique('recipes_org_id_key').on(t.organizationId, t.id),
   ],
