@@ -33,6 +33,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Card,
   CardContent,
@@ -81,6 +82,7 @@ export function RecipeEditor({
 }) {
   const t = useTranslations('recipes');
   const tDim = useTranslations('dimensions');
+  const tCommon = useTranslations('common');
   const router = useRouter();
 
   const makeLine = React.useCallback(
@@ -116,6 +118,7 @@ export function RecipeEditor({
   const [newUnit, setNewUnit] = React.useState<Unit>('g');
   const [error, setError] = React.useState<string | null>(null);
   const [saved, setSaved] = React.useState(false);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
   const setField = (patch: Partial<typeof form>) => {
@@ -180,7 +183,7 @@ export function RecipeEditor({
     });
   };
 
-  const onDelete = () => {
+  const confirmDelete = () => {
     setError(null);
     startTransition(async () => {
       const result = await deleteRecipeAction(recipe.id);
@@ -188,6 +191,7 @@ export function RecipeEditor({
         router.push('/recipes');
       } else {
         setError(result.error);
+        setConfirmOpen(false);
       }
     });
   };
@@ -318,7 +322,7 @@ export function RecipeEditor({
           <Button
             type="button"
             variant="outline"
-            onClick={onDelete}
+            onClick={() => setConfirmOpen(true)}
             disabled={pending}
             aria-label={t('actions.delete')}
           >
@@ -637,6 +641,17 @@ export function RecipeEditor({
           />
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title={t('deleteConfirm.title')}
+        description={t('deleteConfirm.body', { name: recipe.name })}
+        confirmLabel={tCommon('moveToTrash')}
+        cancelLabel={tCommon('cancel')}
+        pending={pending}
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }

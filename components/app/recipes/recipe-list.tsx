@@ -8,6 +8,7 @@ import { ChevronRight, Plus, Trash2 } from 'lucide-react';
 import type { Recipe } from '@/lib/db/schema';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   createRecipeAction,
   deleteRecipeAction,
@@ -15,11 +16,15 @@ import {
 
 export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
   const t = useTranslations('recipes');
+  const tCommon = useTranslations('common');
   const router = useRouter();
   const [rows, setRows] = React.useState<Recipe[]>(initialRecipes);
   const [name, setName] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
+  const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
+
+  const confirmTarget = rows.find((r) => r.id === confirmId) ?? null;
 
   const onCreate = () => {
     const trimmed = name.trim();
@@ -45,7 +50,9 @@ export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
     });
   };
 
-  const onDelete = (id: string) => {
+  const confirmDelete = () => {
+    const id = confirmId;
+    if (!id) return;
     setError(null);
     startTransition(async () => {
       const result = await deleteRecipeAction(id);
@@ -54,6 +61,7 @@ export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
       } else {
         setError(result.error);
       }
+      setConfirmId(null);
     });
   };
 
@@ -116,7 +124,7 @@ export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
                 size="sm"
                 aria-label={t('actions.delete')}
                 disabled={pending}
-                onClick={() => onDelete(recipe.id)}
+                onClick={() => setConfirmId(recipe.id)}
               >
                 <Trash2 className="size-4" />
               </Button>
@@ -124,6 +132,17 @@ export function RecipeList({ initialRecipes }: { initialRecipes: Recipe[] }) {
           ))}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        title={t('deleteConfirm.title')}
+        description={t('deleteConfirm.body', { name: confirmTarget?.name ?? '' })}
+        confirmLabel={tCommon('moveToTrash')}
+        cancelLabel={tCommon('cancel')}
+        pending={pending}
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmId(null)}
+      />
     </div>
   );
 }

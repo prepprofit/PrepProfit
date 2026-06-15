@@ -15,6 +15,7 @@ import { centsToAmountInput, parseMoneyToCents } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import {
   createIngredientAction,
@@ -80,13 +81,17 @@ export function IngredientGrid({
 }) {
   const t = useTranslations('ingredients');
   const tDim = useTranslations('dimensions');
+  const tCommon = useTranslations('common');
   const [rows, setRows] = React.useState<Ingredient[]>(initialIngredients);
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>(() =>
     Object.fromEntries(initialIngredients.map((r) => [r.id, draftFromRow(r)])),
   );
   const [newDraft, setNewDraft] = React.useState<Draft>(emptyDraft);
   const [error, setError] = React.useState<string | null>(null);
+  const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
+
+  const confirmTarget = rows.find((r) => r.id === confirmId) ?? null;
 
   const dimensionLabel = React.useCallback(
     (d: Dimension) => tDim(d),
@@ -136,7 +141,11 @@ export function IngredientGrid({
     [drafts, rows],
   );
 
-  const onDelete = React.useCallback((id: string) => {
+  const requestDelete = React.useCallback((id: string) => setConfirmId(id), []);
+
+  const confirmDelete = React.useCallback(() => {
+    const id = confirmId;
+    if (!id) return;
     setError(null);
     startTransition(async () => {
       const result = await deleteIngredientAction(id);
@@ -150,8 +159,9 @@ export function IngredientGrid({
       } else {
         setError(result.error);
       }
+      setConfirmId(null);
     });
-  }, []);
+  }, [confirmId]);
 
   const onCreate = React.useCallback(() => {
     const input = draftToInput(newDraft);
@@ -301,7 +311,7 @@ export function IngredientGrid({
       pending,
       onField,
       onCommit,
-      onDelete,
+      onDelete: requestDelete,
       dimensionLabel,
       deleteLabel: t('actions.delete'),
     } satisfies GridMeta,
@@ -423,6 +433,17 @@ export function IngredientGrid({
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        title={t('deleteConfirm.title')}
+        description={t('deleteConfirm.body', { name: confirmTarget?.name ?? '' })}
+        confirmLabel={tCommon('moveToTrash')}
+        cancelLabel={tCommon('cancel')}
+        pending={pending}
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmId(null)}
+      />
     </div>
   );
 }

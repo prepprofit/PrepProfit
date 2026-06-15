@@ -31,7 +31,8 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
-    "add": "Add"
+    "add": "Add",
+    "moveToTrash": "Move to Trash"
   },
   "dimensions": {
     "weight": "Weight",
@@ -58,6 +59,10 @@
     },
     "errors": {
       "nameRequired": "Give the ingredient a name."
+    },
+    "deleteConfirm": {
+      "title": "Move ingredient to Trash?",
+      "body": "{name} will move to the Trash. You can restore it within 30 days."
     }
   },
   "recipes": {
@@ -119,6 +124,10 @@
     "errors": {
       "nameRequired": "Give the recipe a name.",
       "pickIngredient": "Choose an ingredient first."
+    },
+    "deleteConfirm": {
+      "title": "Move recipe to Trash?",
+      "body": "{name} will move to the Trash. You can restore it within 30 days."
     }
   },
   "inventory": {

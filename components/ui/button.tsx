@@ -14,6 +14,8 @@ const buttonVariants = cva(
         outline:
           'border border-border bg-surface text-foreground hover:bg-surface-2',
         ghost: 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',
+        // red-700 keeps white-on-red at WCAG AA (red-600 fails), same rule as accent.
+        destructive: 'bg-red-700 text-white shadow-sm hover:bg-red-800',
       },
       size: {
         default: 'h-10 px-5 py-2',
