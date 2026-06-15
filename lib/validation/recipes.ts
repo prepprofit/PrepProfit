@@ -6,6 +6,8 @@ const cents = z.number().int().min(0).max(100_000_000);
 
 export const recipeSchema = z.object({
   name: z.string().trim().min(1).max(160),
+  // Folder this recipe is filed under; null/omitted = "No folder".
+  folderId: z.string().min(1).nullable().optional(),
   yieldPortions: z.number().int().min(1).max(1_000_000),
   // Usable yield after loss, as a percentage.
   yieldPercentage: z.number().int().min(1).max(100),

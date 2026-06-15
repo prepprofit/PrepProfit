@@ -33,17 +33,66 @@ export type RecipeWithIngredients = {
   lines: RecipeLineWithIngredient[];
 };
 
+/**
+ * Which folder view to list. `all` = every active recipe; `uncategorized` = those
+ * with no folder ("No folder"); `folder` = a single folder. The folder filter is
+ * additive — `deleted_at IS NULL` always applies, so trashed recipes never show.
+ */
+export type RecipeFilter =
+  | { kind: 'all' }
+  | { kind: 'uncategorized' }
+  | { kind: 'folder'; folderId: string };
+
 export async function listRecipes(
   db: TenantClient,
   organizationId: string,
+  filter: RecipeFilter = { kind: 'all' },
 ): Promise<Recipe[]> {
+  const folderCondition =
+    filter.kind === 'uncategorized'
+      ? isNull(recipes.folderId)
+      : filter.kind === 'folder'
+        ? eq(recipes.folderId, filter.folderId)
+        : undefined;
+
   return db
     .select()
     .from(recipes)
     .where(
-      and(eq(recipes.organizationId, organizationId), isNull(recipes.deletedAt)),
+      and(
+        eq(recipes.organizationId, organizationId),
+        isNull(recipes.deletedAt),
+        // `and` ignores undefined, so `all` adds no folder constraint.
+        folderCondition,
+      ),
     )
     .orderBy(recipes.name);
+}
+
+/**
+ * Files an ACTIVE recipe into a folder, or to "No folder" (`folderId = null`).
+ * The composite (organization_id, folder_id) FK guarantees the folder is in this
+ * org — a non-existent or cross-tenant folder raises a foreign-key violation the
+ * action surfaces. Trashed recipes must be restored before they can be moved.
+ */
+export async function moveRecipeToFolder(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+  folderId: string | null,
+): Promise<Recipe | null> {
+  const [row] = await db
+    .update(recipes)
+    .set({ folderId })
+    .where(
+      and(
+        eq(recipes.organizationId, organizationId),
+        eq(recipes.id, id),
+        isNull(recipes.deletedAt),
+      ),
+    )
+    .returning();
+  return row ?? null;
 }
 
 /**
