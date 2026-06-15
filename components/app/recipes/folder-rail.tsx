@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { FOLDER_ICONS } from '@/lib/validation/recipe-folders';
+import { useActionError } from '@/lib/i18n/use-action-error';
 import {
   createFolderAction,
   deleteFolderAction,
@@ -53,6 +54,7 @@ export function FolderRail({
 }) {
   const t = useTranslations('recipes.folders');
   const tCommon = useTranslations('common');
+  const actionError = useActionError();
   const router = useRouter();
 
   const [error, setError] = React.useState<string | null>(null);
@@ -84,7 +86,7 @@ export function FolderRail({
         router.push(`/recipes?folder=${result.data.id}`);
         router.refresh();
       } else {
-        setError(result.error);
+        setError(actionError(result.code));
       }
     });
   };
@@ -104,7 +106,7 @@ export function FolderRail({
         setRenamingId(null);
         router.refresh();
       } else {
-        setError(result.error);
+        setError(actionError(result.code));
       }
     });
   };
@@ -114,7 +116,7 @@ export function FolderRail({
     startTransition(async () => {
       const result = await reorderFolderAction(id, { direction });
       if (result.ok) router.refresh();
-      else setError(result.error);
+      else setError(actionError(result.code));
     });
   };
 
@@ -129,7 +131,7 @@ export function FolderRail({
         if (activeKey === id) router.push('/recipes');
         router.refresh();
       } else {
-        setError(result.error);
+        setError(actionError(result.code));
       }
       setDeleteTarget(null);
     });

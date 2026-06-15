@@ -15,6 +15,7 @@ import {
   deleteRecipeAction,
 } from '@/app/(app)/recipes/actions';
 import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
+import { useActionError } from '@/lib/i18n/use-action-error';
 
 export type FolderOption = { id: string; name: string };
 
@@ -41,6 +42,7 @@ export function RecipeList({
   const t = useTranslations('recipes');
   const tFolders = useTranslations('recipes.folders');
   const tCommon = useTranslations('common');
+  const actionError = useActionError();
   const router = useRouter();
   const [name, setName] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
@@ -70,7 +72,7 @@ export function RecipeList({
       if (result.ok) {
         router.push(`/recipes/${result.data.id}`);
       } else {
-        setError(result.error);
+        setError(actionError(result.code));
       }
     });
   };
@@ -82,7 +84,7 @@ export function RecipeList({
     startTransition(async () => {
       const result = await deleteRecipeAction(id);
       if (result.ok) router.refresh();
-      else setError(result.error);
+      else setError(actionError(result.code));
       setConfirmId(null);
     });
   };
@@ -94,7 +96,7 @@ export function RecipeList({
         folderId: value === '' ? null : value,
       });
       if (result.ok) router.refresh();
-      else setError(result.error);
+      else setError(actionError(result.code));
     });
   };
 

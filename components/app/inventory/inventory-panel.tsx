@@ -22,6 +22,7 @@ import {
   recordMovementAction,
   setLowStockThresholdAction,
 } from '@/app/(app)/inventory/actions';
+import { useActionError } from '@/lib/i18n/use-action-error';
 
 function unitOptionLabel(unit: Unit): string {
   return unitLabel(unit) === '' ? 'pcs' : unitLabel(unit);
@@ -103,6 +104,7 @@ function InventoryRow({
 }) {
   const t = useTranslations('inventory');
   const tDim = useTranslations('dimensions');
+  const actionError = useActionError();
 
   const du = defaultUnit(ingredient.dimension, measurementSystem);
   const units = displayUnitsFor(ingredient.dimension, measurementSystem);
@@ -142,7 +144,7 @@ function InventoryRow({
         setAdjustValue('');
         setNote('');
       } else {
-        onError(result.error);
+        onError(actionError(result.code));
       }
     });
   };
@@ -159,7 +161,7 @@ function InventoryRow({
       if (result.ok) {
         setThreshold(result.data.lowStockThreshold);
       } else {
-        onError(result.error);
+        onError(actionError(result.code));
       }
     });
   };

@@ -13,6 +13,7 @@ import {
   restoreIngredientAction,
   restoreRecipeAction,
 } from '@/app/(app)/trash/actions';
+import { useActionError } from '@/lib/i18n/use-action-error';
 
 export type TrashItem = { id: string; name: string; daysLeft: number };
 type Kind = 'recipe' | 'ingredient';
@@ -29,6 +30,7 @@ export function TrashView({
 }) {
   const t = useTranslations('trash');
   const tCommon = useTranslations('common');
+  const actionError = useActionError();
   const router = useRouter();
   const [error, setError] = React.useState<string | null>(null);
   const [purgeTarget, setPurgeTarget] = React.useState<{
@@ -47,7 +49,7 @@ export function TrashView({
           ? await restoreRecipeAction(id)
           : await restoreIngredientAction(id);
       if (result.ok) router.refresh();
-      else setError(result.error);
+      else setError(actionError(result.code));
     });
   };
 
@@ -61,7 +63,7 @@ export function TrashView({
           ? await purgeRecipeAction(item.id)
           : await purgeIngredientAction(item.id);
       if (result.ok) router.refresh();
-      else setError(result.error);
+      else setError(actionError(result.code));
       setPurgeTarget(null);
     });
   };

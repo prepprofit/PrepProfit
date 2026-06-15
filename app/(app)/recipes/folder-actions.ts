@@ -17,6 +17,7 @@ import {
   folderReorderSchema,
   moveRecipeSchema,
 } from '@/lib/validation/recipe-folders';
+import { unexpected } from '@/lib/observability';
 import type { ActionResult } from '@/lib/action-result';
 
 /**
@@ -25,13 +26,11 @@ import type { ActionResult } from '@/lib/action-result';
  * mutations only revalidate /recipes (the rail + grid live there).
  */
 
-const DUPLICATE_NAME = 'A folder with that name already exists.';
-
 export async function createFolderAction(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
   const parsed = folderCreateSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid folder name.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   try {
@@ -41,8 +40,8 @@ export async function createFolderAction(
     revalidatePath('/recipes');
     return { ok: true, data: { id: row.id } };
   } catch (err) {
-    if (isUniqueViolation(err)) return { ok: false, error: DUPLICATE_NAME };
-    throw err;
+    if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
+    return unexpected('createFolderAction', err, organizationId);
   }
 }
 
@@ -51,19 +50,19 @@ export async function renameFolderAction(
   input: unknown,
 ): Promise<ActionResult> {
   const parsed = folderUpdateSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid folder name.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   try {
     const row = await withOrg(organizationId, (tx) =>
       updateFolder(tx, organizationId, id, parsed.data.name, parsed.data.icon ?? null),
     );
-    if (!row) return { ok: false, error: 'Folder not found.' };
+    if (!row) return { ok: false, code: 'NOT_FOUND' };
     revalidatePath('/recipes');
     return { ok: true, data: undefined };
   } catch (err) {
-    if (isUniqueViolation(err)) return { ok: false, error: DUPLICATE_NAME };
-    throw err;
+    if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
+    return unexpected('renameFolderAction', err, organizationId);
   }
 }
 
@@ -72,13 +71,13 @@ export async function reorderFolderAction(
   input: unknown,
 ): Promise<ActionResult> {
   const parsed = folderReorderSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid reorder.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   const moved = await withOrg(organizationId, (tx) =>
     reorderFolder(tx, organizationId, id, parsed.data.direction),
   );
-  if (!moved) return { ok: false, error: 'Folder not found.' };
+  if (!moved) return { ok: false, code: 'NOT_FOUND' };
   revalidatePath('/recipes');
   return { ok: true, data: undefined };
 }
@@ -89,7 +88,7 @@ export async function deleteFolderAction(id: string): Promise<ActionResult> {
   const deleted = await withOrg(organizationId, (tx) =>
     deleteFolder(tx, organizationId, id),
   );
-  if (!deleted) return { ok: false, error: 'Folder not found.' };
+  if (!deleted) return { ok: false, code: 'NOT_FOUND' };
   revalidatePath('/recipes');
   return { ok: true, data: undefined };
 }
@@ -100,20 +99,20 @@ export async function moveRecipeToFolderAction(
   input: unknown,
 ): Promise<ActionResult> {
   const parsed = moveRecipeSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid move.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   try {
     const row = await withOrg(organizationId, (tx) =>
       moveRecipeToFolder(tx, organizationId, recipeId, parsed.data.folderId),
     );
-    if (!row) return { ok: false, error: 'Recipe not found.' };
+    if (!row) return { ok: false, code: 'NOT_FOUND' };
   } catch (err) {
     // The composite FK rejects a non-existent or cross-tenant folder.
     if (isForeignKeyViolation(err)) {
-      return { ok: false, error: 'Folder not found.' };
+      return { ok: false, code: 'NOT_FOUND' };
     }
-    throw err;
+    return unexpected('moveRecipeToFolderAction', err, organizationId);
   }
   revalidatePath('/recipes');
   revalidatePath(`/recipes/${recipeId}`);

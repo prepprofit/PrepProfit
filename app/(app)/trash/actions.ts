@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getOrgId } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { isForeignKeyViolation } from '@/lib/db/errors';
+import { unexpected } from '@/lib/observability';
 import { purgeIngredient, restoreIngredient } from '@/lib/data/ingredients';
 import {
   countTrashedIngredientsInRecipe,
@@ -40,14 +41,10 @@ export async function restoreRecipeAction(id: string): Promise<ActionResult> {
   });
 
   if (outcome.status === 'blocked') {
-    return {
-      ok: false,
-      error:
-        "This recipe uses ingredients that are also in the trash. Restore those ingredients first.",
-    };
+    return { ok: false, code: 'RECIPE_HAS_TRASHED_INGREDIENTS' };
   }
   if (outcome.status === 'not_found') {
-    return { ok: false, error: 'Item not found in the trash.' };
+    return { ok: false, code: 'NOT_FOUND' };
   }
   revalidateTrash();
   return { ok: true, data: undefined };
@@ -60,7 +57,7 @@ export async function restoreIngredientAction(
   const row = await withOrg(organizationId, (tx) =>
     restoreIngredient(tx, organizationId, id),
   );
-  if (!row) return { ok: false, error: 'Item not found in the trash.' };
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateTrash();
   return { ok: true, data: undefined };
 }
@@ -81,13 +78,9 @@ export async function purgeIngredientAction(id: string): Promise<ActionResult> {
   } catch (err) {
     // restrict FK: still referenced by a trashed recipe's line.
     if (isForeignKeyViolation(err)) {
-      return {
-        ok: false,
-        error:
-          'This ingredient is still part of a trashed recipe. Delete that recipe permanently first.',
-      };
+      return { ok: false, code: 'INGREDIENT_IN_TRASHED_RECIPE' };
     }
-    throw err;
+    return unexpected('purgeIngredientAction', err, organizationId);
   }
   revalidateTrash();
   return { ok: true, data: undefined };

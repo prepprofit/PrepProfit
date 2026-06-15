@@ -48,6 +48,7 @@ import {
   updateRecipeIngredientAction,
 } from '@/app/(app)/recipes/actions';
 import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
+import { useActionError } from '@/lib/i18n/use-action-error';
 
 /** Target gross margin used for the suggested price. */
 const TARGET_MARGIN = 70;
@@ -87,6 +88,7 @@ export function RecipeEditor({
   const tDim = useTranslations('dimensions');
   const tFolders = useTranslations('recipes.folders');
   const tCommon = useTranslations('common');
+  const actionError = useActionError();
   const router = useRouter();
 
   const makeLine = React.useCallback(
@@ -154,7 +156,7 @@ export function RecipeEditor({
       });
       if (!result.ok) {
         setFolderId(previous);
-        setError(result.error);
+        setError(actionError(result.code));
       }
     });
   };
@@ -216,7 +218,7 @@ export function RecipeEditor({
       if (result.ok) {
         setSaved(true);
       } else {
-        setError(result.error);
+        setError(actionError(result.code));
       }
     });
   };
@@ -228,7 +230,7 @@ export function RecipeEditor({
       if (result.ok) {
         router.push('/recipes');
       } else {
-        setError(result.error);
+        setError(actionError(result.code));
         setConfirmOpen(false);
       }
     });
@@ -268,7 +270,7 @@ export function RecipeEditor({
         quantity: line.quantity,
       });
       if (result.ok) flashSavedLine(lineId);
-      else setError(result.error);
+      else setError(actionError(result.code));
     });
   };
 
@@ -279,7 +281,7 @@ export function RecipeEditor({
       if (result.ok) {
         setLines((prev) => prev.filter((l) => l.id !== lineId));
       } else {
-        setError(result.error);
+        setError(actionError(result.code));
       }
     });
   };
@@ -325,7 +327,7 @@ export function RecipeEditor({
         setNewIngredientId('');
         setNewValueText('');
       } else {
-        setError(result.error);
+        setError(actionError(result.code));
       }
     });
   };

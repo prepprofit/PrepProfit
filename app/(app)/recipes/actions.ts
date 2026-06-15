@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getOrgId } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { isUniqueViolation } from '@/lib/db/errors';
+import { unexpected } from '@/lib/observability';
 import {
   createRecipe,
   softDeleteRecipe,
@@ -36,7 +37,7 @@ export async function createRecipeAction(
   input: unknown,
 ): Promise<ActionResult<Recipe>> {
   const parsed = recipeSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid recipe data.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
@@ -51,13 +52,13 @@ export async function updateRecipeAction(
   input: unknown,
 ): Promise<ActionResult<Recipe>> {
   const parsed = recipeSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid recipe data.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
     updateRecipe(tx, organizationId, id, parsed.data),
   );
-  if (!row) return { ok: false, error: 'Recipe not found.' };
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateRecipe(id);
   return { ok: true, data: row };
 }
@@ -68,7 +69,7 @@ export async function deleteRecipeAction(id: string): Promise<ActionResult> {
   const row = await withOrg(organizationId, (tx) =>
     softDeleteRecipe(tx, organizationId, id),
   );
-  if (!row) return { ok: false, error: 'Recipe not found.' };
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateRecipe();
   revalidatePath('/dashboard');
   revalidatePath('/trash');
@@ -80,7 +81,7 @@ export async function addRecipeIngredientAction(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
   const parsed = recipeLineSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid recipe line.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   try {
@@ -91,9 +92,9 @@ export async function addRecipeIngredientAction(
     return { ok: true, data: { id: row.id } };
   } catch (err) {
     if (isUniqueViolation(err)) {
-      return { ok: false, error: 'That ingredient is already in this recipe.' };
+      return { ok: false, code: 'ALREADY_IN_RECIPE' };
     }
-    throw err;
+    return unexpected('addRecipeIngredientAction', err, organizationId);
   }
 }
 
@@ -103,13 +104,13 @@ export async function updateRecipeIngredientAction(
   input: unknown,
 ): Promise<ActionResult> {
   const parsed = recipeLineUpdateSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid recipe line.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
     updateRecipeIngredient(tx, organizationId, lineId, parsed.data),
   );
-  if (!row) return { ok: false, error: 'Recipe line not found.' };
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateRecipe(recipeId);
   return { ok: true, data: undefined };
 }

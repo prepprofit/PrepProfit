@@ -29,7 +29,7 @@ export async function createIngredientAction(
   input: unknown,
 ): Promise<ActionResult<Ingredient>> {
   const parsed = ingredientSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid ingredient data.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
@@ -44,13 +44,13 @@ export async function updateIngredientAction(
   input: unknown,
 ): Promise<ActionResult<Ingredient>> {
   const parsed = ingredientSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid ingredient data.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
     updateIngredient(tx, organizationId, id, parsed.data),
   );
-  if (!row) return { ok: false, error: 'Ingredient not found.' };
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateIngredientConsumers();
   return { ok: true, data: row };
 }
@@ -72,14 +72,10 @@ export async function deleteIngredientAction(
   });
 
   if (outcome.status === 'in_use') {
-    return {
-      ok: false,
-      error:
-        "This ingredient is used by an active recipe, so it can't be moved to the trash. Remove it from those recipes first.",
-    };
+    return { ok: false, code: 'INGREDIENT_IN_USE' };
   }
   if (outcome.status === 'not_found') {
-    return { ok: false, error: 'Ingredient not found.' };
+    return { ok: false, code: 'NOT_FOUND' };
   }
   revalidateIngredientConsumers();
   revalidatePath('/trash');

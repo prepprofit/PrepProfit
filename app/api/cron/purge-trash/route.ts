@@ -4,6 +4,7 @@ import { withOrg } from '@/lib/db';
 import { purgeExpired } from '@/lib/data/trash';
 import { isCronAuthorized } from '@/lib/cron-auth';
 import { purgeCutoff } from '@/lib/trash';
+import { serverEnv } from '@/lib/env';
 
 // Needs Node (neon-serverless Pool/WebSocket + node:crypto), never the Edge
 // runtime; force-dynamic so it is never statically cached.
@@ -22,7 +23,12 @@ const PAGE_SIZE = 100;
  * carve-out is needed for a cross-org job.
  */
 export async function GET(req: Request): Promise<NextResponse> {
-  if (!isCronAuthorized(req.headers.get('authorization'), process.env.CRON_SECRET)) {
+  if (
+    !isCronAuthorized(
+      req.headers.get('authorization'),
+      serverEnv().CRON_SECRET,
+    )
+  ) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

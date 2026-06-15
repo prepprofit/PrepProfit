@@ -17,6 +17,7 @@ import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
+import { useActionError } from '@/lib/i18n/use-action-error';
 import {
   createIngredientAction,
   deleteIngredientAction,
@@ -89,6 +90,7 @@ export function IngredientGrid({
   const t = useTranslations('ingredients');
   const tDim = useTranslations('dimensions');
   const tCommon = useTranslations('common');
+  const actionError = useActionError();
   const [rows, setRows] = React.useState<Ingredient[]>(initialIngredients);
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>(() =>
     Object.fromEntries(initialIngredients.map((r) => [r.id, draftFromRow(r)])),
@@ -158,11 +160,11 @@ export function IngredientGrid({
           flashSaved(id);
         } else {
           setDrafts((prev) => ({ ...prev, [id]: draftFromRow(row) }));
-          setError(result.error);
+          setError(actionError(result.code));
         }
       });
     },
-    [drafts, rows, flashSaved],
+    [drafts, rows, flashSaved, actionError],
   );
 
   const requestDelete = React.useCallback((id: string) => setConfirmId(id), []);
@@ -181,11 +183,11 @@ export function IngredientGrid({
           return next;
         });
       } else {
-        setError(result.error);
+        setError(actionError(result.code));
       }
       setConfirmId(null);
     });
-  }, [confirmId]);
+  }, [confirmId, actionError]);
 
   const onCreate = React.useCallback(() => {
     const input = draftToInput(newDraft);
@@ -201,10 +203,10 @@ export function IngredientGrid({
         setDrafts((prev) => ({ ...prev, [result.data.id]: draftFromRow(result.data) }));
         setNewDraft(emptyDraft());
       } else {
-        setError(result.error);
+        setError(actionError(result.code));
       }
     });
-  }, [newDraft, t]);
+  }, [newDraft, t, actionError]);
 
   const columns = React.useMemo<ColumnDef<Ingredient>[]>(
     () => [

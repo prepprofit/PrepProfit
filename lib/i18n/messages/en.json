@@ -3,6 +3,29 @@
     "name": "PrepProfit",
     "tagline": "Financial management for chefs and food businesses"
   },
+  "actionErrors": {
+    "INVALID_INPUT": "Please check the values and try again.",
+    "NOT_FOUND": "That item could not be found. It may have been removed.",
+    "DUPLICATE_NAME": "A folder with that name already exists.",
+    "ALREADY_IN_RECIPE": "That ingredient is already in this recipe.",
+    "INGREDIENT_IN_USE": "This ingredient is used by an active recipe, so it can't be moved to the trash. Remove it from those recipes first.",
+    "RECIPE_HAS_TRASHED_INGREDIENTS": "This recipe uses ingredients that are also in the trash. Restore those ingredients first.",
+    "INGREDIENT_IN_TRASHED_RECIPE": "This ingredient is still part of a trashed recipe. Delete that recipe permanently first.",
+    "UNEXPECTED": "Something went wrong on our end. Please try again."
+  },
+  "errors": {
+    "boundary": {
+      "title": "Something went wrong",
+      "body": "An unexpected error occurred. You can try again, or head back to your dashboard.",
+      "retry": "Try again",
+      "back": "Back to dashboard"
+    },
+    "notFound": {
+      "title": "Page not found",
+      "body": "The page you’re looking for doesn’t exist or has moved.",
+      "home": "Go home"
+    }
+  },
   "nav": {
     "dashboard": "Dashboard",
     "recipes": "Recipes",

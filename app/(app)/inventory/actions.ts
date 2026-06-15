@@ -16,13 +16,13 @@ export async function recordMovementAction(
   input: unknown,
 ): Promise<ActionResult<{ stockQuantity: number }>> {
   const parsed = movementSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid stock movement.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
     recordMovement(tx, organizationId, parsed.data),
   );
-  if (!row) return { ok: false, error: 'Ingredient not found.' };
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidatePath('/inventory');
   return { ok: true, data: { stockQuantity: Number(row.stockQuantity) } };
 }
@@ -32,7 +32,7 @@ export async function setLowStockThresholdAction(
   input: unknown,
 ): Promise<ActionResult<{ lowStockThreshold: number | null }>> {
   const parsed = thresholdSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Invalid threshold.' };
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
@@ -43,7 +43,7 @@ export async function setLowStockThresholdAction(
       parsed.data.lowStockThreshold,
     ),
   );
-  if (!row) return { ok: false, error: 'Ingredient not found.' };
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidatePath('/inventory');
   return {
     ok: true,

@@ -2,6 +2,7 @@ import { drizzle, type NeonDatabase } from 'drizzle-orm/neon-serverless';
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 import * as schema from './schema';
+import { serverEnv } from '../env';
 import { runInOrg, type TenantTx } from './tenant';
 
 export * from './schema';
@@ -23,9 +24,8 @@ let cached: NeonDatabase<typeof schema> | null = null;
  */
 export function getDb(): NeonDatabase<typeof schema> {
   if (!cached) {
-    const url = process.env.DATABASE_URL;
-    if (!url) throw new Error('DATABASE_URL is not set');
-    cached = drizzle(new Pool({ connectionString: url }), { schema });
+    const { DATABASE_URL } = serverEnv();
+    cached = drizzle(new Pool({ connectionString: DATABASE_URL }), { schema });
   }
   return cached;
 }
