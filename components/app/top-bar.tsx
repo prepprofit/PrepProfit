@@ -22,6 +22,14 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
   );
 
+  // System pages live outside navItems (sidebar bottom) but still need a title.
+  const systemKey = pathname.startsWith('/trash')
+    ? 'trash'
+    : pathname.startsWith('/settings')
+      ? 'settings'
+      : null;
+  const titleKey = current?.key ?? systemKey;
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-surface/80 px-4 backdrop-blur-md md:px-6">
       <button
@@ -34,7 +42,7 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
       </button>
 
       <h1 className="truncate font-display text-lg font-semibold text-foreground sm:text-2xl">
-        {current ? t(current.key) : ''}
+        {titleKey ? t(titleKey) : ''}
       </h1>
 
       <div className="ml-auto flex items-center gap-2">

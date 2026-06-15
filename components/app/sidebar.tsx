@@ -15,6 +15,7 @@ import {
   Users,
   FileText,
   Settings,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
 import { navGroups, type NavKey } from '@/lib/nav';
@@ -116,6 +117,24 @@ export function Sidebar({
       </nav>
 
       <div className="flex flex-col gap-2 border-t border-border p-3">
+        <Link
+          href="/trash"
+          onClick={onNavigate}
+          aria-current={
+            pathname === '/trash' || pathname.startsWith('/trash/')
+              ? 'page'
+              : undefined
+          }
+          className={cn(
+            'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+            pathname === '/trash' || pathname.startsWith('/trash/')
+              ? 'bg-surface-2 text-accent-700 dark:text-accent-400'
+              : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',
+          )}
+        >
+          <Trash2 className="size-4 shrink-0" />
+          {t('trash')}
+        </Link>
         <Link
           href="/settings"
           onClick={onNavigate}
