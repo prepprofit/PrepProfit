@@ -27,3 +27,14 @@ jobs:
       # Tests use PGlite (in-memory Postgres) — no secrets required.
       - name: Test
         run: npm test
+
+      # Catch RSC / server-boundary breaks before they reach Vercel. The Neon
+      # client + env validation (lib/db/index.ts, lib/env.ts) are lazy, so no
+      # DATABASE_URL is needed at build. Clerk needs valid-format keys to compile
+      # the root layout's ClerkProvider — real test-instance keys can be set as
+      # repo secrets; otherwise these harmless dummies (example.com) keep CI green.
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_Y2xlcmsuZXhhbXBsZS5jb20k' }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY || 'sk_test_ci_dummy_build_only_secret_key' }}

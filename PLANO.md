@@ -117,6 +117,31 @@ prod Neon after merge and VERIFY `recipe_folders` + `recipes.folder_id` exist (t
 
 ---
 
+## Sprint 1.7 — Hardening (senior-level baseline)
+Goal: close the gaps that separate "works" from production-grade before Sprint 2.
+Graceful failure UX, fully-translated errors, build caught in CI, fail-fast env
+validation, and diagnosable production errors. No new runtime dependency.
+
+- [x] Error/loading/404 boundaries: `app/global-error.tsx` (provider-less
+      fallback), `app/(app)/error.tsx` (localized, retry + back), `app/(app)/loading.tsx`
+      (skeleton), `app/not-found.tsx` (branded 404)
+- [x] Translated action errors: `ActionResult` failure arm carries a stable
+      `ActionErrorCode` (not English strings); all action returns use codes; client
+      maps via `useActionError()` hook + `actionErrors.*` i18n block
+- [x] `next build` added to CI (`.github/workflows/ci.yml`) with Clerk key env
+      (repo secrets, valid-format dummy fallback)
+- [x] Env validation: `lib/env.ts` `serverEnv()` (Zod, lazy, cached) used by the
+      Neon client + cron route; `lib/env.test.ts`
+- [x] Error observability: `lib/observability.ts` `logError`/`unexpected` —
+      structured one-line log with `eventId`; actions' bare `throw err` replaced
+      with logged `UNEXPECTED`; boundaries log client-side too
+
+Out of scope (later sprints): Playwright E2E smoke; Clerk webhooks + Sentry; org
+lifecycle / custom-role delete control (Sprint 4 billing). Ops still owed:
+`CRON_SECRET` in Vercel env (the cron route 401s until set — now fails explicitly).
+
+---
+
 ## Sprint 2 — Financials and break-even (modules 2 and 4)
 Goal: answer "how much did I really make this month?".
 
