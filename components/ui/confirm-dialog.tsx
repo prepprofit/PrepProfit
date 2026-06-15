@@ -57,7 +57,8 @@ export function ConfirmDialog({
       onClick={(e) => {
         if (e.target === ref.current && !pending) onCancel();
       }}
-      className="w-[calc(100%-2rem)] max-w-md rounded-2xl border border-border bg-surface p-0 text-foreground shadow-lg backdrop:bg-black/50 backdrop:backdrop-blur-sm"
+      // m-auto restores modal centering (Tailwind preflight zeroes the UA margin).
+      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-border bg-surface p-0 text-foreground shadow-lg backdrop:bg-black/50 backdrop:backdrop-blur-sm"
     >
       <div className="flex flex-col gap-2 p-5">
         <h2 id={titleId} className="font-display text-lg font-semibold">
