@@ -95,12 +95,44 @@ export const ingredients = pgTable(
   ],
 );
 
+/**
+ * Folders for filing recipes — a flat, per-organization namespace (no nesting).
+ * A recipe belongs to at most one folder (`recipes.folder_id`, nullable = "No
+ * folder"). Folders are HARD-deleted (never trashed): deleting one reassigns its
+ * recipes to NULL in the same transaction (see lib/data/recipe-folders.ts), so
+ * this table needs no `deleted_at`. The reusable template for later modules
+ * (ingredient_folders, transaction_folders, …) is this exact shape + a nullable
+ * `folder_id` on the owning table.
+ */
+export const recipeFolders = pgTable(
+  'recipe_folders',
+  {
+    id: id(),
+    organizationId: orgId(),
+    name: text('name').notNull(),
+    // Manual ordering in the folder rail (move up / down). Lower sorts first.
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('recipe_folders_org_idx').on(t.organizationId),
+    index('recipe_folders_org_sort_idx').on(t.organizationId, t.sortOrder),
+    // One folder name per organization (rename/create surface the violation).
+    unique('recipe_folders_org_name_key').on(t.organizationId, t.name),
+    // FK target for the composite (organization_id, folder_id) reference.
+    unique('recipe_folders_org_id_key').on(t.organizationId, t.id),
+  ],
+);
+
 export const recipes = pgTable(
   'recipes',
   {
     id: id(),
     organizationId: orgId(),
     name: text('name').notNull(),
+    // Folder this recipe is filed under; NULL = "No folder" (uncategorized).
+    folderId: text('folder_id'),
     yieldPortions: integer('yield_portions').notNull().default(1),
     // Usable yield after trim/loss, as a percentage (100 = no loss).
     yieldPercentage: integer('yield_percentage').notNull().default(100),
@@ -121,8 +153,20 @@ export const recipes = pgTable(
     index('recipes_org_name_idx').on(t.organizationId, t.name),
     // Serves the /trash listing and keeps active-row filtering index-friendly.
     index('recipes_org_deleted_idx').on(t.organizationId, t.deletedAt),
+    // Serves per-folder listing (and the uncategorized = NULL view).
+    index('recipes_org_folder_idx').on(t.organizationId, t.folderId),
     // FK target for the composite (organization_id, recipe_id) reference.
     unique('recipes_org_id_key').on(t.organizationId, t.id),
+    // Composite FK forces the folder to share THIS recipe's organization_id —
+    // a recipe can never be filed under another tenant's folder. ON DELETE
+    // restrict: the app nulls folder_id before deleting a folder (a multi-column
+    // SET NULL would also null the NOT NULL organization_id), so a delete never
+    // orphans a row. folder_id is nullable → NULL rows skip the FK (MATCH SIMPLE).
+    foreignKey({
+      columns: [t.organizationId, t.folderId],
+      foreignColumns: [recipeFolders.organizationId, recipeFolders.id],
+      name: 'recipes_folder_fk',
+    }).onDelete('restrict'),
   ],
 );
 
@@ -203,6 +247,8 @@ export type InventoryMovement = InferSelectModel<typeof inventoryMovements>;
 export type NewInventoryMovement = InferInsertModel<typeof inventoryMovements>;
 export type Recipe = InferSelectModel<typeof recipes>;
 export type NewRecipe = InferInsertModel<typeof recipes>;
+export type RecipeFolder = InferSelectModel<typeof recipeFolders>;
+export type NewRecipeFolder = InferInsertModel<typeof recipeFolders>;
 export type RecipeIngredient = InferSelectModel<typeof recipeIngredients>;
 export type NewRecipeIngredient = InferInsertModel<typeof recipeIngredients>;
 export type OrganizationSettings = InferSelectModel<typeof organizationSettings>;
@@ -213,6 +259,7 @@ export type MeasurementSystem = OrganizationSettings['measurementSystem'];
 export const businessTables = [
   'organization_settings',
   'ingredients',
+  'recipe_folders',
   'recipes',
   'recipe_ingredients',
   'inventory_movements',

@@ -84,6 +84,39 @@ prod Neon after merge, and set `CRON_SECRET` in the Vercel project env.
 
 ---
 
+## Sprint 1.6 — Recipe organization / folders (foundations)
+Goal: chefs file recipes into named folders — create, rename, move, reorder, with
+coherent empty states and per-folder counts. Establishes a reusable folder pattern
+for later modules and coexists with the trash (reads still filter deleted_at IS NULL).
+
+- [ ] `recipe_folders` table (org_id, name, sort_order, timestamps; unique(org,name);
+      composite (org,id) FK target) + nullable `recipes.folder_id` with composite
+      (org,folder_id) FK ON DELETE RESTRICT + index (org,folder_id). Migration 0007.
+      Folders are hard-delete (not trashed); folder delete reassigns recipes to NULL
+      in one transaction
+- [ ] Add `recipe_folders` to `businessTables` so RLS auto-applies (org isolation)
+- [ ] Data layer `lib/data/recipe-folders.ts` (list / list-with-counts / create /
+      rename / reorder / delete) + `moveRecipeToFolder` + folder-filtered `listRecipes`;
+      all org-scoped and deleted_at IS NULL
+- [ ] Server Actions (Zod, org from Clerk, withOrg): folder CRUD + reorder + move
+      recipe; unique-name violations surfaced
+- [ ] /recipes UI: folder rail (All / folders / No folder + live counts), ?folder=
+      server filter, create/rename/reorder/delete folder, move recipe (card + editor),
+      coherent empty states. Native controls; reuse ConfirmDialog for folder delete
+- [ ] i18n: all folder strings via next-intl
+- [ ] Tests (PGlite): folder CRUD + org isolation, unique-name, reorder, delete →
+      recipes NULL, move, per-folder counts, folder views exclude trashed recipes
+
+Acceptance criterion: create folders, file recipes, rename/reorder/move, delete a
+folder → its recipes fall back to "No folder" (nothing trashed), and trashed recipes
+never appear in any folder view or count.
+
+Production note: Vercel does not run migrations — run `npm run db:migrate` against
+prod Neon after merge and VERIFY `recipe_folders` + `recipes.folder_id` exist (the
+0003 `when` gotcha). Ensure 0007's journal `when` > 1781601000000.
+
+---
+
 ## Sprint 2 — Financials and break-even (modules 2 and 4)
 Goal: answer "how much did I really make this month?".
 
