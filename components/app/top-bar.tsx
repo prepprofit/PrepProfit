@@ -33,7 +33,7 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
         <Menu className="size-4" />
       </button>
 
-      <h1 className="truncate font-display text-base font-semibold text-foreground sm:text-lg">
+      <h1 className="truncate font-display text-lg font-semibold text-foreground sm:text-2xl">
         {current ? t(current.key) : ''}
       </h1>
 
