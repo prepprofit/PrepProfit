@@ -3,10 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { getOrgId } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
-import { isForeignKeyViolation } from '@/lib/db/errors';
 import {
+  countActiveRecipesUsingIngredient,
   createIngredient,
-  deleteIngredient,
+  softDeleteIngredient,
   updateIngredient,
 } from '@/lib/data/ingredients';
 import { ingredientSchema } from '@/lib/validation/ingredients';
@@ -55,23 +55,33 @@ export async function updateIngredientAction(
   return { ok: true, data: row };
 }
 
+/**
+ * Moves an ingredient to the trash (soft-delete). Blocked if any ACTIVE recipe
+ * still uses it — the in-use check and the soft-delete run in one transaction so
+ * a recipe cannot start using it between the two. Restorable for 30 days via /trash.
+ */
 export async function deleteIngredientAction(
   id: string,
 ): Promise<ActionResult> {
   const organizationId = await getOrgId();
-  try {
-    await withOrg(organizationId, (tx) =>
-      deleteIngredient(tx, organizationId, id),
-    );
-  } catch (err) {
-    if (isForeignKeyViolation(err)) {
-      return {
-        ok: false,
-        error: 'This ingredient is used by a recipe and cannot be deleted.',
-      };
-    }
-    throw err;
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const inUse = await countActiveRecipesUsingIngredient(tx, organizationId, id);
+    if (inUse > 0) return { status: 'in_use' as const, inUse };
+    const row = await softDeleteIngredient(tx, organizationId, id);
+    return { status: row ? ('done' as const) : ('not_found' as const) };
+  });
+
+  if (outcome.status === 'in_use') {
+    return {
+      ok: false,
+      error:
+        "This ingredient is used by an active recipe, so it can't be moved to the trash. Remove it from those recipes first.",
+    };
+  }
+  if (outcome.status === 'not_found') {
+    return { ok: false, error: 'Ingredient not found.' };
   }
   revalidateIngredientConsumers();
+  revalidatePath('/trash');
   return { ok: true, data: undefined };
 }

@@ -6,7 +6,7 @@ import { withOrg } from '@/lib/db';
 import { isUniqueViolation } from '@/lib/db/errors';
 import {
   createRecipe,
-  deleteRecipe,
+  softDeleteRecipe,
   updateRecipe,
 } from '@/lib/data/recipes';
 import {
@@ -62,10 +62,16 @@ export async function updateRecipeAction(
   return { ok: true, data: row };
 }
 
+/** Moves a recipe to the trash (soft-delete). Restorable for 30 days via /trash. */
 export async function deleteRecipeAction(id: string): Promise<ActionResult> {
   const organizationId = await getOrgId();
-  await withOrg(organizationId, (tx) => deleteRecipe(tx, organizationId, id));
+  const row = await withOrg(organizationId, (tx) =>
+    softDeleteRecipe(tx, organizationId, id),
+  );
+  if (!row) return { ok: false, error: 'Recipe not found.' };
   revalidateRecipe();
+  revalidatePath('/dashboard');
+  revalidatePath('/trash');
   return { ok: true, data: undefined };
 }
 

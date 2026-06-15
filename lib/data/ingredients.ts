@@ -1,5 +1,5 @@
-import { and, eq } from 'drizzle-orm';
-import { ingredients } from '@/lib/db/schema';
+import { and, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { ingredients, recipeIngredients, recipes } from '@/lib/db/schema';
 import type { Ingredient, NewIngredient } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 
@@ -7,11 +7,16 @@ import type { TenantClient } from '@/lib/db/tenant';
  * Access to `ingredients` is ALWAYS scoped by `organizationId` (application
  * layer, primary defense). The `organizationId` is injected by the server —
  * never trust the client. RLS (lib/db/rls.ts) is the second layer.
+ *
+ * Soft-delete: rows carry `deleted_at` (NULL = active). Every active read filters
+ * `deleted_at IS NULL`; trashed rows surface only through the trash-scoped reads
+ * below. See lib/trash.ts for the retention window and lib/data/trash.ts for the
+ * auto-purge.
  */
 
 export type IngredientInput = Omit<
   NewIngredient,
-  'id' | 'organizationId' | 'createdAt' | 'updatedAt'
+  'id' | 'organizationId' | 'createdAt' | 'updatedAt' | 'deletedAt'
 >;
 
 export async function listIngredients(
@@ -21,7 +26,12 @@ export async function listIngredients(
   return db
     .select()
     .from(ingredients)
-    .where(eq(ingredients.organizationId, organizationId))
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        isNull(ingredients.deletedAt),
+      ),
+    )
     .orderBy(ingredients.name);
 }
 
@@ -37,6 +47,7 @@ export async function getIngredientById(
       and(
         eq(ingredients.organizationId, organizationId),
         eq(ingredients.id, id),
+        isNull(ingredients.deletedAt),
       ),
     )
     .limit(1);
@@ -69,6 +80,8 @@ export async function updateIngredient(
       and(
         eq(ingredients.organizationId, organizationId),
         eq(ingredients.id, id),
+        // A trashed ingredient must be restored before it can be edited.
+        isNull(ingredients.deletedAt),
       ),
     )
     .returning();
@@ -76,11 +89,84 @@ export async function updateIngredient(
 }
 
 /**
- * Deletes an ingredient. The composite FK on `recipe_ingredients` is
- * `ON DELETE restrict`, so an ingredient still used by a recipe makes the DB
- * raise a foreign-key violation — callers surface that as a friendly message.
+ * How many ACTIVE (non-trashed) recipes still use this ingredient. The trash
+ * action blocks soft-deleting an ingredient while this is > 0, preserving the
+ * invariant that an active recipe never references a trashed ingredient (so
+ * recipe costs never change silently). Lines of already-trashed recipes do not
+ * count.
  */
-export async function deleteIngredient(
+export async function countActiveRecipesUsingIngredient(
+  db: TenantClient,
+  organizationId: string,
+  ingredientId: string,
+): Promise<number> {
+  const rows = await db
+    .select({ value: count() })
+    .from(recipeIngredients)
+    .innerJoin(
+      recipes,
+      and(
+        eq(recipeIngredients.recipeId, recipes.id),
+        eq(recipes.organizationId, organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(recipeIngredients.organizationId, organizationId),
+        eq(recipeIngredients.ingredientId, ingredientId),
+        isNull(recipes.deletedAt),
+      ),
+    );
+  return rows[0]?.value ?? 0;
+}
+
+/** Moves an active ingredient to the trash. Returns null if it was not active. */
+export async function softDeleteIngredient(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<Ingredient | null> {
+  const [row] = await db
+    .update(ingredients)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, id),
+        isNull(ingredients.deletedAt),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+/** Brings a trashed ingredient back. Returns null if it was not in the trash. */
+export async function restoreIngredient(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<Ingredient | null> {
+  const [row] = await db
+    .update(ingredients)
+    .set({ deletedAt: null })
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, id),
+        isNotNull(ingredients.deletedAt),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+/**
+ * Permanently deletes a trashed ingredient. Only trashed rows are eligible (an
+ * active row can never be hard-deleted here). The composite FK on
+ * `recipe_ingredients` is `ON DELETE restrict`, so an ingredient still pinned by
+ * a (trashed) recipe's line raises a foreign-key violation — callers surface that.
+ */
+export async function purgeIngredient(
   db: TenantClient,
   organizationId: string,
   id: string,
@@ -91,6 +177,23 @@ export async function deleteIngredient(
       and(
         eq(ingredients.organizationId, organizationId),
         eq(ingredients.id, id),
+        isNotNull(ingredients.deletedAt),
       ),
     );
+}
+
+export async function listTrashedIngredients(
+  db: TenantClient,
+  organizationId: string,
+): Promise<Ingredient[]> {
+  return db
+    .select()
+    .from(ingredients)
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        isNotNull(ingredients.deletedAt),
+      ),
+    )
+    .orderBy(desc(ingredients.deletedAt));
 }
