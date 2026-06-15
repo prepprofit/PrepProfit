@@ -121,6 +121,28 @@
       "pickIngredient": "Choose an ingredient first."
     }
   },
+  "inventory": {
+    "title": "Inventory",
+    "subtitle": "Track stock in and out, and get alerted before you run low.",
+    "empty": "No ingredients yet. Add some in Ingredients first.",
+    "columns": {
+      "ingredient": "Ingredient",
+      "stock": "In stock",
+      "adjust": "Adjust",
+      "threshold": "Low-stock threshold"
+    },
+    "in": "In",
+    "out": "Out",
+    "low": "Low",
+    "unit": "Unit",
+    "note": "Note",
+    "notePlaceholder": "Note (optional)",
+    "noThreshold": "None",
+    "setThreshold": "Set",
+    "errors": {
+      "quantity": "Enter a quantity greater than zero."
+    }
+  },
   "settings": {
     "title": "Settings",
     "subtitle": "Configure how money and quantities appear across your workspace.",

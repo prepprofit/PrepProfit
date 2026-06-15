@@ -56,8 +56,8 @@ Then the module work:
 - [x] Cascade update: ingredient price changed → recalculate recipes
       (costs derived live from current ingredient prices; recipe pages are dynamic
       and ingredient mutations revalidate /recipes — no stored cost to update)
-- [ ] Inventory: stock in/out per ingredient
-- [ ] Low-stock visual alert (configurable threshold per ingredient)
+- [x] Inventory: stock in/out per ingredient
+- [x] Low-stock visual alert (configurable threshold per ingredient)
 
 Acceptance criterion: create a recipe with 5 ingredients and see correct cost and margin.
 

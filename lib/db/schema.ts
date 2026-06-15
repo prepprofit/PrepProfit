@@ -68,6 +68,13 @@ export const ingredients = pgTable(
     //   weight → per kg, volume → per litre, count → per piece.
     priceCents: integer('price_cents').notNull().default(0),
     supplier: text('supplier'),
+    // Current stock on hand, in the ingredient's canonical unit (g / ml / count).
+    // Maintained transactionally alongside the inventory_movements ledger.
+    stockQuantity: numeric('stock_quantity', { precision: 12, scale: 2 })
+      .notNull()
+      .default(sql`0`),
+    // Optional low-stock threshold (canonical); a low-stock alert fires at/below it.
+    lowStockThreshold: numeric('low_stock_threshold', { precision: 12, scale: 2 }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -145,8 +152,42 @@ export const recipeIngredients = pgTable(
   ],
 );
 
+/**
+ * Append-only inventory ledger. Each row is a signed canonical change to an
+ * ingredient's stock (positive = in, negative = out). `ingredients.stock_quantity`
+ * is the running total, updated in the same transaction (see lib/data/inventory.ts).
+ */
+export const inventoryMovements = pgTable(
+  'inventory_movements',
+  {
+    id: id(),
+    organizationId: orgId(),
+    ingredientId: text('ingredient_id').notNull(),
+    // Signed canonical change (g / ml / count): + stock in, − stock out.
+    deltaCanonical: numeric('delta_canonical', { precision: 12, scale: 2 }).notNull(),
+    note: text('note'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('inventory_movements_org_idx').on(t.organizationId),
+    index('inventory_movements_org_ingredient_idx').on(
+      t.organizationId,
+      t.ingredientId,
+    ),
+    // Same-tenant link enforced at the DB level; removing an ingredient also
+    // removes its movement history.
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'inventory_movements_ingredient_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
 export type Ingredient = InferSelectModel<typeof ingredients>;
 export type NewIngredient = InferInsertModel<typeof ingredients>;
+export type InventoryMovement = InferSelectModel<typeof inventoryMovements>;
+export type NewInventoryMovement = InferInsertModel<typeof inventoryMovements>;
 export type Recipe = InferSelectModel<typeof recipes>;
 export type NewRecipe = InferInsertModel<typeof recipes>;
 export type RecipeIngredient = InferSelectModel<typeof recipeIngredients>;
@@ -161,4 +202,5 @@ export const businessTables = [
   'ingredients',
   'recipes',
   'recipe_ingredients',
+  'inventory_movements',
 ] as const;
