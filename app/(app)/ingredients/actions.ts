@@ -10,6 +10,7 @@ import {
   updateIngredient,
 } from '@/lib/data/ingredients';
 import { ingredientSchema } from '@/lib/validation/ingredients';
+import type { ActionResult } from '@/lib/action-result';
 import type { Ingredient } from '@/lib/db/schema';
 
 /**
@@ -17,10 +18,6 @@ import type { Ingredient } from '@/lib/db/schema';
  * Clerk on the server (never the client), every write runs inside `withOrg` so
  * RLS is active, and all input is validated with Zod on the server.
  */
-
-export type ActionResult<T = undefined> =
-  | { ok: true; data: T }
-  | { ok: false; error: string };
 
 /** Recipe cost is derived from ingredient prices, so refresh recipes too. */
 function revalidateIngredientConsumers(): void {
