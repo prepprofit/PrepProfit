@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
-import { Plus, Trash2 } from 'lucide-react';
+import { Check, Plus, Trash2 } from 'lucide-react';
 import {
   type ColumnDef,
   flexRender,
@@ -61,15 +61,22 @@ function draftToInput(draft: Draft) {
   };
 }
 
+/** Enter commits the edited cell by blurring it (auto-save fires on blur). */
+function commitOnEnter(e: React.KeyboardEvent<HTMLInputElement>) {
+  if (e.key === 'Enter') e.currentTarget.blur();
+}
+
 type GridMeta = {
   drafts: Record<string, Draft>;
   currency: string;
   pending: boolean;
+  savedId: string | null;
   onField: (id: string, patch: Partial<Draft>) => void;
   onCommit: (id: string) => void;
   onDelete: (id: string) => void;
   dimensionLabel: (d: Dimension) => string;
   deleteLabel: string;
+  savedLabel: string;
 };
 
 export function IngredientGrid({
@@ -89,9 +96,25 @@ export function IngredientGrid({
   const [newDraft, setNewDraft] = React.useState<Draft>(emptyDraft);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
+  const [savedId, setSavedId] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
 
   const confirmTarget = rows.find((r) => r.id === confirmId) ?? null;
+
+  // Briefly flag a row as "saved" after a successful auto-save, so the silent
+  // blur-commit gives the user visible feedback.
+  const savedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashSaved = React.useCallback((id: string) => {
+    setSavedId(id);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSavedId(null), 1500);
+  }, []);
+  React.useEffect(
+    () => () => {
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+    },
+    [],
+  );
 
   const dimensionLabel = React.useCallback(
     (d: Dimension) => tDim(d),
@@ -132,13 +155,14 @@ export function IngredientGrid({
         if (result.ok) {
           setRows((prev) => prev.map((r) => (r.id === id ? result.data : r)));
           setDrafts((prev) => ({ ...prev, [id]: draftFromRow(result.data) }));
+          flashSaved(id);
         } else {
           setDrafts((prev) => ({ ...prev, [id]: draftFromRow(row) }));
           setError(result.error);
         }
       });
     },
-    [drafts, rows],
+    [drafts, rows, flashSaved],
   );
 
   const requestDelete = React.useCallback((id: string) => setConfirmId(id), []);
@@ -197,6 +221,7 @@ export function IngredientGrid({
               value={draft.name}
               disabled={meta.pending}
               onChange={(e) => meta.onField(row.original.id, { name: e.target.value })}
+              onKeyDown={commitOnEnter}
               onBlur={() => meta.onCommit(row.original.id)}
             />
           );
@@ -248,6 +273,7 @@ export function IngredientGrid({
                 onChange={(e) =>
                   meta.onField(row.original.id, { priceText: e.target.value })
                 }
+                onKeyDown={commitOnEnter}
                 onBlur={() => meta.onCommit(row.original.id)}
               />
               <span className="text-xs text-muted-foreground">
@@ -273,6 +299,7 @@ export function IngredientGrid({
               onChange={(e) =>
                 meta.onField(row.original.id, { supplier: e.target.value })
               }
+              onKeyDown={commitOnEnter}
               onBlur={() => meta.onCommit(row.original.id)}
             />
           );
@@ -284,16 +311,27 @@ export function IngredientGrid({
         cell: ({ row, table }) => {
           const meta = table.options.meta as GridMeta;
           return (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label={meta.deleteLabel}
-              disabled={meta.pending}
-              onClick={() => meta.onDelete(row.original.id)}
-            >
-              <Trash2 className="size-4" />
-            </Button>
+            <div className="flex items-center justify-end gap-1">
+              {meta.savedId === row.original.id && (
+                <span
+                  className="inline-flex items-center gap-1 text-xs text-brand-700 dark:text-brand-300"
+                  role="status"
+                >
+                  <Check className="size-4" />
+                  {meta.savedLabel}
+                </span>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={meta.deleteLabel}
+                disabled={meta.pending}
+                onClick={() => meta.onDelete(row.original.id)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
           );
         },
       },
@@ -309,11 +347,13 @@ export function IngredientGrid({
       drafts,
       currency,
       pending,
+      savedId,
       onField,
       onCommit,
       onDelete: requestDelete,
       dimensionLabel,
       deleteLabel: t('actions.delete'),
+      savedLabel: t('saved'),
     } satisfies GridMeta,
   });
 
@@ -341,6 +381,9 @@ export function IngredientGrid({
             value={newDraft.name}
             disabled={pending}
             onChange={(e) => setNewDraft((d) => ({ ...d, name: e.target.value }))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onCreate();
+            }}
           />
           <Select
             aria-label={t('columns.dimension')}
@@ -367,6 +410,9 @@ export function IngredientGrid({
               onChange={(e) =>
                 setNewDraft((d) => ({ ...d, priceText: e.target.value }))
               }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onCreate();
+              }}
             />
             <span className="text-xs text-muted-foreground">
               {PER_UNIT_SUFFIX[newDraft.dimension]}
@@ -380,6 +426,9 @@ export function IngredientGrid({
             onChange={(e) =>
               setNewDraft((d) => ({ ...d, supplier: e.target.value }))
             }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onCreate();
+            }}
           />
           <Button type="button" onClick={onCreate} disabled={pending}>
             <Plus className="size-4" />

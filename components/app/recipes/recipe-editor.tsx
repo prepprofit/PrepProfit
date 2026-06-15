@@ -122,9 +122,24 @@ export function RecipeEditor({
   const [newUnit, setNewUnit] = React.useState<Unit>('g');
   const [error, setError] = React.useState<string | null>(null);
   const [saved, setSaved] = React.useState(false);
+  const [savedLineId, setSavedLineId] = React.useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [folderId, setFolderId] = React.useState<string | null>(recipe.folderId);
   const [pending, startTransition] = React.useTransition();
+
+  // Briefly flag a line as "saved" after its quantity auto-saves on blur/Enter.
+  const savedLineTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashSavedLine = React.useCallback((lineId: string) => {
+    setSavedLineId(lineId);
+    if (savedLineTimer.current) clearTimeout(savedLineTimer.current);
+    savedLineTimer.current = setTimeout(() => setSavedLineId(null), 1500);
+  }, []);
+  React.useEffect(
+    () => () => {
+      if (savedLineTimer.current) clearTimeout(savedLineTimer.current);
+    },
+    [],
+  );
 
   // Filing the recipe is applied immediately (consistent with the list's move
   // control); on failure we revert the select to its previous value.
@@ -252,7 +267,8 @@ export function RecipeEditor({
       const result = await updateRecipeIngredientAction(recipe.id, lineId, {
         quantity: line.quantity,
       });
-      if (!result.ok) setError(result.error);
+      if (result.ok) flashSavedLine(lineId);
+      else setError(result.error);
     });
   };
 
@@ -427,6 +443,9 @@ export function RecipeEditor({
                               onChange={(e) =>
                                 setLineValue(line.id, e.target.value)
                               }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.currentTarget.blur();
+                              }}
                               onBlur={() => persistLine(line.id)}
                             />
                             <Select
@@ -450,16 +469,27 @@ export function RecipeEditor({
                           {formatMoney(lineCost, currency)}
                         </td>
                         <td className="py-2 text-right">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            aria-label={t('ingredients.remove')}
-                            disabled={pending}
-                            onClick={() => removeLine(line.id)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            {savedLineId === line.id && (
+                              <span
+                                className="inline-flex items-center gap-1 text-xs text-brand-700 dark:text-brand-300"
+                                role="status"
+                              >
+                                <Check className="size-4" />
+                                {t('saved')}
+                              </span>
+                            )}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-label={t('ingredients.remove')}
+                              disabled={pending}
+                              onClick={() => removeLine(line.id)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -495,6 +525,9 @@ export function RecipeEditor({
                 value={newValueText}
                 disabled={pending || newIngredientId === ''}
                 onChange={(e) => setNewValueText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newIngredientId !== '') addLine();
+                }}
               />
               <Select
                 aria-label={t('ingredients.unit')}
