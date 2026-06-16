@@ -18,6 +18,8 @@ import {
   FileText,
   Settings,
   Trash2,
+  PanelLeftClose,
+  PanelLeftOpen,
   type LucideIcon,
 } from 'lucide-react';
 import { navGroups, type NavKey } from '@/lib/nav';
@@ -36,90 +38,135 @@ const icons: Record<NavKey, LucideIcon> = {
   invoices: FileText,
 };
 
+/**
+ * Shared link styling for nav rows (modules + the bottom Settings/Trash). Active
+ * rows become a solid accent pill (white text/icon); idle rows pick up an accent
+ * tint on hover. When collapsed the row is icon-only and centred.
+ */
+function navRowClass(active: boolean, collapsed: boolean) {
+  return cn(
+    'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+    collapsed && 'justify-center px-0',
+    active
+      ? 'bg-accent-600 text-white shadow-sm shadow-accent-600/30'
+      : 'text-muted-foreground hover:bg-accent-50 hover:text-accent-700 dark:hover:bg-accent-500/10 dark:hover:text-accent-300',
+  );
+}
+
 export function Sidebar({
   className,
   onNavigate,
   canSeeFinance = true,
+  collapsed = false,
+  onToggleCollapse,
 }: {
   className?: string;
   onNavigate?: () => void;
   /** Kitchen-role users don't see the Finance group (cosmetic; server enforces). */
   canSeeFinance?: boolean;
+  /** Icon-only rail (desktop). The mobile drawer always renders expanded. */
+  collapsed?: boolean;
+  /** Provided only for the desktop rail; renders the collapse toggle when set. */
+  onToggleCollapse?: () => void;
 }) {
   const pathname = usePathname();
   const t = useTranslations('nav');
   const tGroups = useTranslations('navGroups');
   const tApp = useTranslations('app');
+  const tTop = useTranslations('topbar');
   const { resolvedTheme } = useTheme();
 
   const groups = canSeeFinance
     ? navGroups
     : navGroups.filter((group) => group.key !== 'finance');
 
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
+
   return (
     <aside
       className={cn(
-        'flex w-64 shrink-0 flex-col border-r border-border bg-surface',
+        'flex shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200',
+        collapsed ? 'w-16' : 'w-64',
         className,
       )}
     >
-      <div className="flex items-center px-6 py-5">
-        <Image
-          src="/logo.webp"
-          alt={tApp('name')}
-          width={512}
-          height={112}
-          priority
-          className="h-7 w-auto dark:hidden"
-        />
-        <Image
-          src="/logo-white.webp"
-          alt={tApp('name')}
-          width={512}
-          height={113}
-          priority
-          className="hidden h-7 w-auto dark:block"
-        />
+      <div
+        className={cn(
+          'flex items-center py-5',
+          collapsed ? 'justify-center px-2' : 'px-6',
+        )}
+      >
+        {!collapsed && (
+          <>
+            <Image
+              src="/logo.webp"
+              alt={tApp('name')}
+              width={512}
+              height={112}
+              priority
+              className="h-7 w-auto dark:hidden"
+            />
+            <Image
+              src="/logo-white.webp"
+              alt={tApp('name')}
+              width={512}
+              height={113}
+              priority
+              className="hidden h-7 w-auto dark:block"
+            />
+          </>
+        )}
+        {onToggleCollapse && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            aria-label={collapsed ? tTop('expandSidebar') : tTop('collapseSidebar')}
+            className={cn(
+              'inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              !collapsed && 'ml-auto',
+            )}
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="size-4" />
+            ) : (
+              <PanelLeftClose className="size-4" />
+            )}
+          </button>
+        )}
       </div>
 
       <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-2">
         {groups.map((group) => (
           <div key={group.key} className="flex flex-col gap-1">
-            <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {tGroups(group.key)}
-            </p>
+            {collapsed ? (
+              <div className="mx-3 mb-1 border-t border-border" aria-hidden />
+            ) : (
+              <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {tGroups(group.key)}
+              </p>
+            )}
             {group.items.map(({ key, href }) => {
               const Icon = icons[key];
-              const active =
-                pathname === href || pathname.startsWith(`${href}/`);
+              const active = isActive(href);
               return (
                 <Link
                   key={key}
                   href={href}
                   onClick={onNavigate}
                   aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                    active
-                      ? 'bg-surface-2 text-accent-700 dark:text-accent-400'
-                      : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',
-                  )}
+                  title={collapsed ? t(key) : undefined}
+                  className={navRowClass(active, collapsed)}
                 >
-                  {active && (
-                    <span
-                      className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-accent-500"
-                      aria-hidden
-                    />
-                  )}
                   <Icon
                     className={cn(
                       'size-4 shrink-0',
                       active
-                        ? 'text-accent-500'
-                        : 'text-muted-foreground group-hover:text-foreground',
+                        ? 'text-white'
+                        : 'text-muted-foreground group-hover:text-accent-700 dark:group-hover:text-accent-300',
                     )}
                   />
-                  {t(key)}
+                  {!collapsed && t(key)}
                 </Link>
               );
             })}
@@ -131,45 +178,31 @@ export function Sidebar({
         <Link
           href="/trash"
           onClick={onNavigate}
-          aria-current={
-            pathname === '/trash' || pathname.startsWith('/trash/')
-              ? 'page'
-              : undefined
-          }
-          className={cn(
-            'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-            pathname === '/trash' || pathname.startsWith('/trash/')
-              ? 'bg-surface-2 text-accent-700 dark:text-accent-400'
-              : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',
-          )}
+          aria-current={isActive('/trash') ? 'page' : undefined}
+          title={collapsed ? t('trash') : undefined}
+          className={navRowClass(isActive('/trash'), collapsed)}
         >
           <Trash2 className="size-4 shrink-0" />
-          {t('trash')}
+          {!collapsed && t('trash')}
         </Link>
         <Link
           href="/settings"
           onClick={onNavigate}
-          aria-current={
-            pathname === '/settings' || pathname.startsWith('/settings/')
-              ? 'page'
-              : undefined
-          }
-          className={cn(
-            'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-            pathname === '/settings' || pathname.startsWith('/settings/')
-              ? 'bg-surface-2 text-accent-700 dark:text-accent-400'
-              : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',
-          )}
+          aria-current={isActive('/settings') ? 'page' : undefined}
+          title={collapsed ? t('settings') : undefined}
+          className={navRowClass(isActive('/settings'), collapsed)}
         >
           <Settings className="size-4 shrink-0" />
-          {t('settings')}
+          {!collapsed && t('settings')}
         </Link>
-        <OrganizationSwitcher
-          hidePersonal
-          afterCreateOrganizationUrl="/dashboard"
-          afterSelectOrganizationUrl="/dashboard"
-          appearance={clerkAppearance(resolvedTheme === 'dark')}
-        />
+        {!collapsed && (
+          <OrganizationSwitcher
+            hidePersonal
+            afterCreateOrganizationUrl="/dashboard"
+            afterSelectOrganizationUrl="/dashboard"
+            appearance={clerkAppearance(resolvedTheme === 'dark')}
+          />
+        )}
       </div>
     </aside>
   );
