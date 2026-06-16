@@ -35,7 +35,7 @@ export function clerkAppearance(isDark: boolean): ClerkAppearance {
       colorNeutral: isDark ? '#fafafa' : '#0f172a',
       colorRing: '#f97316',
       borderRadius: '0.625rem',
-      fontFamily: 'var(--font-inter), ui-sans-serif, system-ui, sans-serif',
+      fontFamily: 'var(--font-roboto), ui-sans-serif, system-ui, sans-serif',
     },
   };
 }

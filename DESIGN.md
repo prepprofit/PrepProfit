@@ -136,9 +136,10 @@ components will be migrated to these tokens.)
 
 ## 5. Typography
 
-- **Display**: **Space Grotesk** — `h1`/`h2`, module titles, large financial
-  values (`--font-display`).
-- **Body**: **Inter** — UI, lists, descriptions (`--font-sans`).
+- **Display**: **Outfit** — `h1`/`h2`, module titles, large financial values
+  (`--font-display`). A free, geometric stand-in for Google Sans.
+- **Body**: **Roboto** — UI, lists, descriptions (`--font-sans`); the Android
+  system font, for a Google-product feel.
 - Already wired in `app/layout.tsx` via `next/font` variables.
 
 ---
