@@ -2,6 +2,31 @@
 
 Instructions for Claude Code: work one sprint at a time, in order.
 Mark completed tasks with [x]. Do not start a sprint before the previous one is done.
+Before each sprint: enter plan mode, resolve the listed decisions, get approval.
+
+---
+
+## Definition of Done (applies to EVERY sprint task — no exceptions, no "later")
+- **Multi-tenancy:** every new table has `organization_id`; every query is org-scoped
+  (RULE #1); the table is in `businessTables` so RLS auto-applies; a PGlite isolation
+  test (`tenant_app` role) proves org A cannot read org B's rows.
+- **Money & math:** monetary values are integer cents; cost/margin/break-even logic is
+  pure functions in `lib/calculations/` with Vitest tests covering edge cases (zero,
+  negative, rounding).
+- **Validation & errors:** all user input validated with Zod on the server; action
+  failures return an `ActionErrorCode` mapped to next-intl (`actionErrors.*`) — never a
+  hardcoded string. Unexpected throws go through `unexpected()` (logged `eventId`).
+- **i18n & types:** all UI strings via next-intl; no `any`, no `@ts-ignore`; types derive
+  from the Drizzle schema.
+- **Authorization:** sensitive data/actions gated by role (`manager` vs `kitchen`) via
+  `getUserRole()` / Clerk `has()` — kitchen staff must not reach financials/payroll.
+- **UX:** honest empty states; design-matched skeleton ONLY where data is genuinely slow
+  (no blanket fallbacks); usable on mobile (test ~380px); controls keyboard-reachable and
+  labelled.
+- **Migrations:** after `db:generate`, ensure the journal `when` clears the gotcha
+  threshold; run `db:migrate` on prod and VERIFY the columns exist live.
+- **Green gate:** `lint && typecheck && test` and `next build` pass in CI before merge;
+  small conventional commits; observable errors.
 
 ---
 
@@ -146,17 +171,47 @@ lifecycle / custom-role delete control (Sprint 4 billing). Ops still owed:
 ---
 
 ## Sprint 2 — Financials and break-even (modules 2 and 4)
-Goal: answer "how much did I really make this month?".
+Goal: answer "how much did I really make this month?" — accurately and per-org.
 
-- [ ] `transactions` table (income/expense, category, date, value in cents)
-- [ ] Transaction CRUD with predefined + customizable categories
-- [ ] Monthly dashboard: income, expenses, profit, top products (shadcn/ui charts on Recharts)
-- [ ] Annual dashboard: month-over-month evolution, comparison
-- [ ] `lib/calculations/breakEven.ts`: fixed costs + average margin → units
-      needed to break even — with tests
-- [ ] Break-even page with a scenario simulator (price/cost sliders)
+Decisions to LOCK in the plan (do not assume while coding):
+- **Date & timezone:** store `occurred_on` as a `date` (no time); bucket monthly/annual
+  in a single, documented convention (org-local calendar date, no tz math on a bare date).
+- **Category model:** predefined enum seed + a `transaction_categories` table for custom
+  per-org categories (so reports group stably and renames don't orphan rows).
+- **Recipe link:** a transaction MAY reference a recipe (nullable `recipe_id`, composite
+  org FK) to power "top products"; income without a recipe is still valid.
+- **Tax:** capture an optional `tax_rate`/`tax_cents` now (chefs reconcile VAT) or defer —
+  decide explicitly; if deferred, leave a migration-friendly note.
 
-Acceptance criterion: enter 10 transactions and see coherent dashboards and break-even.
+Quick win first (next migration is 0009): add a guard to `scripts/migrate.ts` that aborts
+with a clear message if a new journal `when` ≤ the max already-applied `created_at` — kills
+the recurring silent-skip gotcha for good.
+
+Module work:
+- [ ] `transactions` table (org_id, type income|expense, category_id, nullable recipe_id,
+      `occurred_on` date, `amount_cents` int, note) + `transaction_categories` (custom);
+      migration; both in `businessTables`; isolation test
+- [ ] Transaction CRUD (Server Actions, Zod, withOrg) with predefined + custom categories;
+      list view with **period + category filters** and CSV **export**
+- [ ] `lib/calculations/finance.ts`: monthly/annual income, expenses, profit, by-category
+      and top-products aggregations — pure functions + Vitest (reuse `dashboardSummary` shape)
+- [ ] Monthly dashboard: income, expenses, profit, top products — shadcn/ui charts on
+      Recharts (add `recharts` + `components/ui/chart.tsx`, palette wired to our CSS tokens);
+      period switcher; design-matched skeleton for the (heavier) chart queries
+- [ ] Annual dashboard: month-over-month evolution + prior-period comparison
+- [ ] `lib/calculations/breakEven.ts`: fixed costs + average contribution margin → units &
+      revenue to break even — pure + Vitest (zero/negative-margin edge cases)
+- [ ] Break-even page with a live scenario simulator (price/cost/fixed-cost sliders)
+- [ ] Role gating: financials are `manager`-only (kitchen staff cannot read/edit) per DoD
+
+Acceptance criteria:
+- Seed ~12 transactions across ≥3 categories and 2 months → monthly & annual dashboards
+  show correct income/expense/profit, by-category breakdown, and top products; numbers
+  reconcile with the raw list and the CSV export.
+- Break-even page computes units & revenue to break even and updates live as sliders move;
+  a negative-margin scenario is handled gracefully (no NaN/∞).
+- A `kitchen`-role user is blocked from the financials routes/actions; org isolation proven
+  by an automated test.
 
 ---
 
@@ -166,11 +221,15 @@ Goal: complete parity with the 5 spreadsheets of the original kit.
 - [ ] `invoices` + `invoice_items` tables; sequential numbering per organization
 - [ ] Invoice builder: customer, items, taxes, total
 - [ ] Invoice PDF generation (react-pdf) with the organization's logo
-- [ ] `employees` and `shifts` tables (check-in/check-out, hourly rate)
-- [ ] Shift logging + automatic hours and pay-due calculation
+- [ ] `employees` and `shifts` tables (check-in/check-out, hourly rate) — employee data
+      is PII: `manager`-only access, and the PDF/render path is XSS-safe
+- [ ] Shift logging + automatic hours and pay-due calculation (pure, tested; integer cents)
 - [ ] Per-employee summary per period (week/month)
+- [ ] Invoice numbering is gap-free and concurrency-safe per org (sequence/locked counter,
+      tested under parallel inserts)
 
-Acceptance criterion: generate an invoice PDF and close an employee's payroll for the month.
+Acceptance criterion: generate an invoice PDF and close an employee's payroll for the month;
+a `kitchen`-role user cannot open payroll; invoice numbers never collide or skip.
 
 ---
 
@@ -181,11 +240,17 @@ Goal: the product accepts payments.
 - [ ] Create Starter / Pro / Business plans in the Clerk dashboard with Features
 - [ ] /pricing page with Clerk's <PricingTable />
 - [ ] Gating: `has({plan})` / <Protect> on modules per CLAUDE.md
-- [ ] Starter limits (50 recipes, 1 user) enforced on the server
+- [ ] Starter limits (50 recipes, 1 user) enforced on the SERVER (not just UI)
 - [ ] Post-signup onboarding flow: create org → choose plan → 3-step tour
 - [ ] In-app billing page (manage subscription via Clerk components)
+- [ ] Billing/Clerk webhooks (signature-verified): sync subscription + org/user lifecycle;
+      on member-removed / org-deleted, handle data ownership/cleanup
+- [ ] Custom `Owner` role without `org:sys_profile:delete` so customers can't self-delete
+      the org (creator role keeps delete — see memory `org-and-billing-decisions`)
+- [ ] Basic rate limiting on expensive/abusable endpoints (PDF gen, cron, auth-adjacent)
 
-Acceptance criterion: subscribe to the Pro plan with a test card and unlock modules.
+Acceptance criterion: subscribe to the Pro plan with a test card and unlock modules; a
+forged webhook is rejected; server-side plan limits hold even if the client bypasses the UI.
 
 ---
 
@@ -193,12 +258,40 @@ Acceptance criterion: subscribe to the Pro plan with a test card and unlock modu
 Goal: ready for the first real customers.
 
 - [ ] Resend: welcome, receipt, and low-stock alert emails
-- [ ] Sentry configured (client + server)
+- [ ] Sentry configured (client + server) — swap the `logError` sink, keep the shape
 - [ ] PostHog: key events (created recipe, generated invoice, viewed break-even)
-- [ ] i18n hygiene: zero hardcoded strings, all via next-intl (English only for
-      this first phase; locale infra stays in place for future languages)
+- [ ] Playwright E2E smoke: sign-in → create recipe → enter transaction → see dashboard;
+      runs in CI (Clerk test instance)
+- [ ] Dependabot (or Renovate) + `npm audit` gate in CI for dependency/security updates
+- [ ] GDPR/data-protection (EU): per-org data export + account/data deletion request flow;
+      document retention (trash 30 days, payroll PII)
+- [ ] i18n hygiene: zero hardcoded strings, all via next-intl
 - [ ] Public landing page with value proposition + CTA to /pricing
 - [ ] Accessibility and mobile responsiveness review of the main modules
-- [ ] Production checklist: env vars, domain, Neon backups, status page
+- [ ] Production checklist: env vars, domain, Neon backups + PITR, status page, rotate any
+      secrets exposed during development (e.g. the Neon password)
 
-Acceptance criterion: invite 3 beta chefs and have them complete onboarding without help.
+Acceptance criterion: invite 3 beta chefs and have them complete onboarding without help;
+the E2E smoke is green in CI and a data-export request returns the org's data.
+
+---
+
+## Cross-cutting concerns & backlog (tracked, scheduled — not lost)
+Engineering/security carried across sprints (enforced via the Definition of Done unless a
+dedicated item exists):
+- **RBAC enforcement** (`manager` vs `kitchen`) — wired in Sprint 2 (financials) and Sprint 3
+  (payroll); audit every sensitive action.
+- **Audit log** (who changed what, per org) — B2B multi-user expectation; target Sprint 4
+  (once roles/billing matter). Append-only table, org-scoped.
+- **Rate limiting & abuse** — Sprint 4; revisit if a public/unauthenticated surface appears.
+- **E2E + dependency scanning** — Sprint 5 (Playwright smoke, Dependabot, `npm audit`).
+- **Webhooks & lifecycle** (Clerk/billing, org/member removal cleanup) — Sprint 4.
+- **GDPR data export/delete + retention** — Sprint 5.
+
+Product backlog (not yet scheduled — promote into a sprint when prioritized):
+- **Spreadsheet onboarding:** CSV/XLSX **import** of ingredients & transactions (chefs migrate
+  from the old kit) — pairs with the Sprint 2 export.
+- **Recipe scaling / batch:** scale a recipe to N portions or a target cost.
+- **Suppliers** as a first-class entity (currently a free-text field) with per-supplier prices.
+- **Global search** across recipes/ingredients/transactions.
+- **Saved reports / scheduled email summaries** (monthly P&L to the owner).
