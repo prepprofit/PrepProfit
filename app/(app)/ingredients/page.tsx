@@ -5,9 +5,14 @@ import { listIngredients } from '@/lib/data/ingredients';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { IngredientGrid } from '@/components/app/ingredients/ingredient-grid';
 
-export default async function IngredientsPage() {
+export default async function IngredientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ highlight?: string }>;
+}) {
   const t = await getTranslations('ingredients');
   const organizationId = await getOrgId();
+  const { highlight } = await searchParams;
   const [ingredients, settings] = await Promise.all([
     withOrg(organizationId, (tx) => listIngredients(tx, organizationId)),
     getOrgSettings(),
@@ -19,6 +24,7 @@ export default async function IngredientsPage() {
       <IngredientGrid
         initialIngredients={ingredients}
         currency={settings.currency}
+        highlightId={typeof highlight === 'string' ? highlight : undefined}
       />
     </div>
   );

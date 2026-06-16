@@ -36,6 +36,7 @@ export default async function TransactionsPage({
   const toParam = isDate(sp.to) ? sp.to : undefined;
   const categoryParam =
     typeof sp.category === 'string' && sp.category ? sp.category : undefined;
+  const highlightId = typeof sp.highlight === 'string' ? sp.highlight : undefined;
 
   const filter: TransactionFilter = {
     type: typeParam,
@@ -86,6 +87,7 @@ export default async function TransactionsPage({
           to: toParam ?? '',
           category: categoryParam ?? '',
         }}
+        highlightId={highlightId}
       />
     </div>
   );

@@ -11,7 +11,9 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { cn } from '@/lib/utils';
 import { useActionError } from '@/lib/i18n/use-action-error';
+import { useRowHighlight } from '@/lib/hooks/use-row-highlight';
 import {
   centsToAmountInput,
   formatMoney,
@@ -56,14 +58,18 @@ export function TransactionsView({
   recipes,
   rows,
   filter,
+  highlightId,
 }: {
   currency: string;
   categories: CategoryOption[];
   recipes: RecipeOption[];
   rows: TransactionRow[];
   filter: FilterState;
+  /** Record id to scroll to + flash, from a ⌘K search deep-link (?highlight=). */
+  highlightId?: string;
 }) {
   const t = useTranslations('finance.transactions');
+  const flashId = useRowHighlight(highlightId, 'transaction-row-');
   const tKind = useTranslations('finance.kind');
   const tCommon = useTranslations('common');
   const actionError = useActionError();
@@ -380,7 +386,11 @@ export function TransactionsView({
           {rows.map((row) => (
             <li
               key={row.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3"
+              id={`transaction-row-${row.id}`}
+              className={cn(
+                'flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3 transition-colors duration-700',
+                flashId === row.id && 'bg-accent-500/10 ring-2 ring-accent-500',
+              )}
             >
               <div className="flex min-w-0 flex-col gap-1">
                 <div className="flex items-center gap-2">

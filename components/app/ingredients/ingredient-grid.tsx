@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useActionError } from '@/lib/i18n/use-action-error';
+import { useRowHighlight } from '@/lib/hooks/use-row-highlight';
 import {
   createIngredientAction,
   deleteIngredientAction,
@@ -83,11 +84,15 @@ type GridMeta = {
 export function IngredientGrid({
   initialIngredients,
   currency,
+  highlightId,
 }: {
   initialIngredients: Ingredient[];
   currency: string;
+  /** Record id to scroll to + flash, from a ⌘K search deep-link (?highlight=). */
+  highlightId?: string;
 }) {
   const t = useTranslations('ingredients');
+  const flashId = useRowHighlight(highlightId, 'ingredient-row-');
   const tDim = useTranslations('dimensions');
   const tCommon = useTranslations('common');
   const actionError = useActionError();
@@ -472,7 +477,11 @@ export function IngredientGrid({
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-b border-border last:border-0 align-top"
+                id={`ingredient-row-${row.original.id}`}
+                className={cn(
+                  'border-b border-border last:border-0 align-top transition-colors duration-700',
+                  flashId === row.original.id && 'bg-accent-500/10',
+                )}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-3 py-2">
