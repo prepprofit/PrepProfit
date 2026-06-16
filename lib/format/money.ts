@@ -23,6 +23,24 @@ export function formatMoney(
   }).format(cents / 100);
 }
 
+/**
+ * Compact currency for chart axes/labels: `450000` → `"€4.5K"`, `12000` → `"€120"`.
+ * Drops cents and uses compact notation so dense axes stay legible; tooltips and
+ * KPIs still use the precise {@link formatMoney}.
+ */
+export function formatMoneyCompact(
+  cents: number,
+  currency: string,
+  locale = 'en',
+): string {
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(cents / 100);
+}
+
 /** Integer cents → a plain, editable major-unit string. `1234` → `"12.34"`. */
 export function centsToAmountInput(cents: number): string {
   return (cents / 100).toFixed(2);
