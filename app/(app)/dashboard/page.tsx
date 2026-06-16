@@ -1,25 +1,41 @@
 import { getTranslations } from 'next-intl/server';
 import { DollarSign, Percent, TrendingUp, Utensils } from 'lucide-react';
-import { getOrgId } from '@/lib/auth';
+import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listRecipesWithLines } from '@/lib/data/recipes';
+import { listTransactions } from '@/lib/data/transactions';
+import { getOrgSettings } from '@/lib/data/org-settings';
 import {
   dashboardSummary,
   type DashboardRecipeInput,
 } from '@/lib/calculations/dashboard';
+import { monthlyBuckets } from '@/lib/calculations/finance';
+import { currentPeriodKey, resolvePeriod } from '@/lib/finance/period';
+import { formatMoney } from '@/lib/format/money';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
-import { ChartPlaceholder } from '@/components/app/dashboard/chart-placeholder';
 import { TopRecipes } from '@/components/app/dashboard/top-recipes';
+import { MonthlyChart } from '@/components/app/finance/monthly-chart';
+
+const shortMonth = (month: number) =>
+  new Date(2000, month - 1, 1).toLocaleDateString('en', { month: 'short' });
 
 /**
- * Dashboard — real figures derived live from the org's recipes (active recipes,
- * average margin, average food cost, top recipes by margin). Revenue and the
- * chart tiles depend on the `transactions` table and arrive in Sprint 2; until
- * then they show an honest empty state rather than sample numbers.
+ * Dashboard — real figures from the org's recipes (active recipes, margin, food
+ * cost, top recipes). The finance tiles (this-month revenue + income-vs-expense
+ * chart) are shown to MANAGERS only; kitchen staff never see financial data,
+ * even here (RULE: financials are manager-only).
  */
 export default async function DashboardPage() {
   const t = await getTranslations('dashboard');
+  const tFin = await getTranslations('finance.dashboard');
   const organizationId = await getOrgId();
+  const canSeeFinance = canAccessFinancials(await getUserRole());
 
   const recipes = await withOrg(organizationId, (tx) =>
     listRecipesWithLines(tx, organizationId),
@@ -45,17 +61,45 @@ export default async function DashboardPage() {
 
   const summary = dashboardSummary(input);
 
+  // Finance tiles — managers only.
+  const yearKey = currentPeriodKey('year');
+  const year = resolvePeriod('year', yearKey);
+  const finance = canSeeFinance
+    ? await (async () => {
+        const [yearTxns, settings] = await Promise.all([
+          withOrg(organizationId, (tx) =>
+            listTransactions(tx, organizationId, {
+              from: year.from,
+              to: year.to,
+            }),
+          ),
+          getOrgSettings(),
+        ]);
+        const buckets = monthlyBuckets(yearTxns, year.year);
+        const revenueCents = buckets[new Date().getMonth()]?.incomeCents ?? 0;
+        return {
+          currency: settings.currency,
+          revenueCents,
+          monthly: buckets.map((b) => ({
+            label: shortMonth(b.month),
+            incomeCents: b.incomeCents,
+            expenseCents: b.expenseCents,
+            profitCents: b.profitCents,
+          })),
+        };
+      })()
+    : null;
+
   const pricedCaption = t('kpi.pricedRecipes', { count: summary.pricedRecipes });
   const pct = (value: number | null) => (value == null ? '—' : `${value}%`);
   const marginCaption =
     summary.avgMarginPercent == null ? t('kpi.noPricedRecipes') : pricedCaption;
-  const sprint2 = t('sprint2');
 
   return (
     <div className="flex flex-col gap-5">
       <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
 
-      {/* KPI row — real metrics first, finance (Sprint 2) last */}
+      {/* KPI row — recipe metrics for everyone; revenue for managers only. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label={t('kpi.recipes')}
@@ -75,45 +119,32 @@ export default async function DashboardPage() {
           caption={marginCaption}
           icon={Percent}
         />
-        <StatCard
-          label={t('kpi.revenue')}
-          value="—"
-          caption={t('kpi.availableSprint2')}
-          icon={DollarSign}
-        />
+        {finance && (
+          <StatCard
+            label={t('kpi.revenue')}
+            value={formatMoney(finance.revenueCents, finance.currency)}
+            caption={t('kpi.thisMonth')}
+            icon={DollarSign}
+          />
+        )}
       </div>
 
       {/* Bento grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <ChartPlaceholder
-          className="md:col-span-2"
-          title={t('charts.sales.title')}
-          description={t('charts.sales.subtitle')}
-          note={sprint2}
-          emptyLabel={t('chartEmpty')}
-        />
+        {finance && (
+          <Card className="flex flex-col md:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base">{tFin('monthlyTitle')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MonthlyChart data={finance.monthly} currency={finance.currency} />
+            </CardContent>
+          </Card>
+        )}
         <TopRecipes
           title={t('topRecipes')}
           recipes={summary.topByMargin}
           emptyLabel={t('noRecipes')}
-        />
-        <ChartPlaceholder
-          title={t('charts.margin.title')}
-          description={t('charts.margin.subtitle')}
-          note={sprint2}
-          emptyLabel={t('chartEmpty')}
-        />
-        <ChartPlaceholder
-          title={t('charts.costs.title')}
-          description={t('charts.costs.subtitle')}
-          note={sprint2}
-          emptyLabel={t('chartEmpty')}
-        />
-        <ChartPlaceholder
-          title={t('charts.cashflow.title')}
-          description={t('charts.cashflow.subtitle')}
-          note={sprint2}
-          emptyLabel={t('chartEmpty')}
         />
       </div>
     </div>

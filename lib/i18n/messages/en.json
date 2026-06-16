@@ -255,6 +255,7 @@
       "margin": "Avg. margin",
       "recipes": "Active recipes",
       "availableSprint2": "Available in Sprint 2",
+      "thisMonth": "This month",
       "noPricedRecipes": "No priced recipes yet",
       "pricedRecipes": "{count, plural, =0 {No priced recipes} one {# priced recipe} other {# priced recipes}}"
     },
