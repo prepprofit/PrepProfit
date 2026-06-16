@@ -303,11 +303,18 @@ Decisions LOCKED (resolve & approve before coding):
 - **Org-scoped + RLS-safe + RBAC-filtered.** Search runs inside `withOrg`; every query
   filters `organization_id` and `deleted_at IS NULL`; a `kitchen` user NEVER gets
   transaction / financial results (RULE: financials are manager-only).
-- **Cross-entity, grouped results:** recipes, ingredients, transactions (folders optional).
+- **Cross-entity, grouped results:** recipes, ingredients, transactions now (folders
+  optional). **Invoices and customers don't exist yet** — they join the SAME index when
+  they ship in Sprint 3 (see that sprint's "register into global search" task).
+- **Pluggable registry, not hard-coded entities.** Each searchable entity registers a
+  descriptor (table, searched columns, RBAC rule, result label + deep-link) so adding
+  invoices/customers later is a few lines, not a rewrite.
 
 - [ ] Enable the `pg_trgm` extension + GIN trigram indexes on searchable text
       (recipes.name/notes, ingredients.name/supplier, transactions.note); migration NNNN
       (journal `when` > the 0003 gotcha threshold), isolation test
+- [ ] Search registry: a typed descriptor per entity (columns, RBAC predicate, label,
+      href builder) so new entities plug in without touching the core
 - [ ] Unified search Server Action: org-scoped via `withOrg`, Zod-validated query,
       RBAC-filtered (kitchen excluded from transactions), soft-delete aware, ranked,
       capped + paginated
@@ -329,36 +336,70 @@ Acceptance criteria:
 
 ---
 
-## Sprint 3 — Invoices, payroll & documents (modules 5 and 6)
-Goal: complete parity with the 5 spreadsheets of the original kit, and a real
-document/print system (not just invoices) — every key view exports to a clean PDF /
-print-friendly page with the organization's logo.
+## Sprint 3 — Invoices and payroll (modules 5 and 6 — data & builders)
+Goal: the invoice and payroll DATA, builders and calculations. Their printable output
+(PDF / Excel / email) is the dedicated Sprint 3.5 — this sprint stops at on-screen.
 
+- [ ] `customers` table (org-scoped, soft-deletable): name, tax id, address, email —
+      reused by invoices and searchable globally
 - [ ] `invoices` + `invoice_items` tables; sequential numbering per organization
-- [ ] Invoice builder: customer, items, taxes, total
+- [ ] Invoice builder: pick/create customer, line items, taxes, total (on-screen preview)
 - [ ] `employees` and `shifts` tables (check-in/check-out, hourly rate) — employee data
-      is PII: `manager`-only access, and the PDF/render path is XSS-safe
+      is PII: `manager`-only access
 - [ ] Shift logging + automatic hours and pay-due calculation (pure, tested; integer cents)
-- [ ] Per-employee summary per period (week/month)
+- [ ] Per-employee summary per period (week/month) — on-screen
 - [ ] Invoice numbering is gap-free and concurrency-safe per org (sequence/locked counter,
       tested under parallel inserts)
-
-Document / print system (module 6, expanded beyond invoices):
-- [ ] Shared document layout (react-pdf + matching print CSS): org logo/header, footer,
-      currency via `formatMoney`, reused by every document below
-- [ ] Invoice PDF (the original module-6 deliverable) on the shared layout
-- [ ] Printable recipe card: ingredients, cost breakdown, per-portion cost & margin
-- [ ] Printable P&L statement (monthly / annual) — `manager`-only
-- [ ] Printable per-employee payroll summary — `manager`-only, PII-safe
-- [ ] Each printable view has a print-friendly route + a "Download PDF" action; the
-      PDF/render path is XSS-safe and org-scoped (no cross-tenant data)
+- [ ] Register `invoices` + `customers` into the Sprint 2.7 search registry (find an
+      invoice by number/customer, a customer by name) — RBAC: invoices are `manager`-only
 
 Acceptance criteria:
-- Generate an invoice PDF and close an employee's payroll for the month; a `kitchen`-role
-  user cannot open payroll; invoice numbers never collide or skip.
-- A recipe card, a monthly P&L, and a payroll summary each render to a clean PDF carrying
-  the org's logo, with figures reconciling against the on-screen data.
-- A `kitchen`-role user cannot reach the financial / payroll documents (route + action).
+- Build an invoice (customer + items + taxes) and close an employee's payroll for the
+  month on screen; a `kitchen`-role user cannot open payroll or invoices; invoice numbers
+  never collide or skip.
+- Global search (⌘K) now finds invoices by number/customer and customers by name, still
+  org-scoped and RBAC-filtered (proven by test).
+
+---
+
+## Sprint 3.5 — Documents, printing, export & email
+Goal: turn every key view into something the chef can hand to an accountant, a client or
+the tax office — one consistent, branded document pipeline (print, PDF, Excel, email).
+This is the home of ALL output; earlier sprints stop at on-screen data.
+
+Decisions LOCKED (resolve & approve before coding):
+- **One shared document layout**, not per-page one-offs: a react-pdf template + a matching
+  print stylesheet (org logo/header/footer, currency via `formatMoney`, locale via
+  next-intl) reused by every document, so they all look like one product.
+- **PDF generation is server-side, org-scoped, RBAC-checked and XSS-safe**; rate-limited
+  (cross-ref Sprint 4's PDF-gen limiter — wire the limiter here when the path is born).
+- **Email delivery uses Resend** (introduced here for documents; Sprint 5's lifecycle
+  emails build on the same client). Never email cross-tenant data; log every send.
+- **Excel export uses a real `.xlsx`** (typed, formatted), complementing the existing CSV.
+
+Documents (each: on-screen → print-friendly route → Download PDF → Email):
+- [ ] Shared document layout + print stylesheet (the foundation all documents reuse)
+- [ ] Invoice — PDF + print + "Email to customer" (uses the customer email from Sprint 3)
+- [ ] Recipe card — ingredients, cost breakdown, per-portion cost & margin (great for the
+      kitchen wall / sharing a spec sheet)
+- [ ] P&L statement (monthly / annual) — `manager`-only — PDF + print
+- [ ] Per-employee payroll summary / payslip — `manager`-only, PII-safe — PDF + print
+
+Export & share:
+- [ ] Excel (`.xlsx`) export of the P&L (income, expenses, profit, by-category, top
+      products) — and of payroll — with formatting; CSV stays for raw transactions
+- [ ] "Email this document" action (Resend): send any generated PDF (invoice, P&L,
+      payroll) to a chosen recipient with a short message; delivery + errors surfaced
+- [ ] Bulk / convenience: print or download a period's documents in one action where it
+      saves the user real time (e.g. all of a month's invoices)
+
+Acceptance criteria:
+- An invoice, a recipe card, a monthly P&L and a payslip each render to a clean, branded
+  PDF whose figures reconcile with the on-screen data; each also prints cleanly (print CSS).
+- Exporting the P&L to `.xlsx` opens in Excel with correct numbers and formatting; emailing
+  a P&L PDF reaches the inbox; neither ever leaks another org's data (automated test).
+- A `kitchen`-role user cannot reach or generate any financial / payroll document
+  (route + action), and rate limiting blocks PDF-gen abuse.
 
 ---
 
@@ -386,7 +427,8 @@ forged webhook is rejected; server-side plan limits hold even if the client bypa
 ## Sprint 5 — Launch polish
 Goal: ready for the first real customers.
 
-- [ ] Resend: welcome, receipt, and low-stock alert emails
+- [ ] Resend: welcome, receipt, and low-stock alert emails (reuses the Resend client +
+      document-email path introduced in Sprint 3.5)
 - [ ] Sentry configured (client + server) — swap the `logError` sink, keep the shape
 - [ ] PostHog: key events (created recipe, generated invoice, viewed break-even)
 - [ ] Playwright E2E smoke: sign-in → create recipe → enter transaction → see dashboard;

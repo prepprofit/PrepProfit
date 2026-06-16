@@ -39,8 +39,10 @@ subscription web app. Initial codebase: built fresh from the Wibox base
 3. Ingredient and recipe inventory (in/out, low-stock alert)
 4. Break-even calculator (with scenario simulations)
 5. Payroll: shifts, hours, per-employee pay
-6. Document / print system: PDF + print-friendly invoices, recipe cards, P&L
-   statements and payroll summaries (shared layout, org logo)
+6. Document / print system: print + PDF of invoices, recipe cards, P&L statements
+   and payroll (shared branded layout), plus Excel (.xlsx) export and email delivery
+   (Resend). Global ⌘K search across recipes, ingredients, transactions, invoices and
+   customers is a cross-cutting capability (Sprint 2.7 + 3).
 
 ## Subscription plans (gating via Clerk `has()`)
 - Starter: 1 user, up to 50 recipes, modules 1–3
