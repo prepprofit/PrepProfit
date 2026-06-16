@@ -173,36 +173,43 @@ lifecycle / custom-role delete control (Sprint 4 billing). Ops still owed:
 ## Sprint 2 — Financials and break-even (modules 2 and 4)
 Goal: answer "how much did I really make this month?" — accurately and per-org.
 
-Decisions to LOCK in the plan (do not assume while coding):
-- **Date & timezone:** store `occurred_on` as a `date` (no time); bucket monthly/annual
-  in a single, documented convention (org-local calendar date, no tz math on a bare date).
-- **Category model:** predefined enum seed + a `transaction_categories` table for custom
-  per-org categories (so reports group stably and renames don't orphan rows).
-- **Recipe link:** a transaction MAY reference a recipe (nullable `recipe_id`, composite
-  org FK) to power "top products"; income without a recipe is still valid.
-- **Tax:** capture an optional `tax_rate`/`tax_cents` now (chefs reconcile VAT) or defer —
-  decide explicitly; if deferred, leave a migration-friendly note.
+Decisions LOCKED (resolved & approved before coding):
+- **Date & timezone:** `occurred_on` is a bare `date` (`mode:'string'` → 'YYYY-MM-DD',
+  no time/tz); monthly/annual buckets slice the string (org-local, zero tz math). ✓
+- **Category model:** one `transaction_categories` table — predefined rows seeded
+  idempotently per org with a stable `slug` (display via i18n `finance.categories.<slug>`,
+  so renames never orphan rows), custom rows have `slug = null`; `kind` splits income/expense. ✓
+- **Recipe link:** nullable `recipe_id` with composite `(org, recipe_id)` FK `ON DELETE
+  restrict`; the recipe-purge path nulls the link first so financial records survive a purge. ✓
+- **Tax:** DEFERRED (decided). `amount_cents` is the FULL GROSS amount as recorded; adding
+  tax later is a purely additive migration — nullable `tax_rate` (numeric) + `tax_cents` (int),
+  where `net = amount_cents − tax_cents` and existing rows mean "no tax recorded". Documented
+  in the `transactions` schema comment.
+- **Deletion (sub-decision):** transactions are soft-deleted (`deleted_at`) and wired into the
+  existing `/trash` (manager-only) + 30-day auto-purge — no destructive delete, per Sprint 1.5.
 
 Quick win first (next migration is 0009): add a guard to `scripts/migrate.ts` that aborts
 with a clear message if a new journal `when` ≤ the max already-applied `created_at` — kills
 the recurring silent-skip gotcha for good.
 
+- [x] Migrate guard: pure `findSkippableMigrations` (tested) + abort in `scripts/migrate.ts`
+
 Module work:
-- [ ] `transactions` table (org_id, type income|expense, category_id, nullable recipe_id,
+- [x] `transactions` table (org_id, type income|expense, category_id, nullable recipe_id,
       `occurred_on` date, `amount_cents` int, note) + `transaction_categories` (custom);
-      migration; both in `businessTables`; isolation test
-- [ ] Transaction CRUD (Server Actions, Zod, withOrg) with predefined + custom categories;
+      migration 0009; both in `businessTables`; isolation test
+- [x] Transaction CRUD (Server Actions, Zod, withOrg) with predefined + custom categories;
       list view with **period + category filters** and CSV **export**
-- [ ] `lib/calculations/finance.ts`: monthly/annual income, expenses, profit, by-category
+- [x] `lib/calculations/finance.ts`: monthly/annual income, expenses, profit, by-category
       and top-products aggregations — pure functions + Vitest (reuse `dashboardSummary` shape)
-- [ ] Monthly dashboard: income, expenses, profit, top products — shadcn/ui charts on
-      Recharts (add `recharts` + `components/ui/chart.tsx`, palette wired to our CSS tokens);
-      period switcher; design-matched skeleton for the (heavier) chart queries
-- [ ] Annual dashboard: month-over-month evolution + prior-period comparison
-- [ ] `lib/calculations/breakEven.ts`: fixed costs + average contribution margin → units &
+- [x] Monthly dashboard: income, expenses, profit, top products — shadcn/ui charts on
+      Recharts (added `recharts` + `components/ui/chart.tsx`, palette wired to our CSS tokens);
+      period switcher; design-matched Suspense skeleton for the (heavier) chart queries
+- [x] Annual dashboard: month-over-month evolution + prior-period comparison
+- [x] `lib/calculations/breakEven.ts`: fixed costs + average contribution margin → units &
       revenue to break even — pure + Vitest (zero/negative-margin edge cases)
-- [ ] Break-even page with a live scenario simulator (price/cost/fixed-cost sliders)
-- [ ] Role gating: financials are `manager`-only (kitchen staff cannot read/edit) per DoD
+- [x] Break-even page with a live scenario simulator (price/cost/fixed-cost sliders)
+- [x] Role gating: financials are `manager`-only (kitchen staff cannot read/edit) per DoD
 
 Acceptance criteria:
 - Seed ~12 transactions across ≥3 categories and 2 months → monthly & annual dashboards
