@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
-  Bar,
+  Area,
   CartesianGrid,
   ComposedChart,
   Legend,
@@ -42,7 +42,7 @@ function usePrefersReducedMotion() {
 }
 
 /**
- * Income vs expense (gradient bars) with a profit overlay (smooth line) by month —
+ * Income vs expense (smooth gradient areas) with a profit overlay (line) by month —
  * the central finance chart, reused on the dashboard and the annual financials
  * view. Values are integer cents; the axis uses a compact format and the tooltip
  * the precise one. The profit line is nulled for months with no activity so it
@@ -77,17 +77,15 @@ export function MonthlyChart({
       <ComposedChart
         data={series}
         margin={{ top: 12, right: 8, bottom: 0, left: 4 }}
-        barGap={4}
-        barCategoryGap="28%"
       >
         <defs>
           <linearGradient id="fill-income" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={FINANCE_COLORS.income} stopOpacity={0.95} />
-            <stop offset="100%" stopColor={FINANCE_COLORS.income} stopOpacity={0.55} />
+            <stop offset="0%" stopColor={FINANCE_COLORS.income} stopOpacity={0.28} />
+            <stop offset="95%" stopColor={FINANCE_COLORS.income} stopOpacity={0.02} />
           </linearGradient>
           <linearGradient id="fill-expense" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={FINANCE_COLORS.expense} stopOpacity={0.95} />
-            <stop offset="100%" stopColor={FINANCE_COLORS.expense} stopOpacity={0.55} />
+            <stop offset="0%" stopColor={FINANCE_COLORS.expense} stopOpacity={0.24} />
+            <stop offset="95%" stopColor={FINANCE_COLORS.expense} stopOpacity={0.02} />
           </linearGradient>
         </defs>
 
@@ -112,7 +110,7 @@ export function MonthlyChart({
         />
         <ReferenceLine y={0} stroke="var(--color-border)" strokeWidth={1} />
         <Tooltip
-          cursor={{ fill: 'var(--color-surface-2)', opacity: 0.5, radius: 6 }}
+          cursor={{ stroke: 'var(--color-border)', strokeWidth: 1 }}
           content={<ChartTooltipContent formatValue={fmt} />}
         />
         <Legend
@@ -123,20 +121,26 @@ export function MonthlyChart({
           iconSize={8}
           wrapperStyle={{ fontSize: 12, color: 'var(--color-muted-foreground)' }}
         />
-        <Bar
+        <Area
+          type="monotone"
           dataKey="incomeCents"
           name={t('income')}
+          stroke={FINANCE_COLORS.income}
+          strokeWidth={2}
           fill="url(#fill-income)"
-          radius={[6, 6, 0, 0]}
-          maxBarSize={28}
+          dot={false}
+          activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--color-surface)' }}
           isAnimationActive={!reducedMotion}
         />
-        <Bar
+        <Area
+          type="monotone"
           dataKey="expenseCents"
           name={t('expenses')}
+          stroke={FINANCE_COLORS.expense}
+          strokeWidth={2}
           fill="url(#fill-expense)"
-          radius={[6, 6, 0, 0]}
-          maxBarSize={28}
+          dot={false}
+          activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--color-surface)' }}
           isAnimationActive={!reducedMotion}
         />
         <Line

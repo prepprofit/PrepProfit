@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+import { currentUser } from '@clerk/nextjs/server';
 import { DollarSign, Percent, TrendingUp, Utensils } from 'lucide-react';
 import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
@@ -36,6 +37,7 @@ export default async function DashboardPage() {
   const tFin = await getTranslations('finance.dashboard');
   const organizationId = await getOrgId();
   const canSeeFinance = canAccessFinancials(await getUserRole());
+  const firstName = (await currentUser())?.firstName?.trim();
 
   const recipes = await withOrg(organizationId, (tx) =>
     listRecipesWithLines(tx, organizationId),
@@ -97,15 +99,23 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+      <div className="flex flex-col gap-1">
+        <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          {firstName ? t('welcome', { name: firstName }) : t('welcomeGeneric')}
+        </h2>
+        <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+      </div>
 
-      {/* KPI row — recipe metrics for everyone; revenue for managers only. */}
+      {/* KPI row — recipe metrics for everyone; revenue for managers only. The
+          primary KPI is featured (solid accent): revenue for managers, else the
+          active-recipe count for kitchen staff. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label={t('kpi.recipes')}
           value={String(summary.activeRecipes)}
           caption={pricedCaption}
           icon={Utensils}
+          featured={!finance}
         />
         <StatCard
           label={t('kpi.margin')}
@@ -125,6 +135,7 @@ export default async function DashboardPage() {
             value={formatMoney(finance.revenueCents, finance.currency)}
             caption={t('kpi.thisMonth')}
             icon={DollarSign}
+            featured
           />
         )}
       </div>
