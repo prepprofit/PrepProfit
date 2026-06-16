@@ -154,7 +154,12 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         )}
-        <MarginGauge value={summary.avgMarginPercent} />
+        <MarginGauge
+          value={summary.avgMarginPercent}
+          caption={
+            summary.avgMarginPercent == null ? undefined : pricedCaption
+          }
+        />
         <TopRecipes
           title={t('topRecipes')}
           recipes={summary.topByMargin}
