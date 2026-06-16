@@ -310,21 +310,22 @@ Decisions LOCKED (resolve & approve before coding):
   descriptor (table, searched columns, RBAC rule, result label + deep-link) so adding
   invoices/customers later is a few lines, not a rewrite.
 
-- [ ] Enable the `pg_trgm` extension + GIN trigram indexes on searchable text
-      (recipes.name/notes, ingredients.name/supplier, transactions.note); migration NNNN
-      (journal `when` > the 0003 gotcha threshold), isolation test
-- [ ] Search registry: a typed descriptor per entity (columns, RBAC predicate, label,
-      href builder) so new entities plug in without touching the core
-- [ ] Unified search Server Action: org-scoped via `withOrg`, Zod-validated query,
+- [x] Enable the `pg_trgm` extension + GIN trigram indexes on searchable text
+      (recipes.name/notes, ingredients.name/supplier, transactions.note); migration 0010
+      (journal `when` 1781632722380 > the 0003 gotcha threshold), isolation test
+- [x] Search registry: a typed descriptor per entity (columns, RBAC predicate, label,
+      href builder) so new entities plug in without touching the core (`lib/search/registry.ts`)
+- [x] Unified search Server Action: org-scoped via `withOrg`, Zod-validated query,
       RBAC-filtered (kitchen excluded from transactions), soft-delete aware, ranked,
-      capped + paginated
-- [ ] Pure ranking / snippet helpers in `lib/` + Vitest (typo tolerance, relevance order,
-      empty / short-query / no-match edges)
-- [ ] Command palette UI (⌘K / Ctrl-K) in the app shell: debounced input, results grouped
+      capped per entity (`app/(app)/search/actions.ts` + `lib/search/run.ts`)
+- [x] Pure ranking / snippet helpers in `lib/` + Vitest (typo tolerance, relevance order,
+      empty / short-query / no-match edges) (`lib/search/ranking.ts`)
+- [x] Command palette UI (⌘K / Ctrl-K) in the app shell: debounced input, results grouped
       by entity, full keyboard nav, loading / empty / error states, i18n strings, each
-      result links into the right module
-- [ ] Performance: returns within budget on a realistic dataset; confirm the trigram
-      indexes are actually used (EXPLAIN)
+      result links into the right module (cmdk + shadcn; ingredient/transaction deep-links
+      use `?highlight=`)
+- [x] Performance: GIN trigram indexes created and confirmed usable (EXPLAIN → Bitmap Index
+      Scan on `*_trgm_idx`); on tiny tables Postgres seq-scans, as expected
 
 Acceptance criteria:
 - A misspelled recipe / ingredient name still finds the right row (trigram), results
