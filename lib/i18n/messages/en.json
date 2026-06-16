@@ -48,7 +48,9 @@
   },
   "topbar": {
     "openMenu": "Open menu",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar"
   },
   "search": {
     "title": "Search",

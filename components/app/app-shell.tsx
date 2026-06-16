@@ -21,8 +21,23 @@ export function AppShell({
 }) {
   const [open, setOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState(false);
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const lastFocused = React.useRef<HTMLElement | null>(null);
+
+  // Restore the desktop rail's collapsed preference (set after mount to avoid an
+  // SSR/CSR mismatch — the server always renders the expanded rail).
+  React.useEffect(() => {
+    setCollapsed(localStorage.getItem('pp-sidebar-collapsed') === '1');
+  }, []);
+
+  const toggleCollapsed = React.useCallback(() => {
+    setCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem('pp-sidebar-collapsed', next ? '1' : '0');
+      return next;
+    });
+  }, []);
 
   // ⌘K / Ctrl-K toggles the global search palette from anywhere in the app.
   React.useEffect(() => {
@@ -63,7 +78,12 @@ export function AppShell({
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar className="hidden lg:flex" canSeeFinance={canSeeFinance} />
+      <Sidebar
+        className="hidden lg:flex"
+        canSeeFinance={canSeeFinance}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
 
       {/* Mobile drawer */}
       <div
