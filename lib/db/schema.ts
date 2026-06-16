@@ -5,6 +5,7 @@ import {
   integer,
   numeric,
   timestamp,
+  date,
   index,
   unique,
   foreignKey,
@@ -244,6 +245,104 @@ export const inventoryMovements = pgTable(
   ],
 );
 
+/**
+ * Per-organization income/expense categories. Predefined categories are seeded
+ * as rows (with a `slug`) so reports group by a STABLE id and a rename never
+ * orphans a transaction; their display name comes from i18n
+ * (`finance.categories.<slug>`), not this row's `name` (a fallback only). Custom
+ * per-org categories are rows with `slug = NULL` and a literal `name`. `kind`
+ * keeps income and expense categories apart in the picker and in reports.
+ * `isSystem` is derived as `slug != null` (no separate column needed).
+ */
+export const transactionCategories = pgTable(
+  'transaction_categories',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // Stable key for predefined rows (NULL = custom). NULLs are distinct in
+    // Postgres, so many custom rows coexist; predefined seeding stays idempotent
+    // via ON CONFLICT (organization_id, slug).
+    slug: text('slug'),
+    name: text('name').notNull(),
+    kind: text('kind', { enum: ['income', 'expense'] }).notNull(),
+    // Manual ordering in the picker; predefined seed sets ascending values.
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('transaction_categories_org_idx').on(t.organizationId),
+    // Idempotent predefined seeding (NULLs distinct → custom rows never collide).
+    unique('transaction_categories_org_slug_key').on(t.organizationId, t.slug),
+    // FK target for transactions' composite (organization_id, category_id).
+    unique('transaction_categories_org_id_key').on(t.organizationId, t.id),
+  ],
+);
+
+/**
+ * Money ledger: one row per income/expense entry. RULE #1 — `organization_id` on
+ * every row, org-scoped queries, RLS via `businessTables`. The monetary value is
+ * a POSITIVE integer-cents magnitude; direction comes from `type` (income vs
+ * expense). `occurred_on` is a bare calendar `date` ('YYYY-MM-DD', no time, no
+ * timezone): monthly/annual buckets slice the string, so there is zero tz math.
+ *
+ * `amount_cents` is the FULL GROSS amount the chef records (what hit the bank).
+ * Tax is intentionally deferred (Sprint 2 decision): adding it later is a purely
+ * additive migration — nullable `tax_rate` (numeric) + `tax_cents` (int), where
+ * net = `amount_cents − tax_cents` and existing rows mean "no tax recorded".
+ */
+export const transactions = pgTable(
+  'transactions',
+  {
+    id: id(),
+    organizationId: orgId(),
+    type: text('type', { enum: ['income', 'expense'] }).notNull(),
+    // Every transaction has a category (predefined "Other income/expense" is the
+    // fallback) so by-category reports are complete.
+    categoryId: text('category_id').notNull(),
+    // Optional link to a recipe → powers "top products" for income. Nullable:
+    // income without a recipe is still valid.
+    recipeId: text('recipe_id'),
+    // Bare calendar date (string mode → 'YYYY-MM-DD'); no time, no timezone.
+    occurredOn: date('occurred_on', { mode: 'string' }).notNull(),
+    // Positive magnitude in integer cents; sign/direction implied by `type`.
+    amountCents: integer('amount_cents').notNull(),
+    note: text('note'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL` (Trash pattern).
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('transactions_org_idx').on(t.organizationId),
+    // Period scans (monthly/annual dashboards, list filters).
+    index('transactions_org_date_idx').on(t.organizationId, t.occurredOn),
+    // Active-row filtering + the /trash listing.
+    index('transactions_org_deleted_idx').on(t.organizationId, t.deletedAt),
+    // Composite FK: the category must share THIS transaction's organization_id —
+    // a cross-tenant link is impossible at the DB level. ON DELETE restrict: a
+    // category still in use cannot be deleted (the action surfaces CATEGORY_IN_USE).
+    foreignKey({
+      columns: [t.organizationId, t.categoryId],
+      foreignColumns: [
+        transactionCategories.organizationId,
+        transactionCategories.id,
+      ],
+      name: 'transactions_category_fk',
+    }).onDelete('restrict'),
+    // Composite FK to the recipe (same-tenant). ON DELETE restrict, because a
+    // multi-column SET NULL would also null the NOT NULL organization_id (PG
+    // can't emit the column-subset form); the recipe-purge path nulls recipe_id
+    // first instead (see lib/data/recipes.ts). NULL recipe_id rows skip the FK
+    // (MATCH SIMPLE).
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'transactions_recipe_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
 export type Ingredient = InferSelectModel<typeof ingredients>;
 export type NewIngredient = InferInsertModel<typeof ingredients>;
 export type InventoryMovement = InferSelectModel<typeof inventoryMovements>;
@@ -257,6 +356,12 @@ export type NewRecipeIngredient = InferInsertModel<typeof recipeIngredients>;
 export type OrganizationSettings = InferSelectModel<typeof organizationSettings>;
 export type NewOrganizationSettings = InferInsertModel<typeof organizationSettings>;
 export type MeasurementSystem = OrganizationSettings['measurementSystem'];
+export type TransactionCategory = InferSelectModel<typeof transactionCategories>;
+export type NewTransactionCategory = InferInsertModel<typeof transactionCategories>;
+export type Transaction = InferSelectModel<typeof transactions>;
+export type NewTransaction = InferInsertModel<typeof transactions>;
+export type TransactionType = Transaction['type'];
+export type CategoryKind = TransactionCategory['kind'];
 
 /** All business tables, for applying RLS in bulk. */
 export const businessTables = [
@@ -266,4 +371,6 @@ export const businessTables = [
   'recipes',
   'recipe_ingredients',
   'inventory_movements',
+  'transaction_categories',
+  'transactions',
 ] as const;

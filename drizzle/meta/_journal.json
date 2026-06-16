@@ -64,6 +64,13 @@
       "when": 1781603000000,
       "tag": "0008_brief_goliath",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781613749898,
+      "tag": "0009_bouncy_justin_hammer",
+      "breakpoints": true
     }
   ]
 }
