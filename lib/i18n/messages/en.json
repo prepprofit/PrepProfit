@@ -265,6 +265,8 @@
     }
   },
   "dashboard": {
+    "welcome": "Welcome back, {name} 👋",
+    "welcomeGeneric": "Welcome back 👋",
     "subtitle": "An at-a-glance read on your recipes and margins.",
     "sprint2": "Sprint 2",
     "topRecipes": "Top recipes by margin",
