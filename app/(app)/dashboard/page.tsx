@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { TopRecipes } from '@/components/app/dashboard/top-recipes';
+import { MarginGauge } from '@/components/app/dashboard/margin-gauge';
 import { MonthlyChart } from '@/components/app/finance/monthly-chart';
 
 const shortMonth = (month: number) =>
@@ -140,7 +141,8 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      {/* Bento grid */}
+      {/* Bento grid — chart + margin gauge on top (managers), top recipes full
+          width below; for kitchen staff the gauge and list sit side by side. */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {finance && (
           <Card className="flex flex-col md:col-span-2">
@@ -152,10 +154,12 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         )}
+        <MarginGauge value={summary.avgMarginPercent} />
         <TopRecipes
           title={t('topRecipes')}
           recipes={summary.topByMargin}
           emptyLabel={t('noRecipes')}
+          className={finance ? 'md:col-span-2 xl:col-span-3' : undefined}
         />
       </div>
     </div>

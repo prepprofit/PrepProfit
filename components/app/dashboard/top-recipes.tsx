@@ -7,6 +7,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import type { TopRecipe } from '@/lib/calculations/dashboard';
 import { trafficLight } from '@/lib/calculations/margin';
+import { cn } from '@/lib/utils';
 
 const LIGHT_VARIANT = {
   green: 'positive',
@@ -18,13 +19,15 @@ export function TopRecipes({
   title,
   recipes,
   emptyLabel,
+  className,
 }: {
   title: string;
   recipes: TopRecipe[];
   emptyLabel: string;
+  className?: string;
 }) {
   return (
-    <Card className="flex flex-col">
+    <Card className={cn('flex flex-col', className)}>
       <CardHeader>
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
