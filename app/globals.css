@@ -11,6 +11,12 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
 
+  /* Command palette / modal animations */
+  --animate-overlay-in: overlay-in 0.2s ease-out;
+  --animate-overlay-out: overlay-out 0.15s ease-in;
+  --animate-palette-in: palette-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-palette-out: palette-out 0.12s ease-in;
+
   /* Accent (Orange) — primary actions, active nav, primary chart series, glow.
      For solid CTAs use accent-600+ with white text (WCAG); the bright accent-500
      is reserved for non-text accents (markers, icons, chart fills, glow). */
@@ -100,6 +106,23 @@ body {
 :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes palette-in {
+  from { opacity: 0; scale: 0.97; }
+  to { opacity: 1; scale: 1; }
+}
+@keyframes palette-out {
+  from { opacity: 1; scale: 1; }
+  to { opacity: 0; scale: 0.97; }
 }
 
 @media (prefers-reduced-motion: reduce) {

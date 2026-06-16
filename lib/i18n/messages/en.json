@@ -58,6 +58,9 @@
     "hint": "Type at least 2 characters to search.",
     "loading": "Searching…",
     "empty": "No results found.",
+    "hint_nav": "navigate",
+    "hint_open": "open",
+    "hint_close": "close",
     "groups": {
       "recipes": "Recipes",
       "ingredients": "Ingredients",

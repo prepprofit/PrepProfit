@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Carrot, ChefHat, Loader2, Receipt } from 'lucide-react';
+import { Carrot, ChefHat, Loader2, Receipt, Search } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,6 @@ import type {
   SearchEntityType,
 } from '@/lib/search/types';
 
-/** Icon per entity group (cosmetic). */
 const GROUP_ICON: Record<
   SearchEntityType,
   React.ComponentType<{ className?: string }>
@@ -40,11 +39,8 @@ const GROUP_ICON: Record<
 const EMPTY: GroupedSearchResults = { groups: [] };
 
 /**
- * ⌘K global search palette (Sprint 2.7). Debounced, server-driven (cmdk runs in
- * `shouldFilter={false}` — results arrive ranked from `globalSearchAction`), with
- * a stale-response guard so out-of-order responses can't overwrite fresh ones.
- * Open state is owned by the app shell; RBAC is enforced on the server (a kitchen
- * user simply never receives a transactions group).
+ * ⌘K global search palette. Debounced + server-driven (shouldFilter={false}).
+ * Stale-response guard prevents out-of-order overwrites. RBAC enforced server-side.
  */
 export function CommandPalette({
   open,
@@ -53,7 +49,6 @@ export function CommandPalette({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Only affects the placeholder copy; the server is the real RBAC gate. */
   canSeeFinance: boolean;
 }) {
   const t = useTranslations('search');
@@ -67,7 +62,6 @@ export function CommandPalette({
   const [errorCode, setErrorCode] = React.useState<ActionErrorCode | null>(null);
   const seq = React.useRef(0);
 
-  // Reset when the palette closes so it reopens clean.
   React.useEffect(() => {
     if (!open) {
       setQuery('');
@@ -77,8 +71,6 @@ export function CommandPalette({
     }
   }, [open]);
 
-  // Debounced server search. The seq guard drops responses that arrive after a
-  // newer request (Server Actions have no AbortController).
   React.useEffect(() => {
     const q = debounced.trim();
     if (q.length < MIN_QUERY_LEN) {
@@ -124,9 +116,10 @@ export function CommandPalette({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden p-0">
+      <DialogContent className="p-0">
         <DialogTitle className="sr-only">{t('title')}</DialogTitle>
         <DialogDescription className="sr-only">{t('hint')}</DialogDescription>
+
         <Command shouldFilter={false} loop>
           <CommandInput
             value={query}
@@ -135,53 +128,57 @@ export function CommandPalette({
               canSeeFinance ? t('placeholder') : t('placeholderLimited')
             }
           />
+
           <CommandList>
+            {/* Idle hint */}
             {!hasQuery && (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                {t('hint')}
-              </p>
+              <div className="flex flex-col items-center gap-2 py-10 text-center">
+                <Search className="size-8 text-muted-foreground/30" aria-hidden />
+                <p className="text-sm text-muted-foreground/60">{t('hint')}</p>
+              </div>
             )}
 
+            {/* Loading */}
             {hasQuery && loading && (
-              <p className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" aria-hidden />
+              <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin text-accent-500" aria-hidden />
                 {t('loading')}
-              </p>
+              </div>
             )}
 
+            {/* Error */}
             {hasQuery && !loading && errorCode && (
-              <p role="alert" className="py-8 text-center text-sm text-red-600">
+              <p role="alert" className="py-10 text-center text-sm text-red-500">
                 {actionError(errorCode)}
               </p>
             )}
 
+            {/* Empty */}
             {hasQuery && !loading && !errorCode && !hasResults && (
-              <p className="py-8 text-center text-sm text-muted-foreground">
+              <p className="py-10 text-center text-sm text-muted-foreground/60">
                 {t('empty')}
               </p>
             )}
 
+            {/* Results */}
             {hasQuery &&
               !loading &&
               !errorCode &&
               results.groups.map((group) => {
                 const Icon = GROUP_ICON[group.type];
                 return (
-                  <CommandGroup
-                    key={group.type}
-                    heading={groupHeading(group.type)}
-                  >
+                  <CommandGroup key={group.type} heading={groupHeading(group.type)}>
                     {group.results.map((r) => (
                       <CommandItem
                         key={r.id}
                         value={`${r.type}:${r.id}`}
                         onSelect={() => select(r.href)}
                       >
-                        <Icon className="size-4 shrink-0 text-muted-foreground" />
+                        <Icon className="size-4 shrink-0 text-muted-foreground/60 transition-colors group-data-[selected=true]:text-accent-500" />
                         <span className="flex min-w-0 flex-col">
-                          <span className="truncate">{r.title}</span>
+                          <span className="truncate font-medium">{r.title}</span>
                           {r.subtitle && (
-                            <span className="truncate text-xs text-muted-foreground">
+                            <span className="truncate text-xs text-muted-foreground/60">
                               {r.subtitle}
                             </span>
                           )}
@@ -192,6 +189,28 @@ export function CommandPalette({
                 );
               })}
           </CommandList>
+
+          {/* Keyboard hints footer */}
+          <div className="flex items-center justify-end gap-4 border-t border-border px-4 py-2.5">
+            <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50">
+              <kbd className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] leading-tight">
+                ↑↓
+              </kbd>
+              {t('hint_nav')}
+            </span>
+            <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50">
+              <kbd className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] leading-tight">
+                ↵
+              </kbd>
+              {t('hint_open')}
+            </span>
+            <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50">
+              <kbd className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] leading-tight">
+                esc
+              </kbd>
+              {t('hint_close')}
+            </span>
+          </div>
         </Command>
       </DialogContent>
     </Dialog>
