@@ -11,6 +11,8 @@
     "INGREDIENT_IN_USE": "This ingredient is used by an active recipe, so it can't be moved to the trash. Remove it from those recipes first.",
     "RECIPE_HAS_TRASHED_INGREDIENTS": "This recipe uses ingredients that are also in the trash. Restore those ingredients first.",
     "INGREDIENT_IN_TRASHED_RECIPE": "This ingredient is still part of a trashed recipe. Delete that recipe permanently first.",
+    "CATEGORY_IN_USE": "This category is used by one or more transactions, so it can't be deleted. Reassign or remove those transactions first.",
+    "FORBIDDEN": "You don't have permission to do that. Financial data is available to managers only.",
     "UNEXPECTED": "Something went wrong on our end. Please try again."
   },
   "errors": {
@@ -31,6 +33,8 @@
     "recipes": "Recipes",
     "ingredients": "Ingredients",
     "inventory": "Inventory",
+    "financials": "Financials",
+    "transactions": "Transactions",
     "breakEven": "Break-even",
     "payroll": "Payroll",
     "invoices": "Invoices",
@@ -259,6 +263,115 @@
       "margin": { "title": "Margin trend", "subtitle": "Last 6 months" },
       "costs": { "title": "Cost breakdown", "subtitle": "By category" },
       "cashflow": { "title": "Cash flow", "subtitle": "Income vs expenses" }
+    }
+  },
+  "finance": {
+    "noAccess": {
+      "title": "Managers only",
+      "body": "Financial data — income, expenses, dashboards and break-even — is available to managers only. Ask an organization manager if you need access."
+    },
+    "categories": {
+      "food_sales": "Food sales",
+      "beverage_sales": "Beverage sales",
+      "catering": "Catering & events",
+      "delivery": "Delivery / takeaway",
+      "other_income": "Other income",
+      "ingredients": "Ingredients / Food cost",
+      "staff_wages": "Staff wages",
+      "rent": "Rent",
+      "utilities": "Utilities",
+      "equipment": "Equipment & maintenance",
+      "packaging": "Packaging & supplies",
+      "marketing": "Marketing",
+      "fees": "Fees & commissions",
+      "other_expense": "Other expense"
+    },
+    "kind": {
+      "income": "Income",
+      "expense": "Expense"
+    },
+    "period": {
+      "month": "Month",
+      "year": "Year",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "dashboard": {
+      "subtitle": "Your income, expenses and profit at a glance.",
+      "income": "Income",
+      "expenses": "Expenses",
+      "profit": "Profit",
+      "byCategory": "By category",
+      "topProducts": "Top products",
+      "topProductsEmpty": "Link income to recipes to see your top products.",
+      "byCategoryEmpty": "No activity in this period.",
+      "empty": "No transactions in this period yet.",
+      "monthlyTitle": "Income vs expenses",
+      "monthlySubtitle": "By month",
+      "profitTrend": "Profit by month",
+      "vsPrevious": "vs previous {period}",
+      "noBaseline": "No prior data"
+    },
+    "transactions": {
+      "title": "Transactions",
+      "subtitle": "Record income and expenses; everything rolls up into your dashboards.",
+      "empty": "No transactions yet. Add your first one above.",
+      "add": "Add transaction",
+      "edit": "Edit",
+      "saved": "Saved",
+      "export": "Export CSV",
+      "noRecipe": "No recipe",
+      "columns": {
+        "date": "Date",
+        "type": "Type",
+        "category": "Category",
+        "recipe": "Recipe",
+        "amount": "Amount",
+        "note": "Note"
+      },
+      "fields": {
+        "type": "Type",
+        "category": "Category",
+        "recipe": "Recipe (optional)",
+        "date": "Date",
+        "amount": "Amount",
+        "note": "Note"
+      },
+      "placeholders": {
+        "note": "Optional"
+      },
+      "filters": {
+        "allCategories": "All categories",
+        "allTypes": "All types",
+        "from": "From",
+        "to": "To",
+        "clear": "Clear filters"
+      },
+      "actions": {
+        "delete": "Delete transaction"
+      },
+      "deleteConfirm": {
+        "title": "Move transaction to Trash?",
+        "body": "This transaction will move to the Trash. You can restore it within 30 days."
+      },
+      "errors": {
+        "amountRequired": "Enter an amount greater than zero.",
+        "categoryRequired": "Choose a category."
+      }
+    },
+    "breakEven": {
+      "subtitle": "Find how many units you must sell to cover your costs.",
+      "fixedCosts": "Fixed costs",
+      "price": "Selling price per unit",
+      "variableCost": "Variable cost per unit",
+      "contribution": "Contribution margin per unit",
+      "unitsLabel": "Units to break even",
+      "revenueLabel": "Revenue to break even",
+      "notAchievable": "With this price and variable cost, each unit loses money — there is no break-even. Raise the price or lower the variable cost.",
+      "achievable": "Sell {units} units to break even."
+    },
+    "csv": {
+      "filename": "transactions"
     }
   },
   "marketing": {

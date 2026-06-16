@@ -10,7 +10,14 @@ import { cn } from '@/lib/utils';
  * (opened by the top-bar hamburger), and the scrollable main column. Holds the
  * drawer's open state so the top bar and drawer stay in sync.
  */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  canSeeFinance,
+}: {
+  children: React.ReactNode;
+  /** Forwarded to both Sidebar instances; hides Finance for kitchen role. */
+  canSeeFinance: boolean;
+}) {
   const [open, setOpen] = React.useState(false);
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const lastFocused = React.useRef<HTMLElement | null>(null);
@@ -42,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar className="hidden lg:flex" />
+      <Sidebar className="hidden lg:flex" canSeeFinance={canSeeFinance} />
 
       {/* Mobile drawer */}
       <div
@@ -66,7 +73,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             open ? 'translate-x-0' : '-translate-x-full',
           )}
         >
-          <Sidebar className="h-full" onNavigate={() => setOpen(false)} />
+          <Sidebar
+            className="h-full"
+            onNavigate={() => setOpen(false)}
+            canSeeFinance={canSeeFinance}
+          />
         </div>
       </div>
 

@@ -16,6 +16,8 @@ export const navGroups = [
   {
     key: 'finance',
     items: [
+      { key: 'financials', href: '/financials' },
+      { key: 'transactions', href: '/transactions' },
       { key: 'breakEven', href: '/break-even' },
       { key: 'invoices', href: '/invoices' },
     ],

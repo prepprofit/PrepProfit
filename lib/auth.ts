@@ -48,3 +48,13 @@ export async function getUserRole(): Promise<UserRole> {
 export async function isManager(): Promise<boolean> {
   return (await getUserRole()) === 'manager';
 }
+
+/**
+ * Pure role predicate — financial modules (income/expenses, dashboards,
+ * break-even) are manager-only; kitchen staff are blocked from both the routes
+ * and the Server Actions. Kept pure so it is unit-testable without Clerk; the
+ * async {@link isManager} is the runtime gate.
+ */
+export function canAccessFinancials(role: UserRole): boolean {
+  return role === 'manager';
+}

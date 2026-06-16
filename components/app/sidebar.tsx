@@ -11,6 +11,8 @@ import {
   Utensils,
   Package,
   Boxes,
+  LineChart,
+  Receipt,
   Calculator,
   Users,
   FileText,
@@ -27,6 +29,8 @@ const icons: Record<NavKey, LucideIcon> = {
   recipes: Utensils,
   ingredients: Package,
   inventory: Boxes,
+  financials: LineChart,
+  transactions: Receipt,
   breakEven: Calculator,
   payroll: Users,
   invoices: FileText,
@@ -35,15 +39,22 @@ const icons: Record<NavKey, LucideIcon> = {
 export function Sidebar({
   className,
   onNavigate,
+  canSeeFinance = true,
 }: {
   className?: string;
   onNavigate?: () => void;
+  /** Kitchen-role users don't see the Finance group (cosmetic; server enforces). */
+  canSeeFinance?: boolean;
 }) {
   const pathname = usePathname();
   const t = useTranslations('nav');
   const tGroups = useTranslations('navGroups');
   const tApp = useTranslations('app');
   const { resolvedTheme } = useTheme();
+
+  const groups = canSeeFinance
+    ? navGroups
+    : navGroups.filter((group) => group.key !== 'finance');
 
   return (
     <aside
@@ -72,7 +83,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-2">
-        {navGroups.map((group) => (
+        {groups.map((group) => (
           <div key={group.key} className="flex flex-col gap-1">
             <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               {tGroups(group.key)}

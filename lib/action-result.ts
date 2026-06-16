@@ -15,6 +15,8 @@ export type ActionErrorCode =
   | 'INGREDIENT_IN_USE'
   | 'RECIPE_HAS_TRASHED_INGREDIENTS'
   | 'INGREDIENT_IN_TRASHED_RECIPE'
+  | 'CATEGORY_IN_USE'
+  | 'FORBIDDEN'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =
