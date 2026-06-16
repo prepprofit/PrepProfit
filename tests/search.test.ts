@@ -6,7 +6,10 @@ import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import type { UserRole } from '@/lib/auth';
 import { runSearch } from '@/lib/search/run';
-import type { GroupedSearchResults } from '@/lib/search/types';
+import type {
+  GroupedSearchResults,
+  SearchEntityType,
+} from '@/lib/search/types';
 import { createRecipe, softDeleteRecipe } from '@/lib/data/recipes';
 import { createIngredient } from '@/lib/data/ingredients';
 import { createTransaction } from '@/lib/data/transactions';
@@ -55,10 +58,13 @@ describe('global search (Sprint 2.7)', () => {
     org: string,
     role: UserRole,
     query: string,
+    opts: { perEntityLimit?: number; type?: SearchEntityType } = {},
   ): Promise<GroupedSearchResults> => {
     await db.execute(sql.raw('SET ROLE tenant_app;'));
     try {
-      return await runInOrg(db, org, (tx) => runSearch(tx, org, role, query));
+      return await runInOrg(db, org, (tx) =>
+        runSearch(tx, org, role, query, opts),
+      );
     } finally {
       await db.execute(sql.raw('RESET ROLE;'));
     }
@@ -129,6 +135,47 @@ describe('global search (Sprint 2.7)', () => {
     expect(groupTypes(asKitchen)).not.toContain('transaction');
     // The kitchen user still gets the (non-financial) recipe match.
     expect(groupTypes(asKitchen)).toContain('recipe');
+  });
+
+  it('scopes results to a single entity when a type filter is given', async () => {
+    await createRecipe(db, ORG_A, { name: 'Tomato Soup' });
+    await createIngredient(db, ORG_A, { name: 'Tomato', dimension: 'weight' });
+
+    const onlyRecipes = await searchAs(ORG_A, 'manager', 'tomato', {
+      type: 'recipe',
+    });
+    expect(groupTypes(onlyRecipes)).toEqual(['recipe']);
+
+    const onlyIngredients = await searchAs(ORG_A, 'manager', 'tomato', {
+      type: 'ingredient',
+    });
+    expect(groupTypes(onlyIngredients)).toEqual(['ingredient']);
+  });
+
+  it('a type filter can never widen RBAC (kitchen + transaction → empty)', async () => {
+    await ensureCategoriesSeeded(db, ORG_A);
+    const sales = await categoryId(ORG_A, 'food_sales');
+    await createTransaction(db, ORG_A, {
+      type: 'income',
+      categoryId: sales,
+      recipeId: null,
+      occurredOn: '2026-06-10',
+      amountCents: 25_000,
+      note: 'Catering deposit',
+    });
+
+    // A manager filtering to transactions sees them…
+    const asManager = await searchAs(ORG_A, 'manager', 'catering', {
+      type: 'transaction',
+    });
+    expect(groupTypes(asManager)).toEqual(['transaction']);
+
+    // …but a kitchen user explicitly asking for transactions gets nothing
+    // (the type filter is intersected with the role-accessible set).
+    const asKitchen = await searchAs(ORG_A, 'kitchen', 'catering', {
+      type: 'transaction',
+    });
+    expect(asKitchen.groups).toHaveLength(0);
   });
 
   it('excludes soft-deleted records', async () => {

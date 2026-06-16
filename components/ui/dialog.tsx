@@ -6,8 +6,10 @@ import { cn } from '@/lib/utils';
 
 /**
  * Radix dialog primitives themed for PrepProfit. Used exclusively for the ⌘K
- * command palette. Content is top-anchored (20 vh) with a scale+fade enter/exit
- * animation; Radix Presence waits for animationend before unmounting.
+ * command palette. `DialogContent` is a transparent positioning + animation
+ * wrapper (top-anchored, scale+fade enter/exit) — the palette renders its own
+ * stacked panels inside, so the surface/border/shadow live there, not here.
+ * Radix Presence waits for animationend before unmounting.
  */
 const Dialog = DialogPrimitive.Root;
 const DialogPortal = DialogPrimitive.Portal;
@@ -39,15 +41,9 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        /* Position: horizontally centred, 20 vh from top for visual balance */
-        'fixed left-1/2 top-[20vh] z-50 -translate-x-1/2',
-        'w-[calc(100%-2rem)] max-w-2xl',
-        /* Surface */
-        'overflow-hidden rounded-2xl border border-border bg-surface text-foreground',
-        /* Shadow: deep layered + subtle top highlight */
-        'shadow-[0_20px_60px_-12px_rgba(0,0,0,0.28),0_4px_16px_-4px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.06)]',
-        'dark:shadow-[0_20px_60px_-12px_rgba(0,0,0,0.65),0_4px_16px_-4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.04)]',
-        'outline-none',
+        /* Position: horizontally centred, ~14 vh from top for visual balance */
+        'fixed left-1/2 top-[14vh] z-50 -translate-x-1/2',
+        'w-[calc(100%-2rem)] max-w-2xl text-foreground outline-none',
         /* Enter/exit animation — Radix Presence awaits animationend */
         'data-[state=open]:animate-palette-in data-[state=closed]:animate-palette-out',
         className,

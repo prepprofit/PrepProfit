@@ -18,6 +18,9 @@ const searchSchema = z.object({
   // Bounded to keep the trigram query cheap; below MIN_QUERY_LEN runSearch
   // returns nothing without touching the DB.
   query: z.string().max(100),
+  // Optional single-entity filter (the palette's filter pills). Intersected with
+  // the role-accessible set server-side, so it can never widen RBAC.
+  type: z.enum(['recipe', 'ingredient', 'transaction']).optional(),
 });
 
 export async function globalSearchAction(
@@ -31,7 +34,12 @@ export async function globalSearchAction(
 
   try {
     const data = await withOrg(organizationId, (tx) =>
-      runSearch(tx, organizationId, role, parsed.data.query),
+      runSearch(tx, organizationId, role, parsed.data.query, {
+        type: parsed.data.type,
+        // A single-entity view shows a deeper list (the "Show more" affordance);
+        // the mixed "All" view stays at the default compact cap per group.
+        perEntityLimit: parsed.data.type ? 20 : undefined,
+      }),
     );
     return { ok: true, data };
   } catch (err) {

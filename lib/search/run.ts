@@ -4,7 +4,11 @@ import type { TenantTx } from '@/lib/db/tenant';
 import { DEFAULT_ORG_SETTINGS, getOrgSettingsRow } from '@/lib/data/org-settings';
 import { accessibleDescriptors } from './registry';
 import { isSearchable, normalizeQuery, rankCandidates } from './ranking';
-import type { GroupedSearchResults, SearchGroup } from './types';
+import type {
+  GroupedSearchResults,
+  SearchEntityType,
+  SearchGroup,
+} from './types';
 
 /** Final results shown per entity group in the palette. */
 const DEFAULT_PER_ENTITY_LIMIT = 5;
@@ -23,7 +27,7 @@ export async function runSearch(
   organizationId: string,
   role: UserRole,
   rawQuery: string,
-  opts: { perEntityLimit?: number } = {},
+  opts: { perEntityLimit?: number; type?: SearchEntityType } = {},
 ): Promise<GroupedSearchResults> {
   const query = normalizeQuery(rawQuery);
   if (!isSearchable(query)) return { groups: [] };
@@ -41,9 +45,15 @@ export async function runSearch(
   const settings = await getOrgSettingsRow(tx, organizationId);
   const currency = settings?.currency ?? DEFAULT_ORG_SETTINGS.currency;
 
+  // RBAC first; then an optional single-entity filter from the palette's filter
+  // pills. The `type` is intersected with the role-accessible set, so a kitchen
+  // user asking for `transaction` simply gets an empty descriptor list — never a leak.
+  let descriptors = accessibleDescriptors(role);
+  if (opts.type) descriptors = descriptors.filter((d) => d.type === opts.type);
+
   const groups: SearchGroup[] = [];
   // Sequential: one connection per tx, so descriptor queries can't run in parallel.
-  for (const descriptor of accessibleDescriptors(role)) {
+  for (const descriptor of descriptors) {
     const candidates = await descriptor.search({
       tx,
       organizationId,
