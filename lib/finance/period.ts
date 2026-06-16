@@ -2,8 +2,9 @@
  * Period math for the financials dashboards — pure, string-only, no timezone.
  * A period key is 'YYYY-MM' (month view) or 'YYYY' (year view); ranges are
  * inclusive bare-date bounds ('YYYY-MM-DD') so they pair with `occurred_on`
- * comparisons directly. Using a 'YYYY-MM-31' upper bound is intentional: string
- * comparison includes every real day of the month and excludes the next month.
+ * comparisons directly. The upper bound is the month's REAL last day: a fixed
+ * 'YYYY-MM-31' emits impossible dates (e.g. '2026-06-31') that the DB rejects
+ * when bound to the `date`-typed `occurred_on` parameter (Postgres 22008).
  */
 
 export type PeriodView = 'month' | 'year';
@@ -27,7 +28,14 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
 
 const monthKey = (year: number, month: number) => `${year}-${pad2(month)}`;
 const monthFrom = (key: string) => `${key}-01`;
-const monthTo = (key: string) => `${key}-31`;
+// Real last day of the month (day 0 of the next month), so the inclusive upper
+// bound is a valid calendar date — never an impossible '2026-06-31'.
+const monthTo = (key: string) => {
+  const year = Number(key.slice(0, 4));
+  const month = Number(key.slice(5, 7));
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${key}-${pad2(lastDay)}`;
+};
 const yearFrom = (year: number) => `${year}-01-01`;
 const yearTo = (year: number) => `${year}-12-31`;
 

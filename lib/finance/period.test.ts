@@ -26,12 +26,19 @@ describe('resolvePeriod (month)', () => {
   it('computes inclusive bounds and neighbours', () => {
     const p = resolvePeriod('month', '2026-06');
     expect(p.from).toBe('2026-06-01');
-    expect(p.to).toBe('2026-06-31');
+    expect(p.to).toBe('2026-06-30'); // June has 30 days — never an impossible '-31'
     expect(p.prevKey).toBe('2026-05');
     expect(p.nextKey).toBe('2026-07');
     expect(p.priorFrom).toBe('2026-05-01');
     expect(p.priorTo).toBe('2026-05-31');
     expect(p.year).toBe(2026);
+  });
+
+  it('uses the real last day for short months (never an impossible date)', () => {
+    expect(resolvePeriod('month', '2026-06').to).toBe('2026-06-30'); // 30-day
+    expect(resolvePeriod('month', '2026-02').to).toBe('2026-02-28'); // Feb
+    expect(resolvePeriod('month', '2028-02').to).toBe('2028-02-29'); // leap Feb
+    expect(resolvePeriod('month', '2026-01').to).toBe('2026-01-31'); // 31-day
   });
 
   it('rolls over year boundaries', () => {
