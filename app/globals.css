@@ -108,6 +108,13 @@ body {
   outline-offset: 2px;
 }
 
+/* The ⌘K search input lives inside its own accent-bordered panel, so the global
+   focus fallback would double-frame it. Suppress it here (higher specificity than
+   the unlayered rule above, so `outline-none` alone wouldn't win). */
+[cmdk-input]:focus-visible {
+  outline: none;
+}
+
 @keyframes overlay-in {
   from { opacity: 0; }
   to { opacity: 1; }
