@@ -40,3 +40,17 @@ export const CATEGORY_SEED: readonly CategorySeed[] = [
 
 /** All predefined slugs (for the i18n key check / type guards). */
 export const CATEGORY_SLUGS = CATEGORY_SEED.map((c) => c.slug);
+
+/**
+ * Display name for a category: predefined rows (slug set) resolve via i18n
+ * (`finance.categories.<slug>`); custom rows (slug null) show their literal name.
+ * `translate` is the next-intl translator for the `finance.categories` namespace
+ * (works from both `getTranslations` on the server and `useTranslations` on the
+ * client), so this stays the single rule for naming a category everywhere.
+ */
+export function categoryLabel(
+  category: { slug: string | null; name: string },
+  translate: (slug: string) => string,
+): string {
+  return category.slug ? translate(category.slug) : category.name;
+}
