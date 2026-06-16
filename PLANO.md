@@ -215,6 +215,76 @@ Acceptance criteria:
 
 ---
 
+## Sprint 2.5 — Spreadsheet & document import (onboarding)
+Goal: a chef migrating from the old kit imports their existing ingredients, recipes, and
+transactions from a file — reliably, with a preview-and-confirm step, NEVER an auto-commit.
+Pairs with the Sprint 2 CSV **export** (same columns → symmetric round-trip) and builds the
+reusable **ingredient resolver + import staging** layer that every later import source
+(including the deferred AI extraction) rides on.
+
+Reliability-first scoping (this is the whole point — "working well" means deterministic):
+- **Tier 1 — structured, deterministic (THIS sprint):** Excel (`.xlsx`), `.csv`, and Word
+  (`.docx`) *tables*. Tabular data maps column-by-column against a documented template;
+  fully testable and trustworthy.
+- **Tier 2 — free-form prose / images (NOT this sprint):** a recipe written as Word prose
+  ("mix 200g flour with 2 eggs…") is the SAME extraction problem as a photo — it needs an
+  LLM, is never 100%, and costs per call. Deferred to the backlog "AI extraction" item
+  alongside OCR; it will reuse this sprint's resolver + staging. Do NOT build it here.
+
+Decisions to LOCK in the plan (do not assume while coding):
+- **One canonical format:** ship a downloadable XLSX/CSV template per entity (ingredients,
+  recipes, transactions) whose columns are EXACTLY the Sprint 2 export columns — import and
+  export are the same format. Document required vs optional columns + an example row.
+- **Ingredient resolver (the hard core — build once):** for each imported line, normalize the
+  name and match within the org — exact match → link to the existing ingredient; fuzzy/near
+  match → surface as a suggestion in the preview (user confirms); no match → stage a NEW
+  ingredient. A recipe file carries no prices, so new ingredients default to `priceCents = 0`
+  with `dimension` inferred from the unit, and are flagged "needs pricing" so cost stays honest.
+- **Units & money parsing:** unit strings → canonical g/ml/count via `lib/units` (an unknown
+  unit is a row error, never a silent guess). Decimals → integer cents respecting the org's
+  locale decimal separator (EUR "1,50" ≠ "1.50") — an explicit, tested edge case.
+- **Staging, never auto-commit:** parse → Zod-validate → render a preview grid with a per-row
+  status (create / update / skip / error + message) → the user confirms → the import applies
+  in a transaction. A malformed file shows errors and imports nothing.
+- **Safety:** cap file size and row count; treat the file as untrusted data — never evaluate
+  spreadsheet formulas/macros; reject unknown sheets/columns with a clear message. Respect
+  server-side plan limits (e.g. Starter's 50-recipe cap) so import can't bypass gating.
+- **Parser libs (decide in plan mode):** XLSX read via `exceljs`; CSV via a small parser (or
+  native); `.docx` tables via `mammoth`/docx table extraction. No heavyweight runtime dep
+  beyond the chosen parser. No schema migration in v1 (an `import_jobs` history/undo table is
+  explicitly deferred).
+
+Module work:
+- [ ] `lib/import/` parsers: `.xlsx` / `.csv` / `.docx`-table → a normalized row array, plus a
+      downloadable template generator per entity (columns mirror the Sprint 2 export)
+- [ ] `lib/import/resolveIngredient.ts`: pure, tested name-normalization + match
+      (exact / fuzzy / new) within an org — the shared core for all import sources
+- [ ] Zod row schemas per entity + a `parseImport()` returning typed rows + per-row issues
+      (never throws on bad data; it collects errors)
+- [ ] Import Server Actions (withOrg, org from Clerk): a dry-run that returns the preview, and
+      a confirm that applies staged rows in a transaction; `ActionErrorCode` + i18n
+- [ ] Import UI: upload → entity/format auto-detect → preview grid with per-row status and
+      fuzzy-match resolution → confirm; honest empty/error states; mobile-usable (~380px)
+- [ ] Wire into onboarding/empty states: when ingredients or recipes are empty, offer
+      "Import from a file" next to "Add manually"
+- [ ] i18n: all import strings via next-intl (incl. `actionErrors.*` for import codes)
+- [ ] Tests (PGlite + fixtures): xlsx/csv/docx-table parsing, resolver matching (exact/fuzzy/
+      new), unit conversion, locale cents parsing, malformed-file handling, plan-limit
+      enforcement, and org isolation (an import only ever writes to the active org)
+
+Acceptance criteria:
+- Download the ingredients template, fill ~10 rows, re-import → all create correctly; a row
+  with an unknown unit is flagged (not silently dropped) and the rest still import.
+- Import a recipe sheet referencing both existing and new ingredients → existing ones link,
+  new ones are staged "needs pricing"; the recipe's cost is correct once priced.
+- A CSV exported by the app (Sprint 2) re-imports cleanly (round-trip), and an import never
+  writes outside the active org (automated test).
+
+Production note: no migration in v1. If the optional `import_jobs` table is added later for
+history/undo, follow the DoD migration steps (journal `when` > the 0003 gotcha threshold).
+
+---
+
 ## Sprint 3 — Invoices and payroll (modules 5 and 6)
 Goal: complete parity with the 5 spreadsheets of the original kit.
 
@@ -289,8 +359,12 @@ dedicated item exists):
 - **GDPR data export/delete + retention** — Sprint 5.
 
 Product backlog (not yet scheduled — promote into a sprint when prioritized):
-- **Spreadsheet onboarding:** CSV/XLSX **import** of ingredients & transactions (chefs migrate
-  from the old kit) — pairs with the Sprint 2 export.
+- **AI extraction (OCR photos + free-form docs):** import a recipe from a photo (OCR) or from
+  free-form Word/prose text — the same LLM-based extraction, never 100% reliable, costs per
+  call. Reuses Sprint 2.5's ingredient resolver + import staging (always draft → human review,
+  never auto-commit); gate as a Pro/Business feature with usage metering → schedule AFTER
+  Sprint 4 (billing). (Note: structured `.xlsx`/`.csv` and Word *tables* are NOT here — they
+  ship deterministically in Sprint 2.5.)
 - **Recipe scaling / batch:** scale a recipe to N portions or a target cost.
 - **Suppliers** as a first-class entity (currently a free-text field) with per-supplier prices.
 - **Global search** across recipes/ingredients/transactions.
