@@ -1,5 +1,10 @@
 import { and, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
-import { ingredients, recipeIngredients, recipes } from '@/lib/db/schema';
+import {
+  ingredients,
+  recipeIngredients,
+  recipes,
+  transactions,
+} from '@/lib/db/schema';
 import type { Ingredient, Recipe, NewRecipe } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 
@@ -343,12 +348,27 @@ export async function restoreRecipe(
 /**
  * Permanently deletes a trashed recipe; its lines cascade via the composite FK.
  * Only trashed rows are eligible (an active recipe can never be hard-deleted here).
+ *
+ * Any transaction that referenced this recipe is unlinked first (`recipe_id` →
+ * NULL): the `transactions_recipe_fk` is `ON DELETE restrict`, so a referencing
+ * transaction would otherwise block the purge. The financial record survives with
+ * no recipe link. Runs in the caller's `withOrg` transaction, so it is atomic.
  */
 export async function purgeRecipe(
   db: TenantClient,
   organizationId: string,
   id: string,
 ): Promise<void> {
+  await db
+    .update(transactions)
+    .set({ recipeId: null })
+    .where(
+      and(
+        eq(transactions.organizationId, organizationId),
+        eq(transactions.recipeId, id),
+      ),
+    );
+
   await db
     .delete(recipes)
     .where(
