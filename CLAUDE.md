@@ -39,7 +39,8 @@ subscription web app. Initial codebase: built fresh from the Wibox base
 3. Ingredient and recipe inventory (in/out, low-stock alert)
 4. Break-even calculator (with scenario simulations)
 5. Payroll: shifts, hours, per-employee pay
-6. PDF invoice generator
+6. Document / print system: PDF + print-friendly invoices, recipe cards, P&L
+   statements and payroll summaries (shared layout, org logo)
 
 ## Subscription plans (gating via Clerk `has()`)
 - Starter: 1 user, up to 50 recipes, modules 1–3

@@ -292,12 +292,50 @@ history/undo, follow the DoD migration steps (journal `when` > the 0003 gotcha t
 
 ---
 
-## Sprint 3 — Invoices and payroll (modules 5 and 6)
-Goal: complete parity with the 5 spreadsheets of the original kit.
+## Sprint 2.7 — Global search (advanced & reliable)
+Goal: one fast, typo-tolerant search across the org's data — a command palette (⌘K)
+that finds recipes, ingredients and transactions and jumps straight to them.
+
+Decisions LOCKED (resolve & approve before coding):
+- **Postgres-native, no external search service.** Use `pg_trgm` (trigram) for fuzzy /
+  typo tolerance + `tsvector` full-text where it helps, with ranked results. Keeps
+  multi-tenancy trivial (same Neon DB, same RLS) — no second datastore to isolate.
+- **Org-scoped + RLS-safe + RBAC-filtered.** Search runs inside `withOrg`; every query
+  filters `organization_id` and `deleted_at IS NULL`; a `kitchen` user NEVER gets
+  transaction / financial results (RULE: financials are manager-only).
+- **Cross-entity, grouped results:** recipes, ingredients, transactions (folders optional).
+
+- [ ] Enable the `pg_trgm` extension + GIN trigram indexes on searchable text
+      (recipes.name/notes, ingredients.name/supplier, transactions.note); migration NNNN
+      (journal `when` > the 0003 gotcha threshold), isolation test
+- [ ] Unified search Server Action: org-scoped via `withOrg`, Zod-validated query,
+      RBAC-filtered (kitchen excluded from transactions), soft-delete aware, ranked,
+      capped + paginated
+- [ ] Pure ranking / snippet helpers in `lib/` + Vitest (typo tolerance, relevance order,
+      empty / short-query / no-match edges)
+- [ ] Command palette UI (⌘K / Ctrl-K) in the app shell: debounced input, results grouped
+      by entity, full keyboard nav, loading / empty / error states, i18n strings, each
+      result links into the right module
+- [ ] Performance: returns within budget on a realistic dataset; confirm the trigram
+      indexes are actually used (EXPLAIN)
+
+Acceptance criteria:
+- A misspelled recipe / ingredient name still finds the right row (trigram), results
+  ranked by relevance and grouped by entity.
+- A `kitchen`-role user's search never returns transactions / financial data; org
+  isolation proven by an automated test.
+- ⌘K opens/closes, is fully keyboard-navigable, and every result navigates to the
+  correct record.
+
+---
+
+## Sprint 3 — Invoices, payroll & documents (modules 5 and 6)
+Goal: complete parity with the 5 spreadsheets of the original kit, and a real
+document/print system (not just invoices) — every key view exports to a clean PDF /
+print-friendly page with the organization's logo.
 
 - [ ] `invoices` + `invoice_items` tables; sequential numbering per organization
 - [ ] Invoice builder: customer, items, taxes, total
-- [ ] Invoice PDF generation (react-pdf) with the organization's logo
 - [ ] `employees` and `shifts` tables (check-in/check-out, hourly rate) — employee data
       is PII: `manager`-only access, and the PDF/render path is XSS-safe
 - [ ] Shift logging + automatic hours and pay-due calculation (pure, tested; integer cents)
@@ -305,8 +343,22 @@ Goal: complete parity with the 5 spreadsheets of the original kit.
 - [ ] Invoice numbering is gap-free and concurrency-safe per org (sequence/locked counter,
       tested under parallel inserts)
 
-Acceptance criterion: generate an invoice PDF and close an employee's payroll for the month;
-a `kitchen`-role user cannot open payroll; invoice numbers never collide or skip.
+Document / print system (module 6, expanded beyond invoices):
+- [ ] Shared document layout (react-pdf + matching print CSS): org logo/header, footer,
+      currency via `formatMoney`, reused by every document below
+- [ ] Invoice PDF (the original module-6 deliverable) on the shared layout
+- [ ] Printable recipe card: ingredients, cost breakdown, per-portion cost & margin
+- [ ] Printable P&L statement (monthly / annual) — `manager`-only
+- [ ] Printable per-employee payroll summary — `manager`-only, PII-safe
+- [ ] Each printable view has a print-friendly route + a "Download PDF" action; the
+      PDF/render path is XSS-safe and org-scoped (no cross-tenant data)
+
+Acceptance criteria:
+- Generate an invoice PDF and close an employee's payroll for the month; a `kitchen`-role
+  user cannot open payroll; invoice numbers never collide or skip.
+- A recipe card, a monthly P&L, and a payroll summary each render to a clean PDF carrying
+  the org's logo, with figures reconciling against the on-screen data.
+- A `kitchen`-role user cannot reach the financial / payroll documents (route + action).
 
 ---
 
@@ -374,5 +426,4 @@ Product backlog (not yet scheduled — promote into a sprint when prioritized):
   ship deterministically in Sprint 2.5.)
 - **Recipe scaling / batch:** scale a recipe to N portions or a target cost.
 - **Suppliers** as a first-class entity (currently a free-text field) with per-supplier prices.
-- **Global search** across recipes/ingredients/transactions.
 - **Saved reports / scheduled email summaries** (monthly P&L to the owner).
