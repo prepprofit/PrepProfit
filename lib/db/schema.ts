@@ -93,6 +93,14 @@ export const ingredients = pgTable(
     index('ingredients_org_deleted_idx').on(t.organizationId, t.deletedAt),
     // FK target for the composite (organization_id, ingredient_id) reference.
     unique('ingredients_org_id_key').on(t.organizationId, t.id),
+    // pg_trgm GIN indexes for typo-tolerant global search (Sprint 2.7). The
+    // search query is org-scoped + RLS-filtered first; these accelerate the
+    // similarity()/ILIKE matching on the searchable text columns.
+    index('ingredients_name_trgm_idx').using('gin', t.name.op('gin_trgm_ops')),
+    index('ingredients_supplier_trgm_idx').using(
+      'gin',
+      t.supplier.op('gin_trgm_ops'),
+    ),
   ],
 );
 
@@ -161,6 +169,9 @@ export const recipes = pgTable(
     index('recipes_org_folder_idx').on(t.organizationId, t.folderId),
     // FK target for the composite (organization_id, recipe_id) reference.
     unique('recipes_org_id_key').on(t.organizationId, t.id),
+    // pg_trgm GIN indexes for typo-tolerant global search (Sprint 2.7).
+    index('recipes_name_trgm_idx').using('gin', t.name.op('gin_trgm_ops')),
+    index('recipes_notes_trgm_idx').using('gin', t.notes.op('gin_trgm_ops')),
     // Composite FK forces the folder to share THIS recipe's organization_id —
     // a recipe can never be filed under another tenant's folder. ON DELETE
     // restrict: the app nulls folder_id before deleting a folder (a multi-column
@@ -319,6 +330,9 @@ export const transactions = pgTable(
     index('transactions_org_date_idx').on(t.organizationId, t.occurredOn),
     // Active-row filtering + the /trash listing.
     index('transactions_org_deleted_idx').on(t.organizationId, t.deletedAt),
+    // pg_trgm GIN index for typo-tolerant global search (Sprint 2.7), on the
+    // free-text note (the only searchable text column on a transaction).
+    index('transactions_note_trgm_idx').using('gin', t.note.op('gin_trgm_ops')),
     // Composite FK: the category must share THIS transaction's organization_id —
     // a cross-tenant link is impossible at the DB level. ON DELETE restrict: a
     // category still in use cannot be deleted (the action surfaces CATEGORY_IN_USE).
