@@ -50,6 +50,20 @@
     "openMenu": "Open menu",
     "notifications": "Notifications"
   },
+  "search": {
+    "title": "Search",
+    "open": "Search",
+    "placeholder": "Search recipes, ingredients, transactions…",
+    "placeholderLimited": "Search recipes, ingredients…",
+    "hint": "Type at least 2 characters to search.",
+    "loading": "Searching…",
+    "empty": "No results found.",
+    "groups": {
+      "recipes": "Recipes",
+      "ingredients": "Ingredients",
+      "transactions": "Transactions"
+    }
+  },
   "theme": {
     "toggle": "Toggle theme"
   },

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Sidebar } from './sidebar';
 import { TopBar } from './top-bar';
+import { CommandPalette } from './command-palette';
 import { cn } from '@/lib/utils';
 
 /**
@@ -19,8 +20,21 @@ export function AppShell({
   canSeeFinance: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const lastFocused = React.useRef<HTMLElement | null>(null);
+
+  // ⌘K / Ctrl-K toggles the global search palette from anywhere in the app.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Close on Escape while the drawer is open.
   React.useEffect(() => {
@@ -82,11 +96,20 @@ export function AppShell({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <TopBar onMenuClick={() => setOpen(true)} />
+        <TopBar
+          onMenuClick={() => setOpen(true)}
+          onSearchClick={() => setPaletteOpen(true)}
+        />
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
           {children}
         </main>
       </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        canSeeFinance={canSeeFinance}
+      />
     </div>
   );
 }

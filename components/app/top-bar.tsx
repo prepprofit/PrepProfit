@@ -3,8 +3,9 @@
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
+import * as React from 'react';
 import { UserButton } from '@clerk/nextjs';
-import { Bell, Menu } from 'lucide-react';
+import { Bell, Menu, Search } from 'lucide-react';
 import { navItems } from '@/lib/nav';
 import { clerkAppearance } from '@/lib/clerk-appearance';
 import { ThemeToggle } from './theme-toggle';
@@ -12,11 +13,26 @@ import { ThemeToggle } from './theme-toggle';
 const iconButton =
   'inline-flex size-9 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
-export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
+export function TopBar({
+  onMenuClick,
+  onSearchClick,
+}: {
+  onMenuClick: () => void;
+  onSearchClick: () => void;
+}) {
   const pathname = usePathname();
   const t = useTranslations('nav');
   const tTop = useTranslations('topbar');
+  const tSearch = useTranslations('search');
   const { resolvedTheme } = useTheme();
+
+  // Resolve the shortcut hint after mount to avoid an SSR/CSR mismatch and to
+  // show the right modifier per OS (⌘ on macOS, Ctrl elsewhere).
+  const [shortcut, setShortcut] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    const isMac = /mac|iphone|ipad/i.test(navigator.userAgent);
+    setShortcut(isMac ? '⌘K' : 'Ctrl K');
+  }, []);
 
   const current = navItems.find(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
@@ -46,6 +62,20 @@ export function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
       </h1>
 
       <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onSearchClick}
+          aria-label={tSearch('open')}
+          className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full border border-border bg-surface px-3 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Search className="size-4" />
+          <span className="hidden sm:inline">{tSearch('open')}</span>
+          {shortcut && (
+            <kbd className="hidden rounded border border-border px-1.5 py-0.5 font-sans text-[10px] text-muted-foreground sm:inline">
+              {shortcut}
+            </kbd>
+          )}
+        </button>
         <ThemeToggle />
         <button type="button" aria-label={tTop('notifications')} className={`relative ${iconButton}`}>
           <Bell className="size-4" />
