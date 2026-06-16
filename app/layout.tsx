@@ -1,16 +1,19 @@
 import type { Metadata } from 'next';
-import { Inter, Space_Grotesk } from 'next/font/google';
+import { Roboto, Outfit } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 import { ThemeProvider } from '@/components/theme-provider';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
-const spaceGrotesk = Space_Grotesk({
+// Google-product type pairing: Roboto for UI/body (the Android system font) and
+// Outfit for display — a free, geometric stand-in for the proprietary Google Sans.
+const roboto = Roboto({
   subsets: ['latin'],
-  variable: '--font-space-grotesk',
+  weight: ['400', '500', '700'],
+  variable: '--font-roboto',
 });
+const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit' });
 
 export const metadata: Metadata = {
   title: 'PrepProfit',
@@ -28,7 +31,7 @@ export default async function RootLayout({
     <ClerkProvider>
       <html
         lang={locale}
-        className={`${inter.variable} ${spaceGrotesk.variable}`}
+        className={`${roboto.variable} ${outfit.variable}`}
         suppressHydrationWarning
       >
         <body className="font-sans" suppressHydrationWarning>
