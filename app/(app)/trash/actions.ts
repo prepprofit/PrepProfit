@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getOrgId } from '@/lib/auth';
+import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { isForeignKeyViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
@@ -11,6 +11,7 @@ import {
   purgeRecipe,
   restoreRecipe,
 } from '@/lib/data/recipes';
+import { purgeTransaction, restoreTransaction } from '@/lib/data/transactions';
 import type { ActionResult } from '@/lib/action-result';
 
 /**
@@ -24,6 +25,12 @@ function revalidateTrash(): void {
   revalidatePath('/recipes');
   revalidatePath('/ingredients');
   revalidatePath('/dashboard');
+}
+
+function revalidateTrashFinance(): void {
+  revalidateTrash();
+  revalidatePath('/transactions');
+  revalidatePath('/financials');
 }
 
 export async function restoreRecipeAction(id: string): Promise<ActionResult> {
@@ -83,5 +90,28 @@ export async function purgeIngredientAction(id: string): Promise<ActionResult> {
     return unexpected('purgeIngredientAction', err, organizationId);
   }
   revalidateTrash();
+  return { ok: true, data: undefined };
+}
+
+/** Restore a trashed transaction — manager-only (financial data). */
+export async function restoreTransactionAction(
+  id: string,
+): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  const row = await withOrg(organizationId, (tx) =>
+    restoreTransaction(tx, organizationId, id),
+  );
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  revalidateTrashFinance();
+  return { ok: true, data: undefined };
+}
+
+/** Permanently delete a trashed transaction — manager-only. */
+export async function purgeTransactionAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  await withOrg(organizationId, (tx) => purgeTransaction(tx, organizationId, id));
+  revalidateTrashFinance();
   return { ok: true, data: undefined };
 }

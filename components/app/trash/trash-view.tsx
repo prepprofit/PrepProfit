@@ -10,13 +10,15 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   purgeIngredientAction,
   purgeRecipeAction,
+  purgeTransactionAction,
   restoreIngredientAction,
   restoreRecipeAction,
+  restoreTransactionAction,
 } from '@/app/(app)/trash/actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
 
 export type TrashItem = { id: string; name: string; daysLeft: number };
-type Kind = 'recipe' | 'ingredient';
+type Kind = 'recipe' | 'ingredient' | 'transaction';
 
 /** Below this many days left, the countdown badge turns amber. */
 const SOON_THRESHOLD_DAYS = 7;
@@ -24,9 +26,11 @@ const SOON_THRESHOLD_DAYS = 7;
 export function TrashView({
   recipes,
   ingredients,
+  transactions = [],
 }: {
   recipes: TrashItem[];
   ingredients: TrashItem[];
+  transactions?: TrashItem[];
 }) {
   const t = useTranslations('trash');
   const tCommon = useTranslations('common');
@@ -39,7 +43,10 @@ export function TrashView({
   } | null>(null);
   const [pending, startTransition] = React.useTransition();
 
-  const isEmpty = recipes.length === 0 && ingredients.length === 0;
+  const isEmpty =
+    recipes.length === 0 &&
+    ingredients.length === 0 &&
+    transactions.length === 0;
 
   const restore = (kind: Kind, id: string) => {
     setError(null);
@@ -47,7 +54,9 @@ export function TrashView({
       const result =
         kind === 'recipe'
           ? await restoreRecipeAction(id)
-          : await restoreIngredientAction(id);
+          : kind === 'ingredient'
+            ? await restoreIngredientAction(id)
+            : await restoreTransactionAction(id);
       if (result.ok) router.refresh();
       else setError(actionError(result.code));
     });
@@ -61,7 +70,9 @@ export function TrashView({
       const result =
         kind === 'recipe'
           ? await purgeRecipeAction(item.id)
-          : await purgeIngredientAction(item.id);
+          : kind === 'ingredient'
+            ? await purgeIngredientAction(item.id)
+            : await purgeTransactionAction(item.id);
       if (result.ok) router.refresh();
       else setError(actionError(result.code));
       setPurgeTarget(null);
@@ -105,6 +116,17 @@ export function TrashView({
         pending={pending}
         onRestore={restore}
         onPurge={(item) => setPurgeTarget({ kind: 'ingredient', item })}
+        labelFor={(n) => (n === 0 ? t('expiresToday') : t('daysLeft', { days: n }))}
+        restoreLabel={t('restore')}
+        deleteLabel={t('deleteForever')}
+      />
+      <Section
+        title={t('sections.transactions')}
+        items={transactions}
+        kind="transaction"
+        pending={pending}
+        onRestore={restore}
+        onPurge={(item) => setPurgeTarget({ kind: 'transaction', item })}
         labelFor={(n) => (n === 0 ? t('expiresToday') : t('daysLeft', { days: n }))}
         restoreLabel={t('restore')}
         deleteLabel={t('deleteForever')}

@@ -232,7 +232,8 @@
     "empty": "Nothing in the trash. Deleted recipes and ingredients will appear here.",
     "sections": {
       "recipes": "Recipes",
-      "ingredients": "Ingredients"
+      "ingredients": "Ingredients",
+      "transactions": "Transactions"
     },
     "restore": "Restore",
     "deleteForever": "Delete permanently",
