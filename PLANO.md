@@ -122,9 +122,12 @@ Goal: close the gaps that separate "works" from production-grade before Sprint 2
 Graceful failure UX, fully-translated errors, build caught in CI, fail-fast env
 validation, and diagnosable production errors. No new runtime dependency.
 
-- [x] Error/loading/404 boundaries: `app/global-error.tsx` (provider-less
-      fallback), `app/(app)/error.tsx` (localized, retry + back), `app/(app)/loading.tsx`
-      (skeleton), `app/not-found.tsx` (branded 404)
+- [x] Error/404 boundaries: `app/global-error.tsx` (provider-less fallback),
+      `app/(app)/error.tsx` (localized, retry + back), `app/not-found.tsx`
+      (branded 404). NOTE: the blanket `app/(app)/loading.tsx` skeleton was
+      removed — it flashed on every (even fast) navigation and couldn't match
+      each page's design; route-specific, design-matched skeletons are added only
+      where data is genuinely slow (e.g. the Sprint 2 dashboard)
 - [x] Translated action errors: `ActionResult` failure arm carries a stable
       `ActionErrorCode` (not English strings); all action returns use codes; client
       maps via `useActionError()` hook + `actionErrors.*` i18n block
