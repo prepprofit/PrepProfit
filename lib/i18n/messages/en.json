@@ -309,7 +309,7 @@
       "monthlyTitle": "Income vs expenses",
       "monthlySubtitle": "By month",
       "profitTrend": "Profit by month",
-      "vsPrevious": "vs previous {period}",
+      "vsPrevious": "vs. previous period",
       "noBaseline": "No prior data"
     },
     "transactions": {
