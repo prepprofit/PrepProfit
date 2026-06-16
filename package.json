@@ -15,7 +15,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "seed": "tsx scripts/seed.ts",
-    "seed:org": "tsx scripts/seed-org.ts"
+    "seed:org": "tsx scripts/seed-org.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.2",
