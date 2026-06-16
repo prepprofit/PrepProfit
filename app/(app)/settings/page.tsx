@@ -18,13 +18,10 @@ export default async function SettingsPage() {
   const settings = await getOrgSettings();
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <h1 className="font-display text-2xl font-semibold text-foreground">
-        {t('title')}
-      </h1>
-      <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
+    <div className="flex flex-col gap-5">
+      <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
 
-      <Card className="mt-6">
+      <Card>
         <CardHeader>
           <CardTitle>{t('regional.title')}</CardTitle>
           <CardDescription>{t('regional.description')}</CardDescription>
