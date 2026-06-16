@@ -38,8 +38,11 @@ function usePrefersReducedMotion() {
 export function MarginGauge({
   /** Average margin %, or null when nothing is priced yet. */
   value,
+  /** Context line under the gauge, e.g. how many recipes are priced. */
+  caption,
 }: {
   value: number | null;
+  caption?: string;
 }) {
   const t = useTranslations('dashboard.marginGauge');
   const reducedMotion = usePrefersReducedMotion();
@@ -97,11 +100,15 @@ export function MarginGauge({
           </div>
         </div>
 
-        {value == null && (
+        {value == null ? (
           <p className="text-center text-sm text-muted-foreground">
             {t('empty')}
           </p>
-        )}
+        ) : caption ? (
+          <p className="truncate text-center text-xs text-muted-foreground">
+            {caption}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );
