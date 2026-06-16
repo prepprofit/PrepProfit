@@ -201,7 +201,7 @@ describe('trash data layer', () => {
       .where(eq(ingredientsTable.id, flourId));
 
     const result = await purgeExpired(db, ORG_A, purgeCutoff());
-    expect(result).toEqual({ recipes: 1, ingredients: 1 });
+    expect(result).toEqual({ recipes: 1, ingredients: 1, transactions: 0 });
     expect(await listTrashedRecipes(db, ORG_A)).toHaveLength(0);
     expect(
       (await listTrashedIngredients(db, ORG_A)).map((i) => i.id),
@@ -218,7 +218,7 @@ describe('trash data layer', () => {
       .where(eq(ingredientsTable.id, flourId));
 
     const result = await purgeExpired(db, ORG_A, purgeCutoff());
-    expect(result).toEqual({ recipes: 0, ingredients: 0 });
+    expect(result).toEqual({ recipes: 0, ingredients: 0, transactions: 0 });
     expect(
       (await listTrashedIngredients(db, ORG_A)).map((i) => i.id),
     ).toContain(flourId); // still pinned by the trashed Bread line

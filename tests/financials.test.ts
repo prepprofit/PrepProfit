@@ -30,6 +30,7 @@ import {
   purgeRecipe,
   softDeleteRecipe,
 } from '@/lib/data/recipes';
+import { purgeExpired } from '@/lib/data/trash';
 
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
@@ -202,6 +203,27 @@ describe('financials data layer', () => {
       expect(list).toHaveLength(1);
       expect(list[0]?.recipe).toBeNull(); // unlinked, record survives
       expect(list[0]?.amountCents).toBe(5_000);
+    });
+
+    it('auto-purge unlinks recipe links and removes expired trashed transactions', async () => {
+      await ensureCategoriesSeeded(db, ORG_A);
+      const aSales = await categoryId(ORG_A, 'food_sales');
+      const recipe = await createRecipe(db, ORG_A, { name: 'Cake' });
+      await createTransaction(db, ORG_A, income(aSales, '2026-06-01', 5_000, recipe.id));
+      const trashed = await createTransaction(db, ORG_A, income(aSales, '2026-06-02', 1_000));
+      await softDeleteTransaction(db, ORG_A, trashed.id);
+      await softDeleteRecipe(db, ORG_A, recipe.id);
+
+      // A cutoff in the future makes every trashed row eligible for purge.
+      const cutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const result = await purgeExpired(db, ORG_A, cutoff);
+      expect(result.recipes).toBe(1);
+      expect(result.transactions).toBe(1);
+
+      // The active, recipe-linked transaction survives with its link nulled.
+      const list = await listTransactions(db, ORG_A);
+      expect(list).toHaveLength(1);
+      expect(list[0]?.recipe).toBeNull();
     });
   });
 
