@@ -272,6 +272,11 @@
     "topRecipes": "Top recipes by margin",
     "noRecipes": "No recipes yet. Create one to see your top margins.",
     "chartEmpty": "Needs transaction data",
+    "marginGauge": {
+      "title": "Average margin",
+      "center": "avg. margin",
+      "empty": "Price a recipe to see your margin."
+    },
     "kpi": {
       "revenue": "Revenue",
       "foodCost": "Avg. food cost",
