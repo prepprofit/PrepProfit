@@ -72,7 +72,9 @@
     "groups": {
       "recipes": "Recipes",
       "ingredients": "Ingredients",
-      "transactions": "Transactions"
+      "transactions": "Transactions",
+      "invoices": "Invoices",
+      "customers": "Customers"
     }
   },
   "theme": {
@@ -409,6 +411,140 @@
     },
     "csv": {
       "filename": "transactions"
+    }
+  },
+  "invoices": {
+    "subtitle": "Create invoices for your customers, issue them with a sequential number, and track payment.",
+    "empty": "No invoices yet. Build your first one below.",
+    "status": {
+      "draft": "Draft",
+      "issued": "Issued",
+      "paid": "Paid",
+      "void": "Void"
+    },
+    "list": {
+      "title": "Invoices",
+      "number": "Number",
+      "customer": "Customer",
+      "total": "Total",
+      "date": "Issued",
+      "noNumber": "—",
+      "noCustomer": "No customer"
+    },
+    "builder": {
+      "title": "New invoice",
+      "editTitle": "Edit draft",
+      "customer": "Customer",
+      "selectCustomer": "Select a customer",
+      "newCustomer": "New customer",
+      "notes": "Notes",
+      "notesPlaceholder": "Optional notes shown on the invoice",
+      "lines": "Line items",
+      "description": "Description",
+      "quantity": "Qty",
+      "unitPrice": "Unit price",
+      "taxRate": "VAT %",
+      "lineTotal": "Total",
+      "addLine": "Add line",
+      "removeLine": "Remove line",
+      "subtotal": "Subtotal",
+      "tax": "VAT",
+      "grandTotal": "Total due",
+      "saveDraft": "Save draft",
+      "saveChanges": "Save changes",
+      "cancelEdit": "Cancel"
+    },
+    "detail": {
+      "title": "Invoice",
+      "back": "Back to invoices",
+      "billedTo": "Billed to",
+      "issuedOn": "Issued on",
+      "dueOn": "Due on",
+      "notFound": "That invoice could not be found."
+    },
+    "actions": {
+      "view": "View",
+      "edit": "Edit",
+      "issue": "Issue",
+      "markPaid": "Mark paid",
+      "void": "Void",
+      "delete": "Delete draft",
+      "dueDate": "Due date (optional)",
+      "issueTitle": "Issue invoice",
+      "issueBody": "A sequential number will be assigned and the invoice can no longer be edited. Continue?",
+      "voidTitle": "Void invoice",
+      "voidBody": "Voiding keeps the invoice number for your records but marks it cancelled. Continue?",
+      "deleteTitle": "Delete draft",
+      "deleteBody": "This draft will be moved to the trash."
+    },
+    "customers": {
+      "title": "Customers",
+      "add": "Add customer",
+      "edit": "Edit customer",
+      "name": "Name",
+      "taxId": "Tax ID",
+      "address": "Address",
+      "email": "Email",
+      "empty": "No customers yet.",
+      "deleteTitle": "Delete customer",
+      "deleteBody": "This customer will be moved to the trash. Issued invoices keep their saved details."
+    },
+    "errors": {
+      "customerRequired": "Add a customer before saving.",
+      "lineRequired": "Add at least one line item.",
+      "lineIncomplete": "Each line needs a description, a quantity and a price."
+    }
+  },
+  "payroll": {
+    "subtitle": "Manage your team, log their shifts, and see hours and pay due per period.",
+    "employees": {
+      "title": "Team",
+      "add": "Add employee",
+      "edit": "Edit employee",
+      "name": "Name",
+      "email": "Email",
+      "rate": "Hourly rate",
+      "empty": "No employees yet. Add your first one.",
+      "archived": "Archived",
+      "archive": "Archive",
+      "reactivate": "Reactivate",
+      "delete": "Delete",
+      "showArchived": "Show archived",
+      "archiveTitle": "Archive employee",
+      "archiveBody": "Archived employees keep their shift history but no longer appear in the active list.",
+      "deleteTitle": "Delete employee",
+      "deleteBody": "This permanently deletes the employee and all of their shifts. This cannot be undone."
+    },
+    "shifts": {
+      "title": "Shifts",
+      "log": "Log shift",
+      "employee": "Employee",
+      "start": "Start",
+      "end": "End (leave empty if still working)",
+      "break": "Break (minutes)",
+      "note": "Note",
+      "add": "Add shift",
+      "open": "Open",
+      "worked": "Worked",
+      "pay": "Pay",
+      "empty": "No shifts in this period.",
+      "delete": "Delete shift",
+      "deleteTitle": "Delete shift",
+      "deleteBody": "This shift will be permanently removed.",
+      "close": "Check out"
+    },
+    "summary": {
+      "title": "Period summary",
+      "week": "Week",
+      "month": "Month",
+      "shifts": "Shifts",
+      "hours": "Hours",
+      "payDue": "Pay due"
+    },
+    "errors": {
+      "nameRequired": "Enter a name.",
+      "startRequired": "Enter a start time.",
+      "endBeforeStart": "The shift cannot end before it starts."
     }
   },
   "marketing": {

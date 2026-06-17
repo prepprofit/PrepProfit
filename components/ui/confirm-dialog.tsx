@@ -20,6 +20,7 @@ export function ConfirmDialog({
   pending = false,
   onConfirm,
   onCancel,
+  children,
 }: {
   open: boolean;
   title: string;
@@ -30,6 +31,8 @@ export function ConfirmDialog({
   pending?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Optional extra content (e.g. a small input) shown above the buttons. */
+  children?: React.ReactNode;
 }) {
   const ref = React.useRef<HTMLDialogElement>(null);
   const titleId = React.useId();
@@ -67,6 +70,7 @@ export function ConfirmDialog({
         <p id={descId} className="text-sm text-muted-foreground">
           {description}
         </p>
+        {children}
         <div className="mt-4 flex justify-end gap-2">
           <Button
             type="button"
