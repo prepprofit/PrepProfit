@@ -231,7 +231,18 @@ export async function updateDraftInvoice(
       taxCents: totals.taxCents,
       totalCents: totals.totalCents,
     })
-    .where(and(eq(invoices.organizationId, organizationId), eq(invoices.id, id)))
+    .where(
+      and(
+        eq(invoices.organizationId, organizationId),
+        eq(invoices.id, id),
+        // Re-assert draft + not-trashed IN the UPDATE: the read above is not a
+        // lock, so a concurrent issueInvoice/soft-delete could land between it
+        // and this write. If that happens the predicate matches no row, we bail
+        // out below WITHOUT wiping items — an issued invoice stays immutable.
+        eq(invoices.status, 'draft'),
+        isNull(invoices.deletedAt),
+      ),
+    )
     .returning();
   if (!invoice) return null;
 
