@@ -289,6 +289,9 @@
       "noPricedRecipes": "No priced recipes yet",
       "pricedRecipes": "{count, plural, =0 {No priced recipes} one {# priced recipe} other {# priced recipes}}"
     },
+    "recentTransactions": "Recent transactions",
+    "viewAll": "View all",
+    "noRecentTransactions": "No transactions yet.",
     "charts": {
       "sales": { "title": "Sales by day", "subtitle": "Last 7 days" },
       "margin": { "title": "Margin trend", "subtitle": "Last 6 months" },

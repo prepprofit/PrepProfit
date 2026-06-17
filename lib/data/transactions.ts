@@ -41,6 +41,8 @@ export type TransactionFilter = {
   to?: string;
   type?: TransactionType;
   categoryId?: string;
+  /** Cap the result set (newest first). */
+  limit?: number;
 };
 
 /**
@@ -54,7 +56,7 @@ export async function listTransactions(
   organizationId: string,
   filter: TransactionFilter = {},
 ): Promise<TransactionListItem[]> {
-  const rows = await db
+  const baseQuery = db
     .select({
       id: transactions.id,
       type: transactions.type,
@@ -96,6 +98,10 @@ export async function listTransactions(
       ),
     )
     .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt));
+
+  const rows = await (filter.limit !== undefined
+    ? baseQuery.limit(filter.limit)
+    : baseQuery);
 
   return rows.map((r) => ({
     id: r.id,
