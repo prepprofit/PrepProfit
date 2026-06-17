@@ -4,6 +4,7 @@ import {
   text,
   integer,
   numeric,
+  boolean,
   timestamp,
   date,
   index,
@@ -357,6 +358,234 @@ export const transactions = pgTable(
   ],
 );
 
+/**
+ * Customers an invoice can be addressed to (Sprint 3, module 6). Org-scoped,
+ * soft-deletable (Trash pattern). On purge, referencing invoices have their
+ * `customer_id` nulled first (see lib/data/customers.ts) — the invoice keeps its
+ * own customer SNAPSHOT, so the historical document still shows who it was for.
+ */
+export const customers = pgTable(
+  'customers',
+  {
+    id: id(),
+    organizationId: orgId(),
+    name: text('name').notNull(),
+    // Optional billing details (VAT / fiscal number, postal address, contact email).
+    taxId: text('tax_id'),
+    address: text('address'),
+    email: text('email'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL` (Trash pattern).
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('customers_org_idx').on(t.organizationId),
+    index('customers_org_name_idx').on(t.organizationId, t.name),
+    // Serves the /trash listing and keeps active-row filtering index-friendly.
+    index('customers_org_deleted_idx').on(t.organizationId, t.deletedAt),
+    // FK target for the composite (organization_id, customer_id) reference.
+    unique('customers_org_id_key').on(t.organizationId, t.id),
+    // pg_trgm GIN indexes for typo-tolerant global search (Sprint 2.7 registry).
+    index('customers_name_trgm_idx').using('gin', t.name.op('gin_trgm_ops')),
+    index('customers_email_trgm_idx').using('gin', t.email.op('gin_trgm_ops')),
+  ],
+);
+
+/**
+ * Per-organization, per-year invoice number counter (Sprint 3). The ONLY source
+ * of sequential invoice numbers. Allocation is a single atomic upsert-increment
+ * inside the issuing transaction (see lib/data/invoices.ts), which takes a row
+ * lock (serializing concurrent allocations) and commits with the invoice insert —
+ * a rollback burns no number, so the sequence is GAP-FREE. `last_seq` is
+ * monotonic and never decremented; numbers reset per calendar year.
+ */
+export const invoiceCounters = pgTable(
+  'invoice_counters',
+  {
+    organizationId: orgId(),
+    // Calendar year the sequence belongs to (numbers reset each year).
+    year: integer('year').notNull(),
+    // Highest sequence number handed out for (org, year) so far.
+    lastSeq: integer('last_seq').notNull().default(0),
+  },
+  (t) => [
+    // One counter row per (organization, year); also the upsert conflict target.
+    unique('invoice_counters_org_year_key').on(t.organizationId, t.year),
+  ],
+);
+
+/**
+ * Invoices (Sprint 3, module 6). Lifecycle: draft → issued → paid / void.
+ *
+ * A `draft` is freely editable and has NO number. At the `draft → issued`
+ * transition a gap-free number is allocated (invoice_counters) and the customer
+ * snapshot + monetary totals are FROZEN — an issued invoice is immutable except
+ * for its status (→ paid / void) and internal note. Issued invoices are never
+ * deleted (the number must survive for the audit trail); only DRAFTS are
+ * soft-deletable. Monetary values are integer cents (CLAUDE.md).
+ */
+export const invoices = pgTable(
+  'invoices',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // Live link to the customer; nulled (not cascaded) when the customer is
+    // purged, because the snapshot below preserves the historical billing detail.
+    customerId: text('customer_id'),
+    // Customer SNAPSHOT, captured at issue — survives a customer soft-delete/purge.
+    customerName: text('customer_name'),
+    customerTaxId: text('customer_tax_id'),
+    customerAddress: text('customer_address'),
+    customerEmail: text('customer_email'),
+    status: text('status', { enum: ['draft', 'issued', 'paid', 'void'] })
+      .notNull()
+      .default('draft'),
+    // Display number (e.g. 'INV-2026-0001'), plus its structured parts for sort /
+    // search. All NULL while draft; assigned together at issue.
+    number: text('number'),
+    seq: integer('seq'),
+    year: integer('year'),
+    // Bare calendar dates 'YYYY-MM-DD' (no time, no tz), set at issue.
+    issueDate: date('issue_date', { mode: 'string' }),
+    dueDate: date('due_date', { mode: 'string' }),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    // Frozen totals (integer cents), computed by the pure invoice calc at issue.
+    subtotalCents: integer('subtotal_cents').notNull().default(0),
+    taxCents: integer('tax_cents').notNull().default(0),
+    totalCents: integer('total_cents').notNull().default(0),
+    notes: text('notes'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    // Soft-delete: NULL = active. Only DRAFT invoices are ever trashed.
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('invoices_org_idx').on(t.organizationId),
+    index('invoices_org_status_idx').on(t.organizationId, t.status),
+    // Serves the /trash listing and keeps active-row filtering index-friendly.
+    index('invoices_org_deleted_idx').on(t.organizationId, t.deletedAt),
+    // FK target for invoice_items' composite (organization_id, invoice_id).
+    unique('invoices_org_id_key').on(t.organizationId, t.id),
+    // One issued number per organization (the gap-free guarantee's DB backstop;
+    // NULLs are distinct, so unlimited drafts coexist).
+    unique('invoices_org_number_key').on(t.organizationId, t.number),
+    // pg_trgm GIN indexes for typo-tolerant global search (find by number / who).
+    index('invoices_number_trgm_idx').using('gin', t.number.op('gin_trgm_ops')),
+    index('invoices_customer_name_trgm_idx').using(
+      'gin',
+      t.customerName.op('gin_trgm_ops'),
+    ),
+    // Composite FK: the customer must share THIS invoice's organization_id — a
+    // cross-tenant link is impossible at the DB level. ON DELETE restrict: the
+    // customer-purge path nulls customer_id first (a multi-column SET NULL would
+    // also null the NOT NULL organization_id). NULL customer_id rows skip the FK.
+    foreignKey({
+      columns: [t.organizationId, t.customerId],
+      foreignColumns: [customers.organizationId, customers.id],
+      name: 'invoices_customer_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * Invoice line items (Sprint 3). VAT is modelled PER LINE — food businesses mix
+ * standard and reduced rates on one invoice. `unit_price_cents` is the NET unit
+ * price (integer cents); `tax_rate` is a numeric percent (e.g. 23.00, not money).
+ * Per-line and invoice totals are derived by the pure calc (lib/calculations/
+ * invoice.ts); the frozen sums live on the invoice row.
+ */
+export const invoiceItems = pgTable(
+  'invoice_items',
+  {
+    id: id(),
+    organizationId: orgId(),
+    invoiceId: text('invoice_id').notNull(),
+    description: text('description').notNull(),
+    quantity: numeric('quantity', { precision: 12, scale: 3 })
+      .notNull()
+      .default(sql`0`),
+    // Net unit price in integer cents.
+    unitPriceCents: integer('unit_price_cents').notNull().default(0),
+    // VAT rate as a percentage (0..100); numeric, not money.
+    taxRate: numeric('tax_rate', { precision: 5, scale: 2 })
+      .notNull()
+      .default(sql`0`),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    index('invoice_items_org_idx').on(t.organizationId),
+    index('invoice_items_invoice_idx').on(t.invoiceId),
+    // Composite FK forces the line to share its invoice's organization_id; removing
+    // an invoice cascades to its lines.
+    foreignKey({
+      columns: [t.organizationId, t.invoiceId],
+      foreignColumns: [invoices.organizationId, invoices.id],
+      name: 'invoice_items_invoice_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Employees (Sprint 3, module 5). PII — manager-only access (RBAC), and NOT in
+ * the shared 30-day trash: "removing" an employee archives it (`active = false`);
+ * a separate manager-only hard-delete cascades the shift history. `hourly_rate`
+ * is integer cents (CLAUDE.md).
+ */
+export const employees = pgTable(
+  'employees',
+  {
+    id: id(),
+    organizationId: orgId(),
+    name: text('name').notNull(),
+    email: text('email'),
+    hourlyRateCents: integer('hourly_rate_cents').notNull().default(0),
+    // Archive flag: false = deactivated (kept for historical shifts), true = active.
+    active: boolean('active').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('employees_org_idx').on(t.organizationId),
+    index('employees_org_active_idx').on(t.organizationId, t.active),
+    // FK target for shifts' composite (organization_id, employee_id).
+    unique('employees_org_id_key').on(t.organizationId, t.id),
+  ],
+);
+
+/**
+ * Shifts worked by an employee (Sprint 3). Stores absolute timestamptz INSTANTS
+ * for check-in/out, so a shift crossing midnight is just `ended_at − started_at`
+ * — no wall-clock or DST math. `ended_at` NULL = an open (checked-in) shift.
+ * `break_minutes` is subtracted from worked time by the pure payroll calc.
+ */
+export const shifts = pgTable(
+  'shifts',
+  {
+    id: id(),
+    organizationId: orgId(),
+    employeeId: text('employee_id').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    breakMinutes: integer('break_minutes').notNull().default(0),
+    note: text('note'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('shifts_org_idx').on(t.organizationId),
+    index('shifts_org_employee_idx').on(t.organizationId, t.employeeId),
+    index('shifts_org_started_idx').on(t.organizationId, t.startedAt),
+    // Composite FK forces the shift to share its employee's organization_id;
+    // hard-deleting an employee cascades their shifts.
+    foreignKey({
+      columns: [t.organizationId, t.employeeId],
+      foreignColumns: [employees.organizationId, employees.id],
+      name: 'shifts_employee_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
 export type Ingredient = InferSelectModel<typeof ingredients>;
 export type NewIngredient = InferInsertModel<typeof ingredients>;
 export type InventoryMovement = InferSelectModel<typeof inventoryMovements>;
@@ -376,6 +605,17 @@ export type Transaction = InferSelectModel<typeof transactions>;
 export type NewTransaction = InferInsertModel<typeof transactions>;
 export type TransactionType = Transaction['type'];
 export type CategoryKind = TransactionCategory['kind'];
+export type Customer = InferSelectModel<typeof customers>;
+export type NewCustomer = InferInsertModel<typeof customers>;
+export type Invoice = InferSelectModel<typeof invoices>;
+export type NewInvoice = InferInsertModel<typeof invoices>;
+export type InvoiceStatus = Invoice['status'];
+export type InvoiceItem = InferSelectModel<typeof invoiceItems>;
+export type NewInvoiceItem = InferInsertModel<typeof invoiceItems>;
+export type Employee = InferSelectModel<typeof employees>;
+export type NewEmployee = InferInsertModel<typeof employees>;
+export type Shift = InferSelectModel<typeof shifts>;
+export type NewShift = InferInsertModel<typeof shifts>;
 
 /** All business tables, for applying RLS in bulk. */
 export const businessTables = [
@@ -387,4 +627,10 @@ export const businessTables = [
   'inventory_movements',
   'transaction_categories',
   'transactions',
+  'customers',
+  'invoice_counters',
+  'invoices',
+  'invoice_items',
+  'employees',
+  'shifts',
 ] as const;
