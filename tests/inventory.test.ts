@@ -2,7 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import type { TenantDb } from '@/lib/db/tenant';
-import { createIngredient, getIngredientById } from '@/lib/data/ingredients';
+import {
+  createIngredient,
+  getIngredientById,
+  softDeleteIngredient,
+} from '@/lib/data/ingredients';
 import {
   listMovements,
   recordMovement,
@@ -62,10 +66,32 @@ describe('recordMovement', () => {
     expect(movements.length).toBe(3);
   });
 
-  it('cannot move stock for another org (composite FK)', async () => {
-    await expect(
-      recordMovement(db, ORG_B, { ingredientId, deltaCanonical: 100 }),
-    ).rejects.toThrow();
+  it('does not move stock for another org (returns null, no orphan ledger row)', async () => {
+    const result = await recordMovement(db, ORG_B, {
+      ingredientId,
+      deltaCanonical: 100,
+    });
+    expect(result).toBeNull();
+    // The foreign ingredient's ledger is untouched (no orphan row written).
+    const ledger = await listMovements(db, ORG_A, ingredientId);
+    expect(ledger.length).toBe(3);
+  });
+
+  it('refuses to move stock for a trashed ingredient (and writes no ledger row)', async () => {
+    const ing = await createIngredient(db, ORG_A, {
+      name: 'Sugar',
+      dimension: 'weight',
+      priceCents: 90,
+    });
+    await softDeleteIngredient(db, ORG_A, ing.id);
+
+    const result = await recordMovement(db, ORG_A, {
+      ingredientId: ing.id,
+      deltaCanonical: 500,
+    });
+    expect(result).toBeNull();
+    const ledger = await listMovements(db, ORG_A, ing.id);
+    expect(ledger.length).toBe(0);
   });
 });
 

@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { ingredients, inventoryMovements } from '@/lib/db/schema';
 import type { Ingredient, InventoryMovement } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
@@ -19,20 +19,17 @@ export type RecordMovementInput = {
 /**
  * Append a movement and update the running stock total atomically. Stock is
  * clamped at zero (you cannot have negative physical stock). Returns the updated
- * ingredient, or null if it does not belong to the org.
+ * ingredient, or null if it does not belong to the org or is in the trash.
+ *
+ * The ingredient UPDATE runs FIRST: if it affects no row (wrong org or
+ * `deleted_at IS NOT NULL`), we bail out before writing anything, so a trashed
+ * or foreign ingredient can never accumulate an orphan ledger entry.
  */
 export async function recordMovement(
   db: TenantClient,
   organizationId: string,
   input: RecordMovementInput,
 ): Promise<Ingredient | null> {
-  await db.insert(inventoryMovements).values({
-    organizationId,
-    ingredientId: input.ingredientId,
-    deltaCanonical: input.deltaCanonical.toString(),
-    note: input.note ?? null,
-  });
-
   const [row] = await db
     .update(ingredients)
     .set({
@@ -42,10 +39,19 @@ export async function recordMovement(
       and(
         eq(ingredients.organizationId, organizationId),
         eq(ingredients.id, input.ingredientId),
+        isNull(ingredients.deletedAt),
       ),
     )
     .returning();
-  return row ?? null;
+  if (!row) return null;
+
+  await db.insert(inventoryMovements).values({
+    organizationId,
+    ingredientId: input.ingredientId,
+    deltaCanonical: input.deltaCanonical.toString(),
+    note: input.note ?? null,
+  });
+  return row;
 }
 
 export async function setLowStockThreshold(
