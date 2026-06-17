@@ -260,7 +260,9 @@
     "sections": {
       "recipes": "Recipes",
       "ingredients": "Ingredients",
-      "transactions": "Transactions"
+      "transactions": "Transactions",
+      "invoices": "Invoices",
+      "customers": "Customers"
     },
     "restore": "Restore",
     "deleteForever": "Delete permanently",

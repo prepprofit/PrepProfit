@@ -1,6 +1,8 @@
 import { and, eq, inArray, isNotNull, lte, notExists, sql } from 'drizzle-orm';
 import {
+  customers,
   ingredients,
+  invoices,
   recipeIngredients,
   recipes,
   transactions,
@@ -19,6 +21,8 @@ export type PurgeResult = {
   recipes: number;
   ingredients: number;
   transactions: number;
+  customers: number;
+  invoices: number;
 };
 
 export async function purgeExpired(
@@ -102,9 +106,61 @@ export async function purgeExpired(
     )
     .returning({ id: transactions.id });
 
+  // Unlink any invoice pointing at a customer about to be purged — the
+  // `invoices_customer_fk` is `ON DELETE restrict`, so it would otherwise block
+  // the customer delete. The invoice keeps its frozen customer snapshot.
+  await db
+    .update(invoices)
+    .set({ customerId: null })
+    .where(
+      and(
+        eq(invoices.organizationId, organizationId),
+        isNotNull(invoices.customerId),
+        inArray(
+          invoices.customerId,
+          db
+            .select({ id: customers.id })
+            .from(customers)
+            .where(
+              and(
+                eq(customers.organizationId, organizationId),
+                isNotNull(customers.deletedAt),
+                lte(customers.deletedAt, cutoff),
+              ),
+            ),
+        ),
+      ),
+    );
+
+  // Expired trashed (draft) invoices — their line items cascade via the FK.
+  const purgedInvoices = await db
+    .delete(invoices)
+    .where(
+      and(
+        eq(invoices.organizationId, organizationId),
+        isNotNull(invoices.deletedAt),
+        lte(invoices.deletedAt, cutoff),
+      ),
+    )
+    .returning({ id: invoices.id });
+
+  // Then expired trashed customers (their invoice links were just nulled).
+  const purgedCustomers = await db
+    .delete(customers)
+    .where(
+      and(
+        eq(customers.organizationId, organizationId),
+        isNotNull(customers.deletedAt),
+        lte(customers.deletedAt, cutoff),
+      ),
+    )
+    .returning({ id: customers.id });
+
   return {
     recipes: purgedRecipes.length,
     ingredients: purgedIngredients.length,
     transactions: purgedTransactions.length,
+    customers: purgedCustomers.length,
+    invoices: purgedInvoices.length,
   };
 }

@@ -28,6 +28,25 @@ import {
   softDeleteRecipe,
 } from '@/lib/data/recipes';
 import { addRecipeIngredient } from '@/lib/data/recipe-ingredients';
+import {
+  createCustomer,
+  listTrashedCustomers,
+  purgeCustomer,
+  restoreCustomer,
+  softDeleteCustomer,
+} from '@/lib/data/customers';
+import {
+  createDraftInvoice,
+  getInvoiceWithItems,
+  issueInvoice,
+  listTrashedInvoices,
+  restoreInvoice,
+  softDeleteDraftInvoice,
+} from '@/lib/data/invoices';
+import {
+  customers as customersTable,
+  invoices as invoicesTable,
+} from '@/lib/db/schema';
 import { purgeExpired } from '@/lib/data/trash';
 import { TRASH_RETENTION_DAYS, daysLeft, purgeCutoff } from '@/lib/trash';
 
@@ -201,7 +220,13 @@ describe('trash data layer', () => {
       .where(eq(ingredientsTable.id, flourId));
 
     const result = await purgeExpired(db, ORG_A, purgeCutoff());
-    expect(result).toEqual({ recipes: 1, ingredients: 1, transactions: 0 });
+    expect(result).toEqual({
+      recipes: 1,
+      ingredients: 1,
+      transactions: 0,
+      customers: 0,
+      invoices: 0,
+    });
     expect(await listTrashedRecipes(db, ORG_A)).toHaveLength(0);
     expect(
       (await listTrashedIngredients(db, ORG_A)).map((i) => i.id),
@@ -218,7 +243,13 @@ describe('trash data layer', () => {
       .where(eq(ingredientsTable.id, flourId));
 
     const result = await purgeExpired(db, ORG_A, purgeCutoff());
-    expect(result).toEqual({ recipes: 0, ingredients: 0, transactions: 0 });
+    expect(result).toEqual({
+      recipes: 0,
+      ingredients: 0,
+      transactions: 0,
+      customers: 0,
+      invoices: 0,
+    });
     expect(
       (await listTrashedIngredients(db, ORG_A)).map((i) => i.id),
     ).toContain(flourId); // still pinned by the trashed Bread line
@@ -276,5 +307,120 @@ describe('trash data layer', () => {
     } finally {
       await db.execute(sql.raw('RESET ROLE;'));
     }
+  });
+});
+
+describe('trash — customers & invoices (Sprint 3)', () => {
+  let client: PGlite;
+  let db: TenantDb;
+
+  beforeEach(async () => {
+    const test = await createTestDb();
+    client = test.client;
+    db = test.db as unknown as TenantDb;
+  });
+
+  afterEach(async () => {
+    await client.close();
+  });
+
+  const seedInvoiceFor = async (customerId: string, status: 'draft' | 'issued') => {
+    const draft = await createDraftInvoice(db, ORG_A, {
+      customerId,
+      notes: null,
+      items: [
+        { description: 'Service', quantity: 1, unitPriceCents: 10000, taxRate: 23 },
+      ],
+    });
+    if (status === 'issued') {
+      const outcome = await issueInvoice(db, ORG_A, draft.id, null);
+      if (outcome.status !== 'ok') throw new Error('seed: could not issue');
+      return outcome.invoice;
+    }
+    return draft;
+  };
+
+  it('soft-deletes and restores a customer', async () => {
+    const c = await createCustomer(db, ORG_A, {
+      name: 'Acme',
+      taxId: null,
+      address: null,
+      email: null,
+    });
+    await softDeleteCustomer(db, ORG_A, c.id);
+    expect((await listTrashedCustomers(db, ORG_A)).map((x) => x.id)).toEqual([c.id]);
+
+    await restoreCustomer(db, ORG_A, c.id);
+    expect(await listTrashedCustomers(db, ORG_A)).toHaveLength(0);
+  });
+
+  it('only drafts are trashable; an issued invoice cannot be soft-deleted', async () => {
+    const c = await createCustomer(db, ORG_A, {
+      name: 'Bistro',
+      taxId: null,
+      address: null,
+      email: null,
+    });
+    const draft = await seedInvoiceFor(c.id, 'draft');
+    expect(await softDeleteDraftInvoice(db, ORG_A, draft.id)).not.toBeNull();
+    expect((await listTrashedInvoices(db, ORG_A)).map((i) => i.id)).toEqual([
+      draft.id,
+    ]);
+    await restoreInvoice(db, ORG_A, draft.id);
+
+    const issued = await seedInvoiceFor(c.id, 'issued');
+    // Issued invoices are immutable — soft-delete refuses (only drafts trash).
+    expect(await softDeleteDraftInvoice(db, ORG_A, issued.id)).toBeNull();
+  });
+
+  it('purging a customer nulls referencing invoices but keeps their snapshot', async () => {
+    const c = await createCustomer(db, ORG_A, {
+      name: 'Almeida Catering',
+      taxId: 'PT123',
+      address: null,
+      email: null,
+    });
+    const issued = await seedInvoiceFor(c.id, 'issued');
+    await softDeleteCustomer(db, ORG_A, c.id);
+    await purgeCustomer(db, ORG_A, c.id);
+
+    const detail = await getInvoiceWithItems(db, ORG_A, issued.id);
+    expect(detail?.invoice.customerId).toBeNull(); // link nulled
+    expect(detail?.invoice.customerName).toBe('Almeida Catering'); // snapshot kept
+  });
+
+  it('purgeExpired removes expired draft invoices + customers, nulling links', async () => {
+    const c = await createCustomer(db, ORG_A, {
+      name: 'Old Co',
+      taxId: null,
+      address: null,
+      email: null,
+    });
+    const issued = await seedInvoiceFor(c.id, 'issued');
+    const draft = await seedInvoiceFor(c.id, 'draft');
+
+    // Trash the draft invoice and the customer, then backdate both past the window.
+    const expired = daysAgo(TRASH_RETENTION_DAYS + 1);
+    await softDeleteDraftInvoice(db, ORG_A, draft.id);
+    await softDeleteCustomer(db, ORG_A, c.id);
+    await db
+      .update(invoicesTable)
+      .set({ deletedAt: expired })
+      .where(eq(invoicesTable.id, draft.id));
+    await db
+      .update(customersTable)
+      .set({ deletedAt: expired })
+      .where(eq(customersTable.id, c.id));
+
+    const result = await purgeExpired(db, ORG_A, purgeCutoff());
+    expect(result.invoices).toBe(1);
+    expect(result.customers).toBe(1);
+    expect(await listTrashedInvoices(db, ORG_A)).toHaveLength(0);
+    expect(await listTrashedCustomers(db, ORG_A)).toHaveLength(0);
+
+    // The issued invoice survived but its customer link was nulled (snapshot kept).
+    const detail = await getInvoiceWithItems(db, ORG_A, issued.id);
+    expect(detail?.invoice.customerId).toBeNull();
+    expect(detail?.invoice.customerName).toBe('Old Co');
   });
 });

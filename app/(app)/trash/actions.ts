@@ -12,6 +12,8 @@ import {
   restoreRecipe,
 } from '@/lib/data/recipes';
 import { purgeTransaction, restoreTransaction } from '@/lib/data/transactions';
+import { purgeCustomer, restoreCustomer } from '@/lib/data/customers';
+import { purgeInvoice, restoreInvoice } from '@/lib/data/invoices';
 import type { ActionResult } from '@/lib/action-result';
 
 /**
@@ -31,6 +33,11 @@ function revalidateTrashFinance(): void {
   revalidateTrash();
   revalidatePath('/transactions');
   revalidatePath('/financials');
+}
+
+function revalidateTrashInvoices(): void {
+  revalidateTrash();
+  revalidatePath('/invoices');
 }
 
 export async function restoreRecipeAction(id: string): Promise<ActionResult> {
@@ -113,5 +120,47 @@ export async function purgeTransactionAction(id: string): Promise<ActionResult> 
   const organizationId = await getOrgId();
   await withOrg(organizationId, (tx) => purgeTransaction(tx, organizationId, id));
   revalidateTrashFinance();
+  return { ok: true, data: undefined };
+}
+
+/** Restore a trashed customer — manager-only (billing data). */
+export async function restoreCustomerAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  const row = await withOrg(organizationId, (tx) =>
+    restoreCustomer(tx, organizationId, id),
+  );
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  revalidateTrashInvoices();
+  return { ok: true, data: undefined };
+}
+
+/** Permanently delete a trashed customer — manager-only (nulls invoice links). */
+export async function purgeCustomerAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  await withOrg(organizationId, (tx) => purgeCustomer(tx, organizationId, id));
+  revalidateTrashInvoices();
+  return { ok: true, data: undefined };
+}
+
+/** Restore a trashed (draft) invoice — manager-only. */
+export async function restoreInvoiceAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  const row = await withOrg(organizationId, (tx) =>
+    restoreInvoice(tx, organizationId, id),
+  );
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  revalidateTrashInvoices();
+  return { ok: true, data: undefined };
+}
+
+/** Permanently delete a trashed (draft) invoice — manager-only. */
+export async function purgeInvoiceAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  await withOrg(organizationId, (tx) => purgeInvoice(tx, organizationId, id));
+  revalidateTrashInvoices();
   return { ok: true, data: undefined };
 }

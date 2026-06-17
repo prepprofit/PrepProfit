@@ -8,29 +8,53 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
+  purgeCustomerAction,
   purgeIngredientAction,
+  purgeInvoiceAction,
   purgeRecipeAction,
   purgeTransactionAction,
+  restoreCustomerAction,
   restoreIngredientAction,
+  restoreInvoiceAction,
   restoreRecipeAction,
   restoreTransactionAction,
 } from '@/app/(app)/trash/actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
+import type { ActionResult } from '@/lib/action-result';
 
 export type TrashItem = { id: string; name: string; daysLeft: number };
-type Kind = 'recipe' | 'ingredient' | 'transaction';
+type Kind = 'recipe' | 'ingredient' | 'transaction' | 'customer' | 'invoice';
 
 /** Below this many days left, the countdown badge turns amber. */
 const SOON_THRESHOLD_DAYS = 7;
+
+const RESTORE_ACTION: Record<Kind, (id: string) => Promise<ActionResult>> = {
+  recipe: restoreRecipeAction,
+  ingredient: restoreIngredientAction,
+  transaction: restoreTransactionAction,
+  customer: restoreCustomerAction,
+  invoice: restoreInvoiceAction,
+};
+const PURGE_ACTION: Record<Kind, (id: string) => Promise<ActionResult>> = {
+  recipe: purgeRecipeAction,
+  ingredient: purgeIngredientAction,
+  transaction: purgeTransactionAction,
+  customer: purgeCustomerAction,
+  invoice: purgeInvoiceAction,
+};
 
 export function TrashView({
   recipes,
   ingredients,
   transactions = [],
+  customers = [],
+  invoices = [],
 }: {
   recipes: TrashItem[];
   ingredients: TrashItem[];
   transactions?: TrashItem[];
+  customers?: TrashItem[];
+  invoices?: TrashItem[];
 }) {
   const t = useTranslations('trash');
   const tCommon = useTranslations('common');
@@ -46,17 +70,14 @@ export function TrashView({
   const isEmpty =
     recipes.length === 0 &&
     ingredients.length === 0 &&
-    transactions.length === 0;
+    transactions.length === 0 &&
+    customers.length === 0 &&
+    invoices.length === 0;
 
   const restore = (kind: Kind, id: string) => {
     setError(null);
     startTransition(async () => {
-      const result =
-        kind === 'recipe'
-          ? await restoreRecipeAction(id)
-          : kind === 'ingredient'
-            ? await restoreIngredientAction(id)
-            : await restoreTransactionAction(id);
+      const result = await RESTORE_ACTION[kind](id);
       if (result.ok) router.refresh();
       else setError(actionError(result.code));
     });
@@ -67,12 +88,7 @@ export function TrashView({
     const { kind, item } = purgeTarget;
     setError(null);
     startTransition(async () => {
-      const result =
-        kind === 'recipe'
-          ? await purgeRecipeAction(item.id)
-          : kind === 'ingredient'
-            ? await purgeIngredientAction(item.id)
-            : await purgeTransactionAction(item.id);
+      const result = await PURGE_ACTION[kind](item.id);
       if (result.ok) router.refresh();
       else setError(actionError(result.code));
       setPurgeTarget(null);
@@ -127,6 +143,28 @@ export function TrashView({
         pending={pending}
         onRestore={restore}
         onPurge={(item) => setPurgeTarget({ kind: 'transaction', item })}
+        labelFor={(n) => (n === 0 ? t('expiresToday') : t('daysLeft', { days: n }))}
+        restoreLabel={t('restore')}
+        deleteLabel={t('deleteForever')}
+      />
+      <Section
+        title={t('sections.invoices')}
+        items={invoices}
+        kind="invoice"
+        pending={pending}
+        onRestore={restore}
+        onPurge={(item) => setPurgeTarget({ kind: 'invoice', item })}
+        labelFor={(n) => (n === 0 ? t('expiresToday') : t('daysLeft', { days: n }))}
+        restoreLabel={t('restore')}
+        deleteLabel={t('deleteForever')}
+      />
+      <Section
+        title={t('sections.customers')}
+        items={customers}
+        kind="customer"
+        pending={pending}
+        onRestore={restore}
+        onPurge={(item) => setPurgeTarget({ kind: 'customer', item })}
         labelFor={(n) => (n === 0 ? t('expiresToday') : t('daysLeft', { days: n }))}
         restoreLabel={t('restore')}
         deleteLabel={t('deleteForever')}

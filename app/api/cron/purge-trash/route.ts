@@ -40,6 +40,8 @@ export async function GET(req: Request): Promise<NextResponse> {
   let purgedRecipes = 0;
   let purgedIngredients = 0;
   let purgedTransactions = 0;
+  let purgedCustomers = 0;
+  let purgedInvoices = 0;
 
   for (;;) {
     const { data, totalCount } = await client.organizations.getOrganizationList({
@@ -55,6 +57,8 @@ export async function GET(req: Request): Promise<NextResponse> {
       purgedRecipes += result.recipes;
       purgedIngredients += result.ingredients;
       purgedTransactions += result.transactions;
+      purgedCustomers += result.customers;
+      purgedInvoices += result.invoices;
       orgs += 1;
     }
 
@@ -69,5 +73,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     purgedRecipes,
     purgedIngredients,
     purgedTransactions,
+    purgedCustomers,
+    purgedInvoices,
   });
 }
