@@ -76,10 +76,19 @@ export async function restoreIngredientAction(
   return { ok: true, data: undefined };
 }
 
+/**
+ * Permanently delete a trashed recipe. Manager-only: purgeRecipe nulls
+ * transactions.recipe_id (a financial side-effect), so a kitchen user must not
+ * be able to trigger it — that would let them alter financial records they can't
+ * even see. Restoring a recipe (no financial side-effect) stays open to kitchen,
+ * matching trash/page.tsx which shows recipe trash to everyone.
+ */
 export async function purgeRecipeAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   await withOrg(organizationId, (tx) => purgeRecipe(tx, organizationId, id));
-  revalidateTrash();
+  // It can unlink transactions, so refresh the financial views too.
+  revalidateTrashFinance();
   return { ok: true, data: undefined };
 }
 
