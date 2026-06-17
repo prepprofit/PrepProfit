@@ -17,6 +17,28 @@ import {
 } from '@/lib/data/ingredients';
 import { listRecipes } from '@/lib/data/recipes';
 import { getOrgSettingsRow, upsertOrgSettings } from '@/lib/data/org-settings';
+import {
+  createCustomer,
+  getCustomerById,
+  listCustomers,
+} from '@/lib/data/customers';
+import {
+  createDraftInvoice,
+  getInvoiceWithItems,
+  listInvoices,
+} from '@/lib/data/invoices';
+import {
+  createEmployee,
+  getEmployeeById,
+  listEmployees,
+} from '@/lib/data/employees';
+import { createShift, listShiftsForEmployee } from '@/lib/data/shifts';
+import {
+  customers as customersTable,
+  employees as employeesTable,
+  invoices as invoicesTable,
+  shifts as shiftsTable,
+} from '@/lib/db/schema';
 
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
@@ -179,5 +201,129 @@ describe('database layer — Row-Level Security (second defense)', () => {
     expect(rows).toHaveLength(0);
     const settings = await db.select().from(organizationSettings);
     expect(settings).toHaveLength(0);
+  });
+});
+
+describe('Sprint 3 entities — org isolation (customers, invoices, payroll)', () => {
+  let s3Client: PGlite;
+  let s3Db: TenantDb;
+  let invoiceBId: string;
+  let employeeBId: string;
+  let customerBId: string;
+
+  beforeAll(async () => {
+    const test = await createTestDb();
+    s3Client = test.client;
+    s3Db = test.db as unknown as TenantDb;
+
+    // Distinct customers + a draft invoice per org.
+    const custA = await createCustomer(s3Db, ORG_A, {
+      name: 'Customer A',
+      taxId: null,
+      address: null,
+      email: null,
+    });
+    const custB = await createCustomer(s3Db, ORG_B, {
+      name: 'Customer B',
+      taxId: null,
+      address: null,
+      email: null,
+    });
+    customerBId = custB.id;
+
+    await createDraftInvoice(s3Db, ORG_A, {
+      customerId: custA.id,
+      notes: null,
+      items: [{ description: 'A', quantity: 1, unitPriceCents: 1000, taxRate: 0 }],
+    });
+    const invB = await createDraftInvoice(s3Db, ORG_B, {
+      customerId: custB.id,
+      notes: null,
+      items: [{ description: 'B', quantity: 1, unitPriceCents: 2000, taxRate: 0 }],
+    });
+    invoiceBId = invB.id;
+
+    // Distinct employees + a shift per org.
+    const empA = await createEmployee(s3Db, ORG_A, {
+      name: 'Employee A',
+      email: null,
+      hourlyRateCents: 1000,
+    });
+    const empB = await createEmployee(s3Db, ORG_B, {
+      name: 'Employee B',
+      email: null,
+      hourlyRateCents: 2000,
+    });
+    employeeBId = empB.id;
+
+    await createShift(s3Db, ORG_A, {
+      employeeId: empA.id,
+      startedAtMs: Date.UTC(2026, 5, 15, 9),
+      endedAtMs: Date.UTC(2026, 5, 15, 17),
+      breakMinutes: 0,
+      note: null,
+    });
+    await createShift(s3Db, ORG_B, {
+      employeeId: empB.id,
+      startedAtMs: Date.UTC(2026, 5, 15, 9),
+      endedAtMs: Date.UTC(2026, 5, 15, 17),
+      breakMinutes: 0,
+      note: null,
+    });
+  });
+
+  afterAll(async () => {
+    await s3Client.close();
+  });
+
+  it('each org only sees its own customers; cross-org fetch is null', async () => {
+    expect((await listCustomers(s3Db, ORG_A)).map((c) => c.name)).toEqual([
+      'Customer A',
+    ]);
+    expect(await getCustomerById(s3Db, ORG_A, customerBId)).toBeNull();
+  });
+
+  it('each org only sees its own invoices; cross-org fetch is null', async () => {
+    const aInvoices = await listInvoices(s3Db, ORG_A);
+    expect(aInvoices.every((i) => i.customerName === 'Customer A')).toBe(true);
+    expect(await getInvoiceWithItems(s3Db, ORG_A, invoiceBId)).toBeNull();
+  });
+
+  it('each org only sees its own employees; cross-org fetch is null', async () => {
+    expect((await listEmployees(s3Db, ORG_A)).map((e) => e.name)).toEqual([
+      'Employee A',
+    ]);
+    expect(await getEmployeeById(s3Db, ORG_A, employeeBId)).toBeNull();
+  });
+
+  it("org A cannot read org B's shifts (by employee)", async () => {
+    // Org A asking for org B's employee's shifts gets nothing (org-scoped query).
+    expect(await listShiftsForEmployee(s3Db, ORG_A, employeeBId)).toHaveLength(0);
+  });
+
+  it('RLS scopes every new table to the active org (unfiltered SELECT)', async () => {
+    await s3Db.execute(sql.raw('SET ROLE tenant_app;'));
+    try {
+      const seen = await runInOrg(s3Db, ORG_A, async (tx) => ({
+        customers: (
+          await tx.select({ org: customersTable.organizationId }).from(customersTable)
+        ).map((r) => r.org),
+        invoices: (
+          await tx.select({ org: invoicesTable.organizationId }).from(invoicesTable)
+        ).map((r) => r.org),
+        employees: (
+          await tx.select({ org: employeesTable.organizationId }).from(employeesTable)
+        ).map((r) => r.org),
+        shifts: (
+          await tx.select({ org: shiftsTable.organizationId }).from(shiftsTable)
+        ).map((r) => r.org),
+      }));
+      for (const orgs of Object.values(seen)) {
+        expect(orgs.length).toBeGreaterThan(0);
+        expect(orgs.every((o) => o === ORG_A)).toBe(true);
+      }
+    } finally {
+      await s3Db.execute(sql.raw('RESET ROLE;'));
+    }
   });
 });
