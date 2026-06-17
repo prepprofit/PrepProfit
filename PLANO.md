@@ -341,18 +341,21 @@ Acceptance criteria:
 Goal: the invoice and payroll DATA, builders and calculations. Their printable output
 (PDF / Excel / email) is the dedicated Sprint 3.5 — this sprint stops at on-screen.
 
-- [ ] `customers` table (org-scoped, soft-deletable): name, tax id, address, email —
+- [x] `customers` table (org-scoped, soft-deletable): name, tax id, address, email —
       reused by invoices and searchable globally
-- [ ] `invoices` + `invoice_items` tables; sequential numbering per organization
-- [ ] Invoice builder: pick/create customer, line items, taxes, total (on-screen preview)
-- [ ] `employees` and `shifts` tables (check-in/check-out, hourly rate) — employee data
-      is PII: `manager`-only access
-- [ ] Shift logging + automatic hours and pay-due calculation (pure, tested; integer cents)
-- [ ] Per-employee summary per period (week/month) — on-screen
-- [ ] Invoice numbering is gap-free and concurrency-safe per org (sequence/locked counter,
-      tested under parallel inserts)
-- [ ] Register `invoices` + `customers` into the Sprint 2.7 search registry (find an
-      invoice by number/customer, a customer by name) — RBAC: invoices are `manager`-only
+- [x] `invoices` + `invoice_items` tables; sequential numbering per organization
+      (migration 0011; per-line VAT, frozen totals, draft→issued→paid/void lifecycle)
+- [x] Invoice builder: pick/create customer, line items, taxes, total (on-screen preview)
+      + read-only `/invoices/[id]` detail
+- [x] `employees` and `shifts` tables (check-in/check-out, hourly rate) — employee data
+      is PII: `manager`-only access (archive, not shared-trash; hard-delete cascades shifts)
+- [x] Shift logging + automatic hours and pay-due calculation (pure, tested; integer cents;
+      midnight-safe via absolute instants)
+- [x] Per-employee summary per period (week/month) — on-screen
+- [x] Invoice numbering is gap-free and concurrency-safe per org (atomic upsert-increment
+      on `invoice_counters`, row-locked, per-year; tested under 50 concurrent allocations)
+- [x] Register `invoices` + `customers` into the Sprint 2.7 search registry (find an
+      invoice by number/customer, a customer by name) — RBAC: both `manager`-only
 
 Acceptance criteria:
 - Build an invoice (customer + items + taxes) and close an employee's payroll for the
