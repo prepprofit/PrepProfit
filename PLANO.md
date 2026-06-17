@@ -448,6 +448,90 @@ the E2E smoke is green in CI and a data-export request returns the org's data.
 
 ---
 
+## Sprint 6 — Kitchen task & prep lists (kitchen operations module)
+Goal: run the kitchen day on reliable, shared lists — **prep lists** (mise en place),
+**reorder lists** fed by the existing low-stock alert, and recurring **opening/closing
+checklists** — assignable to staff, with completion tracking. This is a chef-specific
+task system, NOT a generic to-do: every list type is anchored in real kitchen data
+(recipes → prep tasks, low-stock ingredients → reorder tasks). Both roles use it —
+tasks are operational, not financial.
+
+Why a dedicated sprint: the feature is small in surface but must be **trustworthy** (no
+lost edits, no cross-tenant leak, honest offline/empty states). It deliberately reuses
+three patterns the codebase already proved: the **folder pattern** (Sprint 1.6:
+list ≈ folder, nullable `list_id`, composite FK, manual `sort_order`), the **trash
+pattern** (Sprint 1.5: `deleted_at` + 30-day auto-purge), and the **search registry**
+(Sprint 2.7: a descriptor so tasks are findable via ⌘K). No new heavyweight dependency.
+
+Decisions to LOCK (resolve & approve before coding):
+- **Two tables, mirroring the folder pattern.** `task_lists` (org_id, name, `kind`
+  prep|reorder|checklist|general, `sort_order`, unique(org,name), composite (org,id) FK
+  target; HARD-delete → reassign its tasks to NULL, never trashed — same call as
+  `deleteFolder`). `tasks` (org_id, nullable `list_id` composite (org,list_id) FK ON
+  DELETE RESTRICT, `title`, nullable `notes`, `status` todo|done, nullable
+  `assigned_to` = a Clerk org-member user id (NOT the payroll `employees` table — org
+  membership already exists from Sprint 0), nullable `due_on` bare date, `position` int
+  for manual ordering, nullable `recipe_id` + nullable `ingredient_id` composite FKs ON
+  DELETE RESTRICT for the source link, `created_by`, timestamps, `deleted_at`).
+- **Status is binary (todo|done) in v1**, with optimistic toggle + server reconcile. An
+  `in_progress` state and per-task subtasks are explicitly DEFERRED (keeps the sprint
+  single + reliable).
+- **No cron-based recurrence in v1.** Recurring checklists are served by a **"reset
+  list"** action (mark every task in a checklist back to `todo`) and a **"duplicate
+  list"** action — deterministic, testable, no scheduler. True scheduled recurrence is a
+  backlog item.
+- **Soft-delete, not destructive** (Sprint 1.5): tasks `deleted_at` → `/trash` + 30-day
+  auto-purge; `task_lists` hard-delete. The recipe/ingredient purge paths NULL the task
+  source link first (extend `purgeRecipe`/`purgeExpired`) so a task survives a purge.
+- **RBAC: both `manager` and `kitchen` read + toggle tasks** (operational data). Creating/
+  renaming/deleting LISTS and ASSIGNING tasks to others is `manager`-only via
+  `getUserRole()`. (Confirm in plan mode.)
+- **Plan gating (Sprint 4):** decide which plans include task lists (proposal: a core
+  Operations feature, available from **Starter**). Enforce server-side via Clerk `has()`.
+
+Module work:
+- [ ] `task_lists` + `tasks` tables (both in `businessTables` → RLS auto-applies);
+      composite FKs; next migration in sequence with its journal `when` cleared past the
+      gotcha threshold (DoD); PGlite isolation test (org A can't read org B's tasks)
+- [ ] Data layer `lib/data/tasks.ts` + `task-lists.ts` (list / create / update /
+      toggle-status / assign / reorder / soft-delete / restore / purge + list CRUD +
+      reset-list + duplicate-list) — all org-scoped, `deleted_at IS NULL`, reusing the
+      folder + trash helpers
+- [ ] Server Actions (Zod, org from Clerk, `withOrg`): task CRUD + status toggle + assign
+      + move/reorder + list CRUD; `ActionErrorCode` + next-intl (`actionErrors.*`)
+- [ ] Integrations (the whole point — anchored in real data): a **"Create reorder task"**
+      action on the inventory low-stock alert (links `ingredient_id`, reuses `isLowStock`);
+      an **"Add prep tasks"** action from a recipe (links `recipe_id`)
+- [ ] Wire `tasks` into `/trash` (soft-deleted, restorable) + the existing 30-day
+      auto-purge fan-out; extend recipe/ingredient purge to NULL task links first
+- [ ] Register `tasks` into the Sprint 2.7 search registry (find a task by title;
+      RBAC: all roles) — a few lines, no core change
+- [ ] `/tasks` page: lists rail (reuse the `folder-rail` pattern) + task list with
+      status checkbox, assignee, due date, manual reorder; honest empty states;
+      mobile-usable (~380px); fully keyboard-reachable. Match the dashboard's Card +
+      `text-base` CardTitle design language
+- [ ] i18n: all task strings via next-intl
+- [ ] Tests (PGlite): list/task CRUD + org isolation, status toggle, assignment,
+      reorder, soft-delete/restore/purge, reset-list + duplicate-list, low-stock→reorder
+      and recipe→prep integrations, purge-nulls-link, and the search registration
+
+Acceptance criteria:
+- Create a prep list, add tasks, assign one to a staff member, mark it done; the order
+  persists across reload; it all works at ~380px and via keyboard only.
+- A low-stock ingredient → one click creates a reorder task linked to it; permanently
+  purging that ingredient does not break or orphan the task (link goes NULL).
+- A `kitchen`-role user can view and complete tasks but cannot create/delete lists or
+  assign others; org isolation proven by an automated test.
+- A deleted task appears in `/trash`, restores cleanly, and auto-purges after 30 days;
+  ⌘K finds a task by title (still org-scoped + RBAC-filtered).
+
+Production note: Vercel does not run migrations — run `npm run db:migrate` against prod
+Neon after merge and VERIFY `task_lists` + `tasks` exist live; ensure the new migration's
+journal `when` exceeds prod's max `created_at` (the recurring 0003 gotcha; the migrate
+guard now aborts on a bad order).
+
+---
+
 ## Cross-cutting concerns & backlog (tracked, scheduled — not lost)
 Engineering/security carried across sprints (enforced via the Definition of Done unless a
 dedicated item exists):
@@ -470,3 +554,6 @@ Product backlog (not yet scheduled — promote into a sprint when prioritized):
 - **Recipe scaling / batch:** scale a recipe to N portions or a target cost.
 - **Suppliers** as a first-class entity (currently a free-text field) with per-supplier prices.
 - **Saved reports / scheduled email summaries** (monthly P&L to the owner).
+- **Scheduled / recurring checklists** (Sprint 6 follow-up): true cron-based recurrence for
+  opening/closing checklists (daily/weekly auto-instantiation), beyond v1's manual reset/
+  duplicate actions. Reuses the existing Vercel Cron + per-org fan-out from Sprint 1.5.
