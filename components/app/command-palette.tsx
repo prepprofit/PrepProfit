@@ -4,8 +4,10 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
+  Building2,
   Carrot,
   ChefHat,
+  FileText,
   LayoutGrid,
   Loader2,
   Receipt,
@@ -44,6 +46,8 @@ const GROUP_ICON: Record<
   recipe: ChefHat,
   ingredient: Carrot,
   transaction: Receipt,
+  invoice: FileText,
+  customer: Building2,
 };
 
 const EMPTY: GroupedSearchResults = { groups: [] };
@@ -140,12 +144,14 @@ export function CommandPalette({
     router.push(href);
   };
 
-  const groupHeading = (type: SearchEntityType): string =>
-    type === 'recipe'
-      ? t('groups.recipes')
-      : type === 'ingredient'
-        ? t('groups.ingredients')
-        : t('groups.transactions');
+  const GROUP_LABEL: Record<SearchEntityType, string> = {
+    recipe: t('groups.recipes'),
+    ingredient: t('groups.ingredients'),
+    transaction: t('groups.transactions'),
+    invoice: t('groups.invoices'),
+    customer: t('groups.customers'),
+  };
+  const groupHeading = (type: SearchEntityType): string => GROUP_LABEL[type];
 
   const filters: FilterDef[] = [
     { type: null, label: t('all'), Icon: LayoutGrid },
@@ -157,6 +163,16 @@ export function CommandPalette({
             type: 'transaction' as const,
             label: t('groups.transactions'),
             Icon: Receipt,
+          },
+          {
+            type: 'invoice' as const,
+            label: t('groups.invoices'),
+            Icon: FileText,
+          },
+          {
+            type: 'customer' as const,
+            label: t('groups.customers'),
+            Icon: Building2,
           },
         ]
       : []),

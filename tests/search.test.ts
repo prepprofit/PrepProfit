@@ -13,6 +13,8 @@ import type {
 import { createRecipe, softDeleteRecipe } from '@/lib/data/recipes';
 import { createIngredient } from '@/lib/data/ingredients';
 import { createTransaction } from '@/lib/data/transactions';
+import { createCustomer } from '@/lib/data/customers';
+import { createDraftInvoice, issueInvoice } from '@/lib/data/invoices';
 import {
   ensureCategoriesSeeded,
   listCategories,
@@ -176,6 +178,44 @@ describe('global search (Sprint 2.7)', () => {
       type: 'transaction',
     });
     expect(asKitchen.groups).toHaveLength(0);
+  });
+
+  it('finds an invoice by number and a customer by name — manager only (RBAC)', async () => {
+    const customer = await createCustomer(db, ORG_A, {
+      name: 'Almeida Catering',
+      taxId: null,
+      address: null,
+      email: null,
+    });
+    const draft = await createDraftInvoice(db, ORG_A, {
+      customerId: customer.id,
+      notes: null,
+      items: [
+        { description: 'Banquet', quantity: 1, unitPriceCents: 50000, taxRate: 23 },
+      ],
+    });
+    const issued = await issueInvoice(
+      db,
+      ORG_A,
+      draft.id,
+      null,
+      new Date('2026-06-17T10:00:00Z'),
+    );
+    if (issued.status !== 'ok') throw new Error('seed: failed to issue invoice');
+    const number = issued.invoice.number ?? '';
+
+    // Manager finds the invoice by its number and the customer by name.
+    const byNumber = await searchAs(ORG_A, 'manager', number);
+    expect(groupTypes(byNumber)).toContain('invoice');
+
+    const byCustomer = await searchAs(ORG_A, 'manager', 'Almeida');
+    expect(groupTypes(byCustomer)).toContain('customer');
+    expect(groupTypes(byCustomer)).toContain('invoice'); // snapshot name matches
+
+    // A kitchen user never gets invoices or customers.
+    const asKitchen = await searchAs(ORG_A, 'kitchen', 'Almeida');
+    expect(groupTypes(asKitchen)).not.toContain('invoice');
+    expect(groupTypes(asKitchen)).not.toContain('customer');
   });
 
   it('excludes soft-deleted records', async () => {

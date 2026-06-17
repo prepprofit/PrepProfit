@@ -1,5 +1,11 @@
 import { canAccessFinancials, type UserRole } from '@/lib/auth';
-import { searchIngredients, searchRecipes, searchTransactions } from './queries';
+import {
+  searchCustomers,
+  searchIngredients,
+  searchInvoices,
+  searchRecipes,
+  searchTransactions,
+} from './queries';
 import type { SearchDescriptor } from './types';
 
 /**
@@ -30,6 +36,20 @@ export const SEARCH_REGISTRY: readonly SearchDescriptor[] = [
     // queries transactions — this filter runs before any SQL.
     canAccess: canAccessFinancials,
     search: searchTransactions,
+  },
+  {
+    type: 'invoice',
+    labelKey: 'invoices',
+    // Invoices are financial / billing data — manager-only, like transactions.
+    canAccess: canAccessFinancials,
+    search: searchInvoices,
+  },
+  {
+    type: 'customer',
+    labelKey: 'customers',
+    // Customers exist only for billing — manager-only.
+    canAccess: canAccessFinancials,
+    search: searchCustomers,
   },
 ];
 

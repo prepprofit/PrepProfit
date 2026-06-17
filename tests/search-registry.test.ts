@@ -10,16 +10,23 @@ import {
  * PGlite integration test that verifies no transaction rows are ever queried.
  */
 describe('accessibleDescriptors (search RBAC)', () => {
-  it('excludes transactions for a kitchen user', () => {
+  it('excludes all financial entities for a kitchen user', () => {
     const types = accessibleDescriptors('kitchen').map((d) => d.type);
     expect(types).not.toContain('transaction');
+    expect(types).not.toContain('invoice');
+    expect(types).not.toContain('customer');
     expect(types).toEqual(['recipe', 'ingredient']);
   });
 
-  it('includes transactions for a manager', () => {
+  it('includes transactions, invoices and customers for a manager', () => {
     const types = accessibleDescriptors('manager').map((d) => d.type);
-    expect(types).toContain('transaction');
-    expect(types).toEqual(['recipe', 'ingredient', 'transaction']);
+    expect(types).toEqual([
+      'recipe',
+      'ingredient',
+      'transaction',
+      'invoice',
+      'customer',
+    ]);
   });
 
   it('every descriptor has a unique type and a group label key', () => {

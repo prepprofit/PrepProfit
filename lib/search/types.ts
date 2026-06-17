@@ -10,8 +10,13 @@ import type { TenantTx } from '@/lib/db/tenant';
  * the server-only references below ever reach the browser bundle.
  */
 
-/** Entity kinds the registry can search. Sprint 3 adds 'invoice' | 'customer'. */
-export type SearchEntityType = 'recipe' | 'ingredient' | 'transaction';
+/** Entity kinds the registry can search. */
+export type SearchEntityType =
+  | 'recipe'
+  | 'ingredient'
+  | 'transaction'
+  | 'invoice'
+  | 'customer';
 
 /**
  * One matched row as a descriptor's query returns it: ready-to-display fields
