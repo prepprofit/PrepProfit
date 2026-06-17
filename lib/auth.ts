@@ -1,14 +1,7 @@
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server';
 
 export const USER_ROLES = ['manager', 'kitchen'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
-
-function isUserRole(value: unknown): value is UserRole {
-  return (
-    typeof value === 'string' &&
-    (USER_ROLES as readonly string[]).includes(value)
-  );
-}
 
 /**
  * RULE #1 (CLAUDE.md): the `organization_id` ALWAYS comes from the server, via
@@ -35,14 +28,18 @@ export async function getUserId(): Promise<string> {
 }
 
 /**
- * User role from Clerk publicMetadata, validated against the known set — never
- * trust raw metadata. Safe default: 'kitchen' (least privilege) for missing or
- * unexpected values.
+ * Role for the ACTIVE organization, derived from the Clerk org-membership role
+ * (`auth().orgRole`) — NOT user-global `publicMetadata`, which would leak manager
+ * rights to EVERY org the user belongs to (RULE #1). Maps Clerk's built-in org
+ * roles:
+ *   - `org:admin`  → `manager` (financials, payroll, invoices, exports, trash)
+ *   - everything else (incl. `org:member` / no active org) → `kitchen`
+ * `kitchen` is the safe default (least privilege). Custom per-org roles are
+ * deferred to Sprint 4 (billing); until then `org:admin` is the manager.
  */
 export async function getUserRole(): Promise<UserRole> {
-  const user = await currentUser();
-  const role = user?.publicMetadata?.role;
-  return isUserRole(role) ? role : 'kitchen';
+  const { orgRole } = await auth();
+  return orgRole === 'org:admin' ? 'manager' : 'kitchen';
 }
 
 export async function isManager(): Promise<boolean> {
