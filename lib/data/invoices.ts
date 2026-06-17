@@ -267,6 +267,19 @@ export async function issueInvoice(
   dueDate: string | null,
   now: Date = new Date(),
 ): Promise<IssueOutcome> {
+  // Lock the invoice row FIRST. A concurrent issue of the SAME draft (double
+  // click / retry) blocks here, then re-reads it as 'issued' below and bails out
+  // BEFORE allocating a number — without this lock both callers pass the status
+  // check and each burn a counter value, leaving a gap in the legally-required
+  // gap-free sequential numbering (PT invoicing). Must run inside `withOrg`.
+  const [locked] = await db
+    .select({ status: invoices.status })
+    .from(invoices)
+    .where(and(eq(invoices.organizationId, organizationId), eq(invoices.id, id)))
+    .for('update')
+    .limit(1);
+  if (!locked || locked.status !== 'draft') return { status: 'not_found' };
+
   const detail = await getInvoiceWithItems(db, organizationId, id);
   if (!detail || detail.invoice.status !== 'draft') return { status: 'not_found' };
   if (!detail.invoice.customerId) return { status: 'no_customer' };

@@ -89,6 +89,40 @@ describe('invoice lifecycle — issued invoices are immutable', () => {
     expect(edit).toBeNull();
   });
 
+  it('does not burn a number when the same draft is issued twice (gap-free)', async () => {
+    const org = 'org_reissue';
+    const now = new Date('2026-06-17T10:00:00Z');
+    const customer = await createCustomer(db, org, {
+      name: 'Repeat Client',
+      taxId: null,
+      address: null,
+      email: null,
+    });
+    const draftA = await createDraftInvoice(db, org, {
+      customerId: customer.id,
+      notes: null,
+      items: [{ description: 'A', quantity: 1, unitPriceCents: 1000, taxRate: 0 }],
+    });
+
+    const first = await issueInvoice(db, org, draftA.id, null, now);
+    expect(first.status).toBe('ok');
+    if (first.status === 'ok') expect(first.invoice.number).toBe('INV-2026-0001');
+
+    // Re-issuing the now-issued invoice must NOT allocate another number.
+    const again = await issueInvoice(db, org, draftA.id, null, now);
+    expect(again.status).toBe('not_found');
+
+    // The next NEW draft gets the immediately following number — no gap.
+    const draftB = await createDraftInvoice(db, org, {
+      customerId: customer.id,
+      notes: null,
+      items: [{ description: 'B', quantity: 1, unitPriceCents: 2000, taxRate: 0 }],
+    });
+    const second = await issueInvoice(db, org, draftB.id, null, now);
+    expect(second.status).toBe('ok');
+    if (second.status === 'ok') expect(second.invoice.number).toBe('INV-2026-0002');
+  });
+
   it('refuses to issue a draft with no linked customer', async () => {
     const org = 'org_nocustomer';
     const draft = await createDraftInvoice(db, org, {
