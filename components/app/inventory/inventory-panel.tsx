@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import {
   recordMovementAction,
   setLowStockThresholdAction,
@@ -66,7 +67,7 @@ export function InventoryPanel({
           {t('empty')}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+        <Card className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -87,7 +88,7 @@ export function InventoryPanel({
               ))}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
     </div>
   );

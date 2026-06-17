@@ -200,7 +200,7 @@ export default async function DashboardPage({
         {finance && (
           <Card className="flex flex-col md:col-span-2">
             <CardHeader>
-              <CardTitle className="text-base">{tFin('monthlyTitle')}</CardTitle>
+              <CardTitle>{tFin('monthlyTitle')}</CardTitle>
             </CardHeader>
             <CardContent>
               <MonthlyChart data={finance.monthly} currency={finance.currency} />

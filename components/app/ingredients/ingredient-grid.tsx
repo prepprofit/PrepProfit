@@ -15,6 +15,7 @@ import { centsToAmountInput, parseMoneyToCents } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useActionError } from '@/lib/i18n/use-action-error';
@@ -444,7 +445,7 @@ export function IngredientGrid({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <Card className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
             {table.getHeaderGroups().map((hg) => (
@@ -492,7 +493,7 @@ export function IngredientGrid({
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
 
       <ConfirmDialog
         open={confirmId !== null}

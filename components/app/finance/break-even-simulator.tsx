@@ -40,7 +40,7 @@ export function BreakEvenSimulator({ currency }: { currency: string }) {
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Card className="flex flex-col">
         <CardHeader>
-          <CardTitle className="text-base">{t('subtitle')}</CardTitle>
+          <CardTitle>{t('subtitle')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
           <SliderRow
@@ -72,7 +72,7 @@ export function BreakEvenSimulator({ currency }: { currency: string }) {
 
       <Card className="flex flex-col">
         <CardHeader>
-          <CardTitle className="text-base">{t('unitsLabel')}</CardTitle>
+          <CardTitle>{t('unitsLabel')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-1 flex-col gap-4">
           <div className="flex items-center justify-between gap-2 text-sm">

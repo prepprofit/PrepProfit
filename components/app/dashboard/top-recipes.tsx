@@ -29,7 +29,7 @@ export function TopRecipes({
   return (
     <Card className={cn('flex flex-col', className)}>
       <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
+        <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3.5">
         {recipes.length === 0 ? (

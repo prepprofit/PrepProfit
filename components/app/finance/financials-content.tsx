@@ -117,7 +117,7 @@ export async function FinancialsContent({
       {monthlyData && (
         <Card className="flex flex-col">
           <CardHeader>
-            <CardTitle className="text-base">{t('monthlyTitle')}</CardTitle>
+            <CardTitle>{t('monthlyTitle')}</CardTitle>
           </CardHeader>
           <CardContent>
             <MonthlyChart data={monthlyData} currency={currency} />
@@ -128,7 +128,7 @@ export async function FinancialsContent({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="flex flex-col">
           <CardHeader>
-            <CardTitle className="text-base">{t('byCategory')}</CardTitle>
+            <CardTitle>{t('byCategory')}</CardTitle>
           </CardHeader>
           <CardContent>
             <CategoryBreakdown
@@ -141,7 +141,7 @@ export async function FinancialsContent({
 
         <Card className="flex flex-col">
           <CardHeader>
-            <CardTitle className="text-base">{t('topProducts')}</CardTitle>
+            <CardTitle>{t('topProducts')}</CardTitle>
           </CardHeader>
           <CardContent>
             <TopProducts

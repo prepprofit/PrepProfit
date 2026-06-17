@@ -53,7 +53,7 @@ export function MarginGauge({
   return (
     <Card className="flex flex-col">
       <CardHeader>
-        <CardTitle className="text-base">{t('title')}</CardTitle>
+        <CardTitle>{t('title')}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col">
         <div className="relative flex-1">

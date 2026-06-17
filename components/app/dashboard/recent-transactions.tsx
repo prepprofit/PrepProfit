@@ -36,7 +36,7 @@ export function RecentTransactions({
   return (
     <Card className={cn('flex flex-col', className)}>
       <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">{title}</CardTitle>
+        <CardTitle>{title}</CardTitle>
         <Link
           href="/transactions"
           className="flex items-center gap-1 text-xs font-medium text-accent-700 hover:underline"
@@ -63,13 +63,13 @@ export function RecentTransactions({
                 </span>
                 <span
                   className={cn(
-                    'text-sm font-medium tabular-nums',
+                    'text-sm font-semibold tabular-nums',
                     row.type === 'income'
-                      ? 'text-brand-700 dark:text-brand-300'
-                      : 'text-red-600 dark:text-red-400',
+                      ? 'text-brand-600 dark:text-brand-400'
+                      : 'text-foreground',
                   )}
                 >
-                  {row.type === 'income' ? '+' : '−'}
+                  {row.type === 'expense' ? '−' : ''}
                   {formatMoney(row.amountCents, currency)}
                 </span>
               </div>

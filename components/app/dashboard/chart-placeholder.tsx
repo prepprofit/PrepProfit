@@ -32,7 +32,7 @@ export function ChartPlaceholder({
     <Card className={cn('flex flex-col', className)}>
       <CardHeader className="flex-row items-start justify-between gap-2">
         <div className="flex flex-col gap-1">
-          <CardTitle className="text-base">{title}</CardTitle>
+          <CardTitle>{title}</CardTitle>
           {description && <CardDescription>{description}</CardDescription>}
         </div>
         <Badge variant="neutral">{note}</Badge>
