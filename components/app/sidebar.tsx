@@ -175,16 +175,20 @@ export function Sidebar({
       </nav>
 
       <div className="flex flex-col gap-2 border-t border-border p-3">
-        <Link
-          href="/trash"
-          onClick={onNavigate}
-          aria-current={isActive('/trash') ? 'page' : undefined}
-          title={collapsed ? t('trash') : undefined}
-          className={navRowClass(isActive('/trash'), collapsed)}
-        >
-          <Trash2 className="size-4 shrink-0" />
-          {!collapsed && t('trash')}
-        </Link>
+        {/* Trash is manager-only (financial records + destructive purges); the
+            server enforces it on the page + every action, this just hides it. */}
+        {canSeeFinance && (
+          <Link
+            href="/trash"
+            onClick={onNavigate}
+            aria-current={isActive('/trash') ? 'page' : undefined}
+            title={collapsed ? t('trash') : undefined}
+            className={navRowClass(isActive('/trash'), collapsed)}
+          >
+            <Trash2 className="size-4 shrink-0" />
+            {!collapsed && t('trash')}
+          </Link>
+        )}
         <Link
           href="/settings"
           onClick={onNavigate}

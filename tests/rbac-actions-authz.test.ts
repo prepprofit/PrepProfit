@@ -22,7 +22,10 @@ import {
   deleteShiftAction,
 } from '@/app/(app)/payroll/actions';
 import {
+  restoreRecipeAction,
+  restoreIngredientAction,
   purgeRecipeAction,
+  purgeIngredientAction,
   restoreTransactionAction,
   purgeTransactionAction,
   restoreCustomerAction,
@@ -54,10 +57,12 @@ describe('manager-only actions reject kitchen before touching data', () => {
     for (const result of results) expect(result).toEqual(FORBIDDEN);
   });
 
-  it('blocks financial + recipe-purge trash actions', async () => {
+  it('blocks ALL trash actions (the trash is manager-only)', async () => {
     const results = await Promise.all([
-      // purgeRecipe nulls transactions.recipe_id → financial side-effect.
+      restoreRecipeAction('r1'),
+      restoreIngredientAction('ing1'),
       purgeRecipeAction('r1'),
+      purgeIngredientAction('ing1'),
       restoreTransactionAction('t1'),
       purgeTransactionAction('t1'),
       restoreCustomerAction('c1'),

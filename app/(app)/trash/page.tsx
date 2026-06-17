@@ -9,29 +9,25 @@ import { listTrashedInvoices } from '@/lib/data/invoices';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { formatMoney } from '@/lib/format/money';
 import { daysLeft } from '@/lib/trash';
+import { NoAccess } from '@/components/app/no-access';
 import { TrashView } from '@/components/app/trash/trash-view';
 
 export default async function TrashPage() {
+  // Manager-only: the trash exposes financial records (transactions, customers,
+  // invoices) and destructive purges with financial side-effects. Enforced again
+  // on every restore/purge action.
+  if (!canAccessFinancials(await getUserRole())) return <NoAccess />;
+
   const t = await getTranslations('trash');
   const organizationId = await getOrgId();
-  const canSeeFinance = canAccessFinancials(await getUserRole());
 
   const [recipes, ingredients, transactions, customers, invoices, settings] =
     await Promise.all([
       withOrg(organizationId, (tx) => listTrashedRecipes(tx, organizationId)),
       withOrg(organizationId, (tx) => listTrashedIngredients(tx, organizationId)),
-      // Financial data — only managers see these in the trash too.
-      canSeeFinance
-        ? withOrg(organizationId, (tx) =>
-            listTrashedTransactions(tx, organizationId),
-          )
-        : Promise.resolve([]),
-      canSeeFinance
-        ? withOrg(organizationId, (tx) => listTrashedCustomers(tx, organizationId))
-        : Promise.resolve([]),
-      canSeeFinance
-        ? withOrg(organizationId, (tx) => listTrashedInvoices(tx, organizationId))
-        : Promise.resolve([]),
+      withOrg(organizationId, (tx) => listTrashedTransactions(tx, organizationId)),
+      withOrg(organizationId, (tx) => listTrashedCustomers(tx, organizationId)),
+      withOrg(organizationId, (tx) => listTrashedInvoices(tx, organizationId)),
       getOrgSettings(),
     ]);
 

@@ -20,6 +20,11 @@ import type { ActionResult } from '@/lib/action-result';
  * Server Actions for the trash. RULE #1: org id from Clerk on the server, every
  * write inside `withOrg` (RLS active). Restore/purge are per-org operations, so
  * they need no RLS carve-out (unlike the cross-org auto-purge cron).
+ *
+ * The trash is MANAGER-ONLY: it exposes financial records (transactions,
+ * customers, invoices) and destructive purges with financial side-effects. Every
+ * action below re-checks `isManager()` before any data access — the hidden nav
+ * link and the page guard are just UX reinforcement.
  */
 
 function revalidateTrash(): void {
@@ -41,6 +46,7 @@ function revalidateTrashInvoices(): void {
 }
 
 export async function restoreRecipeAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   // Block + restore in one transaction so the guard can't be raced.
   const outcome = await withOrg(organizationId, async (tx) => {
@@ -67,6 +73,7 @@ export async function restoreRecipeAction(id: string): Promise<ActionResult> {
 export async function restoreIngredientAction(
   id: string,
 ): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
     restoreIngredient(tx, organizationId, id),
@@ -76,13 +83,7 @@ export async function restoreIngredientAction(
   return { ok: true, data: undefined };
 }
 
-/**
- * Permanently delete a trashed recipe. Manager-only: purgeRecipe nulls
- * transactions.recipe_id (a financial side-effect), so a kitchen user must not
- * be able to trigger it — that would let them alter financial records they can't
- * even see. Restoring a recipe (no financial side-effect) stays open to kitchen,
- * matching trash/page.tsx which shows recipe trash to everyone.
- */
+/** Permanently delete a trashed recipe (also nulls referencing transactions). */
 export async function purgeRecipeAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
@@ -93,6 +94,7 @@ export async function purgeRecipeAction(id: string): Promise<ActionResult> {
 }
 
 export async function purgeIngredientAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   try {
     await withOrg(organizationId, (tx) =>
