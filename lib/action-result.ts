@@ -16,6 +16,12 @@ export type ActionErrorCode =
   | 'RECIPE_HAS_TRASHED_INGREDIENTS'
   | 'INGREDIENT_IN_TRASHED_RECIPE'
   | 'CATEGORY_IN_USE'
+  // An issued/paid/void invoice was edited or trashed — only drafts are mutable.
+  | 'INVOICE_LOCKED'
+  // Tried to issue an invoice with no (active) linked customer to snapshot.
+  | 'INVOICE_NO_CUSTOMER'
+  // A status change that the lifecycle does not allow (e.g. pay a draft).
+  | 'INVALID_STATUS_TRANSITION'
   | 'FORBIDDEN'
   | 'UNEXPECTED';
 

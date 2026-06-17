@@ -12,6 +12,9 @@
     "RECIPE_HAS_TRASHED_INGREDIENTS": "This recipe uses ingredients that are also in the trash. Restore those ingredients first.",
     "INGREDIENT_IN_TRASHED_RECIPE": "This ingredient is still part of a trashed recipe. Delete that recipe permanently first.",
     "CATEGORY_IN_USE": "This category is used by one or more transactions, so it can't be deleted. Reassign or remove those transactions first.",
+    "INVOICE_LOCKED": "This invoice has already been issued, so it can no longer be edited or deleted. Void it instead.",
+    "INVOICE_NO_CUSTOMER": "Add a customer before issuing this invoice.",
+    "INVALID_STATUS_TRANSITION": "That status change isn't allowed for this invoice.",
     "FORBIDDEN": "You don't have permission to do that. Financial data is available to managers only.",
     "UNEXPECTED": "Something went wrong on our end. Please try again."
   },
