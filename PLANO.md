@@ -26,10 +26,11 @@ Completed (continued):
 
 - [x] Sprint 3.1 - production hardening: Postgres rate limiter, append-only audit log, recipe-line mutation hardening, real-Postgres concurrency proof
 - [x] Sprint 3.5A - document foundation and invoice PDF (PDF route + print view, seller-identity settings, `@react-pdf/renderer`)
+- [x] Sprint 3.5B - reports and Excel exports (recipe-card / P&L / payroll PDF + print, P&L + payroll XLSX via `write-excel-file`). Email split out to 3.5C.
 
 Next sprint:
 
-- [ ] Sprint 3.5B - reports, Excel exports, and document email
+- [ ] Sprint 3.5C - document email (Resend): generate server-side, recipient validation, rate limit, audit, no cross-tenant attachments
 
 ---
 
@@ -137,24 +138,52 @@ Acceptance criteria:
 
 ---
 
-## Sprint 3.5B - Reports, Excel exports, and document email
+## Sprint 3.5B - Reports and Excel exports
 
 Goal: extend the proven document pipeline to accountant/client-facing outputs without creating one-off renderers.
 
+Decisions locked: XLSX via `write-excel-file` (Node); recipe-card is kitchen-allowed (the recipe editor already shows the same cost/margin to kitchen); email split to Sprint 3.5C; delivery order recipe-card -> P&L -> payroll.
+
 Tasks:
 
-- [ ] Recipe card PDF/print: ingredients, quantities, cost breakdown, margin, and notes.
-- [ ] P&L PDF/print for month/year, manager-only, reconciling with financial dashboard numbers.
-- [ ] Payroll payslip/period summary PDF/print, manager-only and PII-safe.
-- [ ] XLSX export for P&L and payroll with formatting and formula-injection-safe text cells.
-- [ ] Resend email action for generated documents: recipient validation, rate limiting, audit log, clear delivery/error states, and no cross-tenant attachments.
-- [ ] Optional bulk download only after the single-document flows are stable.
+- [x] Recipe card PDF/print: ingredients, quantities, cost breakdown, margin, and notes. Kitchen-allowed, org-scoped, rate-limited, audited (`export.recipeCardPdf`); trashed/cross-org id -> 404. (`lib/documents/recipe-card-*`, `/api/recipes/[id]/card/pdf`, `/recipes/[id]/card/print`)
+- [x] P&L PDF/print for month/year, manager-only, reconciling with `/financials` via the shared `loadPlDocument`. Zod-validated period; audited (`export.plPdf`). (`lib/documents/pl-*`, `/api/financials/pl/pdf`, `/financials/print`)
+- [x] Payroll period-summary PDF/print, manager-only and PII-safe (audit metadata is counts only, no names/per-person pay). Reconciles with `/payroll`. (`lib/documents/payroll-*`, `/api/payroll/summary/pdf`, `/payroll/print`)
+- [x] XLSX export for P&L and payroll with number formats and formula-injection-safe text cells (shared `lib/documents/xlsx.ts` reusing `neutralizeFormula`). Audited (`export.plXlsx`, `export.payrollXlsx`).
+- [>] Resend email action for generated documents -> moved to Sprint 3.5C.
+- [>] Optional bulk download -> deferred (out of scope until single-document flows ship in prod).
 
 Acceptance criteria:
 
-- Invoice, recipe card, P&L, and payroll documents render consistently with shared branding.
-- P&L and payroll `.xlsx` files open in Excel with correct values and formatting.
-- Email sends a generated PDF to an allowed recipient, logs the event, and never leaks another org's data.
+- Invoice, recipe card, P&L, and payroll documents render consistently with shared branding. (done)
+- P&L and payroll `.xlsx` files open in Excel with correct values and formatting. (done)
+- Every report route follows RBAC -> rate-limit -> Zod -> withOrg load -> render -> post-success audit; cross-tenant data never leaks (tested). (done)
+
+---
+
+## Sprint 3.5C - Document email (Resend)
+
+Goal: email a server-generated document to an allowed recipient, building on the 3.5B PDF/XLSX pipeline.
+
+Decisions to lock before coding:
+
+- Client sends only `documentType + entityId/period + recipient`; never PDF bytes, `organization_id`, or a document URL.
+- Recipient validated with Zod; the server loads data via `getOrgId()` + `withOrg`, generates the document, and attaches it.
+- Persistence: decide `audit_log` vs a new email-status table (migration + RLS + explicit prod approval if a table).
+- Payslip recipient: free-typed by the manager vs the employee's stored email only.
+- `RESEND_REPLY_TO`: add optional or defer.
+
+Tasks:
+
+- [ ] Add `RESEND_API_KEY` / `RESEND_FROM_EMAIL` (and optional `RESEND_REPLY_TO`) lazily in `lib/env.ts`; document in SETUP.md; never log the key.
+- [ ] Email action: recipient Zod, `documentEmail` (or `documents`) rate bucket, generate document server-side, attach, send via injected/mocked Resend client.
+- [ ] Audit `document.email` only after the provider accepts; Resend errors map to a stable `ActionErrorCode`, technical details to `logError`.
+- [ ] Optional per-employee payslip PDF (pairs naturally with emailing the employee).
+- [ ] Tests: provider mocked (never sends), invalid recipient, rate limit, audit-after-accept, cross-tenant 404.
+
+Acceptance criteria:
+
+- Email sends a generated PDF to an allowed recipient, logs the event after acceptance, and never leaks another org's data or attaches another org's document.
 
 ---
 
