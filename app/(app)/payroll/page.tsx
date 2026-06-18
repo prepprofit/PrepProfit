@@ -146,7 +146,7 @@ export default async function PayrollPage({
         <div className="flex items-center gap-2">
           <Link
             href={href(view, period.prevAnchor)}
-            aria-label="Previous"
+            aria-label={t('nav.previous')}
             className={navBtn}
           >
             <ChevronLeft className="size-4" />
@@ -156,7 +156,7 @@ export default async function PayrollPage({
           </span>
           <Link
             href={href(view, period.nextAnchor)}
-            aria-label="Next"
+            aria-label={t('nav.next')}
             className={navBtn}
           >
             <ChevronRight className="size-4" />
