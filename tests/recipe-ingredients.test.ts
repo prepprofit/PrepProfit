@@ -8,7 +8,11 @@ import {
   softDeleteIngredient,
 } from '@/lib/data/ingredients';
 import { createRecipe, softDeleteRecipe } from '@/lib/data/recipes';
-import { addRecipeIngredient } from '@/lib/data/recipe-ingredients';
+import {
+  addRecipeIngredient,
+  removeRecipeIngredient,
+  updateRecipeIngredient,
+} from '@/lib/data/recipe-ingredients';
 
 const ORG = 'org_ri';
 
@@ -91,6 +95,65 @@ describe('addRecipeIngredient — active-row guards', () => {
  * its row-selection (active row only, org-scoped) is what makes the serialization
  * point correct — so we pin that.
  */
+/**
+ * update/remove may only touch a line of an ACTIVE recipe in the same org and
+ * matching the passed recipeId. A forged line id from a trashed (or different)
+ * recipe must be a no-op — the action surfaces NOT_FOUND. (Sprint 3.1 hardening.)
+ */
+describe('updateRecipeIngredient / removeRecipeIngredient — active-parent guard', () => {
+  async function seedLine(recipeName: string, ingredientName: string) {
+    const recipe = await createRecipe(db, ORG, { name: recipeName });
+    const ingredient = await createIngredient(db, ORG, {
+      name: ingredientName,
+      dimension: 'weight',
+      priceCents: 100,
+    });
+    const added = await addRecipeIngredient(db, ORG, {
+      recipeId: recipe.id,
+      ingredientId: ingredient.id,
+      quantity: 100,
+    });
+    if (!added.ok) throw new Error('seed: failed to add line');
+    return { recipeId: recipe.id, lineId: added.row.id };
+  }
+
+  it('updates a line on an active recipe', async () => {
+    const { recipeId, lineId } = await seedLine('Soup', 'Carrot');
+    const row = await updateRecipeIngredient(db, ORG, recipeId, lineId, {
+      quantity: 250,
+    });
+    expect(row).not.toBeNull();
+    expect(Number(row?.quantity)).toBe(250);
+  });
+
+  it('removes a line on an active recipe', async () => {
+    const { recipeId, lineId } = await seedLine('Stew', 'Potato');
+    expect(await removeRecipeIngredient(db, ORG, recipeId, lineId)).toBe(true);
+    // Second remove finds nothing.
+    expect(await removeRecipeIngredient(db, ORG, recipeId, lineId)).toBe(false);
+  });
+
+  it('refuses to update/remove a line whose recipe is TRASHED (forged id → no-op)', async () => {
+    const { recipeId, lineId } = await seedLine('Pie', 'Apple');
+    await softDeleteRecipe(db, ORG, recipeId);
+
+    expect(
+      await updateRecipeIngredient(db, ORG, recipeId, lineId, { quantity: 5 }),
+    ).toBeNull();
+    expect(await removeRecipeIngredient(db, ORG, recipeId, lineId)).toBe(false);
+  });
+
+  it('refuses when the recipeId does not match the line (forged pairing)', async () => {
+    const { lineId } = await seedLine('Bread', 'Wheat');
+    const other = await createRecipe(db, ORG, { name: 'Other recipe' });
+
+    expect(
+      await updateRecipeIngredient(db, ORG, other.id, lineId, { quantity: 5 }),
+    ).toBeNull();
+    expect(await removeRecipeIngredient(db, ORG, other.id, lineId)).toBe(false);
+  });
+});
+
 describe('lockActiveIngredient', () => {
   it('reports an active ingredient as lockable, a trashed or foreign one not', async () => {
     const ingredient = await createIngredient(db, ORG, {

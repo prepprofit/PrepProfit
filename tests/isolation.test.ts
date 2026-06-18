@@ -34,11 +34,13 @@ import {
 } from '@/lib/data/employees';
 import { createShift, listShiftsForEmployee } from '@/lib/data/shifts';
 import {
+  auditLog as auditLogTable,
   customers as customersTable,
   employees as employeesTable,
   invoices as invoicesTable,
   shifts as shiftsTable,
 } from '@/lib/db/schema';
+import { writeAuditEvent } from '@/lib/data/audit';
 
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
@@ -330,6 +332,23 @@ describe('Sprint 3 entities — org isolation (customers, invoices, payroll)', (
       breakMinutes: 0,
       note: null,
     });
+
+    // One audit event per org (seeded as superuser, like the rest).
+    const actor = (org: string) => ({
+      userId: `user_${org}`,
+      role: 'manager' as const,
+      requestId: `req_${org}`,
+    });
+    await writeAuditEvent(s3Db, ORG_A, actor(ORG_A), {
+      action: 'employee.create',
+      entityType: 'employee',
+      entityId: empA.id,
+    });
+    await writeAuditEvent(s3Db, ORG_B, actor(ORG_B), {
+      action: 'employee.create',
+      entityType: 'employee',
+      entityId: empB.id,
+    });
   });
 
   afterAll(async () => {
@@ -376,6 +395,9 @@ describe('Sprint 3 entities — org isolation (customers, invoices, payroll)', (
         ).map((r) => r.org),
         shifts: (
           await tx.select({ org: shiftsTable.organizationId }).from(shiftsTable)
+        ).map((r) => r.org),
+        auditLog: (
+          await tx.select({ org: auditLogTable.organizationId }).from(auditLogTable)
         ).map((r) => r.org),
       }));
       for (const orgs of Object.values(seen)) {
