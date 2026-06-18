@@ -17,6 +17,7 @@ import {
   Users,
   FileText,
   Settings,
+  CreditCard,
   Trash2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -208,6 +209,20 @@ export function Sidebar({
             >
               <Trash2 className="size-4 shrink-0" />
               {!collapsed && t('trash')}
+            </Link>
+          )}
+          {/* Plans & billing — subscription/entitlements (Sprint 4). Manager-only;
+              the page + Clerk checkout require org-admin too. */}
+          {canSeeFinance && (
+            <Link
+              href="/billing"
+              onClick={onNavigate}
+              aria-current={isActive('/billing') ? 'page' : undefined}
+              title={collapsed ? t('billing') : undefined}
+              className={navRowClass(isActive('/billing'), collapsed)}
+            >
+              <CreditCard className="size-4 shrink-0" />
+              {!collapsed && t('billing')}
             </Link>
           )}
           {/* Settings edits org-wide config (currency, measurement system) — a

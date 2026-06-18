@@ -19,6 +19,8 @@
     "FORBIDDEN": "You don't have permission to do that. Financial data is available to managers only.",
     "RATE_LIMITED": "You're doing that too quickly. Please wait a moment and try again.",
     "EMAIL_FAILED": "The email couldn't be sent. Please check the address and try again.",
+    "UPGRADE_REQUIRED": "This feature isn't included in your current plan. Upgrade to unlock it.",
+    "PLAN_LIMIT_REACHED": "You've reached your plan's limit. Upgrade to add more.",
     "UNEXPECTED": "Something went wrong on our end. Please try again."
   },
   "errors": {
@@ -45,7 +47,8 @@
     "payroll": "Payroll",
     "invoices": "Invoices",
     "settings": "Settings",
-    "trash": "Trash"
+    "trash": "Trash",
+    "billing": "Plans & billing"
   },
   "navGroups": {
     "operations": "Operations",
@@ -554,6 +557,26 @@
       "recipeCard": "Recipe card: {name}",
       "pl": "Profit & loss: {name}"
     }
+  },
+  "billing": {
+    "navLabel": "Plans & billing",
+    "title": "Plans & billing",
+    "subtitle": "Manage your subscription. Plan limits and paid features are enforced on every plan.",
+    "currentPlan": "Current plan",
+    "viewPlans": "View plans",
+    "seats": "Seats",
+    "seatsUnlimited": "Unlimited seats",
+    "recipes": "Recipes",
+    "recipesUnlimited": "Unlimited recipes",
+    "tier": {
+      "starter": "Starter",
+      "pro": "Pro",
+      "business": "Business"
+    }
+  },
+  "pricing": {
+    "title": "Choose a plan",
+    "subtitle": "Pick the plan that fits your kitchen. You can change it any time."
   },
   "reports": {
     "print": {

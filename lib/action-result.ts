@@ -29,6 +29,10 @@ export type ActionErrorCode =
   | 'RATE_LIMITED'
   // The email provider rejected the send, or email is not configured (Sprint 3.5C).
   | 'EMAIL_FAILED'
+  // The org's plan does not include this paid feature (Sprint 4 entitlements).
+  | 'UPGRADE_REQUIRED'
+  // A plan numeric limit (e.g. Starter's 50-recipe cap) was reached (Sprint 4).
+  | 'PLAN_LIMIT_REACHED'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =
