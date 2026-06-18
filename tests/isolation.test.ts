@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import {
@@ -201,6 +201,66 @@ describe('database layer — Row-Level Security (second defense)', () => {
     expect(rows).toHaveLength(0);
     const settings = await db.select().from(organizationSettings);
     expect(settings).toHaveLength(0);
+  });
+});
+
+describe('database layer — RLS WITH CHECK rejects cross-org WRITES', () => {
+  // Reads being scoped is only half the guarantee; these prove the WITH CHECK /
+  // USING clauses also reject INSERT/UPDATE/DELETE that try to cross tenants.
+  beforeAll(async () => {
+    await db.execute(sql.raw('SET ROLE tenant_app;'));
+  });
+  afterAll(async () => {
+    await db.execute(sql.raw('RESET ROLE;'));
+  });
+
+  it('rejects an INSERT carrying another org id (WITH CHECK)', async () => {
+    await expect(
+      runInOrg(db, ORG_A, (tx) =>
+        tx.insert(ingredients).values({
+          organizationId: ORG_B,
+          name: 'Smuggled',
+          dimension: 'weight',
+          priceCents: 100,
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('allows an INSERT carrying the active org id', async () => {
+    const rows = await runInOrg(db, ORG_A, (tx) =>
+      tx
+        .insert(ingredients)
+        .values({
+          organizationId: ORG_A,
+          name: 'Legit A',
+          dimension: 'weight',
+          priceCents: 100,
+        })
+        .returning({ id: ingredients.id }),
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it('rejects re-tagging a row to another org via UPDATE (WITH CHECK)', async () => {
+    await expect(
+      runInOrg(db, ORG_A, (tx) =>
+        tx
+          .update(ingredients)
+          .set({ organizationId: ORG_B })
+          .where(eq(ingredients.id, ingredientAId)),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("a DELETE cannot reach another org's row (USING hides it → 0 rows)", async () => {
+    const deleted = await runInOrg(db, ORG_A, (tx) =>
+      tx
+        .delete(ingredients)
+        .where(eq(ingredients.id, ingredientBId))
+        .returning({ id: ingredients.id }),
+    );
+    expect(deleted).toHaveLength(0);
   });
 });
 
