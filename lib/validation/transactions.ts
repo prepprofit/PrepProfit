@@ -10,10 +10,42 @@ import { z } from 'zod';
 export const TRANSACTION_TYPES = ['income', 'expense'] as const;
 export const CATEGORY_KINDS = ['income', 'expense'] as const;
 
-/** A bare calendar date 'YYYY-MM-DD' (no time, no timezone). */
+/**
+ * A bare calendar date 'YYYY-MM-DD' (no time, no timezone). The regex pins the
+ * shape; the refine rejects shapes that are well-formed but impossible
+ * (2026-13-01, 2026-02-30, day 00) by round-tripping through a UTC Date.
+ */
 export const dateStringSchema = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+  .refine((s) => {
+    const parts = s.split('-');
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const d = Number(parts[2]);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return (
+      dt.getUTCFullYear() === y &&
+      dt.getUTCMonth() === m - 1 &&
+      dt.getUTCDate() === d
+    );
+  }, 'Not a real calendar date');
+
+/**
+ * Query filters for the CSV export route — the same dimensions as the list view.
+ * Empty params are dropped to `undefined` by the caller, so only real values are
+ * validated; impossible dates are rejected by {@link dateStringSchema}.
+ */
+export const transactionExportFilterSchema = z.object({
+  from: dateStringSchema.optional(),
+  to: dateStringSchema.optional(),
+  type: z.enum(TRANSACTION_TYPES).optional(),
+  category: z.string().min(1).max(120).optional(),
+});
+
+export type TransactionExportFilterInput = z.infer<
+  typeof transactionExportFilterSchema
+>;
 
 export const transactionSchema = z.object({
   type: z.enum(TRANSACTION_TYPES),

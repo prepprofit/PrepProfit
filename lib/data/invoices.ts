@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
   customers,
   invoiceCounters,
@@ -142,6 +142,53 @@ export async function getInvoiceWithItems(
     .orderBy(asc(invoiceItems.sortOrder));
 
   return { invoice, items };
+}
+
+/**
+ * Batched detail loader for the draft invoices on the invoices page: two
+ * org-scoped queries total (invoices + their items) instead of N+1 round-trips
+ * via {@link getInvoiceWithItems}. Items are grouped per invoice in memory.
+ */
+export async function listDraftInvoiceDetails(
+  db: TenantClient,
+  organizationId: string,
+  draftIds: string[],
+): Promise<InvoiceWithItems[]> {
+  if (draftIds.length === 0) return [];
+
+  const invoiceRows = await db
+    .select()
+    .from(invoices)
+    .where(
+      and(
+        eq(invoices.organizationId, organizationId),
+        inArray(invoices.id, draftIds),
+        isNull(invoices.deletedAt),
+      ),
+    );
+
+  const itemRows = await db
+    .select()
+    .from(invoiceItems)
+    .where(
+      and(
+        eq(invoiceItems.organizationId, organizationId),
+        inArray(invoiceItems.invoiceId, draftIds),
+      ),
+    )
+    .orderBy(asc(invoiceItems.sortOrder));
+
+  const itemsByInvoice = new Map<string, InvoiceItem[]>();
+  for (const item of itemRows) {
+    const list = itemsByInvoice.get(item.invoiceId) ?? [];
+    list.push(item);
+    itemsByInvoice.set(item.invoiceId, list);
+  }
+
+  return invoiceRows.map((invoice) => ({
+    invoice,
+    items: itemsByInvoice.get(invoice.id) ?? [],
+  }));
 }
 
 /** Maps validated line input to the cents/numeric shape the calc + DB expect. */

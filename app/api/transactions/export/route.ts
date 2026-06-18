@@ -3,6 +3,7 @@ import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listTransactions, type TransactionFilter } from '@/lib/data/transactions';
 import { transactionsToCsv } from '@/lib/finance/csv';
+import { transactionExportFilterSchema } from '@/lib/validation/transactions';
 
 // neon-serverless Pool needs Node; force-dynamic so the download is never cached.
 export const runtime = 'nodejs';
@@ -21,16 +22,25 @@ export async function GET(req: Request): Promise<NextResponse> {
 
   const organizationId = await getOrgId();
   const { searchParams } = new URL(req.url);
-  const type = searchParams.get('type');
+
+  // Validate the filters server-side (RULE: Zod on all user input). Empty params
+  // collapse to undefined so they're simply ignored; malformed ones (impossible
+  // dates, bad type) are rejected with 400 instead of silently mis-querying.
+  const parsed = transactionExportFilterSchema.safeParse({
+    from: searchParams.get('from') || undefined,
+    to: searchParams.get('to') || undefined,
+    type: searchParams.get('type') || undefined,
+    category: searchParams.get('category') || undefined,
+  });
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Invalid filter' }, { status: 400 });
+  }
 
   const filter: TransactionFilter = {};
-  const from = searchParams.get('from');
-  const to = searchParams.get('to');
-  const category = searchParams.get('category');
-  if (from) filter.from = from;
-  if (to) filter.to = to;
-  if (type === 'income' || type === 'expense') filter.type = type;
-  if (category) filter.categoryId = category;
+  if (parsed.data.from) filter.from = parsed.data.from;
+  if (parsed.data.to) filter.to = parsed.data.to;
+  if (parsed.data.type) filter.type = parsed.data.type;
+  if (parsed.data.category) filter.categoryId = parsed.data.category;
 
   const items = await withOrg(organizationId, (tx) =>
     listTransactions(tx, organizationId, filter),

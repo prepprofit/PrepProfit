@@ -6,14 +6,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
 import { getOrgSettings } from '@/lib/data/org-settings';
-import { CURRENCIES, MEASUREMENT_SYSTEMS } from '@/lib/validation/org-settings';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
 import { NoAccess } from '@/components/app/no-access';
-import { updateOrgSettingsAction } from './actions';
+import { SettingsForm } from './settings-form';
 
 export default async function SettingsPage() {
   const t = await getTranslations('settings');
@@ -36,45 +32,12 @@ export default async function SettingsPage() {
           <CardDescription>{t('regional.description')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={updateOrgSettingsAction} className="flex flex-col gap-5">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="currency">{t('currency.label')}</Label>
-              <Select
-                id="currency"
-                name="currency"
-                defaultValue={settings.currency}
-              >
-                {CURRENCIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.label}
-                  </option>
-                ))}
-              </Select>
-              <p className="text-xs text-muted-foreground">{t('currency.help')}</p>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="measurementSystem">{t('measurement.label')}</Label>
-              <Select
-                id="measurementSystem"
-                name="measurementSystem"
-                defaultValue={settings.measurementSystem}
-              >
-                {MEASUREMENT_SYSTEMS.map((system) => (
-                  <option key={system} value={system}>
-                    {t(`measurement.options.${system}`)}
-                  </option>
-                ))}
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {t('measurement.help')}
-              </p>
-            </div>
-
-            <div>
-              <Button type="submit">{t('save')}</Button>
-            </div>
-          </form>
+          <SettingsForm
+            settings={{
+              currency: settings.currency,
+              measurementSystem: settings.measurementSystem,
+            }}
+          />
         </CardContent>
       </Card>
     </div>

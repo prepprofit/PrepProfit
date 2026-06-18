@@ -3,7 +3,7 @@ import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { listCustomers } from '@/lib/data/customers';
-import { getInvoiceWithItems, listInvoices } from '@/lib/data/invoices';
+import { listDraftInvoiceDetails, listInvoices } from '@/lib/data/invoices';
 import { centsToAmountInput } from '@/lib/format/money';
 import { NoAccess } from '@/components/app/no-access';
 import {
@@ -29,8 +29,10 @@ export default async function InvoicesPage() {
       const draftIds = invoices
         .filter((i) => i.status === 'draft')
         .map((i) => i.id);
-      const draftDetails = await Promise.all(
-        draftIds.map((id) => getInvoiceWithItems(tx, organizationId, id)),
+      const draftDetails = await listDraftInvoiceDetails(
+        tx,
+        organizationId,
+        draftIds,
       );
       return { customers, invoices, draftDetails };
     }),
@@ -39,7 +41,6 @@ export default async function InvoicesPage() {
 
   const drafts: Record<string, DraftDetail> = {};
   for (const detail of data.draftDetails) {
-    if (!detail) continue;
     drafts[detail.invoice.id] = {
       id: detail.invoice.id,
       customerId: detail.invoice.customerId ?? '',

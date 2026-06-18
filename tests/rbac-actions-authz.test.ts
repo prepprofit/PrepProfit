@@ -75,11 +75,9 @@ describe('manager-only actions reject kitchen before touching data', () => {
   });
 
   it('blocks settings update (org-wide config is manager-only)', async () => {
-    // updateOrgSettingsAction returns void; the guard must short-circuit BEFORE
-    // getOrgId (mocked to throw), so a clean resolve proves kitchen was refused
-    // without touching data.
-    await expect(
-      updateOrgSettingsAction(new FormData()),
-    ).resolves.toBeUndefined();
+    // The guard must short-circuit BEFORE getOrgId (mocked to throw), so a
+    // FORBIDDEN result proves kitchen was refused without touching data.
+    const result = await updateOrgSettingsAction(null, new FormData());
+    expect(result).toEqual(FORBIDDEN);
   });
 });

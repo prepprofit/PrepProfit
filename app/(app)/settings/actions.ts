@@ -5,24 +5,34 @@ import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { upsertOrgSettings } from '@/lib/data/org-settings';
 import { orgSettingsSchema } from '@/lib/validation/org-settings';
+import type { ActionResult } from '@/lib/action-result';
 
 /**
  * Saves the current org's settings. RULE #1: the org id is derived from Clerk on
  * the server (never the client), and the write runs inside `withOrg` so RLS is
- * active. Input is validated with Zod on the server. Manager-only — kitchen-role
- * users are blocked in the page AND refused here (defense-in-depth against a
- * forged POST); the action returns void, so a non-manager is a silent no-op.
+ * active. Input is validated with Zod (`safeParse`, never a throwing `parse`).
+ * Manager-only — kitchen-role users are blocked in the page AND refused here
+ * (defense-in-depth against a forged POST), with a typed `FORBIDDEN` code.
+ *
+ * Signature is `useActionState`-shaped (prevState, formData) so the form surfaces
+ * the typed result via `useActionError`, consistent with every other action.
  */
-export async function updateOrgSettingsAction(formData: FormData): Promise<void> {
-  if (!(await isManager())) return;
+export async function updateOrgSettingsAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
 
-  const organizationId = await getOrgId();
-  const input = orgSettingsSchema.parse({
+  const parsed = orgSettingsSchema.safeParse({
     currency: formData.get('currency'),
     measurementSystem: formData.get('measurementSystem'),
   });
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
   await withOrg(organizationId, (tx) =>
-    upsertOrgSettings(tx, organizationId, input),
+    upsertOrgSettings(tx, organizationId, parsed.data),
   );
   revalidatePath('/settings');
+  return { ok: true, data: undefined };
 }
