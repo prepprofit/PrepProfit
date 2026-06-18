@@ -1,0 +1,54 @@
+{
+  "billing": {
+    "organization_enabled": true,
+    "features": {
+      "invoices": {
+        "name": "Invoices",
+        "description": "Customer invoices with the draft / issue / pay / void lifecycle.",
+        "publicly_visible": true
+      },
+      "break_even": {
+        "name": "Break-even",
+        "description": "Break-even scenario simulator.",
+        "publicly_visible": true
+      },
+      "payroll": {
+        "name": "Payroll",
+        "description": "Employees, shifts, and payroll period summaries.",
+        "publicly_visible": true
+      },
+      "advanced_documents": {
+        "name": "Advanced documents",
+        "description": "Advanced report and document workflows.",
+        "publicly_visible": true
+      },
+      "ai_extraction": {
+        "name": "AI recipe extraction",
+        "description": "Photo-to-recipe AI extraction with reviewed drafts (Sprint 4.7).",
+        "publicly_visible": true
+      }
+    },
+    "plans": {
+      "pro": {
+        "name": "Pro",
+        "description": "For growing kitchens: unlimited recipes, invoices, break-even, and limited AI extraction.",
+        "payer_type": "org",
+        "amount": 2900,
+        "currency": "usd",
+        "is_recurring": true,
+        "publicly_visible": true,
+        "features": ["invoices", "break_even", "ai_extraction"]
+      },
+      "business": {
+        "name": "Business",
+        "description": "Everything in Pro plus payroll, advanced documents, and higher AI usage.",
+        "payer_type": "org",
+        "amount": 9900,
+        "currency": "usd",
+        "is_recurring": true,
+        "publicly_visible": true,
+        "features": ["invoices", "break_even", "payroll", "advanced_documents", "ai_extraction"]
+      }
+    }
+  }
+}

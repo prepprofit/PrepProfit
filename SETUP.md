@@ -84,9 +84,13 @@ Optional (tests only):
   (`DATABASE_URL=<branch-url> npm run db:migrate`), then
   `TEST_DATABASE_URL=<branch-url> npm test`. Never point it at production.
 
+Required when billing webhooks are enabled (Sprint 4c):
+
+- `CLERK_WEBHOOK_SIGNING_SECRET` - from Clerk Dashboard → Webhooks; verifies the
+  billing webhook (`/api/webhooks/clerk`). Not used until slice 4c lands.
+
 Planned later:
 
-- Billing/webhook secrets in Sprint 4
 - AI provider key in Sprint 4.7
 - Sentry/PostHog secrets in Sprint 5
 
@@ -160,6 +164,42 @@ The trash purge route requires `CRON_SECRET`. Without it, the route fails closed
 
 For production, set the secret in Vercel and configure the scheduled route only after migrations
 and env vars are verified.
+
+## 7b. Billing and plans (Sprint 4)
+
+PrepProfit uses **Clerk Billing for B2B organization plans** (Stripe handles payment only;
+plans live in Clerk, not synced to Stripe). The plan/feature catalogue is version-controlled in
+[`clerk/billing.json`](clerk/billing.json) and seeded with the Clerk CLI:
+
+```bash
+clerk enable billing --for orgs              # enable org billing (auto-creates free_org)
+clerk config patch --file clerk/billing.json --dry-run   # preview
+clerk config patch --file clerk/billing.json             # apply (dev instance)
+clerk config patch --file clerk/billing.json --instance prod   # apply to production
+```
+
+The catalogue (Starter = the auto-created `free_org` baseline; `pro` / `business` are paid):
+
+| Tier | Plan slug | Recipes (app cap) | Features (`has({ feature })`) |
+|------|-----------|-------------------|-------------------------------|
+| Starter | `free_org` | 50 | — (modules 1–3 only) |
+| Pro | `pro` | unlimited | `invoices`, `break_even`, `ai_extraction` |
+| Business | `business` | unlimited | + `payroll`, `advanced_documents` |
+
+Notes:
+
+- **Currency**: Clerk's dev gateway only accepts `usd`; the listed prices ($29 / $99) are
+  **placeholders** — adjust in `clerk/billing.json` (or the Dashboard) before launch. The app's
+  own money display currency (EUR, org settings) is unrelated to the subscription currency.
+- **Recipe cap** (and seat limits) are enforced in the app (`lib/entitlements.ts`), keyed by the
+  detected plan tier; entitlements read **fail-closed** (unknown state → Starter). Clerk's
+  billing config has no per-plan seat field, so seat caps stay informational app-side until
+  wired to the org membership limit (later slice).
+- **Production**: connect a Stripe account once (Dashboard → Billing → Settings), then apply
+  `clerk/billing.json` to the prod instance with `--instance prod`. Dev needs no Stripe account.
+
+Slice 4c will add the billing webhook (`/api/webhooks/clerk`) requiring
+`CLERK_WEBHOOK_SIGNING_SECRET`.
 
 ## 8. Deployment on Vercel
 
