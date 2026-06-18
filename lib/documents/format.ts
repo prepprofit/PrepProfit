@@ -24,3 +24,14 @@ export function safeText(value: string | number | null | undefined): string {
   if (value == null) return '';
   return String(value);
 }
+
+/**
+ * Sanitize a stem into a header/filesystem-safe download filename (no extension).
+ * Same scrub as `invoiceDocumentFilename` so every generated document's
+ * `Content-Disposition` is consistent and injection-safe. A blank stem falls back
+ * to 'document'.
+ */
+export function documentFilename(stem: string): string {
+  const safe = stem.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return safe === '' ? 'document' : safe;
+}

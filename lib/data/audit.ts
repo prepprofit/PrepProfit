@@ -44,6 +44,11 @@ export type AuditAction =
   // Sensitive exports / generated documents
   | 'export.transactionsCsv'
   | 'export.invoicePdf'
+  | 'export.recipeCardPdf'
+  | 'export.plPdf'
+  | 'export.plXlsx'
+  | 'export.payrollPdf'
+  | 'export.payrollXlsx'
   // Automated cron purge (system actor)
   | 'cron.purge';
 

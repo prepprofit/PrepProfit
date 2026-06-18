@@ -1,6 +1,7 @@
 import { lineTotals } from '@/lib/calculations/invoice';
 import type { Invoice, InvoiceItem } from '@/lib/db/schema';
 import type { InvoiceDocumentData, DocumentLine } from './types';
+import { blankToNull, buildSellerIdentity, type SellerSettings } from './seller';
 
 /**
  * Pure mapping from stored invoice rows → the document view-model (Sprint 3.5A).
@@ -10,22 +11,8 @@ import type { InvoiceDocumentData, DocumentLine } from './types';
  * verbatim (never recomputed) so the document is immutable and reproducible.
  */
 
-/** The seller fields this builder reads — satisfied by both the settings row and
- * `OrgSettingsValues`. Kept narrow so the function stays pure and testable. */
-export type SellerSettings = {
-  currency: string;
-  businessName: string | null;
-  businessAddress: string | null;
-  businessTaxId: string | null;
-  businessEmail: string | null;
-  businessLogoUrl: string | null;
-};
-
-function blankToNull(value: string | null | undefined): string | null {
-  if (value == null) return null;
-  const trimmed = value.trim();
-  return trimmed === '' ? null : trimmed;
-}
+/** Re-exported for callers that still import the seller shape from here. */
+export type { SellerSettings };
 
 export function buildInvoiceDocumentData(
   detail: { invoice: Invoice; items: InvoiceItem[] },
@@ -54,17 +41,8 @@ export function buildInvoiceDocumentData(
     };
   });
 
-  const sellerName =
-    blankToNull(settings.businessName) ?? blankToNull(orgNameFallback) ?? '';
-
   return {
-    seller: {
-      name: sellerName,
-      address: blankToNull(settings.businessAddress),
-      taxId: blankToNull(settings.businessTaxId),
-      email: blankToNull(settings.businessEmail),
-      logoUrl: blankToNull(settings.businessLogoUrl),
-    },
+    seller: buildSellerIdentity(settings, orgNameFallback),
     customer: {
       name: blankToNull(invoice.customerName),
       taxId: blankToNull(invoice.customerTaxId),

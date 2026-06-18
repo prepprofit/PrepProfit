@@ -85,3 +85,138 @@ export type InvoiceDocumentData = {
   taxCents: number;
   totalCents: number;
 };
+
+/* -------------------------------------------------------------------------- */
+/* Sprint 3.5B report documents                                               */
+/* -------------------------------------------------------------------------- */
+
+/** One ingredient line on a recipe card, with its share of the cost. */
+export type RecipeCardLine = {
+  name: string;
+  /** 'weight' | 'volume' | 'count' — drives the unit label. */
+  dimension: 'weight' | 'volume' | 'count';
+  /** Canonical amount used (g / ml / pieces). */
+  quantity: number;
+  /** Cost of this line, in integer cents. */
+  costCents: number;
+};
+
+/** Recipe card (cost sheet) view-model. Reuses the recipe cost/margin calcs. */
+export type RecipeCardDocumentData = {
+  seller: SellerIdentity;
+  recipeName: string;
+  yieldPortions: number;
+  /** Usable yield after trim/loss (100 = no loss). */
+  yieldPercentage: number;
+  lines: RecipeCardLine[];
+  ingredientCostCents: number;
+  laborCostCents: number;
+  energyCostCents: number;
+  packagingCostCents: number;
+  totalCostCents: number;
+  costPerPortionCents: number;
+  /** Selling price per portion, or null if unset. */
+  sellingPriceCents: number | null;
+  /** Gross margin %, or null when no selling price is set. */
+  marginPercent: number | null;
+  notes: string | null;
+  currency: string;
+};
+
+export type RecipeCardDocumentLabels = {
+  title: string;
+  yield: string;
+  portions: string;
+  usableYield: string;
+  ingredient: string;
+  quantity: string;
+  cost: string;
+  ingredientCost: string;
+  labor: string;
+  energy: string;
+  packaging: string;
+  totalCost: string;
+  costPerPortion: string;
+  sellingPrice: string;
+  margin: string;
+  notes: string;
+  /** Unit suffix by dimension (e.g. g / ml / ×). */
+  units: Record<'weight' | 'volume' | 'count', string>;
+};
+
+/** A category or product total row for the P&L document. */
+export type PlTotalRow = {
+  name: string;
+  totalCents: number;
+};
+
+/** One month's figures for the P&L year view. */
+export type PlMonthlyRow = {
+  label: string;
+  incomeCents: number;
+  expenseCents: number;
+  profitCents: number;
+};
+
+/** P&L (income statement) view-model. Mirrors the /financials aggregates. */
+export type PlDocumentData = {
+  seller: SellerIdentity;
+  /** Human period label, e.g. 'June 2026' or '2026'. */
+  periodLabel: string;
+  view: 'month' | 'year';
+  incomeCents: number;
+  expenseCents: number;
+  profitCents: number;
+  byCategory: { name: string; kind: 'income' | 'expense'; totalCents: number }[];
+  topProducts: PlTotalRow[];
+  /** Present only in the year view (12 monthly rows), else null. */
+  monthly: PlMonthlyRow[] | null;
+  currency: string;
+};
+
+export type PlDocumentLabels = {
+  title: string;
+  period: string;
+  income: string;
+  expenses: string;
+  profit: string;
+  byCategory: string;
+  category: string;
+  amount: string;
+  topProducts: string;
+  product: string;
+  monthly: string;
+  month: string;
+  empty: string;
+};
+
+/** One employee's totals on the payroll summary. */
+export type PayrollDocumentRow = {
+  name: string;
+  shiftCount: number;
+  workedMinutes: number;
+  payDueCents: number;
+};
+
+/** Payroll period summary view-model. Mirrors the /payroll aggregates. */
+export type PayrollDocumentData = {
+  seller: SellerIdentity;
+  periodLabel: string;
+  view: 'week' | 'month';
+  rows: PayrollDocumentRow[];
+  totalShiftCount: number;
+  totalWorkedMinutes: number;
+  totalPayCents: number;
+  currency: string;
+};
+
+export type PayrollDocumentLabels = {
+  title: string;
+  period: string;
+  employee: string;
+  shifts: string;
+  hours: string;
+  pay: string;
+  total: string;
+  empty: string;
+};

@@ -137,6 +137,12 @@
       "delete": "Delete recipe",
       "back": "Back to recipes"
     },
+    "card": {
+      "action": "Recipe card",
+      "back": "Back to recipe",
+      "downloadPdf": "Download PDF",
+      "print": "Print"
+    },
     "placeholders": {
       "name": "e.g. Sourdough loaf",
       "notes": "Method, allergens, plating…"
@@ -481,6 +487,69 @@
       "issued": "Issued",
       "paid": "Paid",
       "void": "Void"
+    }
+  },
+  "recipeCardDocument": {
+    "title": "RECIPE CARD",
+    "yield": "Yield",
+    "portions": "portions",
+    "usableYield": "usable",
+    "ingredient": "Ingredient",
+    "quantity": "Qty",
+    "cost": "Cost",
+    "ingredientCost": "Ingredient cost",
+    "labor": "Labor",
+    "energy": "Energy",
+    "packaging": "Packaging",
+    "totalCost": "Total cost",
+    "costPerPortion": "Cost per portion",
+    "sellingPrice": "Selling price",
+    "margin": "Margin",
+    "notes": "Notes",
+    "units": {
+      "weight": "g",
+      "volume": "ml",
+      "count": "×"
+    }
+  },
+  "plDocument": {
+    "title": "PROFIT & LOSS",
+    "period": "Period",
+    "income": "Income",
+    "expenses": "Expenses",
+    "profit": "Profit",
+    "byCategory": "By category",
+    "category": "Category",
+    "amount": "Amount",
+    "topProducts": "Top products",
+    "product": "Product",
+    "monthly": "Monthly breakdown",
+    "month": "Month",
+    "empty": "No activity in this period."
+  },
+  "payrollDocument": {
+    "title": "PAYROLL SUMMARY",
+    "period": "Period",
+    "employee": "Employee",
+    "shifts": "Shifts",
+    "hours": "Hours",
+    "pay": "Pay due",
+    "total": "Total",
+    "empty": "No shifts in this period."
+  },
+  "reports": {
+    "print": {
+      "back": "Back",
+      "downloadPdf": "Download PDF",
+      "downloadXlsx": "Download Excel",
+      "print": "Print"
+    },
+    "actions": {
+      "exportPdf": "P&L PDF",
+      "exportXlsx": "P&L Excel",
+      "print": "Print",
+      "payrollPdf": "Payroll PDF",
+      "payrollXlsx": "Payroll Excel"
     }
   },
   "invoices": {
