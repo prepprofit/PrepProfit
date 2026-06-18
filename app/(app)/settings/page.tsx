@@ -1,11 +1,4 @@
 import { getTranslations } from 'next-intl/server';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
 import { NoAccess } from '@/components/app/no-access';
@@ -26,20 +19,17 @@ export default async function SettingsPage() {
     <div className="flex flex-col gap-5">
       <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('regional.title')}</CardTitle>
-          <CardDescription>{t('regional.description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SettingsForm
-            settings={{
-              currency: settings.currency,
-              measurementSystem: settings.measurementSystem,
-            }}
-          />
-        </CardContent>
-      </Card>
+      <SettingsForm
+        settings={{
+          currency: settings.currency,
+          measurementSystem: settings.measurementSystem,
+          businessName: settings.businessName,
+          businessAddress: settings.businessAddress,
+          businessTaxId: settings.businessTaxId,
+          businessEmail: settings.businessEmail,
+          businessLogoUrl: settings.businessLogoUrl,
+        }}
+      />
     </div>
   );
 }

@@ -27,6 +27,11 @@ export async function updateOrgSettingsAction(
   const parsed = orgSettingsSchema.safeParse({
     currency: formData.get('currency'),
     measurementSystem: formData.get('measurementSystem'),
+    businessName: formData.get('businessName'),
+    businessAddress: formData.get('businessAddress'),
+    businessTaxId: formData.get('businessTaxId'),
+    businessEmail: formData.get('businessEmail'),
+    businessLogoUrl: formData.get('businessLogoUrl'),
   });
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
@@ -38,9 +43,18 @@ export async function updateOrgSettingsAction(
       action: 'settings.update',
       entityType: 'organizationSettings',
       entityId: organizationId,
+      // Non-sensitive descriptors only: currency/units + which seller fields are
+      // now set (booleans, never the address/tax id/email values themselves).
       metadata: {
         currency: parsed.data.currency,
         measurementSystem: parsed.data.measurementSystem,
+        businessIdentitySet: {
+          name: parsed.data.businessName !== null,
+          address: parsed.data.businessAddress !== null,
+          taxId: parsed.data.businessTaxId !== null,
+          email: parsed.data.businessEmail !== null,
+          logoUrl: parsed.data.businessLogoUrl !== null,
+        },
       },
     });
   });

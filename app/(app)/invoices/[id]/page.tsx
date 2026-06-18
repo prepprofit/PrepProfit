@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { getOrgSettings } from '@/lib/data/org-settings';
@@ -56,6 +56,20 @@ export default async function InvoiceDetailPage({
             {t('detail.back')}
           </Link>
         </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/invoices/${id}/print`}>
+              <Printer className="size-4" />
+              {t('detail.print')}
+            </Link>
+          </Button>
+          <Button asChild size="sm">
+            <a href={`/api/invoices/${id}/pdf`}>
+              <Download className="size-4" />
+              {t('detail.downloadPdf')}
+            </a>
+          </Button>
+        </div>
       </div>
 
       <Card>

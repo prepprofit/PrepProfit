@@ -254,6 +254,18 @@
         "imperial": "Imperial (oz, lb, fl oz, cups)"
       }
     },
+    "business": {
+      "title": "Business identity",
+      "description": "Shown as the sender on generated invoices and documents. Leave blank to use your organization name.",
+      "name": "Business name",
+      "namePlaceholder": "Your bakery or restaurant",
+      "address": "Address",
+      "addressPlaceholder": "Street, postal code, city, country",
+      "taxId": "Tax ID / VAT number",
+      "email": "Billing email",
+      "logoUrl": "Logo URL",
+      "logoUrlHelp": "Must be a public https:// image URL. It appears in the invoice header."
+    },
     "save": "Save settings",
     "saved": "Settings saved.",
     "noAccess": {
@@ -446,6 +458,30 @@
       "filename": "transactions"
     }
   },
+  "invoiceDocument": {
+    "title": "INVOICE",
+    "from": "From",
+    "billTo": "Bill to",
+    "invoiceNo": "No.",
+    "issued": "Issued",
+    "due": "Due",
+    "taxId": "Tax ID",
+    "description": "Description",
+    "quantity": "Qty",
+    "unitPrice": "Unit price",
+    "taxRate": "VAT %",
+    "lineTotal": "Total",
+    "subtotal": "Subtotal",
+    "tax": "VAT",
+    "total": "Total due",
+    "notes": "Notes",
+    "status": {
+      "draft": "Draft",
+      "issued": "Issued",
+      "paid": "Paid",
+      "void": "Void"
+    }
+  },
   "invoices": {
     "subtitle": "Create invoices for your customers, issue them with a sequential number, and track payment.",
     "empty": "No invoices yet. Build your first one below.",
@@ -493,7 +529,9 @@
       "billedTo": "Billed to",
       "issuedOn": "Issued on",
       "dueOn": "Due on",
-      "notFound": "That invoice could not be found."
+      "notFound": "That invoice could not be found.",
+      "downloadPdf": "Download PDF",
+      "print": "Print"
     },
     "actions": {
       "view": "View",
