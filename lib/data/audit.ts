@@ -49,6 +49,10 @@ export type AuditAction =
   | 'export.plXlsx'
   | 'export.payrollPdf'
   | 'export.payrollXlsx'
+  // A generated document emailed to a recipient (Sprint 3.5C) — written only
+  // AFTER the provider accepts; metadata is documentType + provider message id
+  // only (never the recipient address, amounts, or names).
+  | 'document.email'
   // Automated cron purge (system actor)
   | 'cron.purge';
 

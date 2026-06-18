@@ -21,10 +21,14 @@ export const RATE_LIMITS = {
   transactionsExport: { limit: 10, windowMs: MINUTE },
   // Daily cron purge — generous ceiling; only abusive retries should ever trip it.
   cronPurge: { limit: 5, windowMs: MINUTE },
-  // Document generation (Sprint 3.5A invoice PDF/print; shared by 3.5B PDF/XLSX/
-  // email later) — manager-only, heavier than a read, but interactive enough to
+  // Document generation (Sprint 3.5A invoice PDF/print; 3.5B report PDF/XLSX
+  // downloads) — manager-only, heavier than a read, but interactive enough to
   // allow a brisk cadence per user.
   documents: { limit: 20, windowMs: MINUTE },
+  // Outbound document email (Sprint 3.5C). Tighter than `documents`: a send has
+  // real cost and spam/reputation risk a local download does not, so it gets its
+  // own, smaller budget per org+user.
+  documentEmail: { limit: 10, windowMs: MINUTE },
   // Reserved for later sprints (helper already exists; nothing wired yet):
   //   import:        Sprint 4.5/4.6 staged imports
   //   aiExtraction:  Sprint 4.7 photo recipe extraction

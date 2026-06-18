@@ -27,6 +27,8 @@ export type ActionErrorCode =
   | 'FORBIDDEN'
   // Too many requests in the rate-limit window (Sprint 3.1 limiter).
   | 'RATE_LIMITED'
+  // The email provider rejected the send, or email is not configured (Sprint 3.5C).
+  | 'EMAIL_FAILED'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =
