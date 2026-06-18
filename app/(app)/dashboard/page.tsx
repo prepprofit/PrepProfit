@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { currentUser } from '@clerk/nextjs/server';
 import {
   DollarSign,
   FileText,
@@ -9,7 +8,7 @@ import {
   Utensils,
   Wallet,
 } from 'lucide-react';
-import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
+import { canAccessFinancials, getFirstName, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listRecipesWithLines } from '@/lib/data/recipes';
 import { listIngredients } from '@/lib/data/ingredients';
@@ -123,7 +122,7 @@ export default async function DashboardPage({
   if (!canAccessFinancials(await getUserRole())) {
     redirect('/recipes');
   }
-  const firstName = (await currentUser())?.firstName?.trim();
+  const firstName = await getFirstName();
   const settings = await getOrgSettings();
   const sp = await searchParams;
 

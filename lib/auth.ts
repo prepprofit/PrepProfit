@@ -1,4 +1,4 @@
-import { auth, clerkClient } from '@clerk/nextjs/server';
+import { auth, clerkClient, currentUser } from '@clerk/nextjs/server';
 
 export const USER_ROLES = ['manager', 'kitchen'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
@@ -62,6 +62,22 @@ export async function getUserRole(): Promise<UserRole> {
 
 export async function isManager(): Promise<boolean> {
   return (await getUserRole()) === 'manager';
+}
+
+/**
+ * Best-effort first name of the signed-in user, for greetings only. Wrapped in
+ * try/catch like {@link getOrgName}: `currentUser()` is a Clerk Backend API call
+ * (not the local session) and can fail transiently, so a cosmetic greeting must
+ * never crash the page. Returns null on any failure or when unavailable.
+ */
+export async function getFirstName(): Promise<string | null> {
+  try {
+    const user = await currentUser();
+    const name = user?.firstName?.trim();
+    return name ? name : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
