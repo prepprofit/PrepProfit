@@ -36,6 +36,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "recharts": "^3.8.1",
+    "resend": "^6.14.0",
     "tailwind-merge": "^3.6.0",
     "write-excel-file": "^2.3.10",
     "ws": "^8.21.0",

@@ -17,6 +17,19 @@ const serverEnvSchema = z.object({
     .string()
     .min(16, 'CRON_SECRET must be at least 16 characters')
     .optional(),
+  // Resend document email (Sprint 3.5C). OPTIONAL here so the many other
+  // `serverEnv()` callers (e.g. `getDb()`) don't suddenly require email config;
+  // `emailEnv()` below asserts the two required vars only when email is actually
+  // sent. The API key is a secret — it is NEVER logged.
+  RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY must not be empty').optional(),
+  RESEND_FROM_EMAIL: z
+    .string()
+    .email('RESEND_FROM_EMAIL must be a valid email address')
+    .optional(),
+  RESEND_REPLY_TO: z
+    .string()
+    .email('RESEND_REPLY_TO must be a valid email address')
+    .optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -41,4 +54,31 @@ export function serverEnv(): ServerEnv {
 
   cached = parsed.data;
   return cached;
+}
+
+/** The Resend config required to actually send mail (a narrowed, non-optional view). */
+export type EmailEnv = {
+  apiKey: string;
+  from: string;
+  replyTo?: string;
+};
+
+/**
+ * Asserts the email-sending vars are configured and returns them narrowed. Throws
+ * a readable (key-free) error if `RESEND_API_KEY` / `RESEND_FROM_EMAIL` are missing
+ * — the email action maps that to a stable `EMAIL_FAILED` code and logs it via
+ * `logError` (which never receives the key itself). Call only on the send path.
+ */
+export function emailEnv(): EmailEnv {
+  const env = serverEnv();
+  if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) {
+    throw new Error(
+      'Email is not configured: set RESEND_API_KEY and RESEND_FROM_EMAIL.',
+    );
+  }
+  return {
+    apiKey: env.RESEND_API_KEY,
+    from: env.RESEND_FROM_EMAIL,
+    replyTo: env.RESEND_REPLY_TO,
+  };
 }

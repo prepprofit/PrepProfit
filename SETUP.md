@@ -65,6 +65,16 @@ Required when scheduled purge is enabled:
 
 - `CRON_SECRET`
 
+Required when emailing documents is enabled (Sprint 3.5C):
+
+- `RESEND_API_KEY` - Resend API key. A secret; never commit it and it is never logged.
+- `RESEND_FROM_EMAIL` - the verified sender address (e.g. `documents@yourdomain.com`).
+- `RESEND_REPLY_TO` (optional) - reply-to address; set on outbound mail when present.
+
+These are validated lazily (`emailEnv()` in `lib/env.ts`): the rest of the app runs without
+them, and only the email send path requires them. A missing key surfaces as the stable
+`EMAIL_FAILED` action error, never a leaked secret.
+
 Optional (tests only):
 
 - `TEST_DATABASE_URL` - a disposable Neon branch for the opt-in real-Postgres
@@ -77,7 +87,6 @@ Optional (tests only):
 Planned later:
 
 - Billing/webhook secrets in Sprint 4
-- Resend/email secrets in Sprint 3.5B
 - AI provider key in Sprint 4.7
 - Sentry/PostHog secrets in Sprint 5
 
