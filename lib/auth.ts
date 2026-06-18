@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 
 export const USER_ROLES = ['manager', 'kitchen'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
@@ -25,6 +25,24 @@ export async function getUserId(): Promise<string> {
     throw new Error('Not authenticated.');
   }
   return userId;
+}
+
+/**
+ * Display name of the active Clerk organization. Used only as a fallback for the
+ * document seller header (Sprint 3.5A) when the org has not filled in its
+ * `businessName` setting. Returns null if it cannot be resolved — callers must
+ * tolerate a missing name. The org id still comes from the server (RULE #1).
+ */
+export async function getOrgName(): Promise<string | null> {
+  const { orgId } = await auth();
+  if (!orgId) return null;
+  try {
+    const client = await clerkClient();
+    const org = await client.organizations.getOrganization({ organizationId: orgId });
+    return org.name ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**

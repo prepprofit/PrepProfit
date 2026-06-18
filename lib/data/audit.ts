@@ -41,8 +41,9 @@ export type AuditAction =
   | 'trash.purge'
   // Org settings
   | 'settings.update'
-  // Sensitive exports
+  // Sensitive exports / generated documents
   | 'export.transactionsCsv'
+  | 'export.invoicePdf'
   // Automated cron purge (system actor)
   | 'cron.purge';
 
