@@ -42,6 +42,9 @@ Wibox-dashboard-app-main.zip
 /logo/
 /logo_final.jpg
 
+# graphify knowledge-graph artifacts (regenerate with `/graphify .`)
+/graphify-out/
+
 # agent skills (tooling assets — reproducible via `npx skills add`)
 /.agents/
 /.claude/
