@@ -120,6 +120,33 @@ export async function countActiveRecipesUsingIngredient(
   return rows[0]?.value ?? 0;
 }
 
+/**
+ * Takes a FOR UPDATE lock on an active ingredient row, returning whether one
+ * exists. `deleteIngredientAction` calls this before its in-use check, and
+ * `addRecipeIngredient` locks the same row before wiring a line — so the two
+ * flows serialize on this row and the "active recipe references only active
+ * ingredients" invariant can't be raced under READ COMMITTED.
+ */
+export async function lockActiveIngredient(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: ingredients.id })
+    .from(ingredients)
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, id),
+        isNull(ingredients.deletedAt),
+      ),
+    )
+    .for('update')
+    .limit(1);
+  return rows.length > 0;
+}
+
 /** Moves an active ingredient to the trash. Returns null if it was not active. */
 export async function softDeleteIngredient(
   db: TenantClient,

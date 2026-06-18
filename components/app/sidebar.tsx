@@ -79,11 +79,21 @@ export function Sidebar({
   const tTop = useTranslations('topbar');
   const { resolvedTheme } = useTheme();
 
+  // Kitchen staff lose the Finance + Team groups entirely, and the Dashboard
+  // (a manager cockpit — the server redirects them away from it) is dropped from
+  // the Operations group too.
   const groups = canSeeFinance
     ? navGroups
-    : navGroups.filter(
-        (group) => group.key !== 'finance' && group.key !== 'team',
-      );
+    : navGroups
+        .filter((group) => group.key !== 'finance' && group.key !== 'team')
+        .map((group) =>
+          group.key === 'operations'
+            ? {
+                ...group,
+                items: group.items.filter((item) => item.key !== 'dashboard'),
+              }
+            : group,
+        );
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);

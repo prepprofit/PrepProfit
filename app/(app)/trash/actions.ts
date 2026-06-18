@@ -8,6 +8,7 @@ import { unexpected } from '@/lib/observability';
 import { purgeIngredient, restoreIngredient } from '@/lib/data/ingredients';
 import {
   countTrashedIngredientsInRecipe,
+  lockRecipeReferencedIngredients,
   purgeRecipe,
   restoreRecipe,
 } from '@/lib/data/recipes';
@@ -48,8 +49,12 @@ function revalidateTrashInvoices(): void {
 export async function restoreRecipeAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
-  // Block + restore in one transaction so the guard can't be raced.
+  // Block + restore in one transaction so the guard can't be raced. Locking the
+  // referenced ingredient rows first serializes against a concurrent ingredient
+  // trash (which takes the same locks), so we can't restore the recipe to active
+  // just as one of its ingredients is being trashed.
   const outcome = await withOrg(organizationId, async (tx) => {
+    await lockRecipeReferencedIngredients(tx, organizationId, id);
     const trashedIngredients = await countTrashedIngredientsInRecipe(
       tx,
       organizationId,

@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { currentUser } from '@clerk/nextjs/server';
 import {
@@ -115,7 +116,13 @@ export default async function DashboardPage({
   const tFin = await getTranslations('finance.dashboard');
   const tCat = await getTranslations('finance.categories');
   const organizationId = await getOrgId();
-  const canSeeFinance = canAccessFinancials(await getUserRole());
+  // The dashboard is a manager cockpit — financial figures throughout (and the
+  // operational KPIs are derived from recipe cost/price). Kitchen staff don't see
+  // it at all; they're sent to their workspace. The nav hides the link and this
+  // guard enforces it server-side (defense-in-depth, mirrors /settings).
+  if (!canAccessFinancials(await getUserRole())) {
+    redirect('/recipes');
+  }
   const firstName = (await currentUser())?.firstName?.trim();
   const settings = await getOrgSettings();
   const sp = await searchParams;
@@ -173,9 +180,8 @@ export default async function DashboardPage({
     thresholdCanonical: i.thresholdCanonical as number,
   }));
 
-  // Finance data — managers only.
-  const finance = canSeeFinance
-    ? await (async () => {
+  // Finance data — the page is manager-only (kitchen is redirected above).
+  const finance = await (async () => {
         const yearKey = String(resolved.year);
         const year = resolvePeriod('year', yearKey);
 
@@ -233,8 +239,7 @@ export default async function DashboardPage({
           })),
           recentTxns: txns.recent,
         };
-      })()
-    : null;
+      })();
 
   const pricedCaption = t('kpi.pricedRecipes', { count: summary.pricedRecipes });
   const pct = (value: number | null) => (value == null ? '—' : `${value}%`);
@@ -268,9 +273,7 @@ export default async function DashboardPage({
           </h2>
           <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
-        {canSeeFinance && (
-          <DashboardPeriodSelect value={periodKey} options={periodOptions} />
-        )}
+        <DashboardPeriodSelect value={periodKey} options={periodOptions} />
       </div>
 
       {/* Money KPI row — managers only */}

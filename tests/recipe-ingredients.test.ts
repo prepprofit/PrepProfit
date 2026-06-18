@@ -2,7 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import type { TenantDb } from '@/lib/db/tenant';
-import { createIngredient, softDeleteIngredient } from '@/lib/data/ingredients';
+import {
+  createIngredient,
+  lockActiveIngredient,
+  softDeleteIngredient,
+} from '@/lib/data/ingredients';
 import { createRecipe, softDeleteRecipe } from '@/lib/data/recipes';
 import { addRecipeIngredient } from '@/lib/data/recipe-ingredients';
 
@@ -77,5 +81,27 @@ describe('addRecipeIngredient — active-row guards', () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('recipe_not_active');
+  });
+});
+
+/**
+ * The trash/add flows serialize on a FOR UPDATE lock of the ingredient row so a
+ * concurrent trash can't slip between the in-use check and the line insert. The
+ * lock itself can't be exercised concurrently under single-connection PGlite, but
+ * its row-selection (active row only, org-scoped) is what makes the serialization
+ * point correct — so we pin that.
+ */
+describe('lockActiveIngredient', () => {
+  it('reports an active ingredient as lockable, a trashed or foreign one not', async () => {
+    const ingredient = await createIngredient(db, ORG, {
+      name: 'Yeast',
+      dimension: 'weight',
+      priceCents: 50,
+    });
+    expect(await lockActiveIngredient(db, ORG, ingredient.id)).toBe(true);
+    expect(await lockActiveIngredient(db, 'org_other', ingredient.id)).toBe(false);
+
+    await softDeleteIngredient(db, ORG, ingredient.id);
+    expect(await lockActiveIngredient(db, ORG, ingredient.id)).toBe(false);
   });
 });

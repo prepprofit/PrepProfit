@@ -43,6 +43,11 @@ export async function addRecipeIngredient(
     .limit(1);
   if (!recipe) return { ok: false, reason: 'recipe_not_active' };
 
+  // Lock the ingredient row FOR UPDATE before inserting the line. The trash and
+  // restore flows (deleteIngredientAction, restoreRecipeAction) take the same
+  // lock, so a concurrent "trash this ingredient" can't slip its in-use check
+  // between this read and the insert under READ COMMITTED — which would otherwise
+  // leave an active recipe pointing at a trashed ingredient.
   const [ingredient] = await db
     .select({ id: ingredients.id })
     .from(ingredients)
@@ -53,6 +58,7 @@ export async function addRecipeIngredient(
         isNull(ingredients.deletedAt),
       ),
     )
+    .for('update')
     .limit(1);
   if (!ingredient) return { ok: false, reason: 'ingredient_trashed' };
 

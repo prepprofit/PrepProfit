@@ -305,6 +305,38 @@ export async function countTrashedIngredientsInRecipe(
   return rows[0]?.value ?? 0;
 }
 
+/**
+ * Locks (FOR UPDATE) every ingredient row this recipe references, in a stable id
+ * order. `restoreRecipeAction` takes these locks before its trashed-ingredient
+ * check + restore, so a concurrent ingredient trash (which locks the same rows)
+ * can't interleave and leave the freshly-restored active recipe pointing at a
+ * trashed ingredient. Ordering by id keeps two such transactions deadlock-free.
+ */
+export async function lockRecipeReferencedIngredients(
+  db: TenantClient,
+  organizationId: string,
+  recipeId: string,
+): Promise<void> {
+  await db
+    .select({ id: ingredients.id })
+    .from(recipeIngredients)
+    .innerJoin(
+      ingredients,
+      and(
+        eq(recipeIngredients.ingredientId, ingredients.id),
+        eq(ingredients.organizationId, organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(recipeIngredients.organizationId, organizationId),
+        eq(recipeIngredients.recipeId, recipeId),
+      ),
+    )
+    .orderBy(ingredients.id)
+    .for('update', { of: ingredients });
+}
+
 /** Moves an active recipe to the trash. Returns null if it was not active. */
 export async function softDeleteRecipe(
   db: TenantClient,

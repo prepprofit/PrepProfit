@@ -137,4 +137,16 @@ describe('setLowStockThreshold', () => {
     const stillOurs = await getIngredientById(db, ORG_A, ingredientId);
     expect(stillOurs?.lowStockThreshold).toBeNull();
   });
+
+  it('does not touch a trashed ingredient (must be restored first)', async () => {
+    const ing = await createIngredient(db, ORG_A, {
+      name: 'Salt',
+      dimension: 'weight',
+      priceCents: 30,
+    });
+    await softDeleteIngredient(db, ORG_A, ing.id);
+
+    const result = await setLowStockThreshold(db, ORG_A, ing.id, 100);
+    expect(result).toBeNull();
+  });
 });

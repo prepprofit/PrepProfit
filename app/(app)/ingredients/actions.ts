@@ -6,6 +6,7 @@ import { withOrg } from '@/lib/db';
 import {
   countActiveRecipesUsingIngredient,
   createIngredient,
+  lockActiveIngredient,
   softDeleteIngredient,
   updateIngredient,
 } from '@/lib/data/ingredients';
@@ -57,14 +58,19 @@ export async function updateIngredientAction(
 
 /**
  * Moves an ingredient to the trash (soft-delete). Blocked if any ACTIVE recipe
- * still uses it — the in-use check and the soft-delete run in one transaction so
- * a recipe cannot start using it between the two. Restorable for 30 days via /trash.
+ * still uses it — the row is locked FOR UPDATE first, then the in-use check and
+ * the soft-delete run in one transaction, so a recipe cannot start using it
+ * between the two (addRecipeIngredient takes the same lock). Restorable for 30
+ * days via /trash.
  */
 export async function deleteIngredientAction(
   id: string,
 ): Promise<ActionResult> {
   const organizationId = await getOrgId();
   const outcome = await withOrg(organizationId, async (tx) => {
+    if (!(await lockActiveIngredient(tx, organizationId, id))) {
+      return { status: 'not_found' as const };
+    }
     const inUse = await countActiveRecipesUsingIngredient(tx, organizationId, id);
     if (inUse > 0) return { status: 'in_use' as const, inUse };
     const row = await softDeleteIngredient(tx, organizationId, id);

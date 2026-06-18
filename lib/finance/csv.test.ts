@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toCsv, transactionsToCsv } from './csv';
+import { neutralizeFormula, toCsv, transactionsToCsv } from './csv';
 
 describe('toCsv', () => {
   it('joins headers and rows with CRLF', () => {
@@ -13,7 +13,45 @@ describe('toCsv', () => {
   });
 });
 
+describe('neutralizeFormula', () => {
+  // A spreadsheet treats a cell starting with any of these as a formula.
+  it.each(['=', '+', '-', '@', '\t', '\r'])(
+    'prefixes a quote when the value starts with %j',
+    (lead) => {
+      expect(neutralizeFormula(`${lead}cmd`)).toBe(`'${lead}cmd`);
+    },
+  );
+
+  it('leaves plain text untouched', () => {
+    expect(neutralizeFormula('Food sales')).toBe('Food sales');
+    // Only the FIRST character matters — an interior sign is harmless.
+    expect(neutralizeFormula('a=b')).toBe('a=b');
+    expect(neutralizeFormula('')).toBe('');
+  });
+});
+
 describe('transactionsToCsv', () => {
+  it('neutralizes formula-leading user text in category/recipe/note', () => {
+    const csv = transactionsToCsv([
+      {
+        occurredOn: '2026-06-12',
+        type: 'expense',
+        categoryName: '=SUM(A1:A9)',
+        recipeName: '+budget',
+        amountCents: 500,
+        note: '@cmd',
+      },
+    ]);
+    expect(csv).toBe(
+      [
+        'date,type,category,recipe,amount,note',
+        // Each user field gains a leading quote so it renders as literal text.
+        "2026-06-12,expense,'=SUM(A1:A9),'+budget,5.00,'@cmd",
+      ].join('\r\n'),
+    );
+  });
+
+
   it('emits the template columns with formatted amount and blank optionals', () => {
     const csv = transactionsToCsv([
       {
