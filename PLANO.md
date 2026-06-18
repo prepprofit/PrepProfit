@@ -25,10 +25,11 @@ Deferred/resequenced:
 Completed (continued):
 
 - [x] Sprint 3.1 - production hardening: Postgres rate limiter, append-only audit log, recipe-line mutation hardening, real-Postgres concurrency proof
+- [x] Sprint 3.5A - document foundation and invoice PDF (PDF route + print view, seller-identity settings, `@react-pdf/renderer`)
 
 Next sprint:
 
-- [ ] Sprint 3.5A - document foundation and invoice PDF
+- [ ] Sprint 3.5B - reports, Excel exports, and document email
 
 ---
 
@@ -121,11 +122,11 @@ Decisions to lock before coding:
 
 Tasks:
 
-- [ ] Add shared document primitives: org header, document metadata, money/date formatting, page footer, and safe text rendering.
-- [ ] Add invoice print view and invoice PDF route/action. Both derive org id server-side, check manager role before data access, run inside `withOrg`, and use existing invoice totals.
-- [ ] Add document generation audit events and rate-limit checks.
-- [ ] Add tests proving cross-org invoice ids return not found/forbidden, kitchen cannot generate, totals reconcile with on-screen invoice data, and generated output is non-empty/valid.
-- [ ] Add localized UI for print/download actions and failure states.
+- [x] Add shared document primitives: seller header, document metadata, money/date formatting, and safe text rendering (`lib/documents/`: `types.ts`, `format.ts`, `invoice-data.ts`, `invoice-labels.ts`). Seller identity (`business_*`) added to `organization_settings` (migration 0013).
+- [x] Add invoice print view (`/invoices/[id]/print`) and invoice PDF route (`/api/invoices/[id]/pdf`). Both derive org id server-side, check manager role before data access, run inside `withOrg`, reuse the shared view-model, and use the frozen invoice totals.
+- [x] Add document generation audit events (`export.invoicePdf`) and rate-limit checks (`documents` bucket, 20/min).
+- [x] Add tests proving cross-org invoice ids return 404, kitchen cannot generate (403), totals reconcile with on-screen invoice data, and generated output is non-empty/valid PDF.
+- [x] Add localized UI for print/download actions (`invoices.detail.print` / `downloadPdf`) and the seller-identity settings form.
 
 Acceptance criteria:
 
