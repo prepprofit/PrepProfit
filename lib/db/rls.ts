@@ -13,12 +13,59 @@ import { businessTables } from './schema';
  *
  * Statements are generated from `businessTables` so no business table can be
  * left without isolation.
+ *
+ * APPEND-ONLY EXCEPTION (`audit_log`): instead of the generic `FOR ALL` policy,
+ * it gets SELECT-only and INSERT-only policies. With FORCE RLS and no UPDATE or
+ * DELETE policy, those commands match zero rows — the audit trail can never be
+ * mutated or erased, not even by the app role. Org isolation still holds via the
+ * same `organization_id = current_setting(...)` predicate.
  */
-export const rlsStatements: string[] = businessTables.flatMap((table) => [
-  `ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`,
-  `ALTER TABLE ${table} FORCE ROW LEVEL SECURITY;`,
-  `DROP POLICY IF EXISTS org_isolation ON ${table};`,
-  `CREATE POLICY org_isolation ON ${table}
-     USING (organization_id = current_setting('app.current_org_id', true))
-     WITH CHECK (organization_id = current_setting('app.current_org_id', true));`,
-]);
+
+/** Table whose RLS is append-only (SELECT + INSERT, never UPDATE/DELETE). */
+const APPEND_ONLY_TABLE = 'audit_log';
+
+/** Enable + force RLS on a table (shared prologue for every policy set). */
+function enableForce(table: string): string[] {
+  return [
+    `ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`,
+    `ALTER TABLE ${table} FORCE ROW LEVEL SECURITY;`,
+  ];
+}
+
+/** The standard org-isolation policy: read + write the active org's rows only. */
+function orgIsolationPolicy(table: string): string[] {
+  return [
+    ...enableForce(table),
+    `DROP POLICY IF EXISTS org_isolation ON ${table};`,
+    `CREATE POLICY org_isolation ON ${table}
+       USING (organization_id = current_setting('app.current_org_id', true))
+       WITH CHECK (organization_id = current_setting('app.current_org_id', true));`,
+  ];
+}
+
+/**
+ * Append-only org isolation: rows of the active org are readable and insertable,
+ * but there is NO update/delete policy, so those commands affect zero rows under
+ * FORCE RLS. Drop the generic `org_isolation` too, in case a prior deploy created
+ * it (idempotent re-runs).
+ */
+function appendOnlyPolicy(table: string): string[] {
+  return [
+    ...enableForce(table),
+    `DROP POLICY IF EXISTS org_isolation ON ${table};`,
+    `DROP POLICY IF EXISTS org_isolation_select ON ${table};`,
+    `DROP POLICY IF EXISTS org_isolation_insert ON ${table};`,
+    `CREATE POLICY org_isolation_select ON ${table}
+       FOR SELECT
+       USING (organization_id = current_setting('app.current_org_id', true));`,
+    `CREATE POLICY org_isolation_insert ON ${table}
+       FOR INSERT
+       WITH CHECK (organization_id = current_setting('app.current_org_id', true));`,
+  ];
+}
+
+export const rlsStatements: string[] = businessTables.flatMap((table) =>
+  table === APPEND_ONLY_TABLE
+    ? appendOnlyPolicy(table)
+    : orgIsolationPolicy(table),
+);

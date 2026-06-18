@@ -10,6 +10,7 @@ import {
   index,
   unique,
   foreignKey,
+  jsonb,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -586,6 +587,64 @@ export const shifts = pgTable(
   ],
 );
 
+/**
+ * Append-only AUDIT LOG (Sprint 3.1, module-wide). One row per high-risk mutation
+ * (financial changes, invoice lifecycle, payroll, trash restore/purge, settings,
+ * exports, cron purge). RULE #1 still holds — it carries `organization_id` and is
+ * in `businessTables`, so it is org-isolated. UNLIKE every other table its RLS is
+ * SELECT/INSERT-only (see lib/db/rls.ts): with FORCE RLS and no UPDATE/DELETE
+ * policy, the log can never be edited or erased, even by the app role — append-only
+ * is a DB guarantee, not a convention.
+ *
+ * `actor_user_id` is NULLABLE and `actor_role` accepts `'system'` so the org-less
+ * cron purge (no logged-in user) can still attribute its events. `metadata` holds
+ * only non-sensitive descriptors (ids, counts, status) — never PII or raw content.
+ */
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // NULL = non-user actor (cron). Otherwise the Clerk user id.
+    actorUserId: text('actor_user_id'),
+    // 'manager' | 'kitchen' | 'system' (system = cron/automated, no user).
+    actorRole: text('actor_role').notNull(),
+    // Stable machine action key, e.g. 'transaction.create', 'invoice.issue'.
+    action: text('action').notNull(),
+    // The entity kind + id the action touched (id nullable for non-entity events).
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id'),
+    // Non-sensitive structured context (amounts/counts/status). Never PII.
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+    // Correlates all events from one action invocation / request.
+    requestId: text('request_id').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('audit_log_org_idx').on(t.organizationId),
+    // Serves the (future) manager audit view: newest-first per org.
+    index('audit_log_org_created_idx').on(t.organizationId, t.createdAt),
+  ],
+);
+
+/**
+ * Rate-limit buckets (Sprint 3.1). INFRA table — DELIBERATELY NOT a business table:
+ * it carries no `organization_id` and is NOT in `businessTables`, so it gets NO RLS.
+ * This is the one documented exception to RULE #1 (CLAUDE.md "rate limiting"): the
+ * limiter must run for the org-less cron route (authenticated by CRON_SECRET, before
+ * any `withOrg`), so it cannot depend on the org GUC. Tenancy is instead encoded —
+ * and HASHED — inside the opaque `key` (e.g. sha256('search:<org>:<user>')), so no
+ * raw tenant id or secret is ever stored. Fixed-window counter (see lib/rate-limit).
+ */
+export const rateLimits = pgTable('rate_limits', {
+  // Opaque "<bucket>:<sha256(scope)>" — never a raw id/secret (see lib/rate-limit).
+  key: text('key').primaryKey(),
+  // Start of the current window; reset atomically when it falls out of range.
+  windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+  // Hits counted in the current window.
+  count: integer('count').notNull(),
+});
+
 export type Ingredient = InferSelectModel<typeof ingredients>;
 export type NewIngredient = InferInsertModel<typeof ingredients>;
 export type InventoryMovement = InferSelectModel<typeof inventoryMovements>;
@@ -616,6 +675,9 @@ export type Employee = InferSelectModel<typeof employees>;
 export type NewEmployee = InferInsertModel<typeof employees>;
 export type Shift = InferSelectModel<typeof shifts>;
 export type NewShift = InferInsertModel<typeof shifts>;
+export type AuditLogEntry = InferSelectModel<typeof auditLog>;
+export type NewAuditLogEntry = InferInsertModel<typeof auditLog>;
+export type RateLimitRow = InferSelectModel<typeof rateLimits>;
 
 /** All business tables, for applying RLS in bulk. */
 export const businessTables = [
@@ -633,4 +695,9 @@ export const businessTables = [
   'invoice_items',
   'employees',
   'shifts',
+  // Append-only audit log: org-isolated like the rest, but its RLS is
+  // SELECT/INSERT-only (lib/db/rls.ts) so it can never be edited or erased.
+  'audit_log',
+  // NOTE: `rate_limits` is intentionally ABSENT — it is infra, not tenant data,
+  // and must work without an org context (see its table comment + lib/db/rls.ts).
 ] as const;

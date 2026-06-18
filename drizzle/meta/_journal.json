@@ -85,6 +85,13 @@
       "when": 1781681256367,
       "tag": "0011_shocking_snowbird",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1781804380791,
+      "tag": "0012_exotic_captain_cross",
+      "breakpoints": true
     }
   ]
 }
