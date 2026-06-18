@@ -38,6 +38,15 @@ Planned additions must land only in their sprint:
 - Writes run inside `withOrg(...)` so RLS `USING` and `WITH CHECK` policies are active.
 - Cross-tenant foreign links use composite `(organization_id, foreign_id)` FKs.
 - A query without an org filter is a security bug.
+- Documented exception: `rate_limits` is INFRA, not tenant data — it has no `organization_id`, is absent from `businessTables`, and gets no RLS. The limiter must run for the org-less cron route (before any `withOrg`), so tenancy is encoded — and sha256-hashed — inside the opaque `key`. This is the only table allowed to skip Rule 1.
+
+## Audit log and rate limiting (Sprint 3.1)
+
+- High-risk mutations (financial, invoice lifecycle, payroll, trash restore/purge, settings, exports, cron purge) append an `audit_log` event INSIDE the mutation's `withOrg` transaction (atomic, RLS-scoped) via `writeAuditEvent` (`lib/data/audit.ts`).
+- `audit_log` is append-only at the DB layer: its RLS has SELECT + INSERT policies only (`lib/db/rls.ts`), so UPDATE/DELETE match zero rows. Never add an update/delete path for it.
+- Audit `metadata` carries only non-sensitive descriptors (ids, counts, status). Never PII, raw notes, or document/image contents.
+- The cron actor is `{ userId: null, role: 'system' }` — `actor_user_id` is nullable and `actor_role` accepts `'system'`.
+- Abuse-prone routes/actions check the Postgres fixed-window limiter (`lib/rate-limit/`) BEFORE org work, keyed by `rateLimitKey(bucket, scope)` where authenticated scope is `"<orgId>:<userId>"` and cron scope is the auth header. Actions return `RATE_LIMITED`; route handlers return HTTP 429.
 
 ## Authorization
 

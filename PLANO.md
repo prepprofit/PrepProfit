@@ -22,9 +22,13 @@ Deferred/resequenced:
 - Sprint 2.5 import is intentionally moved to Sprint 4.5/4.6. Import must not ship before billing/limits and server-side staging are in place.
 - AI/photo recipe extraction is intentionally Sprint 4.7. It depends on billing/usage limits, `import_jobs`, and the ingredient resolver.
 
+Completed (continued):
+
+- [x] Sprint 3.1 - production hardening: Postgres rate limiter, append-only audit log, recipe-line mutation hardening, real-Postgres concurrency proof
+
 Next sprint:
 
-- [ ] Sprint 3.1 - production hardening before documents/import/billing expansion
+- [ ] Sprint 3.5A - document foundation and invoice PDF
 
 ---
 
@@ -87,13 +91,13 @@ Decisions locked:
 
 Tasks:
 
-- [ ] Fix the recipe-line active-row invariant under real Postgres concurrency. Lock the recipe and ingredient rows involved in `addRecipeIngredient`, lock/serialize `deleteIngredientAction`, and lock/serialize `restoreRecipeAction`.
-- [ ] Harden `updateRecipeIngredient` and `removeRecipeIngredient` so they only mutate lines attached to an active recipe in the same org.
-- [ ] Add a small Postgres-backed rate limiter helper and wire it to cron purge, transaction CSV export, global search, and future document/import/AI extension points.
-- [ ] Add `audit_log` table: `organization_id`, `actor_user_id`, `actor_role`, `action`, `entity_type`, `entity_id`, `metadata`, `created_at`, `request_id`.
-- [ ] Write audit events for financial mutations, invoice lifecycle changes, payroll mutations, trash restore/purge, settings changes, exports, cron purge, and future document/import hooks.
-- [ ] Add regression tests for CSV formula neutralization (`=`, `+`, `-`, `@`, tab, CR) and for low-stock threshold refusing trashed ingredients.
-- [ ] Sync repo docs: README roadmap, SETUP env/setup, CLAUDE rules, and this plan.
+- [x] Fix the recipe-line active-row invariant under real Postgres concurrency. The `FOR UPDATE` locks in `addRecipeIngredient`, `deleteIngredientAction`/`trashIngredient`, and `restoreRecipeAction` shipped earlier (commit `1826001`); Sprint 3.1 adds the opt-in real-Postgres proof (`tests/concurrency/recipe-line.pg.test.ts`, gated by `TEST_DATABASE_URL`) since PGlite cannot prove concurrent `FOR UPDATE`.
+- [x] Harden `updateRecipeIngredient` and `removeRecipeIngredient` so they only mutate lines attached to an active recipe in the same org (EXISTS guard on the active parent recipe + matching `recipeId`; a forged line id from a trashed/foreign recipe returns `NOT_FOUND`).
+- [x] Add a small Postgres-backed rate limiter helper (`lib/rate-limit/`, atomic fixed-window, sha256 keys) and wire it to cron purge, transaction CSV export, and global search. Document/import/AI extension points are reserved buckets in `lib/rate-limit/config.ts`.
+- [x] Add `audit_log` table: `organization_id`, `actor_user_id` (nullable), `actor_role` (incl. `system`), `action`, `entity_type`, `entity_id`, `metadata`, `created_at`, `request_id`. Append-only at the DB layer (RLS: SELECT + INSERT policies only).
+- [x] Write audit events for financial mutations, invoice lifecycle changes, payroll mutations, trash restore/purge, settings changes, exports, and cron purge (`lib/data/audit.ts` + each action).
+- [x] CSV formula neutralization (`=`, `+`, `-`, `@`, tab, CR) and low-stock-refuses-trashed regression tests already shipped earlier (`lib/finance/csv.test.ts`, `tests/inventory.test.ts`); not redone.
+- [x] Sync repo docs: README roadmap, SETUP env/setup, CLAUDE rules, and this plan.
 
 Acceptance criteria:
 

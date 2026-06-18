@@ -65,6 +65,15 @@ Required when scheduled purge is enabled:
 
 - `CRON_SECRET`
 
+Optional (tests only):
+
+- `TEST_DATABASE_URL` - a disposable Neon branch for the opt-in real-Postgres
+  concurrency proof (`tests/concurrency/recipe-line.pg.test.ts`). PGlite is a single
+  connection and cannot exercise concurrent `SELECT … FOR UPDATE`, so that test is
+  skipped unless this is set. To run it: migrate the branch first
+  (`DATABASE_URL=<branch-url> npm run db:migrate`), then
+  `TEST_DATABASE_URL=<branch-url> npm test`. Never point it at production.
+
 Planned later:
 
 - Billing/webhook secrets in Sprint 4

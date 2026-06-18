@@ -134,7 +134,7 @@ Required production checks:
 - [x] Sprint 2 - Financials and break-even
 - [x] Sprint 2.7 - Global search
 - [x] Sprint 3 - Invoices and payroll data/builders
-- [ ] Sprint 3.1 - Production hardening
+- [x] Sprint 3.1 - Production hardening (rate limiter, audit log, concurrency proof)
 - [ ] Sprint 3.5A - Document foundation and invoice PDF
 - [ ] Sprint 3.5B - Reports, Excel exports, and document email
 - [ ] Sprint 4 - Billing and entitlements
