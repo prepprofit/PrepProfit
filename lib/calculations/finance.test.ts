@@ -3,7 +3,9 @@ import {
   financeSummary,
   monthlyBuckets,
   comparePeriods,
+  cumulativeProfit,
   type FinanceTxn,
+  type MonthlyBucket,
 } from './finance';
 
 function income(
@@ -151,5 +153,30 @@ describe('comparePeriods', () => {
     const c = comparePeriods(4_000, 10_000);
     expect(c.deltaCents).toBe(-6_000);
     expect(c.changePercent).toBe(-60);
+  });
+});
+
+describe('cumulativeProfit', () => {
+  const bucket = (month: number, profitCents: number): MonthlyBucket => ({
+    month,
+    incomeCents: 0,
+    expenseCents: 0,
+    profitCents,
+  });
+
+  it('returns an empty array for no buckets', () => {
+    expect(cumulativeProfit([])).toEqual([]);
+  });
+
+  it('accumulates profit month over month', () => {
+    expect(
+      cumulativeProfit([bucket(1, 1000), bucket(2, 500), bucket(3, 2000)]),
+    ).toEqual([1000, 1500, 3500]);
+  });
+
+  it('accumulates negative months (a running drawdown)', () => {
+    expect(
+      cumulativeProfit([bucket(1, 1000), bucket(2, -1500), bucket(3, 200)]),
+    ).toEqual([1000, -500, -300]);
   });
 });

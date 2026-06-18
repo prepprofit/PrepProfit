@@ -139,6 +139,19 @@ export function monthlyBuckets(txns: FinanceTxn[], year: number): MonthlyBucket[
   return buckets;
 }
 
+/**
+ * Running total of profit across the year's buckets — month-by-month cumulative
+ * cash flow (`result[i]` = Σ profit of months 0..i). Pure; the caller decides how
+ * to trim trailing empty months for display.
+ */
+export function cumulativeProfit(buckets: MonthlyBucket[]): number[] {
+  let running = 0;
+  return buckets.map((b) => {
+    running += b.profitCents;
+    return running;
+  });
+}
+
 export type PeriodComparison = {
   currentCents: number;
   priorCents: number;

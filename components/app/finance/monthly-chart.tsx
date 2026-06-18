@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Area,
@@ -18,6 +18,7 @@ import {
   ChartTooltipContent,
   FINANCE_COLORS,
 } from '@/components/ui/chart';
+import { usePrefersReducedMotion } from '@/lib/hooks/use-prefers-reduced-motion';
 import { formatMoney, formatMoneyCompact } from '@/lib/format/money';
 
 export type MonthlyDatum = {
@@ -27,19 +28,6 @@ export type MonthlyDatum = {
   expenseCents: number;
   profitCents: number;
 };
-
-/** Respects the OS "reduce motion" setting — disables Recharts' entry animation. */
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReduced(mq.matches);
-    const on = () => setReduced(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
-  return reduced;
-}
 
 /**
  * Income vs expense (smooth gradient areas) with a profit overlay (line) by month —

@@ -316,6 +316,14 @@
       "title": "Low stock",
       "empty": "Everything is well stocked."
     },
+    "analytics": {
+      "title": "Analytics",
+      "incomeVsExpenses": "Income vs expenses",
+      "profit": "Profit",
+      "income": "Revenue",
+      "expenses": "Expenses",
+      "cashflow": "Cash flow"
+    },
     "recentTransactions": "Recent transactions",
     "viewAll": "View all",
     "noRecentTransactions": "No transactions yet.",

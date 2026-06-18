@@ -43,7 +43,7 @@ import {
 import { StatCard, type StatCardProps } from '@/components/ui/stat-card';
 import { TopRecipes } from '@/components/app/dashboard/top-recipes';
 import { MarginGauge } from '@/components/app/dashboard/margin-gauge';
-import { MonthlyChart } from '@/components/app/finance/monthly-chart';
+import { DashboardChartCard } from '@/components/app/dashboard/dashboard-chart-card';
 import { CategoryBreakdown } from '@/components/app/finance/category-breakdown';
 import { TopProducts } from '@/components/app/finance/top-products';
 import { DashboardPeriodSelect } from '@/components/app/dashboard/dashboard-period-select';
@@ -335,14 +335,19 @@ export default async function DashboardPage({
       {/* Bento grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {finance && (
-          <Card className="flex flex-col md:col-span-2">
-            <CardHeader>
-              <CardTitle>{tFin('monthlyTitle')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <MonthlyChart data={finance.monthly} currency={finance.currency} />
-            </CardContent>
-          </Card>
+          <DashboardChartCard
+            data={finance.monthly}
+            currency={finance.currency}
+            className="md:col-span-2"
+            labels={{
+              title: t('analytics.title'),
+              incomeVsExpenses: t('analytics.incomeVsExpenses'),
+              profit: t('analytics.profit'),
+              income: t('analytics.income'),
+              expenses: t('analytics.expenses'),
+              cashflow: t('analytics.cashflow'),
+            }}
+          />
         )}
         <MarginGauge
           value={summary.avgMarginPercent}
