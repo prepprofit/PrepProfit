@@ -59,6 +59,8 @@ export type InvoiceListItem = {
   customerName: string | null;
   totalCents: number;
   issueDate: string | null;
+  /** Bare 'YYYY-MM-DD' due date (set at issue), or null. Drives AR "overdue". */
+  dueDate: string | null;
   createdAt: Date;
 };
 
@@ -76,6 +78,7 @@ export async function listInvoices(
       liveName: customers.name,
       totalCents: invoices.totalCents,
       issueDate: invoices.issueDate,
+      dueDate: invoices.dueDate,
       createdAt: invoices.createdAt,
     })
     .from(invoices)
@@ -98,6 +101,7 @@ export async function listInvoices(
     customerName: r.snapshotName ?? r.liveName ?? null,
     totalCents: r.totalCents,
     issueDate: r.issueDate,
+    dueDate: r.dueDate,
     createdAt: r.createdAt,
   }));
 }

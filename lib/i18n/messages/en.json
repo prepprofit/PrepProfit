@@ -292,6 +292,9 @@
     },
     "kpi": {
       "revenue": "Revenue",
+      "profit": "Profit",
+      "expenses": "Expenses",
+      "accountsReceivable": "Accounts receivable",
       "foodCost": "Avg. food cost",
       "margin": "Avg. margin",
       "recipes": "Active recipes",
@@ -299,6 +302,19 @@
       "thisMonth": "This month",
       "noPricedRecipes": "No priced recipes yet",
       "pricedRecipes": "{count, plural, =0 {No priced recipes} one {# priced recipe} other {# priced recipes}}"
+    },
+    "invoices": {
+      "title": "Invoices",
+      "outstanding": "Outstanding",
+      "outstandingCaption": "{count, plural, =0 {No issued invoices} one {# issued invoice} other {# issued invoices}}",
+      "overdue": "Overdue",
+      "drafts": "Drafts",
+      "issued": "Issued",
+      "paid": "Paid"
+    },
+    "lowStock": {
+      "title": "Low stock",
+      "empty": "Everything is well stocked."
     },
     "recentTransactions": "Recent transactions",
     "viewAll": "View all",

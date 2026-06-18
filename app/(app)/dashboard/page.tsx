@@ -1,16 +1,33 @@
 import { getTranslations } from 'next-intl/server';
 import { currentUser } from '@clerk/nextjs/server';
-import { DollarSign, Percent, TrendingUp, Utensils } from 'lucide-react';
+import {
+  DollarSign,
+  FileText,
+  Percent,
+  TrendingUp,
+  Utensils,
+  Wallet,
+} from 'lucide-react';
 import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listRecipesWithLines } from '@/lib/data/recipes';
+import { listIngredients } from '@/lib/data/ingredients';
 import { listTransactions } from '@/lib/data/transactions';
+import { listInvoices } from '@/lib/data/invoices';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import {
   dashboardSummary,
   type DashboardRecipeInput,
 } from '@/lib/calculations/dashboard';
-import { financeSummary, monthlyBuckets } from '@/lib/calculations/finance';
+import {
+  comparePeriods,
+  financeSummary,
+  monthlyBuckets,
+  type PeriodComparison,
+} from '@/lib/calculations/finance';
+import { invoiceSummary } from '@/lib/calculations/invoice';
+import { selectLowStock } from '@/lib/calculations/inventory';
+import { categoryLabel } from '@/lib/finance/categories';
 import {
   currentPeriodKey,
   isValidPeriodKey,
@@ -23,15 +40,29 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { StatCard } from '@/components/ui/stat-card';
+import { StatCard, type StatCardProps } from '@/components/ui/stat-card';
 import { TopRecipes } from '@/components/app/dashboard/top-recipes';
 import { MarginGauge } from '@/components/app/dashboard/margin-gauge';
 import { MonthlyChart } from '@/components/app/finance/monthly-chart';
+import { CategoryBreakdown } from '@/components/app/finance/category-breakdown';
+import { TopProducts } from '@/components/app/finance/top-products';
 import { DashboardPeriodSelect } from '@/components/app/dashboard/dashboard-period-select';
 import { RecentTransactions } from '@/components/app/dashboard/recent-transactions';
+import { InvoiceSummaryCard } from '@/components/app/dashboard/invoice-summary-card';
+import {
+  LowStockCard,
+  type LowStockItem,
+} from '@/components/app/dashboard/low-stock-card';
 
 const shortMonth = (month: number) =>
   new Date(2000, month - 1, 1).toLocaleDateString('en', { month: 'short' });
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** Local 'YYYY-MM-DD' for today (matches the tz-free bare-date convention). */
+function todayKey(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
 
 /** Last 12 month keys descending from the given month key, for the period select. */
 function buildPeriodOptions(currentKey: string): { key: string; label: string }[] {
@@ -49,6 +80,32 @@ function buildPeriodOptions(currentKey: string): { key: string; label: string }[
   return options;
 }
 
+/**
+ * A StatCard delta for a money figure vs the prior period. `goodWhen` decouples
+ * tone from direction: revenue/profit are good when UP, expenses good when DOWN —
+ * so a rise in expenses shows an up arrow with a "negative" (bad) tone.
+ */
+function moneyDelta(
+  comparison: PeriodComparison,
+  goodWhen: 'up' | 'down',
+  vsLabel: string,
+  noBaselineLabel: string,
+): { delta: StatCardProps['delta']; caption: string } {
+  if (comparison.changePercent == null) {
+    return { delta: undefined, caption: noBaselineLabel };
+  }
+  const rose = comparison.deltaCents >= 0;
+  const isGood = goodWhen === 'up' ? rose : !rose;
+  return {
+    delta: {
+      label: `${Math.abs(comparison.changePercent)}%`,
+      tone: isGood ? 'positive' : 'negative',
+      direction: rose ? 'up' : 'down',
+    },
+    caption: vsLabel,
+  };
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -56,23 +113,27 @@ export default async function DashboardPage({
 }) {
   const t = await getTranslations('dashboard');
   const tFin = await getTranslations('finance.dashboard');
+  const tCat = await getTranslations('finance.categories');
   const organizationId = await getOrgId();
   const canSeeFinance = canAccessFinancials(await getUserRole());
   const firstName = (await currentUser())?.firstName?.trim();
+  const settings = await getOrgSettings();
   const sp = await searchParams;
 
-  // Period for the revenue KPI — defaults to current month.
-  const todayKey = currentPeriodKey('month');
+  // Period for the financial widgets — defaults to current month.
+  const currentKey = currentPeriodKey('month');
   const periodKey =
     typeof sp.period === 'string' && isValidPeriodKey('month', sp.period)
       ? sp.period
-      : todayKey;
+      : currentKey;
   const resolved = resolvePeriod('month', periodKey);
-  const periodOptions = buildPeriodOptions(todayKey);
+  const periodOptions = buildPeriodOptions(currentKey);
 
-  const recipes = await withOrg(organizationId, (tx) =>
-    listRecipesWithLines(tx, organizationId),
-  );
+  // Recipes + ingredients are operational (no financial figures) — both roles.
+  const { recipes, ingredients } = await withOrg(organizationId, async (tx) => ({
+    recipes: await listRecipesWithLines(tx, organizationId),
+    ingredients: await listIngredients(tx, organizationId),
+  }));
 
   const input: DashboardRecipeInput[] = recipes.map(({ recipe, lines }) => ({
     id: recipe.id,
@@ -94,44 +155,83 @@ export default async function DashboardPage({
 
   const summary = dashboardSummary(input);
 
+  // Low-stock "to reorder" list — operational, shown to both roles.
+  const lowStock: LowStockItem[] = selectLowStock(
+    ingredients.map((i) => ({
+      id: i.id,
+      name: i.name,
+      dimension: i.dimension,
+      stockCanonical: Number(i.stockQuantity),
+      thresholdCanonical:
+        i.lowStockThreshold == null ? null : Number(i.lowStockThreshold),
+    })),
+  ).map((i) => ({
+    id: i.id,
+    name: i.name,
+    dimension: i.dimension,
+    stockCanonical: i.stockCanonical,
+    thresholdCanonical: i.thresholdCanonical as number,
+  }));
+
   // Finance data — managers only.
   const finance = canSeeFinance
     ? await (async () => {
         const yearKey = String(resolved.year);
         const year = resolvePeriod('year', yearKey);
 
-        const [yearTxns, periodTxns, recentTxns, settings] = await Promise.all([
-          withOrg(organizationId, (tx) =>
-            listTransactions(tx, organizationId, {
-              from: year.from,
-              to: year.to,
-            }),
-          ),
-          withOrg(organizationId, (tx) =>
-            listTransactions(tx, organizationId, {
-              from: resolved.from,
-              to: resolved.to,
-            }),
-          ),
-          withOrg(organizationId, (tx) =>
-            listTransactions(tx, organizationId, { limit: 8 }),
-          ),
-          getOrgSettings(),
-        ]);
+        const txns = await withOrg(organizationId, async (tx) => ({
+          year: await listTransactions(tx, organizationId, {
+            from: year.from,
+            to: year.to,
+          }),
+          period: await listTransactions(tx, organizationId, {
+            from: resolved.from,
+            to: resolved.to,
+          }),
+          prior: await listTransactions(tx, organizationId, {
+            from: resolved.priorFrom,
+            to: resolved.priorTo,
+          }),
+          recent: await listTransactions(tx, organizationId, { limit: 8 }),
+        }));
+        const invoices = await withOrg(organizationId, (tx) =>
+          listInvoices(tx, organizationId),
+        );
 
-        const buckets = monthlyBuckets(yearTxns, resolved.year);
-        const periodSummary = financeSummary(periodTxns);
+        const periodSummary = financeSummary(txns.period);
+        const priorSummary = financeSummary(txns.prior);
 
         return {
           currency: settings.currency,
-          revenueCents: periodSummary.incomeCents,
-          monthly: buckets.map((b) => ({
+          periodSummary,
+          revenueComparison: comparePeriods(
+            periodSummary.incomeCents,
+            priorSummary.incomeCents,
+          ),
+          profitComparison: comparePeriods(
+            periodSummary.profitCents,
+            priorSummary.profitCents,
+          ),
+          expenseComparison: comparePeriods(
+            periodSummary.expenseCents,
+            priorSummary.expenseCents,
+          ),
+          invoices: invoiceSummary(invoices, todayKey()),
+          categoryItems: periodSummary.byCategory
+            .filter((c) => c.kind === 'expense')
+            .map((c) => ({
+              id: c.categoryId,
+              name: categoryLabel(c, (slug) => tCat(slug)),
+              kind: c.kind,
+              totalCents: c.totalCents,
+            })),
+          monthly: monthlyBuckets(txns.year, resolved.year).map((b) => ({
             label: shortMonth(b.month),
             incomeCents: b.incomeCents,
             expenseCents: b.expenseCents,
             profitCents: b.profitCents,
           })),
-          recentTxns,
+          recentTxns: txns.recent,
         };
       })()
     : null;
@@ -142,12 +242,22 @@ export default async function DashboardPage({
     summary.avgMarginPercent == null ? t('kpi.noPricedRecipes') : pricedCaption;
 
   const periodLabel =
-    periodKey === todayKey
+    periodKey === currentKey
       ? t('kpi.thisMonth')
       : new Date(resolved.year, Number(periodKey.slice(5, 7)) - 1, 1).toLocaleDateString(
           'en',
           { month: 'short', year: 'numeric' },
         );
+
+  const revenue = finance
+    ? moneyDelta(finance.revenueComparison, 'up', periodLabel, periodLabel)
+    : null;
+  const profit = finance
+    ? moneyDelta(finance.profitComparison, 'up', tFin('vsPrevious'), tFin('noBaseline'))
+    : null;
+  const expenses = finance
+    ? moneyDelta(finance.expenseComparison, 'down', tFin('vsPrevious'), tFin('noBaseline'))
+    : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -163,8 +273,44 @@ export default async function DashboardPage({
         )}
       </div>
 
-      {/* KPI row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Money KPI row — managers only */}
+      {finance && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label={t('kpi.revenue')}
+            value={formatMoney(finance.periodSummary.incomeCents, finance.currency)}
+            delta={revenue?.delta}
+            caption={revenue?.caption}
+            icon={DollarSign}
+            featured
+          />
+          <StatCard
+            label={t('kpi.profit')}
+            value={formatMoney(finance.periodSummary.profitCents, finance.currency)}
+            delta={profit?.delta}
+            caption={profit?.caption}
+            icon={TrendingUp}
+          />
+          <StatCard
+            label={t('kpi.expenses')}
+            value={formatMoney(finance.periodSummary.expenseCents, finance.currency)}
+            delta={expenses?.delta}
+            caption={expenses?.caption}
+            icon={Wallet}
+          />
+          <StatCard
+            label={t('kpi.accountsReceivable')}
+            value={formatMoney(finance.invoices.outstandingCents, finance.currency)}
+            caption={t('invoices.outstandingCaption', {
+              count: finance.invoices.issuedCount,
+            })}
+            icon={FileText}
+          />
+        </div>
+      )}
+
+      {/* Operational KPI row — both roles */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
           label={t('kpi.recipes')}
           value={String(summary.activeRecipes)}
@@ -184,15 +330,6 @@ export default async function DashboardPage({
           caption={marginCaption}
           icon={Percent}
         />
-        {finance && (
-          <StatCard
-            label={t('kpi.revenue')}
-            value={formatMoney(finance.revenueCents, finance.currency)}
-            caption={periodLabel}
-            icon={DollarSign}
-            featured
-          />
-        )}
       </div>
 
       {/* Bento grid */}
@@ -209,10 +346,59 @@ export default async function DashboardPage({
         )}
         <MarginGauge
           value={summary.avgMarginPercent}
-          caption={
-            summary.avgMarginPercent == null ? undefined : pricedCaption
-          }
+          caption={summary.avgMarginPercent == null ? undefined : pricedCaption}
         />
+
+        {finance && (
+          <>
+            <Card className="flex flex-col">
+              <CardHeader>
+                <CardTitle>{tFin('byCategory')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CategoryBreakdown
+                  items={finance.categoryItems}
+                  currency={finance.currency}
+                  emptyLabel={tFin('byCategoryEmpty')}
+                />
+              </CardContent>
+            </Card>
+            <Card className="flex flex-col">
+              <CardHeader>
+                <CardTitle>{tFin('topProducts')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <TopProducts
+                  products={finance.periodSummary.topProducts}
+                  currency={finance.currency}
+                  emptyLabel={tFin('topProductsEmpty')}
+                />
+              </CardContent>
+            </Card>
+            <InvoiceSummaryCard
+              summary={finance.invoices}
+              currency={finance.currency}
+              labels={{
+                title: t('invoices.title'),
+                outstanding: t('invoices.outstanding'),
+                overdue: t('invoices.overdue'),
+                drafts: t('invoices.drafts'),
+                issued: t('invoices.issued'),
+                paid: t('invoices.paid'),
+                viewAll: t('viewAll'),
+              }}
+            />
+          </>
+        )}
+
+        <LowStockCard
+          items={lowStock}
+          measurementSystem={settings.measurementSystem}
+          title={t('lowStock.title')}
+          emptyLabel={t('lowStock.empty')}
+          viewAllLabel={t('viewAll')}
+        />
+
         {finance && (
           <RecentTransactions
             rows={finance.recentTxns}
@@ -227,7 +413,6 @@ export default async function DashboardPage({
           title={t('topRecipes')}
           recipes={summary.topByMargin}
           emptyLabel={t('noRecipes')}
-          className={finance ? 'xl:col-span-3' : undefined}
         />
       </div>
     </div>

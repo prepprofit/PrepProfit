@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { invoiceTotals, lineTotals } from './invoice';
+import { invoiceSummary, invoiceTotals, lineTotals } from './invoice';
 
 describe('lineTotals', () => {
   it('computes net, tax and gross for a standard line', () => {
@@ -85,5 +85,63 @@ describe('invoiceTotals', () => {
     expect(totals.subtotalCents).toBe(3);
     expect(totals.taxCents).toBe(3);
     expect(totals.totalCents).toBe(6);
+  });
+});
+
+describe('invoiceSummary', () => {
+  const TODAY = '2026-06-18';
+  const inv = (
+    status: 'draft' | 'issued' | 'paid' | 'void',
+    totalCents: number,
+    dueDate: string | null = null,
+  ) => ({ status, totalCents, dueDate });
+
+  it('returns all-zero for an empty list', () => {
+    expect(invoiceSummary([], TODAY)).toEqual({
+      outstandingCents: 0,
+      overdueCents: 0,
+      draftCount: 0,
+      issuedCount: 0,
+      paidCount: 0,
+    });
+  });
+
+  it('sums only ISSUED invoices into outstanding (AR)', () => {
+    const summary = invoiceSummary(
+      [
+        inv('issued', 1000),
+        inv('issued', 500),
+        inv('paid', 9999),
+        inv('draft', 9999),
+        inv('void', 9999),
+      ],
+      TODAY,
+    );
+    expect(summary.outstandingCents).toBe(1500);
+    expect(summary.draftCount).toBe(1);
+    expect(summary.issuedCount).toBe(2);
+    expect(summary.paidCount).toBe(1);
+  });
+
+  it('counts an issued invoice past its due date as overdue (subset of outstanding)', () => {
+    const summary = invoiceSummary(
+      [
+        inv('issued', 1000, '2026-06-01'), // overdue
+        inv('issued', 400, '2026-06-30'), // not yet due
+        inv('issued', 200, null), // no due date → never overdue
+      ],
+      TODAY,
+    );
+    expect(summary.outstandingCents).toBe(1600);
+    expect(summary.overdueCents).toBe(1000);
+  });
+
+  it('never counts paid/draft/void toward overdue even when past due', () => {
+    const summary = invoiceSummary(
+      [inv('paid', 1000, '2020-01-01'), inv('draft', 1000, '2020-01-01')],
+      TODAY,
+    );
+    expect(summary.outstandingCents).toBe(0);
+    expect(summary.overdueCents).toBe(0);
   });
 });
