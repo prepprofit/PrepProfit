@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { NoAccess } from '@/components/app/no-access';
+import { SendDocumentDialog } from '@/components/app/send-document-dialog';
 
 const STATUS_VARIANT = {
   draft: 'neutral',
@@ -69,6 +70,10 @@ export default async function InvoiceDetailPage({
               {t('detail.downloadPdf')}
             </a>
           </Button>
+          <SendDocumentDialog
+            doc={{ documentType: 'invoice', invoiceId: id }}
+            defaultRecipient={invoice.customerEmail}
+          />
         </div>
       </div>
 

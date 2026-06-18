@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { ArrowLeft } from 'lucide-react';
-import { getOrgId, getOrgName } from '@/lib/auth';
+import { getOrgId, getOrgName, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { getRecipeWithIngredients } from '@/lib/data/recipes';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
@@ -12,6 +12,7 @@ import { formatMoney } from '@/lib/documents/format';
 import { Button } from '@/components/ui/button';
 import { PrintButton } from '@/components/app/invoices/print-button';
 import { PrintLogo } from '@/components/app/invoices/print-logo';
+import { SendDocumentDialog } from '@/components/app/send-document-dialog';
 
 // Always render fresh so the printed card reflects the latest recipe + prices.
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,7 @@ export default async function RecipeCardPrintPage({
   const { id } = await params;
   const organizationId = await getOrgId();
 
-  const [loaded, t, tCard] = await Promise.all([
+  const [loaded, t, tCard, canEmail] = await Promise.all([
     withOrg(organizationId, async (tx) => {
       const recipe = await getRecipeWithIngredients(tx, organizationId, id);
       if (!recipe) return null;
@@ -39,6 +40,9 @@ export default async function RecipeCardPrintPage({
     }),
     getTranslations('recipeCardDocument'),
     getTranslations('recipes.card'),
+    // Emailing is manager-only (the action enforces it); only show the trigger to
+    // managers, even though the recipe card itself is kitchen-visible.
+    isManager(),
   ]);
 
   if (!loaded) notFound();
@@ -72,6 +76,9 @@ export default async function RecipeCardPrintPage({
               <a href={`/api/recipes/${id}/card/pdf`}>{tCard('downloadPdf')}</a>
             </Button>
             <PrintButton label={tCard('print')} />
+            {canEmail && (
+              <SendDocumentDialog doc={{ documentType: 'recipeCard', recipeId: id }} />
+            )}
           </div>
         </div>
 

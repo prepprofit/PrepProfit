@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { NoAccess } from '@/components/app/no-access';
 import { PrintButton } from '@/components/app/invoices/print-button';
 import { PrintLogo } from '@/components/app/invoices/print-logo';
+import { SendDocumentDialog } from '@/components/app/send-document-dialog';
 
 // Always render fresh; manager-only sensitive financial document.
 export const dynamic = 'force-dynamic';
@@ -76,6 +77,7 @@ export default async function PlPrintPage({
               </a>
             </Button>
             <PrintButton label={tDoc('print')} />
+            <SendDocumentDialog doc={{ documentType: 'pl', view, period: periodKey }} />
           </div>
         </div>
 

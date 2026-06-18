@@ -18,6 +18,7 @@
     "INVALID_STATUS_TRANSITION": "That status change isn't allowed for this invoice.",
     "FORBIDDEN": "You don't have permission to do that. Financial data is available to managers only.",
     "RATE_LIMITED": "You're doing that too quickly. Please wait a moment and try again.",
+    "EMAIL_FAILED": "The email couldn't be sent. Please check the address and try again.",
     "UNEXPECTED": "Something went wrong on our end. Please try again."
   },
   "errors": {
@@ -536,6 +537,23 @@
     "pay": "Pay due",
     "total": "Total",
     "empty": "No shifts in this period."
+  },
+  "documentEmail": {
+    "trigger": "Send by email",
+    "title": "Send by email",
+    "description": "We'll generate the document and email it as a PDF attachment.",
+    "recipient": "Recipient email",
+    "recipientPlaceholder": "name@example.com",
+    "send": "Send",
+    "sending": "Sending…",
+    "sent": "Email sent.",
+    "cancel": "Cancel",
+    "body": "Please find {name} attached.",
+    "subject": {
+      "invoice": "Invoice {name}",
+      "recipeCard": "Recipe card: {name}",
+      "pl": "Profit & loss: {name}"
+    }
   },
   "reports": {
     "print": {
