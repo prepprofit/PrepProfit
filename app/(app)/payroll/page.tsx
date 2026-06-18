@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { getOrgSettings } from '@/lib/data/org-settings';
@@ -130,9 +131,19 @@ export default async function PayrollPage({
   const navBtn =
     'flex size-9 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground';
 
+  const tReports = await getTranslations('reports.actions');
+
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/payroll/print?view=${view}&d=${anchor}`}>
+            <FileText className="size-4" />
+            {tReports('print')}
+          </Link>
+        </Button>
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-full border border-border bg-surface p-1">
