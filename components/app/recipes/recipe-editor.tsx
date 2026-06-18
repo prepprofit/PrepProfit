@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ArrowLeft, Check, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, FileText, Plus, Trash2 } from 'lucide-react';
 import type { Ingredient, Recipe, RecipeFolder } from '@/lib/db/schema';
 import type { RecipeLineWithIngredient } from '@/lib/data/recipes';
 import {
@@ -86,6 +86,7 @@ export function RecipeEditor({
 }) {
   const t = useTranslations('recipes');
   const tDim = useTranslations('dimensions');
+  const tCard = useTranslations('recipes.card');
   const tFolders = useTranslations('recipes.folders');
   const tCommon = useTranslations('common');
   const actionError = useActionError();
@@ -357,6 +358,12 @@ export function RecipeEditor({
               {t('saved')}
             </span>
           )}
+          <Button asChild type="button" variant="outline">
+            <Link href={`/recipes/${recipe.id}/card/print`}>
+              <FileText className="size-4" />
+              {tCard('action')}
+            </Link>
+          </Button>
           <Button type="button" onClick={onSave} disabled={pending}>
             {t('actions.save')}
           </Button>
