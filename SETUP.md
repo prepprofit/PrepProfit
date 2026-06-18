@@ -1,90 +1,164 @@
-# SETUP — PrepProfit (Sprint 0)
+# SETUP - PrepProfit
 
-Guide to get the multi-tenant foundation running. The automated tests
-(`npm test`) need **none** of this — they use an in-memory Postgres. The steps
-below are for running the real app and validating the acceptance criterion with
-two real logins.
+This guide covers local development and production setup for the current PrepProfit app.
+The automated tests do not require Neon or Clerk; they run against PGlite.
 
 ## 0. Prerequisites
+
 - Node 22+
-- `npm install` already run
+- npm 10+
+- A Neon Postgres project for real app runs
+- A Clerk application with Organizations enabled
 
-## 1. Database — Neon
-1. Create an account at https://neon.tech and a Postgres project.
-2. In **Connection Details**, copy the **pooled connection string** (the host
-   contains `-pooler`). The Pool is required for the transactions that activate
-   RLS.
-3. You'll paste it into `DATABASE_URL` (step 3).
+Install dependencies:
 
-## 2. Authentication — Clerk (with Organizations)
-1. Create an account at https://clerk.com and an application.
-2. **Organizations**: under **Organizations Settings**, enable
-   *Enable organizations*, and pick **Membership required** (B2B-only — disables
-   personal accounts; matches this app, which requires an active org and
-   redirects to `/select-organization` when there is none).
-3. In **API Keys**, copy:
-   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (starts with `pk_`)
-   - `CLERK_SECRET_KEY` (starts with `sk_`)
+```bash
+npm install
+```
+
+Run the local test suite without credentials:
+
+```bash
+npm test
+```
+
+## 1. Neon database
+
+1. Create a Neon project.
+2. Copy the pooled connection string. The pooled host usually contains `-pooler`.
+3. Put it in `.env.local` as `DATABASE_URL`.
+
+Use separate Neon branches/projects for local development, preview, and production when possible.
+
+## 2. Clerk authentication and organizations
+
+1. Create a Clerk application.
+2. Enable Organizations.
+3. Use membership-required/B2B behavior for the production app.
+4. Copy:
+   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+   - `CLERK_SECRET_KEY`
+5. Configure the sign-in/sign-up/select-organization URLs to match the app routes.
+
+Roles:
+
+- Clerk `org:admin` maps to PrepProfit `manager`.
+- Other org roles map to `kitchen`.
+
+Managers can access financials, invoices, payroll, trash, settings, exports, and generated
+documents. Kitchen users can access operational surfaces only.
 
 ## 3. Environment variables
+
 ```bash
 cp .env.example .env.local
 ```
-Fill `.env.local` with the `DATABASE_URL` (Neon) and the Clerk keys.
-`.env.local` is gitignored — never commit secrets.
 
-## 4. Migrations + RLS
+Required now:
+
+- `DATABASE_URL`
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+
+Required when scheduled purge is enabled:
+
+- `CRON_SECRET`
+
+Planned later:
+
+- Billing/webhook secrets in Sprint 4
+- Resend/email secrets in Sprint 3.5B
+- Sentry/PostHog secrets in Sprint 5
+
+## 4. Migrations and RLS
+
+Run migrations against the selected database:
+
 ```bash
 npm run db:migrate
 ```
-Creates the tables (`ingredients`, `recipes`, `recipe_ingredients`) and applies
-the Row-Level Security policies (isolation by `organization_id`).
 
-## 5. Seed two organizations (optional, for the acceptance-criterion demo)
-Data is written per organization. For it to appear in the app, the ids must match
-your real Clerk organization ids:
-1. Run `npm run dev`, sign in, and create **two** organizations
-   (e.g. "Bakery A" and "Patisserie B") in the OrganizationSwitcher.
-2. Get each org id (format `org_...`) — visible in the Clerk dashboard
-   (Organizations) or in the URL when selecting them.
-3. Run the seed pointing at those ids:
-   ```bash
-   SEED_ORG_A=org_xxxxA SEED_ORG_B=org_xxxxB npm run seed
-   ```
-   (PowerShell: `$env:SEED_ORG_A="org_xxxxA"; $env:SEED_ORG_B="org_xxxxB"; npm run seed`)
+This applies Drizzle migrations and then applies RLS statements generated from
+`businessTables`.
 
-## 6. Run
+Production checklist after every migration:
+
+- Confirm the command did not abort on migration journal ordering.
+- Verify new tables/columns exist in Neon.
+- Verify new business tables are in `businessTables` and have RLS enabled/forced.
+- Run the full CI gate before deployment.
+
+## 5. Seed data
+
+For one real Clerk organization:
+
+```bash
+SEED_ORG=org_xxxx npm run seed:org
+```
+
+PowerShell:
+
+```powershell
+$env:SEED_ORG="org_xxxx"
+npm run seed:org
+```
+
+For two-org isolation demos, use the seed script that reads two org ids:
+
+```bash
+SEED_ORG_A=org_xxxxA SEED_ORG_B=org_xxxxB npm run seed
+```
+
+PowerShell:
+
+```powershell
+$env:SEED_ORG_A="org_xxxxA"
+$env:SEED_ORG_B="org_xxxxB"
+npm run seed
+```
+
+The seed scripts must only delete/count rows scoped to the provided organization ids.
+
+## 6. Run locally
+
 ```bash
 npm run dev
 ```
+
 Open http://localhost:3000.
 
-## 7. Validate the acceptance criterion (isolation between organizations)
-- Sign in and switch between the two organizations in the top
-  **OrganizationSwitcher**. Each organization only sees its own
-  ingredients/recipes.
-- For a **two-user** test: invite a second user (or use another browser/account)
-  to Org B; they will never see Org A's data.
-- Isolation is already guaranteed automatically in `npm test`
-  (`tests/isolation.test.ts`), on both layers: `organization_id` scoping in the
-  application **and** RLS in the database.
+Recommended manual smoke:
 
-## 8. Deploy to Vercel
-1. Import the `Napster13Nord/PrepProfit` repository at https://vercel.com.
-2. Under **Environment Variables**, add the same keys as `.env.local`
-   (`DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`,
-   and the Clerk URLs). Re-deploy after adding them — `NEXT_PUBLIC_*` vars are
-   baked in at build time.
-3. The default build command (`next build`) works as-is.
-4. **Before the first production deploy**, run the migrations against the
-   production Neon: `npm run db:migrate` (with the production `DATABASE_URL`).
-5. (Optional) Use a separate Neon project/branch for production vs development.
+- Create/switch between two Clerk organizations.
+- Verify each org sees only its own recipes, ingredients, financials, invoices, and payroll.
+- Verify a manager can access financial/invoice/payroll/settings/trash surfaces.
+- Verify a kitchen user is blocked from manager-only pages and actions.
+
+## 7. Cron purge
+
+The trash purge route requires `CRON_SECRET`. Without it, the route fails closed.
+
+For production, set the secret in Vercel and configure the scheduled route only after migrations
+and env vars are verified.
+
+## 8. Deployment on Vercel
+
+1. Import the repository.
+2. Set environment variables for the target environment.
+3. Run production migrations manually against the production Neon database.
+4. Deploy.
+5. Confirm scheduled cron, Clerk URLs, and org switching work in production.
+
+Vercel does not run database migrations automatically.
 
 ## Useful commands
+
 | Action | Command |
 |--------|---------|
-| Dev | `npm run dev` |
-| Lint + types + tests | `npm run lint && npm run typecheck && npm test` |
+| Dev server | `npm run dev` |
+| Full local gate | `npm run lint && npm run typecheck && npm test && npm run build` |
 | Generate migration | `npm run db:generate` |
 | Apply migrations + RLS | `npm run db:migrate` |
-| Seed (2 orgs) | `npm run seed` |
+| Unit/integration tests | `npm test` |
+| Seed one org | `npm run seed:org` |
+| Seed demo org | `npm run seed:demo` |

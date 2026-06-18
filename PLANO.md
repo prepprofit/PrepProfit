@@ -1,562 +1,355 @@
-# PLANO.md — PrepProfit SaaS: executable roadmap
+# PLANO.md - PrepProfit SaaS executable roadmap
 
-Instructions for Claude Code: work one sprint at a time, in order.
-Mark completed tasks with [x]. Do not start a sprint before the previous one is done.
-Before each sprint: enter plan mode, resolve the listed decisions, get approval.
+This is the source of truth for sequencing work. Work one sprint at a time, in order.
+Before starting any sprint, resolve the sprint decisions, get approval, then implement.
+Mark tasks `[x]` only after code, tests, docs, and production notes are complete.
 
----
+## Current Status
 
-## Definition of Done (applies to EVERY sprint task — no exceptions, no "later")
-- **Multi-tenancy:** every new table has `organization_id`; every query is org-scoped
-  (RULE #1); the table is in `businessTables` so RLS auto-applies; a PGlite isolation
-  test (`tenant_app` role) proves org A cannot read org B's rows.
-- **Money & math:** monetary values are integer cents; cost/margin/break-even logic is
-  pure functions in `lib/calculations/` with Vitest tests covering edge cases (zero,
-  negative, rounding).
-- **Validation & errors:** all user input validated with Zod on the server; action
-  failures return an `ActionErrorCode` mapped to next-intl (`actionErrors.*`) — never a
-  hardcoded string. Unexpected throws go through `unexpected()` (logged `eventId`).
-- **i18n & types:** all UI strings via next-intl; no `any`, no `@ts-ignore`; types derive
-  from the Drizzle schema.
-- **Authorization:** sensitive data/actions gated by role (`manager` vs `kitchen`) via
-  `getUserRole()` / Clerk `has()` — kitchen staff must not reach financials/payroll.
-- **UX:** honest empty states; design-matched skeleton ONLY where data is genuinely slow
-  (no blanket fallbacks); usable on mobile (test ~380px); controls keyboard-reachable and
-  labelled.
-- **Migrations:** after `db:generate`, ensure the journal `when` clears the gotcha
-  threshold; run `db:migrate` on prod and VERIFY the columns exist live.
-- **Green gate:** `lint && typecheck && test` and `next build` pass in CI before merge;
-  small conventional commits; observable errors.
+Completed product foundation:
+
+- [x] Sprint 0 - multi-tenant foundation, Clerk org auth, Drizzle/Neon, RLS, app shell
+- [x] Sprint 1 - ingredients, recipes, costing, units, inventory and low-stock alerts
+- [x] Sprint 1.5 - trash/soft-delete foundation and 30-day purge route
+- [x] Sprint 1.6 - recipe folders
+- [x] Sprint 1.7 - hardening baseline: typed action errors, env validation, error boundaries, CI build
+- [x] Sprint 2 - financials, transactions, dashboards, break-even, CSV export
+- [x] Sprint 2.7 - global search with RBAC and pg_trgm
+- [x] Sprint 3 - invoices and payroll data/builders, on-screen workflows, search registration
+
+Deferred/resequenced:
+
+- Sprint 2.5 import is intentionally moved to Sprint 4.5/4.6. Import must not ship before billing/limits and server-side staging are in place.
+
+Next sprint:
+
+- [ ] Sprint 3.1 - production hardening before documents/import/billing expansion
 
 ---
 
-## Sprint 0 — Multi-tenant foundation
-Goal: the SaaS skeleton with per-organization data isolation working.
+## Definition of Done - applies to every sprint
 
-- [x] Initialize Next.js 15 + TypeScript + Tailwind project (or import the Wibox base if provided)
-- [x] Install and configure Drizzle ORM pointing at Neon Postgres
-- [x] Configure Clerk with Organizations enabled; middleware protecting /app/*
-      (code ready; enable Organizations in the Clerk dashboard — see SETUP.md)
-- [x] Create `lib/auth.ts` with `getOrgId()` (throws if no active org)
-- [x] Initial Drizzle schema: `ingredients`, `recipes`, `recipe_ingredients`
-      tables, all with `organization_id` + composite index
-- [x] Enable Row-Level Security in Postgres as a second layer of defense
-- [x] Seed script with example data for 2 distinct organizations
-- [x] Automated test: org A never sees org B's data
-- [x] Base layout: sidebar with modules, Clerk OrganizationSwitcher, empty page per module
-- [~] Deploy to Vercel with production Neon; simple CI (lint + typecheck + test)
-      (CI ready in .github/workflows/ci.yml; Vercel deploy pending credentials — see SETUP.md)
+### Multi-tenancy and RLS
 
-Acceptance criterion: two users from different orgs sign in and see isolated data.
+- Every business table has `organization_id`, is listed in `businessTables`, and receives RLS.
+- Every select/insert/update/delete is explicitly org-scoped in the application layer.
+- `organization_id` is always derived server-side from Clerk via `getOrgId()`; never from client input.
+- Every write runs inside `withOrg(...)` unless the sprint explicitly documents a safe exception.
+- Tests prove both app-layer isolation and RLS behavior. RLS tests must cover reads and writes: SELECT, INSERT `WITH CHECK`, UPDATE retag attempts, and DELETE reachability.
 
----
+### Authorization and entitlements
 
-## Sprint 1 — Recipes and ingredients (modules 1 and 3)
-Goal: chef registers ingredients, builds recipes, and sees real cost.
+- Role is derived from Clerk organization role only. `org:admin` maps to manager; everyone else is kitchen.
+- Sensitive pages must render `NoAccess` for kitchen users.
+- Sensitive Server Actions and Route Handlers must return `FORBIDDEN` before any data access.
+- Manager-only surfaces: financials, transactions, break-even, invoices, payroll, trash, settings, reports, exports of sensitive data, billing, and generated documents.
+- Dashboard exception: kitchen may see operational recipe/inventory widgets only if the sprint keeps this product decision explicit; financial widgets remain manager-only.
+- Plan limits and paid-feature access are enforced on the server. UI hiding is never the control.
 
-Foundations first (do these before the CRUD — they are cheap now and a painful
-migration later, once money and quantities exist across every table):
+### Money, math, and data integrity
 
-- [x] `organization_settings` table (org_id PK, `currency` ISO-4217,
-      `measurement_system` metric|imperial) + `getOrgSettings()` helper; small
-      settings page to edit them. Follows RULE #1 (per-org, derived server-side)
-- [x] `lib/format/money.ts`: `formatMoney(cents, currency)` via `Intl.NumberFormat`.
-      ALL monetary display goes through it. Single currency per org — NO currency
-      conversion (storage stays integer cents)
-- [x] `lib/units/` pure conversion helpers with Vitest tests: canonical storage in
-      grams/ml, convert g/kg↔oz/lb and ml/l↔fl oz/cups at the UI edge, driven by
-      the org `measurement_system`
-- [x] Decide quantity dimensions in the schema: weight (grams) is in place — add
-      volume (ml) and count so liquids (oil, milk, stock) and per-piece items
-      (eggs) work; migration as needed
+- Monetary values are integer cents. No float storage for money.
+- Calculation logic lives in `lib/calculations/` and has tests for zero, negative, rounding, large values, NaN, and Infinity edges.
+- Database constraints are added for important invariants when practical; app validation alone is not enough for money or lifecycle safety.
+- Cross-tenant links are blocked at the DB layer with composite `(organization_id, foreign_id)` FKs.
+- Soft-delete reads filter `deleted_at IS NULL`; purge paths preserve financial/history records by nulling optional links before deleting referenced rows.
 
-Then the module work:
+### Validation, errors, and observability
 
-- [x] Ingredient CRUD (name, unit, price per unit/kg, optional supplier)
-- [x] Editable ingredient grid with TanStack Table (inline editing)
-- [x] Recipe CRUD: ingredients + quantities, yield (portions), % loss
-- [x] `lib/calculations/recipeCost.ts`: total cost, cost per portion,
-      hidden costs (labor, energy, packaging) — with Vitest tests
-- [x] Suggested selling price + margin with a traffic light (green/yellow/red)
-- [x] Cascade update: ingredient price changed → recalculate recipes
-      (costs derived live from current ingredient prices; recipe pages are dynamic
-      and ingredient mutations revalidate /recipes — no stored cost to update)
-- [x] Inventory: stock in/out per ingredient
-- [x] Low-stock visual alert (configurable threshold per ingredient)
+- All user input is validated with Zod on the server.
+- Action failures return a stable `ActionErrorCode` mapped through next-intl. No English error literals in action results.
+- Unexpected failures go through `unexpected()` / `logError()` with an event id and useful context.
+- New abuse-prone endpoints/actions use the rate limiter once Sprint 3.1 lands.
+- High-risk mutations write audit log events once Sprint 3.1 lands.
 
-Acceptance criterion: create a recipe with 5 ingredients and see correct cost and margin.
+### i18n, types, UX, and tests
+
+- UI strings go through next-intl. No hardcoded user-visible strings.
+- No `any`, no `@ts-ignore`; types derive from Drizzle schema or explicit Zod schemas.
+- Empty, loading, error, and forbidden states are honest and localized.
+- Mobile at ~380px and keyboard-only usage must be checked for new user workflows.
+- Green gate before merge: lint, typecheck, tests, and `next build`.
+- Migrations: after generation, verify journal ordering; `scripts/migrate.ts` must abort on the silent-skip gotcha. Production deploy notes must name required env vars and migration verification.
 
 ---
 
-## Sprint 1.5 — Trash / soft-delete (foundations)
-Goal: no destructive delete; recipes and ingredients go to a 30-day trash, restorable.
+## Sprint 3.1 - Production hardening before expansion
 
-- [x] `deleted_at` column + index on `recipes` and `ingredients`; migration 0006
-- [x] Filter all active reads by `deleted_at IS NULL`; keep recipe-cost joins intact
-- [x] Soft-delete / restore / purge data fns + dependency guards (block in-use
-      ingredient; block restoring a recipe with trashed ingredients)
-- [x] Confirm-before-delete via a native `<dialog>` ConfirmDialog (no Radix)
-- [x] `/trash` page: restore + permanent delete + days-left; sidebar + top-bar wiring
-- [x] Auto-purge after 30 days: CRON_SECRET-protected route, Clerk per-org fan-out,
-      vercel.json daily schedule
-- [x] Tests: soft-delete/restore/purge, in-use block, restore guard, expiry, org isolation
+Goal: close correctness/security gaps before adding documents, import, billing, or heavier public surfaces.
 
-Acceptance criterion: delete a recipe → it leaves the list, appears in /trash with
-~30 days left, restores cleanly; an ingredient used by an active recipe cannot be trashed.
+Decisions locked:
 
-Production note: Vercel does not run migrations — run `npm run db:migrate` against
-prod Neon after merge, and set `CRON_SECRET` in the Vercel project env.
+- Use the existing Postgres/Neon stack for the first audit log and rate-limit buckets. Avoid a new infra dependency unless explicitly approved.
+- Rate limiting is keyed by route/action plus user id/org id when authenticated; unauthenticated cron/webhook keys use a hashed request key, never raw secrets.
+- Audit log is append-only, org-scoped, manager-readable later, but this sprint only writes events and tests isolation.
 
----
+Tasks:
 
-## Sprint 1.6 — Recipe organization / folders (foundations)
-Goal: chefs file recipes into named folders — create, rename, move, reorder, with
-coherent empty states and per-folder counts. Establishes a reusable folder pattern
-for later modules and coexists with the trash (reads still filter deleted_at IS NULL).
-
-- [x] `recipe_folders` table (org_id, name, sort_order, timestamps; unique(org,name);
-      composite (org,id) FK target) + nullable `recipes.folder_id` with composite
-      (org,folder_id) FK ON DELETE RESTRICT + index (org,folder_id). Migration 0007.
-      Folders are hard-delete (not trashed); folder delete reassigns recipes to NULL
-      in one transaction
-- [x] Add `recipe_folders` to `businessTables` so RLS auto-applies (org isolation)
-- [x] Data layer `lib/data/recipe-folders.ts` (list / list-with-counts / create /
-      rename / reorder / delete) + `moveRecipeToFolder` + folder-filtered `listRecipes`;
-      all org-scoped and deleted_at IS NULL
-- [x] Server Actions (Zod, org from Clerk, withOrg): folder CRUD + reorder + move
-      recipe; unique-name violations surfaced
-- [x] /recipes UI: folder rail (All / folders / No folder + live counts), ?folder=
-      server filter, create/rename/reorder/delete folder, move recipe (card + editor),
-      coherent empty states. Native controls; reuse ConfirmDialog for folder delete
-- [x] i18n: all folder strings via next-intl
-- [x] Tests (PGlite): folder CRUD + org isolation, unique-name, reorder, delete →
-      recipes NULL, move, per-folder counts, folder views exclude trashed recipes
-
-Acceptance criterion: create folders, file recipes, rename/reorder/move, delete a
-folder → its recipes fall back to "No folder" (nothing trashed), and trashed recipes
-never appear in any folder view or count.
-
-Production note: Vercel does not run migrations — run `npm run db:migrate` against
-prod Neon after merge and VERIFY `recipe_folders` + `recipes.folder_id` exist (the
-0003 `when` gotcha). Ensure 0007's journal `when` > 1781601000000.
-
----
-
-## Sprint 1.7 — Hardening (senior-level baseline)
-Goal: close the gaps that separate "works" from production-grade before Sprint 2.
-Graceful failure UX, fully-translated errors, build caught in CI, fail-fast env
-validation, and diagnosable production errors. No new runtime dependency.
-
-- [x] Error/404 boundaries: `app/global-error.tsx` (provider-less fallback),
-      `app/(app)/error.tsx` (localized, retry + back), `app/not-found.tsx`
-      (branded 404). NOTE: the blanket `app/(app)/loading.tsx` skeleton was
-      removed — it flashed on every (even fast) navigation and couldn't match
-      each page's design; route-specific, design-matched skeletons are added only
-      where data is genuinely slow (e.g. the Sprint 2 dashboard)
-- [x] Translated action errors: `ActionResult` failure arm carries a stable
-      `ActionErrorCode` (not English strings); all action returns use codes; client
-      maps via `useActionError()` hook + `actionErrors.*` i18n block
-- [x] `next build` added to CI (`.github/workflows/ci.yml`) with Clerk key env
-      (repo secrets, valid-format dummy fallback)
-- [x] Env validation: `lib/env.ts` `serverEnv()` (Zod, lazy, cached) used by the
-      Neon client + cron route; `lib/env.test.ts`
-- [x] Error observability: `lib/observability.ts` `logError`/`unexpected` —
-      structured one-line log with `eventId`; actions' bare `throw err` replaced
-      with logged `UNEXPECTED`; boundaries log client-side too
-
-Out of scope (later sprints): Playwright E2E smoke; Clerk webhooks + Sentry; org
-lifecycle / custom-role delete control (Sprint 4 billing). Ops still owed:
-`CRON_SECRET` in Vercel env (the cron route 401s until set — now fails explicitly).
-
----
-
-## Sprint 2 — Financials and break-even (modules 2 and 4)
-Goal: answer "how much did I really make this month?" — accurately and per-org.
-
-Decisions LOCKED (resolved & approved before coding):
-- **Date & timezone:** `occurred_on` is a bare `date` (`mode:'string'` → 'YYYY-MM-DD',
-  no time/tz); monthly/annual buckets slice the string (org-local, zero tz math). ✓
-- **Category model:** one `transaction_categories` table — predefined rows seeded
-  idempotently per org with a stable `slug` (display via i18n `finance.categories.<slug>`,
-  so renames never orphan rows), custom rows have `slug = null`; `kind` splits income/expense. ✓
-- **Recipe link:** nullable `recipe_id` with composite `(org, recipe_id)` FK `ON DELETE
-  restrict`; the recipe-purge path nulls the link first so financial records survive a purge. ✓
-- **Tax:** DEFERRED (decided). `amount_cents` is the FULL GROSS amount as recorded; adding
-  tax later is a purely additive migration — nullable `tax_rate` (numeric) + `tax_cents` (int),
-  where `net = amount_cents − tax_cents` and existing rows mean "no tax recorded". Documented
-  in the `transactions` schema comment.
-- **Deletion (sub-decision):** transactions are soft-deleted (`deleted_at`) and wired into the
-  existing `/trash` (manager-only) + 30-day auto-purge — no destructive delete, per Sprint 1.5.
-
-Quick win first (next migration is 0009): add a guard to `scripts/migrate.ts` that aborts
-with a clear message if a new journal `when` ≤ the max already-applied `created_at` — kills
-the recurring silent-skip gotcha for good.
-
-- [x] Migrate guard: pure `findSkippableMigrations` (tested) + abort in `scripts/migrate.ts`
-
-Module work:
-- [x] `transactions` table (org_id, type income|expense, category_id, nullable recipe_id,
-      `occurred_on` date, `amount_cents` int, note) + `transaction_categories` (custom);
-      migration 0009; both in `businessTables`; isolation test
-- [x] Transaction CRUD (Server Actions, Zod, withOrg) with predefined + custom categories;
-      list view with **period + category filters** and CSV **export**
-- [x] `lib/calculations/finance.ts`: monthly/annual income, expenses, profit, by-category
-      and top-products aggregations — pure functions + Vitest (reuse `dashboardSummary` shape)
-- [x] Monthly dashboard: income, expenses, profit, top products — shadcn/ui charts on
-      Recharts (added `recharts` + `components/ui/chart.tsx`, palette wired to our CSS tokens);
-      period switcher; design-matched Suspense skeleton for the (heavier) chart queries
-- [x] Annual dashboard: month-over-month evolution + prior-period comparison
-- [x] `lib/calculations/breakEven.ts`: fixed costs + average contribution margin → units &
-      revenue to break even — pure + Vitest (zero/negative-margin edge cases)
-- [x] Break-even page with a live scenario simulator (price/cost/fixed-cost sliders)
-- [x] Role gating: financials are `manager`-only (kitchen staff cannot read/edit) per DoD
+- [ ] Fix the recipe-line active-row invariant under real Postgres concurrency.
+      Lock the recipe and ingredient rows involved in `addRecipeIngredient`, lock/serialize
+      `deleteIngredientAction`, and lock/serialize `restoreRecipeAction` so an active recipe
+      cannot end up referencing a trashed ingredient. Add tests for normal guards and document
+      any PGlite concurrency limitation.
+- [ ] Harden `updateRecipeIngredient` and `removeRecipeIngredient` so they only mutate lines
+      attached to an active recipe in the same org; forged line ids from a trashed recipe must
+      return `NOT_FOUND`.
+- [ ] Add a small Postgres-backed rate limiter helper and wire it to cron purge, transaction CSV
+      export, global search, and future document/import extension points. Add tests for allow,
+      block, window reset, and org isolation where applicable.
+- [ ] Add `audit_log` table: `organization_id`, `actor_user_id`, `actor_role`, `action`,
+      `entity_type`, `entity_id`, `metadata`, `created_at`, `request_id`. Add it to
+      `businessTables` and test RLS read/write isolation.
+- [ ] Write audit events for financial mutations, invoice lifecycle changes, payroll mutations,
+      trash restore/purge, settings changes, exports, cron purge, and future document/import hooks.
+- [ ] Add regression tests for CSV formula neutralization (`=`, `+`, `-`, `@`, tab, CR) and for
+      low-stock threshold refusing trashed ingredients.
+- [ ] Sync repo docs: README roadmap, SETUP env/setup, CLAUDE rules, and this plan.
 
 Acceptance criteria:
-- Seed ~12 transactions across ≥3 categories and 2 months → monthly & annual dashboards
-  show correct income/expense/profit, by-category breakdown, and top products; numbers
-  reconcile with the raw list and the CSV export.
-- Break-even page computes units & revenue to break even and updates live as sliders move;
-  a negative-margin scenario is handled gracefully (no NaN/∞).
-- A `kitchen`-role user is blocked from the financials routes/actions; org isolation proven
-  by an automated test.
+
+- The active recipe/ingredient invariant cannot be violated by normal actions, forged line ids,
+  or documented concurrent flows.
+- Abusable routes/actions have a tested limiter.
+- High-risk changes leave audit events in the active org only.
+- Documentation matches the actual product state and the next sprint is unambiguous.
+
+Production note:
+
+- Run migrations in production and verify `audit_log` and rate-limit tables exist and have RLS.
 
 ---
 
-## Sprint 2.5 — Spreadsheet & document import (onboarding)
-Goal: a chef migrating from the old kit imports their existing ingredients, recipes, and
-transactions from a file — reliably, with a preview-and-confirm step, NEVER an auto-commit.
-Pairs with the Sprint 2 CSV **export** (same columns → symmetric round-trip) and builds the
-reusable **ingredient resolver + import staging** layer that every later import source
-(including the deferred AI extraction) rides on.
+## Sprint 3.5A - Document foundation and invoice PDF
 
-Reliability-first scoping (this is the whole point — "working well" means deterministic):
-- **Tier 1 — structured, deterministic (THIS sprint):** Excel (`.xlsx`), `.csv`, and Word
-  (`.docx`) *tables*. Tabular data maps column-by-column against a documented template;
-  fully testable and trustworthy.
-- **Tier 2 — free-form prose / images (NOT this sprint):** a recipe written as Word prose
-  ("mix 200g flour with 2 eggs…") is the SAME extraction problem as a photo — it needs an
-  LLM, is never 100%, and costs per call. Deferred to the backlog "AI extraction" item
-  alongside OCR; it will reuse this sprint's resolver + staging. Do NOT build it here.
+Goal: build the document pipeline once, then ship the smallest high-value document: invoice print/PDF.
 
-Decisions to LOCK in the plan (do not assume while coding):
-- **One canonical format:** ship a downloadable XLSX/CSV template per entity (ingredients,
-  recipes, transactions) whose columns are EXACTLY the Sprint 2 export columns — import and
-  export are the same format. Document required vs optional columns + an example row.
-- **Ingredient resolver (the hard core — build once):** for each imported line, normalize the
-  name and match within the org — exact match → link to the existing ingredient; fuzzy/near
-  match → surface as a suggestion in the preview (user confirms); no match → stage a NEW
-  ingredient. A recipe file carries no prices, so new ingredients default to `priceCents = 0`
-  with `dimension` inferred from the unit, and are flagged "needs pricing" so cost stays honest.
-- **Units & money parsing:** unit strings → canonical g/ml/count via `lib/units` (an unknown
-  unit is a row error, never a silent guess). Decimals → integer cents respecting the org's
-  locale decimal separator (EUR "1,50" ≠ "1.50") — an explicit, tested edge case.
-- **Staging, never auto-commit:** parse → Zod-validate → render a preview grid with a per-row
-  status (create / update / skip / error + message) → the user confirms → the import applies
-  in a transaction. A malformed file shows errors and imports nothing.
-- **Safety:** cap file size and row count; treat the file as untrusted data — never evaluate
-  spreadsheet formulas/macros; reject unknown sheets/columns with a clear message. Respect
-  server-side plan limits (e.g. Starter's 50-recipe cap) so import can't bypass gating.
-- **Parser libs (decide in plan mode):** XLSX read via `exceljs`; CSV via a small parser (or
-  native); `.docx` tables via `mammoth`/docx table extraction. No heavyweight runtime dep
-  beyond the chosen parser. No schema migration in v1 (an `import_jobs` history/undo table is
-  explicitly deferred).
+Decisions to lock before coding:
 
-Module work:
-- [ ] `lib/import/` parsers: `.xlsx` / `.csv` / `.docx`-table → a normalized row array, plus a
-      downloadable template generator per entity (columns mirror the Sprint 2 export)
-- [ ] `lib/import/resolveIngredient.ts`: pure, tested name-normalization + match
-      (exact / fuzzy / new) within an org — the shared core for all import sources
-- [ ] Zod row schemas per entity + a `parseImport()` returning typed rows + per-row issues
-      (never throws on bad data; it collects errors)
-- [ ] Import Server Actions (withOrg, org from Clerk): a dry-run that returns the preview, and
-      a confirm that applies staged rows in a transaction; `ActionErrorCode` + i18n
-- [ ] Import UI: upload → entity/format auto-detect → preview grid with per-row status and
-      fuzzy-match resolution → confirm; honest empty/error states; mobile-usable (~380px)
-- [ ] Wire into onboarding/empty states: when ingredients or recipes are empty, offer
-      "Import from a file" next to "Add manually"
-- [ ] i18n: all import strings via next-intl (incl. `actionErrors.*` for import codes)
-- [ ] Tests (PGlite + fixtures): xlsx/csv/docx-table parsing, resolver matching (exact/fuzzy/
-      new), unit conversion, locale cents parsing, malformed-file handling, plan-limit
-      enforcement, and org isolation (an import only ever writes to the active org)
+- PDF renderer: default to `@react-pdf/renderer` in Node runtime unless a proof-of-concept fails on Vercel. Do not add browser automation for PDF generation without approval.
+- Invoice PDF and print are manager-only. Kitchen cannot generate or view invoice documents.
+- Document generation uses Sprint 3.1 rate limiting and audit logging from day one.
+- No email in this sprint. Email moves to Sprint 3.5B after PDF generation is stable.
+
+Tasks:
+
+- [ ] Add shared document primitives: org header, document metadata, money/date formatting,
+      page footer, and safe text rendering. No duplicated per-document layout logic.
+- [ ] Add invoice print view and invoice PDF route/action. Both derive org id server-side,
+      check manager role before data access, run inside `withOrg`, and use existing invoice totals.
+- [ ] Add document generation audit events and rate-limit checks.
+- [ ] Add tests proving cross-org invoice ids return not found/forbidden, kitchen cannot generate,
+      totals reconcile with on-screen invoice data, and generated output is non-empty/valid.
+- [ ] Add localized UI for print/download actions and failure states.
 
 Acceptance criteria:
-- Download the ingredients template, fill ~10 rows, re-import → all create correctly; a row
-  with an unknown unit is flagged (not silently dropped) and the rest still import.
-- Import a recipe sheet referencing both existing and new ingredients → existing ones link,
-  new ones are staged "needs pricing"; the recipe's cost is correct once priced.
-- A CSV exported by the app (Sprint 2) re-imports cleanly (round-trip), and an import never
-  writes outside the active org (automated test).
 
-Production note: no migration in v1. If the optional `import_jobs` table is added later for
-history/undo, follow the DoD migration steps (journal `when` > the 0003 gotcha threshold).
+- A manager can download and print a branded invoice PDF whose totals match the invoice screen.
+- A kitchen user cannot reach the invoice document route/action.
+- Cross-org invoice ids never leak existence or data.
+- Rate limiting and audit logging are exercised by tests.
 
 ---
 
-## Sprint 2.7 — Global search (advanced & reliable)
-Goal: one fast, typo-tolerant search across the org's data — a command palette (⌘K)
-that finds recipes, ingredients and transactions and jumps straight to them.
+## Sprint 3.5B - Reports, Excel exports, and document email
 
-Decisions LOCKED (resolve & approve before coding):
-- **Postgres-native, no external search service.** Use `pg_trgm` (trigram) for fuzzy /
-  typo tolerance + `tsvector` full-text where it helps, with ranked results. Keeps
-  multi-tenancy trivial (same Neon DB, same RLS) — no second datastore to isolate.
-- **Org-scoped + RLS-safe + RBAC-filtered.** Search runs inside `withOrg`; every query
-  filters `organization_id` and `deleted_at IS NULL`; a `kitchen` user NEVER gets
-  transaction / financial results (RULE: financials are manager-only).
-- **Cross-entity, grouped results:** recipes, ingredients, transactions now (folders
-  optional). **Invoices and customers don't exist yet** — they join the SAME index when
-  they ship in Sprint 3 (see that sprint's "register into global search" task).
-- **Pluggable registry, not hard-coded entities.** Each searchable entity registers a
-  descriptor (table, searched columns, RBAC rule, result label + deep-link) so adding
-  invoices/customers later is a few lines, not a rewrite.
+Goal: extend the proven document pipeline to accountant/client-facing outputs without creating one-off renderers.
 
-- [x] Enable the `pg_trgm` extension + GIN trigram indexes on searchable text
-      (recipes.name/notes, ingredients.name/supplier, transactions.note); migration 0010
-      (journal `when` 1781632722380 > the 0003 gotcha threshold), isolation test
-- [x] Search registry: a typed descriptor per entity (columns, RBAC predicate, label,
-      href builder) so new entities plug in without touching the core (`lib/search/registry.ts`)
-- [x] Unified search Server Action: org-scoped via `withOrg`, Zod-validated query,
-      RBAC-filtered (kitchen excluded from transactions), soft-delete aware, ranked,
-      capped per entity (`app/(app)/search/actions.ts` + `lib/search/run.ts`)
-- [x] Pure ranking / snippet helpers in `lib/` + Vitest (typo tolerance, relevance order,
-      empty / short-query / no-match edges) (`lib/search/ranking.ts`)
-- [x] Command palette UI (⌘K / Ctrl-K) in the app shell: debounced input, results grouped
-      by entity, full keyboard nav, loading / empty / error states, i18n strings, each
-      result links into the right module (cmdk + shadcn; ingredient/transaction deep-links
-      use `?highlight=`)
-- [x] Performance: GIN trigram indexes created and confirmed usable (EXPLAIN → Bitmap Index
-      Scan on `*_trgm_idx`); on tiny tables Postgres seq-scans, as expected
+Decisions to lock before coding:
+
+- Email provider: Resend, with a thin `lib/email` client and testable send abstraction.
+- Excel generation: use a real `.xlsx` writer with typed number/date/currency cells. CSV remains raw transaction export only.
+- Bulk document generation is only included if it saves a real workflow; otherwise leave it in backlog.
+
+Tasks:
+
+- [ ] Recipe card PDF/print: ingredients, quantities, cost breakdown, margin, and notes.
+- [ ] P&L PDF/print for month/year, manager-only, reconciling with financial dashboard numbers.
+- [ ] Payroll payslip/period summary PDF/print, manager-only and PII-safe.
+- [ ] XLSX export for P&L and payroll with formatting and formula-injection-safe text cells.
+- [ ] Resend email action for generated documents: recipient validation, rate limiting, audit log,
+      clear delivery/error states, and no cross-tenant attachments.
+- [ ] Optional bulk download only after the single-document flows are stable.
 
 Acceptance criteria:
-- A misspelled recipe / ingredient name still finds the right row (trigram), results
-  ranked by relevance and grouped by entity.
-- A `kitchen`-role user's search never returns transactions / financial data; org
-  isolation proven by an automated test.
-- ⌘K opens/closes, is fully keyboard-navigable, and every result navigates to the
-  correct record.
+
+- Invoice, recipe card, P&L, and payroll documents render consistently with shared branding.
+- P&L and payroll `.xlsx` files open in Excel with correct values and formatting.
+- Email sends a generated PDF to an allowed recipient, logs the event, and never leaks another org's data.
 
 ---
 
-## Sprint 3 — Invoices and payroll (modules 5 and 6 — data & builders)
-Goal: the invoice and payroll DATA, builders and calculations. Their printable output
-(PDF / Excel / email) is the dedicated Sprint 3.5 — this sprint stops at on-screen.
+## Sprint 4 - Billing, entitlements, and organization lifecycle
 
-- [x] `customers` table (org-scoped, soft-deletable): name, tax id, address, email —
-      reused by invoices and searchable globally
-- [x] `invoices` + `invoice_items` tables; sequential numbering per organization
-      (migration 0011; per-line VAT, frozen totals, draft→issued→paid/void lifecycle)
-- [x] Invoice builder: pick/create customer, line items, taxes, total (on-screen preview)
-      + read-only `/invoices/[id]` detail
-- [x] `employees` and `shifts` tables (check-in/check-out, hourly rate) — employee data
-      is PII: `manager`-only access (archive, not shared-trash; hard-delete cascades shifts)
-- [x] Shift logging + automatic hours and pay-due calculation (pure, tested; integer cents;
-      midnight-safe via absolute instants)
-- [x] Per-employee summary per period (week/month) — on-screen
-- [x] Invoice numbering is gap-free and concurrency-safe per org (atomic upsert-increment
-      on `invoice_counters`, row-locked, per-year; tested under 50 concurrent allocations)
-- [x] Register `invoices` + `customers` into the Sprint 2.7 search registry (find an
-      invoice by number/customer, a customer by name) — RBAC: both `manager`-only
+Goal: paid plans are real controls, not UI decoration.
+
+Decisions to lock before coding:
+
+- Plan mapping remains: Starter = modules 1-3 and 50 recipes; Pro = modules 1-4 plus invoices; Business = all modules including payroll and advanced docs.
+- Entitlements are checked with a central server helper. Do not scatter raw Clerk `has()` calls through actions.
+- If entitlement state cannot be determined, deny paid features fail-closed.
+
+Tasks:
+
+- [ ] Enable Clerk Billing for B2B organization plans and connect Stripe.
+- [ ] Create Starter / Pro / Business plans and features in Clerk.
+- [ ] Add `lib/entitlements.ts`: `requireFeature`, `canUseFeature`, `assertPlanLimit`.
+      Server Actions and Route Handlers use these before data access/mutations.
+- [ ] Add `/pricing` with Clerk PricingTable and an in-app billing/settings page.
+- [ ] Enforce Starter limits server-side: 1 user and 50 recipes. Imports and forged actions must not bypass limits.
+- [ ] Add post-signup onboarding: create org, choose plan, short setup tour.
+- [ ] Add verified Clerk/Stripe webhooks for subscription changes, member removal, and org lifecycle.
+- [ ] Add custom Owner role/lifecycle rules so customers cannot accidentally self-delete an org unless explicitly allowed.
+- [ ] Add tests for entitlement bypass attempts, plan-limit races, forged webhooks, and fail-closed behavior.
 
 Acceptance criteria:
-- Build an invoice (customer + items + taxes) and close an employee's payroll for the
-  month on screen; a `kitchen`-role user cannot open payroll or invoices; invoice numbers
-  never collide or skip.
-- Global search (⌘K) now finds invoices by number/customer and customers by name, still
-  org-scoped and RBAC-filtered (proven by test).
+
+- A test org can subscribe to Pro and unlock Pro features.
+- A Starter org cannot exceed server-enforced limits via direct action calls or imports.
+- Forged webhooks are rejected.
+- Entitlement failures do not leak paid or sensitive data.
 
 ---
 
-## Sprint 3.5 — Documents, printing, export & email
-Goal: turn every key view into something the chef can hand to an accountant, a client or
-the tax office — one consistent, branded document pipeline (print, PDF, Excel, email).
-This is the home of ALL output; earlier sprints stop at on-screen data.
+## Sprint 4.5 - Deterministic import foundation: ingredients and transactions
 
-Decisions LOCKED (resolve & approve before coding):
-- **One shared document layout**, not per-page one-offs: a react-pdf template + a matching
-  print stylesheet (org logo/header/footer, currency via `formatMoney`, locale via
-  next-intl) reused by every document, so they all look like one product.
-- **PDF generation is server-side, org-scoped, RBAC-checked and XSS-safe**; rate-limited
-  (cross-ref Sprint 4's PDF-gen limiter — wire the limiter here when the path is born).
-- **Email delivery uses Resend** (introduced here for documents; Sprint 5's lifecycle
-  emails build on the same client). Never email cross-tenant data; log every send.
-- **Excel export uses a real `.xlsx`** (typed, formatted), complementing the existing CSV.
+Goal: import trusted structured files safely with server-side staging, preview, and idempotent confirm.
 
-Documents (each: on-screen → print-friendly route → Download PDF → Email):
-- [ ] Shared document layout + print stylesheet (the foundation all documents reuse)
-- [ ] Invoice — PDF + print + "Email to customer" (uses the customer email from Sprint 3)
-- [ ] Recipe card — ingredients, cost breakdown, per-portion cost & margin (great for the
-      kitchen wall / sharing a spec sheet)
-- [ ] P&L statement (monthly / annual) — `manager`-only — PDF + print
-- [ ] Per-employee payroll summary / payslip — `manager`-only, PII-safe — PDF + print
+Decisions locked:
 
-Export & share:
-- [ ] Excel (`.xlsx`) export of the P&L (income, expenses, profit, by-category, top
-      products) — and of payroll — with formatting; CSV stays for raw transactions
-- [ ] "Email this document" action (Resend): send any generated PDF (invoice, P&L,
-      payroll) to a chosen recipient with a short message; delivery + errors surfaced
-- [ ] Bulk / convenience: print or download a period's documents in one action where it
-      saves the user real time (e.g. all of a month's invoices)
+- Import requires a server-side `import_jobs` table. Preview state is never trusted from the client.
+- First entities: ingredients and transactions. Recipe import is harder and moves to Sprint 4.6.
+- Supported formats in v1: CSV and XLSX. `.docx` tables are considered in Sprint 4.6 only if still worth the dependency.
+- No AI/OCR/free-form extraction. That remains backlog after billing and usage metering.
+
+Schema:
+
+- `import_jobs`: `organization_id`, `id`, `actor_user_id`, `entity`, `format`, `status`
+  (`parsed`, `committed`, `expired`, `failed`), `source_filename`, `row_count`,
+  `normalized_rows` JSON, `issues` JSON, `idempotency_key`, `expires_at`, timestamps.
+- Add to `businessTables` and RLS. Jobs expire; confirmed jobs are immutable.
+
+Tasks:
+
+- [ ] Template generator for ingredients and transactions. Columns match export/import docs exactly.
+- [ ] CSV/XLSX parsers that never evaluate formulas/macros and reject unknown sheets/columns.
+- [ ] Zod row schemas and `parseImport()` that returns typed normalized rows plus per-row issues;
+      malformed rows collect errors instead of throwing the whole request.
+- [ ] Dry-run action: upload/parse/validate/plan rows, store `import_jobs`, return preview id.
+- [ ] Confirm action: load job by id inside `withOrg`, re-check role and plan limits, apply rows in
+      one transaction, mark committed with idempotency protection.
+- [ ] UI: upload, entity/format selection, preview grid, per-row status, confirm, error handling,
+      mobile usability, all localized.
+- [ ] Tests: parser fixtures, formula/macro safety, unknown columns, row/file caps, locale money
+      parsing, confirm idempotency, org isolation, and plan-limit enforcement.
 
 Acceptance criteria:
-- An invoice, a recipe card, a monthly P&L and a payslip each render to a clean, branded
-  PDF whose figures reconcile with the on-screen data; each also prints cleanly (print CSS).
-- Exporting the P&L to `.xlsx` opens in Excel with correct numbers and formatting; emailing
-  a P&L PDF reaches the inbox; neither ever leaks another org's data (automated test).
-- A `kitchen`-role user cannot reach or generate any financial / payroll document
-  (route + action), and rate limiting blocks PDF-gen abuse.
+
+- Download a template, fill 10 ingredient rows, import, preview, confirm, and see rows created in the active org only.
+- A transaction CSV exported by the app re-imports cleanly.
+- A forged confirm payload cannot alter rows, bypass limits, or write outside the job's org.
 
 ---
 
-## Sprint 4 — Billing with Clerk Billing + Stripe
-Goal: the product accepts payments.
+## Sprint 4.6 - Recipe import and ingredient resolver
 
-- [ ] Enable Clerk Billing (B2B, per-Organization plans) and connect the Stripe account
-- [ ] Create Starter / Pro / Business plans in the Clerk dashboard with Features
-- [ ] /pricing page with Clerk's <PricingTable />
-- [ ] Gating: `has({plan})` / <Protect> on modules per CLAUDE.md
-- [ ] Starter limits (50 recipes, 1 user) enforced on the SERVER (not just UI)
-- [ ] Post-signup onboarding flow: create org → choose plan → 3-step tour
-- [ ] In-app billing page (manage subscription via Clerk components)
-- [ ] Billing/Clerk webhooks (signature-verified): sync subscription + org/user lifecycle;
-      on member-removed / org-deleted, handle data ownership/cleanup
-- [ ] Custom `Owner` role without `org:sys_profile:delete` so customers can't self-delete
-      the org (creator role keeps delete — see memory `org-and-billing-decisions`)
-- [ ] Basic rate limiting on expensive/abusable endpoints (PDF gen, cron, auth-adjacent)
+Goal: import recipes reliably by reusing the staging foundation and resolving ingredients with human confirmation.
 
-Acceptance criterion: subscribe to the Pro plan with a test card and unlock modules; a
-forged webhook is rejected; server-side plan limits hold even if the client bypasses the UI.
+Decisions to lock before coding:
 
----
+- Recipe imports may create missing ingredients, but new ingredients default to `priceCents = 0` and are flagged as needing pricing.
+- Fuzzy ingredient matches are suggestions, not automatic links.
+- `.docx` table import is allowed only for real tables. Free-form prose remains backlog/AI extraction.
 
-## Sprint 5 — Launch polish
-Goal: ready for the first real customers.
+Tasks:
 
-- [ ] Resend: welcome, receipt, and low-stock alert emails (reuses the Resend client +
-      document-email path introduced in Sprint 3.5)
-- [ ] Sentry configured (client + server) — swap the `logError` sink, keep the shape
-- [ ] PostHog: key events (created recipe, generated invoice, viewed break-even)
-- [ ] Playwright E2E smoke: sign-in → create recipe → enter transaction → see dashboard;
-      runs in CI (Clerk test instance)
-- [ ] Dependabot (or Renovate) + `npm audit` gate in CI for dependency/security updates
-- [ ] GDPR/data-protection (EU): per-org data export + account/data deletion request flow;
-      document retention (trash 30 days, payroll PII)
-- [ ] i18n hygiene: zero hardcoded strings, all via next-intl
-- [ ] Public landing page with value proposition + CTA to /pricing
-- [ ] Accessibility and mobile responsiveness review of the main modules
-- [ ] Production checklist: env vars, domain, Neon backups + PITR, status page, rotate any
-      secrets exposed during development (e.g. the Neon password)
-
-Acceptance criterion: invite 3 beta chefs and have them complete onboarding without help;
-the E2E smoke is green in CI and a data-export request returns the org's data.
-
----
-
-## Sprint 6 — Kitchen task & prep lists (kitchen operations module)
-Goal: run the kitchen day on reliable, shared lists — **prep lists** (mise en place),
-**reorder lists** fed by the existing low-stock alert, and recurring **opening/closing
-checklists** — assignable to staff, with completion tracking. This is a chef-specific
-task system, NOT a generic to-do: every list type is anchored in real kitchen data
-(recipes → prep tasks, low-stock ingredients → reorder tasks). Both roles use it —
-tasks are operational, not financial.
-
-Why a dedicated sprint: the feature is small in surface but must be **trustworthy** (no
-lost edits, no cross-tenant leak, honest offline/empty states). It deliberately reuses
-three patterns the codebase already proved: the **folder pattern** (Sprint 1.6:
-list ≈ folder, nullable `list_id`, composite FK, manual `sort_order`), the **trash
-pattern** (Sprint 1.5: `deleted_at` + 30-day auto-purge), and the **search registry**
-(Sprint 2.7: a descriptor so tasks are findable via ⌘K). No new heavyweight dependency.
-
-Decisions to LOCK (resolve & approve before coding):
-- **Two tables, mirroring the folder pattern.** `task_lists` (org_id, name, `kind`
-  prep|reorder|checklist|general, `sort_order`, unique(org,name), composite (org,id) FK
-  target; HARD-delete → reassign its tasks to NULL, never trashed — same call as
-  `deleteFolder`). `tasks` (org_id, nullable `list_id` composite (org,list_id) FK ON
-  DELETE RESTRICT, `title`, nullable `notes`, `status` todo|done, nullable
-  `assigned_to` = a Clerk org-member user id (NOT the payroll `employees` table — org
-  membership already exists from Sprint 0), nullable `due_on` bare date, `position` int
-  for manual ordering, nullable `recipe_id` + nullable `ingredient_id` composite FKs ON
-  DELETE RESTRICT for the source link, `created_by`, timestamps, `deleted_at`).
-- **Status is binary (todo|done) in v1**, with optimistic toggle + server reconcile. An
-  `in_progress` state and per-task subtasks are explicitly DEFERRED (keeps the sprint
-  single + reliable).
-- **No cron-based recurrence in v1.** Recurring checklists are served by a **"reset
-  list"** action (mark every task in a checklist back to `todo`) and a **"duplicate
-  list"** action — deterministic, testable, no scheduler. True scheduled recurrence is a
-  backlog item.
-- **Soft-delete, not destructive** (Sprint 1.5): tasks `deleted_at` → `/trash` + 30-day
-  auto-purge; `task_lists` hard-delete. The recipe/ingredient purge paths NULL the task
-  source link first (extend `purgeRecipe`/`purgeExpired`) so a task survives a purge.
-- **RBAC: both `manager` and `kitchen` read + toggle tasks** (operational data). Creating/
-  renaming/deleting LISTS and ASSIGNING tasks to others is `manager`-only via
-  `getUserRole()`. (Confirm in plan mode.)
-- **Plan gating (Sprint 4):** decide which plans include task lists (proposal: a core
-  Operations feature, available from **Starter**). Enforce server-side via Clerk `has()`.
-
-Module work:
-- [ ] `task_lists` + `tasks` tables (both in `businessTables` → RLS auto-applies);
-      composite FKs; next migration in sequence with its journal `when` cleared past the
-      gotcha threshold (DoD); PGlite isolation test (org A can't read org B's tasks)
-- [ ] Data layer `lib/data/tasks.ts` + `task-lists.ts` (list / create / update /
-      toggle-status / assign / reorder / soft-delete / restore / purge + list CRUD +
-      reset-list + duplicate-list) — all org-scoped, `deleted_at IS NULL`, reusing the
-      folder + trash helpers
-- [ ] Server Actions (Zod, org from Clerk, `withOrg`): task CRUD + status toggle + assign
-      + move/reorder + list CRUD; `ActionErrorCode` + next-intl (`actionErrors.*`)
-- [ ] Integrations (the whole point — anchored in real data): a **"Create reorder task"**
-      action on the inventory low-stock alert (links `ingredient_id`, reuses `isLowStock`);
-      an **"Add prep tasks"** action from a recipe (links `recipe_id`)
-- [ ] Wire `tasks` into `/trash` (soft-deleted, restorable) + the existing 30-day
-      auto-purge fan-out; extend recipe/ingredient purge to NULL task links first
-- [ ] Register `tasks` into the Sprint 2.7 search registry (find a task by title;
-      RBAC: all roles) — a few lines, no core change
-- [ ] `/tasks` page: lists rail (reuse the `folder-rail` pattern) + task list with
-      status checkbox, assignee, due date, manual reorder; honest empty states;
-      mobile-usable (~380px); fully keyboard-reachable. Match the dashboard's Card +
-      `text-base` CardTitle design language
-- [ ] i18n: all task strings via next-intl
-- [ ] Tests (PGlite): list/task CRUD + org isolation, status toggle, assignment,
-      reorder, soft-delete/restore/purge, reset-list + duplicate-list, low-stock→reorder
-      and recipe→prep integrations, purge-nulls-link, and the search registration
+- [ ] `lib/import/resolveIngredient.ts`: exact, normalized, fuzzy, and new match outcomes, pure and tested.
+- [ ] Recipe CSV/XLSX templates with recipe header rows and line rows, documented examples.
+- [ ] Recipe import parser + row schemas + staged preview using `import_jobs`.
+- [ ] Preview UI for resolving fuzzy ingredient matches and confirming creation of new ingredients.
+- [ ] Confirm action creates/updates recipes and lines transactionally, re-checks recipe plan limits,
+      and keeps cost honest for unpriced ingredients.
+- [ ] Optional `.docx` table parser only if dependency and table extraction are proven in a spike.
+- [ ] Tests: exact/fuzzy/new resolver, unit conversion, unknown units, new unpriced ingredients,
+      duplicate recipe handling, org isolation, and plan-limit races.
 
 Acceptance criteria:
-- Create a prep list, add tasks, assign one to a staff member, mark it done; the order
-  persists across reload; it all works at ~380px and via keyboard only.
-- A low-stock ingredient → one click creates a reorder task linked to it; permanently
-  purging that ingredient does not break or orphan the task (link goes NULL).
-- A `kitchen`-role user can view and complete tasks but cannot create/delete lists or
-  assign others; org isolation proven by an automated test.
-- A deleted task appears in `/trash`, restores cleanly, and auto-purges after 30 days;
-  ⌘K finds a task by title (still org-scoped + RBAC-filtered).
 
-Production note: Vercel does not run migrations — run `npm run db:migrate` against prod
-Neon after merge and VERIFY `task_lists` + `tasks` exist live; ensure the new migration's
-journal `when` exceeds prod's max `created_at` (the recurring 0003 gotcha; the migrate
-guard now aborts on a bad order).
+- Import a recipe sheet referencing existing and new ingredients; existing ones link, new ones are staged as needing pricing, and recipe cost updates correctly once prices are filled.
+- Fuzzy matches require explicit user confirmation.
+- Confirm is idempotent and cannot write outside the active org.
 
 ---
 
-## Cross-cutting concerns & backlog (tracked, scheduled — not lost)
-Engineering/security carried across sprints (enforced via the Definition of Done unless a
-dedicated item exists):
-- **RBAC enforcement** (`manager` vs `kitchen`) — wired in Sprint 2 (financials) and Sprint 3
-  (payroll); audit every sensitive action.
-- **Audit log** (who changed what, per org) — B2B multi-user expectation; target Sprint 4
-  (once roles/billing matter). Append-only table, org-scoped.
-- **Rate limiting & abuse** — Sprint 4; revisit if a public/unauthenticated surface appears.
-- **E2E + dependency scanning** — Sprint 5 (Playwright smoke, Dependabot, `npm audit`).
-- **Webhooks & lifecycle** (Clerk/billing, org/member removal cleanup) — Sprint 4.
-- **GDPR data export/delete + retention** — Sprint 5.
+## Sprint 5 - Launch readiness and beta operations
 
-Product backlog (not yet scheduled — promote into a sprint when prioritized):
-- **AI extraction (OCR photos + free-form docs):** import a recipe from a photo (OCR) or from
-  free-form Word/prose text — the same LLM-based extraction, never 100% reliable, costs per
-  call. Reuses Sprint 2.5's ingredient resolver + import staging (always draft → human review,
-  never auto-commit); gate as a Pro/Business feature with usage metering → schedule AFTER
-  Sprint 4 (billing). (Note: structured `.xlsx`/`.csv` and Word *tables* are NOT here — they
-  ship deterministically in Sprint 2.5.)
-- **Recipe scaling / batch:** scale a recipe to N portions or a target cost.
-- **Suppliers** as a first-class entity (currently a free-text field) with per-supplier prices.
-- **Saved reports / scheduled email summaries** (monthly P&L to the owner).
-- **Scheduled / recurring checklists** (Sprint 6 follow-up): true cron-based recurrence for
-  opening/closing checklists (daily/weekly auto-instantiation), beyond v1's manual reset/
-  duplicate actions. Reuses the existing Vercel Cron + per-org fan-out from Sprint 1.5.
+Goal: first real customers can use the product with supportable operations.
+
+Tasks:
+
+- [ ] Sentry client/server integration, preserving current `logError`/`eventId` shape.
+- [ ] Playwright E2E smoke in CI: sign in, create recipe, enter transaction, view dashboard,
+      create invoice, and verify kitchen RBAC blocks sensitive routes.
+- [ ] Dependency maintenance: Dependabot/Renovate and `npm audit` policy in CI.
+- [ ] PostHog or equivalent product analytics for key events, with no sensitive payloads.
+- [ ] Lifecycle emails: welcome, receipt, low-stock alert, document send result.
+- [ ] GDPR/EU readiness: org data export, deletion request workflow, retention docs for trash,
+      audit log, invoices, and payroll PII.
+- [ ] Accessibility and mobile review of core workflows at ~380px.
+- [ ] Production operations checklist: env vars, domain, Neon backups/PITR, Vercel cron,
+      status page, secret rotation, migration verification runbook.
+- [ ] Public landing page and pricing CTA only after billing is functional.
+
+Acceptance criteria:
+
+- Invite 3 beta chefs and have them complete onboarding without help.
+- CI includes unit/integration gates and one reliable E2E smoke.
+- A data-export request returns the org's data without cross-tenant leakage.
+
+---
+
+## Sprint 6 - Kitchen operations: prep, reorder, and checklist tasks
+
+Goal: run kitchen work from reliable shared lists anchored in real PrepProfit data.
+
+Product note:
+
+- This is post-MVP expansion unless beta feedback proves tasks are needed for launch.
+- Tasks are operational, not financial. Both manager and kitchen can read and complete tasks.
+
+Decisions to lock before coding:
+
+- Use two tables: `task_lists` and `tasks`, mirroring the folder/trash patterns.
+- Status is binary in v1: `todo` or `done`. No subtasks or `in_progress` yet.
+- No cron recurrence in v1. Use manual reset/duplicate list actions.
+- Plan gating proposal: Operations feature available from Starter, enforced server-side.
+
+Tasks:
+
+- [ ] `task_lists` and `tasks` tables, composite FKs, RLS, migration guard, isolation tests.
+- [ ] Data layer and Server Actions for list/task CRUD, toggle, assign, reorder, reset, duplicate,
+      soft-delete, restore, purge; Zod and ActionErrorCode throughout.
+- [ ] Integrations: low-stock ingredient to reorder task; recipe to prep tasks.
+- [ ] Extend trash/purge paths so purged recipes/ingredients null task source links first.
+- [ ] Register tasks in global search for both roles.
+- [ ] `/tasks` UI: list rail, task rows, status checkbox, assignee, due date, reorder,
+      empty states, keyboard and mobile support.
+- [ ] Tests for org isolation, RBAC, status toggle, assignment, reorder, soft-delete/restore,
+      purge-null-link, reset/duplicate, integrations, and search registration.
+
+Acceptance criteria:
+
+- Create a prep list, add tasks, assign one, mark it done, and preserve order across reload.
+- A low-stock ingredient can create a linked reorder task; purging the ingredient leaves the task intact with a null link.
+- Kitchen can complete tasks but cannot create/delete lists or assign others.
+
+---
+
+## Backlog - not scheduled until prioritized
+
+- AI extraction/OCR/free-form recipe import with human review, usage metering, and billing controls.
+- Recipe scaling/batch planning.
+- Suppliers as first-class entities with per-supplier price history.
+- Saved reports and scheduled email summaries.
+- True scheduled recurring checklists after Sprint 6 proves manual lists.
+- Advanced audit-log UI for managers.
+- Real Postgres concurrency test job for invoice numbering/import/stock beyond PGlite limits.

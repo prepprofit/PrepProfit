@@ -18,88 +18,94 @@
 
 ## Overview
 
-PrepProfit replaces the spreadsheet kit (Excel/Google Sheets) with a multi-tenant
-subscription web app built for the reality of restaurants, bakeries and
-patisseries. Each organization's data is **fully isolated**; the cost, margin and
-break-even calculations — the heart of the product — live in pure, tested
-functions.
+PrepProfit replaces the spreadsheet kit with a multi-tenant SaaS for restaurants,
+bakeries, patisseries, and other food businesses. Each organization's data is isolated
+by application-level org scoping and Postgres Row-Level Security. Cost, margin,
+break-even, invoice, payroll, and finance calculations live in pure tested modules.
 
 ## Product modules
 
-| # | Module | Description |
-|---|--------|-------------|
-| 1 | **Recipes** | Recipe cost (ingredients → total cost, per portion, margin) |
-| 2 | **Financials** | Income, expenses and a monthly/annual dashboard |
-| 3 | **Inventory** | Stock in/out and low-stock alerts |
-| 4 | **Break-even** | Break-even with scenario simulation |
-| 5 | **Payroll** | Shifts, hours and per-employee pay |
-| 6 | **Invoices** | PDF invoice generation |
+| # | Module | Current scope |
+|---|--------|---------------|
+| 1 | Recipes | Recipe cost, yield/loss, hidden costs, margin, folders, trash |
+| 2 | Financials | Transactions, categories, CSV export, monthly/annual dashboard |
+| 3 | Inventory | Stock movements, authoritative ledger, low-stock thresholds |
+| 4 | Break-even | Scenario simulator with safe zero/negative-margin handling |
+| 5 | Payroll | Employees, shifts, period summaries, manager-only |
+| 6 | Invoices | Customers, draft/issue/pay/void lifecycle, gap-free numbering |
+| 7 | Global search | Typo-tolerant search across allowed entities with RBAC |
 
-Subscription plans (Starter / Pro / Business) unlock modules via Clerk Billing.
+Planned next: production hardening, document/PDF generation, billing, deterministic
+imports, launch readiness, and optional kitchen task lists. See [PLANO.md](PLANO.md).
 
 ## Stack
 
-- **Next.js 15** (App Router) · **React 19** · strict **TypeScript**
-- **PostgreSQL** (Neon) + **Drizzle ORM**
-- **Clerk** (auth + Organizations) and **Clerk Billing** over **Stripe**
-- **Tailwind CSS v4** + **shadcn/ui** (+ shadcn/ui charts on Recharts for dashboards)
-- **next-intl** (English to start) · **Zod** (server-side validation)
-- **Vitest** + **PGlite** (database tests with no external dependencies)
-- Deployed on **Vercel**
+Active stack:
 
-## Multi-tenant architecture (rule #1)
+- Next.js 15 App Router, React 19, strict TypeScript
+- PostgreSQL on Neon with Drizzle ORM
+- Clerk auth with Organizations and org roles
+- Tailwind CSS v4, shadcn/ui patterns, Recharts
+- next-intl for UI copy and action error messages
+- Zod for server-side validation
+- Vitest + PGlite for database and calculation tests
+- Vercel deployment
 
-Per-organization isolation in **two independent layers**:
+Planned stack additions are introduced only in their sprint: PDF rendering in Sprint 3.5A,
+Resend email in Sprint 3.5B, and Clerk Billing/Stripe in Sprint 4.
 
-1. **Application layer (primary)** — `organization_id` **always** comes from Clerk
-   on the server (`getOrgId()` in [`lib/auth.ts`](lib/auth.ts)); never from the
-   client. All data access goes through helpers in [`lib/data/`](lib/data) that
-   inject `organization_id` into the `WHERE`/`INSERT`.
-2. **Database layer (defense in depth)** — **Row-Level Security** with `FORCE` on
-   every table ([`lib/db/rls.ts`](lib/db/rls.ts)). The policy only exposes rows
-   whose `organization_id` matches the `app.current_org_id` GUC, set per
-   transaction in [`runInOrg()`](lib/db/tenant.ts). With no organization context,
-   **no row passes** (secure by default).
+## Multi-tenant architecture
 
-> Monetary values are always `integer` cents — never float.
+PrepProfit uses two independent isolation layers:
+
+1. Application layer: `organization_id` comes from Clerk on the server via `getOrgId()`.
+   Data access helpers explicitly scope every query by organization.
+2. Database layer: every business table is listed in `businessTables` and receives RLS
+   with `FORCE ROW LEVEL SECURITY`. `withOrg()` sets `app.current_org_id` per transaction.
+
+Writes run inside `withOrg(...)`, so RLS `USING` and `WITH CHECK` policies are active.
+Tests cover both reads and write rejection paths.
+
+Money is stored as integer cents. Physical quantities may use numeric canonical units.
 
 ## Project structure
 
-```
+```text
 app/
-  (marketing)/        Public landing page
-  (app)/              Authenticated shell (sidebar + OrganizationSwitcher) + modules
-  sign-in, sign-up    Clerk pages
-  select-organization Organization selection/creation
+  (app)/              Authenticated application shell and modules
+  api/                File/cron routes only where Server Actions do not fit
 components/
-  ui/                 shadcn/ui primitives (button, card, …)
-  app/                Sidebar, module placeholders
+  ui/                 Shared UI primitives
+  app/                Product-specific components
 lib/
-  auth.ts             getOrgId(), roles
-  db/                 schema (Drizzle), RLS, Neon client, runInOrg()
-  data/               Data access — always scoped by organization
-  i18n/               Configuration + message catalog (English)
+  auth.ts             Clerk org id and role helpers
+  db/                 Drizzle schema, RLS, tenant transaction helpers
+  data/               Org-scoped data access
+  calculations/       Pure business math with tests
+  validation/         Zod schemas for server-side validation
+  search/             Search registry and query runner
+  i18n/               next-intl config and messages
 drizzle/              Generated migrations
-scripts/              migrate.ts (schema + RLS), seed.ts (2 organizations)
-tests/                isolation.test.ts — proves isolation between orgs
+scripts/              Migration and seed scripts
+tests/                PGlite integration tests
 ```
 
 ## Getting started
 
 ```bash
 npm install
-npm test          # runs now, no credentials (in-memory Postgres via PGlite)
+npm test
 ```
 
-To run the real app, set up Neon and Clerk and fill in `.env.local` — the full
-walkthrough is in **[SETUP.md](SETUP.md)**.
+To run the app against Neon and Clerk, fill `.env.local` using `.env.example`, then:
 
 ```bash
-cp .env.example .env.local   # fill in DATABASE_URL and the Clerk keys
-npm run db:migrate           # create tables + apply RLS
-npm run seed                 # (optional) seed 2 example organizations
-npm run dev                  # http://localhost:3000
+npm run db:migrate
+npm run seed:org   # optional, for a real Clerk org id
+npm run dev
 ```
+
+See [SETUP.md](SETUP.md) for the full local and production setup.
 
 ## Scripts
 
@@ -108,38 +114,55 @@ npm run dev                  # http://localhost:3000
 | `npm run dev` | Development server |
 | `npm run build` | Production build |
 | `npm run lint` | ESLint |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Tests (Vitest + PGlite) |
-| `npm run db:generate` | Generate a migration from the schema |
-| `npm run db:migrate` | Apply migrations + RLS policies |
-| `npm run seed` | Seed two organizations with isolated data |
+| `npm run typecheck` | TypeScript check |
+| `npm test` | Vitest + PGlite test suite |
+| `npm run db:generate` | Generate Drizzle migration |
+| `npm run db:migrate` | Apply migrations and RLS policies |
+| `npm run seed` | Seed demo data for two env-provided org ids |
+| `npm run seed:org` | Seed one active Clerk organization |
+| `npm run seed:demo` | Seed richer demo data for one org |
 
 ## Testing
 
-Multi-tenant isolation is verified automatically in
-[`tests/isolation.test.ts`](tests/isolation.test.ts): an in-memory Postgres
-(PGlite) receives the **same** production migrations and policies, and the test
-proves — on both layers — that organization A can never see organization B's data.
-It needs no external database, so it runs in CI without secrets.
+The suite verifies calculation correctness, org isolation, RLS, RBAC, soft-delete behavior,
+search filtering, invoice numbering, inventory ledger behavior, and critical Server Actions.
+PGlite keeps tests local and credential-free. Some real-concurrency guarantees still need a
+Postgres job before launch; those are tracked in [PLANO.md](PLANO.md).
 
 ## Deployment
 
-Import the repository on **Vercel**, set the environment variables (see
-[SETUP.md](SETUP.md)), and run `npm run db:migrate` against the production Neon
-before the first deploy. Continuous integration (lint + typecheck + test) runs on
-every push via [GitHub Actions](.github/workflows/ci.yml).
+Deploy on Vercel with Neon Postgres and Clerk Organizations enabled. Run production migrations
+before the first deploy and after every migration merge. Vercel does not run migrations for you.
+
+Required production checks:
+
+- `DATABASE_URL` points at the intended Neon branch/database.
+- Clerk keys and URLs are set for the environment.
+- `CRON_SECRET` is set before enabling scheduled purge.
+- `npm run db:migrate` completes and the expected columns/tables exist in Neon.
+- CI gates pass: lint, typecheck, tests, and `next build`.
 
 ## Roadmap
 
-Development follows **[PLANO.md](PLANO.md)**, sprint by sprint:
+[PLANO.md](PLANO.md) is the source of truth. Current sequence:
 
-- [x] **Sprint 0** — Multi-tenant foundation (schema, RLS, auth, shell, isolation tested)
-- [ ] **Sprint 1** — Recipes and ingredients (CRUD, real cost, margin)
-- [ ] **Sprint 2** — Financials and break-even
-- [ ] **Sprint 3** — Invoices and payroll
-- [ ] **Sprint 4** — Billing (Clerk Billing + Stripe)
-- [ ] **Sprint 5** — Launch polish
+- [x] Sprint 0 - Multi-tenant foundation
+- [x] Sprint 1 - Recipes, ingredients, units, inventory
+- [x] Sprint 1.5 - Trash and purge foundation
+- [x] Sprint 1.6 - Recipe folders
+- [x] Sprint 1.7 - Hardening baseline
+- [x] Sprint 2 - Financials and break-even
+- [x] Sprint 2.7 - Global search
+- [x] Sprint 3 - Invoices and payroll data/builders
+- [ ] Sprint 3.1 - Production hardening
+- [ ] Sprint 3.5A - Document foundation and invoice PDF
+- [ ] Sprint 3.5B - Reports, Excel exports, and document email
+- [ ] Sprint 4 - Billing and entitlements
+- [ ] Sprint 4.5 - Deterministic import foundation
+- [ ] Sprint 4.6 - Recipe import
+- [ ] Sprint 5 - Launch readiness
+- [ ] Sprint 6 - Kitchen operations tasks, if prioritized
 
 ---
 
-<div align="center"><sub>Project conventions and rules in <a href="CLAUDE.md">CLAUDE.md</a> · Design system in <a href="DESIGN.md">DESIGN.md</a></sub></div>
+<div align="center"><sub>Project rules in <a href="CLAUDE.md">CLAUDE.md</a> - Execution plan in <a href="PLANO.md">PLANO.md</a> - Design system in <a href="DESIGN.md">DESIGN.md</a></sub></div>

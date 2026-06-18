@@ -1,64 +1,114 @@
-# PrepProfit SaaS — Project Rules
+# PrepProfit SaaS - Project Rules
 
 ## What this project is
-Multi-tenant SaaS for financial management aimed at chefs and food-business owners
-(restaurants, bakeries, patisseries). It replaces a spreadsheet kit with a
-subscription web app. Initial codebase: built fresh from the Wibox base
-(Next.js), cherry-picked where it made sense.
 
-## Stack (do not change without explicit approval)
-- Next.js 15 (App Router) + React 19 + strict TypeScript
+PrepProfit is a multi-tenant B2B SaaS for restaurant, bakery, patisserie, and food-business
+financial management. It replaces a spreadsheet kit with tested workflows for recipe costing,
+inventory, financials, break-even, invoices, payroll, search, documents, and imports.
+
+## Active stack
+
+Do not change the stack without explicit approval.
+
+- Next.js 15 App Router + React 19 + strict TypeScript
 - PostgreSQL on Neon + Drizzle ORM
-- Clerk (auth + Organizations) and Clerk Billing connected to Stripe
-- Tailwind CSS + shadcn/ui (incl. shadcn/ui charts on Recharts, for dashboards)
-- TanStack Table (editable grids), react-pdf (invoices)
-- Resend (emails), next-intl (i18n: English to start; more locales later)
-- Deploy: Vercel
+- Clerk auth with Organizations and org roles
+- Tailwind CSS + shadcn/ui patterns + Recharts
+- TanStack Table where grids need real table behavior
+- next-intl for all UI copy and action error messages
+- Zod for server-side validation
+- Vitest + PGlite for calculation and database tests
+- Vercel deployment
 
-## RULE #1 — Multi-tenancy (non-negotiable)
-- EVERY business-data table has an `organization_id` column (text, from Clerk).
-- EVERY query (select, insert, update, delete) filters by `organization_id`.
-- Never trust `organization_id` coming from the client. Always derive it on the
-  server via Clerk's `auth()` (Server Action or Route Handler).
-- Use the `getOrgId()` helper in `lib/auth.ts` for all data access.
-- A query without an org filter is a security bug: stop and fix it.
+Planned additions must land only in their sprint:
+
+- PDF rendering: Sprint 3.5A
+- Resend email: Sprint 3.5B
+- Clerk Billing/Stripe: Sprint 4
+- Sentry/PostHog/Playwright launch operations: Sprint 5
+
+## Rule 1 - Multi-tenancy is non-negotiable
+
+- Every business-data table has `organization_id`.
+- Every query, including SELECT, INSERT, UPDATE, and DELETE, is explicitly scoped by `organization_id`.
+- Never accept `organization_id` from the client. Derive it on the server with `getOrgId()`.
+- Every business table is listed in `businessTables` so RLS is applied.
+- Writes run inside `withOrg(...)` so RLS `USING` and `WITH CHECK` policies are active.
+- Cross-tenant foreign links use composite `(organization_id, foreign_id)` FKs.
+- A query without an org filter is a security bug.
+
+## Authorization
+
+- Role comes from Clerk `auth().orgRole`.
+- `org:admin` maps to `manager`; every other org role maps to `kitchen`.
+- Sensitive pages render `NoAccess` for kitchen users.
+- Sensitive Server Actions and Route Handlers return `FORBIDDEN` before any data access.
+- Sensitive surfaces include financials, transactions, break-even, invoices, payroll, trash,
+  settings, generated documents, billing, and sensitive exports.
+- Dashboard is a documented product exception: financial widgets are manager-only; operational
+  recipe/inventory widgets may be visible to kitchen only if PLANO.md keeps that decision.
+- Plan/feature entitlement checks are server-side controls once Sprint 4 lands. UI hiding is never enough.
 
 ## Code rules
-- Server Actions for mutations; no unnecessary API routes.
-- Zod validation on all user input (server, not just client).
-- Monetary values: store as integer cents. Never float.
-- Cost/margin/break-even calculations as pure functions in `lib/calculations/`
-  with unit tests (Vitest). These calculations are the heart of the product.
-- Components: shadcn/ui first; build custom only when necessary.
-- No `any`. No `@ts-ignore`. Types derived from the Drizzle schema.
-- UI strings always via next-intl, never hardcoded.
 
-## Product modules (parity with the original spreadsheet kit)
-1. Recipe cost calculator (ingredients → total cost, per portion, margin)
-2. Financial panel: income, expenses, monthly/annual dashboard
-3. Ingredient and recipe inventory (in/out, low-stock alert)
-4. Break-even calculator (with scenario simulations)
-5. Payroll: shifts, hours, per-employee pay
-6. Document / print system: print + PDF of invoices, recipe cards, P&L statements
-   and payroll (shared branded layout), plus Excel (.xlsx) export and email delivery
-   (Resend). Global ⌘K search across recipes, ingredients, transactions, invoices and
-   customers is a cross-cutting capability (Sprint 2.7 + 3).
+- Mutations use Server Actions unless a file download, webhook, or cron route requires a Route Handler.
+- All user input is validated with Zod on the server.
+- Action failures return stable `ActionErrorCode` values mapped through next-intl.
+- Unexpected errors go through `unexpected()` / `logError()`.
+- Monetary values are stored as integer cents. Never store money as floats.
+- Cost, margin, invoice, payroll, finance, inventory, and break-even calculations live in pure modules
+  under `lib/calculations/` with tests for rounding and edge cases.
+- Soft-delete active reads filter `deleted_at IS NULL`.
+- Purge paths preserve history by nulling optional links before deleting referenced rows.
+- No `any`, no `@ts-ignore`. Types derive from Drizzle schema, Zod schemas, or explicit domain types.
+- UI strings always go through next-intl. No hardcoded user-visible strings.
 
-## Subscription plans (gating via Clerk `has()`)
-- Starter: 1 user, up to 50 recipes, modules 1–3
-- Pro: 5 users, unlimited recipes, modules 1–4 + invoices
-- Business: unlimited users, all modules incl. payroll
+## Testing rules
+
+- RLS tests cover reads and writes: SELECT isolation, INSERT `WITH CHECK`, UPDATE retag attempts,
+  and DELETE reachability.
+- RBAC tests prove manager-only actions return `FORBIDDEN` before data access.
+- Money tests cover zero, negative, large values, rounding, NaN, and Infinity edges.
+- CSV/XLSX/document/export paths must test formula-injection-safe text handling.
+- PGlite is the default local DB test layer. Real Postgres concurrency tests are required before launch
+  for flows where PGlite cannot prove the property.
+
+## Product modules
+
+1. Recipes: ingredient cost, yield/loss, hidden costs, margin, folders, trash.
+2. Financials: transactions, categories, dashboards, CSV export.
+3. Inventory: stock movements, authoritative ledger, low-stock alerts.
+4. Break-even: scenario simulator.
+5. Payroll: employees, shifts, period summaries.
+6. Invoices: customers, draft/issue/pay/void lifecycle, gap-free numbering.
+7. Documents: print/PDF/XLSX/email outputs, planned in Sprint 3.5A/3.5B.
+8. Imports: deterministic staged imports, planned in Sprint 4.5/4.6.
+9. Kitchen operations tasks: planned post-MVP unless prioritized by beta feedback.
+
+## Subscription plans - target mapping for Sprint 4
+
+- Starter: 1 user, up to 50 recipes, modules 1-3.
+- Pro: 5 users, unlimited recipes, modules 1-4 plus invoices.
+- Business: unlimited users and all modules, including payroll and advanced document/report workflows.
+
+Until Sprint 4 lands, do not pretend plan gating exists. Build explicit server-side entitlement helpers during Sprint 4.
 
 ## Workflow
-- Follow PLANO.md sprint by sprint. Do not skip steps.
-- Before each sprint: enter plan mode, propose the plan, wait for approval.
-- When a task is done: mark it `[x]` in PLANO.md.
-- Small, frequent commits with English messages (conventional commits).
-- Run `npm run lint && npm run typecheck && npm test` before every commit.
+
+- Follow PLANO.md. It is the source of truth for sprint sequence.
+- Do not start a sprint until previous blocking sprints are done or explicitly marked deferred.
+- Before each sprint, resolve the decisions listed in that sprint and get approval.
+- When a task is done, mark it `[x]` in PLANO.md only after code, tests, docs, and production notes are complete.
+- Use small conventional commits.
+- Before merge, run: `npm run lint && npm run typecheck && npm test && npm run build`.
 - Never commit secrets. `.env.local` is gitignored.
 
 ## Commands
-- dev: `npm run dev`
-- build: `npm run build`
-- tests: `npm test`
-- migrations: `npx drizzle-kit generate` and `npm run db:migrate`
+
+- Dev: `npm run dev`
+- Build: `npm run build`
+- Lint: `npm run lint`
+- Typecheck: `npm run typecheck`
+- Tests: `npm test`
+- Generate migration: `npm run db:generate`
+- Apply migrations + RLS: `npm run db:migrate`
