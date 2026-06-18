@@ -27,10 +27,11 @@ Completed (continued):
 - [x] Sprint 3.1 - production hardening: Postgres rate limiter, append-only audit log, recipe-line mutation hardening, real-Postgres concurrency proof
 - [x] Sprint 3.5A - document foundation and invoice PDF (PDF route + print view, seller-identity settings, `@react-pdf/renderer`)
 - [x] Sprint 3.5B - reports and Excel exports (recipe-card / P&L / payroll PDF + print, P&L + payroll XLSX via `write-excel-file`). Email split out to 3.5C.
+- [x] Sprint 3.5C - document email (Resend): generate server-side, recipient validation, dedicated rate bucket, audit-after-accept, no cross-tenant attachments
 
 Next sprint:
 
-- [ ] Sprint 3.5C - document email (Resend): generate server-side, recipient validation, rate limit, audit, no cross-tenant attachments
+- [ ] Sprint 4 - billing, entitlements, and organization lifecycle
 
 ---
 
@@ -165,25 +166,27 @@ Acceptance criteria:
 
 Goal: email a server-generated document to an allowed recipient, building on the 3.5B PDF/XLSX pipeline.
 
-Decisions to lock before coding:
+Decisions locked:
 
 - Client sends only `documentType + entityId/period + recipient`; never PDF bytes, `organization_id`, or a document URL.
 - Recipient validated with Zod; the server loads data via `getOrgId()` + `withOrg`, generates the document, and attaches it.
-- Persistence: decide `audit_log` vs a new email-status table (migration + RLS + explicit prod approval if a table).
-- Payslip recipient: free-typed by the manager vs the employee's stored email only.
-- `RESEND_REPLY_TO`: add optional or defer.
+- Persistence: `audit_log` only (new `document.email` action) — no new table, no migration.
+- Rate limiting: a dedicated, tighter `documentEmail` bucket (10/min) — outbound mail's abuse/cost/reputation risk differs from a local download.
+- `RESEND_REPLY_TO`: added now, optional + lazy.
+- Emailable document types this sprint: invoice, recipe card, P&L. Email is manager-only for all three (outbound send is sensitive, even though the recipe card download is kitchen-allowed).
+- Payroll/payslip email is DEFERRED: emailing a payslip needs a per-employee PDF the pipeline doesn't have yet; the org-wide payroll summary would leak every employee's pay. Returns once a per-employee payslip PDF exists.
 
 Tasks:
 
-- [ ] Add `RESEND_API_KEY` / `RESEND_FROM_EMAIL` (and optional `RESEND_REPLY_TO`) lazily in `lib/env.ts`; document in SETUP.md; never log the key.
-- [ ] Email action: recipient Zod, `documentEmail` (or `documents`) rate bucket, generate document server-side, attach, send via injected/mocked Resend client.
-- [ ] Audit `document.email` only after the provider accepts; Resend errors map to a stable `ActionErrorCode`, technical details to `logError`.
-- [ ] Optional per-employee payslip PDF (pairs naturally with emailing the employee).
-- [ ] Tests: provider mocked (never sends), invalid recipient, rate limit, audit-after-accept, cross-tenant 404.
+- [x] Add `RESEND_API_KEY` / `RESEND_FROM_EMAIL` (and optional `RESEND_REPLY_TO`) lazily in `lib/env.ts` (`emailEnv()`); document in SETUP.md + `.env.example`; never log the key.
+- [x] Email action (`app/(app)/documents/email-actions.ts`): recipient Zod (`lib/validation/document-email.ts`), `documentEmail` rate bucket, generate document server-side via the shared `lib/documents/render.ts`, attach, send via the injected/mockable Resend client (`lib/email/resend.ts`).
+- [x] Audit `document.email` only after the provider accepts (metadata = documentType + provider message id, no PII); Resend/config errors map to the stable `EMAIL_FAILED` code, technical details to `logError`.
+- [>] Optional per-employee payslip PDF -> deferred with payroll/payslip email (see decision above).
+- [x] Tests (`tests/document-email.test.ts`): provider mocked (never sends), invalid recipient, kitchen FORBIDDEN, rate limit, audit-after-accept (+ zero rows on failure), cross-tenant NOT_FOUND.
 
 Acceptance criteria:
 
-- Email sends a generated PDF to an allowed recipient, logs the event after acceptance, and never leaks another org's data or attaches another org's document.
+- Email sends a generated PDF to an allowed recipient, logs the event after acceptance, and never leaks another org's data or attaches another org's document. (done)
 
 ---
 

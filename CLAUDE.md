@@ -24,7 +24,7 @@ Do not change the stack without explicit approval.
 Planned additions must land only in their sprint:
 
 - PDF rendering: Sprint 3.5A
-- Resend email: Sprint 3.5B
+- Resend email: Sprint 3.5C
 - Clerk Billing/Stripe: Sprint 4
 - Vision/AI recipe extraction: Sprint 4.7
 - Sentry/PostHog/Playwright launch operations: Sprint 5
