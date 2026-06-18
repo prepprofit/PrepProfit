@@ -5,6 +5,7 @@ import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { isForeignKeyViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
+import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import { purgeIngredient, restoreIngredient } from '@/lib/data/ingredients';
 import {
   countTrashedIngredientsInRecipe,
@@ -49,6 +50,7 @@ function revalidateTrashInvoices(): void {
 export async function restoreRecipeAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
+  const actor = await auditActor();
   // Block + restore in one transaction so the guard can't be raced. Locking the
   // referenced ingredient rows first serializes against a concurrent ingredient
   // trash (which takes the same locks), so we can't restore the recipe to active
@@ -62,7 +64,13 @@ export async function restoreRecipeAction(id: string): Promise<ActionResult> {
     );
     if (trashedIngredients > 0) return { status: 'blocked' as const };
     const row = await restoreRecipe(tx, organizationId, id);
-    return { status: row ? ('done' as const) : ('not_found' as const) };
+    if (!row) return { status: 'not_found' as const };
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'trash.restore',
+      entityType: 'recipe',
+      entityId: id,
+    });
+    return { status: 'done' as const };
   });
 
   if (outcome.status === 'blocked') {
@@ -80,9 +88,18 @@ export async function restoreIngredientAction(
 ): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    restoreIngredient(tx, organizationId, id),
-  );
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const restored = await restoreIngredient(tx, organizationId, id);
+    if (restored) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'trash.restore',
+        entityType: 'ingredient',
+        entityId: id,
+      });
+    }
+    return restored;
+  });
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateTrash();
   return { ok: true, data: undefined };
@@ -92,7 +109,15 @@ export async function restoreIngredientAction(
 export async function purgeRecipeAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
-  await withOrg(organizationId, (tx) => purgeRecipe(tx, organizationId, id));
+  const actor = await auditActor();
+  await withOrg(organizationId, async (tx) => {
+    await purgeRecipe(tx, organizationId, id);
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'trash.purge',
+      entityType: 'recipe',
+      entityId: id,
+    });
+  });
   // It can unlink transactions, so refresh the financial views too.
   revalidateTrashFinance();
   return { ok: true, data: undefined };
@@ -101,10 +126,16 @@ export async function purgeRecipeAction(id: string): Promise<ActionResult> {
 export async function purgeIngredientAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
+  const actor = await auditActor();
   try {
-    await withOrg(organizationId, (tx) =>
-      purgeIngredient(tx, organizationId, id),
-    );
+    await withOrg(organizationId, async (tx) => {
+      await purgeIngredient(tx, organizationId, id);
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'trash.purge',
+        entityType: 'ingredient',
+        entityId: id,
+      });
+    });
   } catch (err) {
     // restrict FK: still referenced by a trashed recipe's line.
     if (isForeignKeyViolation(err)) {
@@ -122,9 +153,18 @@ export async function restoreTransactionAction(
 ): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    restoreTransaction(tx, organizationId, id),
-  );
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const restored = await restoreTransaction(tx, organizationId, id);
+    if (restored) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'trash.restore',
+        entityType: 'transaction',
+        entityId: id,
+      });
+    }
+    return restored;
+  });
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateTrashFinance();
   return { ok: true, data: undefined };
@@ -134,7 +174,15 @@ export async function restoreTransactionAction(
 export async function purgeTransactionAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
-  await withOrg(organizationId, (tx) => purgeTransaction(tx, organizationId, id));
+  const actor = await auditActor();
+  await withOrg(organizationId, async (tx) => {
+    await purgeTransaction(tx, organizationId, id);
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'trash.purge',
+      entityType: 'transaction',
+      entityId: id,
+    });
+  });
   revalidateTrashFinance();
   return { ok: true, data: undefined };
 }
@@ -143,9 +191,18 @@ export async function purgeTransactionAction(id: string): Promise<ActionResult> 
 export async function restoreCustomerAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    restoreCustomer(tx, organizationId, id),
-  );
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const restored = await restoreCustomer(tx, organizationId, id);
+    if (restored) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'trash.restore',
+        entityType: 'customer',
+        entityId: id,
+      });
+    }
+    return restored;
+  });
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateTrashInvoices();
   return { ok: true, data: undefined };
@@ -155,7 +212,15 @@ export async function restoreCustomerAction(id: string): Promise<ActionResult> {
 export async function purgeCustomerAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
-  await withOrg(organizationId, (tx) => purgeCustomer(tx, organizationId, id));
+  const actor = await auditActor();
+  await withOrg(organizationId, async (tx) => {
+    await purgeCustomer(tx, organizationId, id);
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'trash.purge',
+      entityType: 'customer',
+      entityId: id,
+    });
+  });
   revalidateTrashInvoices();
   return { ok: true, data: undefined };
 }
@@ -164,9 +229,18 @@ export async function purgeCustomerAction(id: string): Promise<ActionResult> {
 export async function restoreInvoiceAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    restoreInvoice(tx, organizationId, id),
-  );
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const restored = await restoreInvoice(tx, organizationId, id);
+    if (restored) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'trash.restore',
+        entityType: 'invoice',
+        entityId: id,
+      });
+    }
+    return restored;
+  });
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateTrashInvoices();
   return { ok: true, data: undefined };
@@ -176,7 +250,15 @@ export async function restoreInvoiceAction(id: string): Promise<ActionResult> {
 export async function purgeInvoiceAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
-  await withOrg(organizationId, (tx) => purgeInvoice(tx, organizationId, id));
+  const actor = await auditActor();
+  await withOrg(organizationId, async (tx) => {
+    await purgeInvoice(tx, organizationId, id);
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'trash.purge',
+      entityType: 'invoice',
+      entityId: id,
+    });
+  });
   revalidateTrashInvoices();
   return { ok: true, data: undefined };
 }

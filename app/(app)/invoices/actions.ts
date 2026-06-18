@@ -5,6 +5,7 @@ import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { isForeignKeyViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
+import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
   createCustomer,
   softDeleteCustomer,
@@ -98,10 +99,17 @@ export async function createInvoiceAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
+  const actor = await auditActor();
   try {
-    const invoice = await withOrg(organizationId, (tx) =>
-      createDraftInvoice(tx, organizationId, parsed.data),
-    );
+    const invoice = await withOrg(organizationId, async (tx) => {
+      const row = await createDraftInvoice(tx, organizationId, parsed.data);
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'invoice.create',
+        entityType: 'invoice',
+        entityId: row.id,
+      });
+      return row;
+    });
     revalidateInvoices();
     return { ok: true, data: { id: invoice.id } };
   } catch (err) {
@@ -145,10 +153,23 @@ export async function issueInvoiceAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
+  const actor = await auditActor();
   try {
-    const outcome = await withOrg(organizationId, (tx) =>
-      issueInvoice(tx, organizationId, id, parsed.data.dueDate),
-    );
+    const outcome = await withOrg(organizationId, async (tx) => {
+      const result = await issueInvoice(tx, organizationId, id, parsed.data.dueDate);
+      if (result.status === 'ok') {
+        await writeAuditEvent(tx, organizationId, actor, {
+          action: 'invoice.issue',
+          entityType: 'invoice',
+          entityId: id,
+          metadata: {
+            number: result.invoice.number,
+            totalCents: result.invoice.totalCents,
+          },
+        });
+      }
+      return result;
+    });
     if (outcome.status === 'not_found') return { ok: false, code: 'NOT_FOUND' };
     if (outcome.status === 'no_customer') {
       return { ok: false, code: 'INVOICE_NO_CUSTOMER' };
@@ -165,9 +186,18 @@ export async function markInvoicePaidAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
 
   const organizationId = await getOrgId();
-  const outcome = await withOrg(organizationId, (tx) =>
-    markInvoicePaid(tx, organizationId, id),
-  );
+  const actor = await auditActor();
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const result = await markInvoicePaid(tx, organizationId, id);
+    if (result === 'ok') {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'invoice.pay',
+        entityType: 'invoice',
+        entityId: id,
+      });
+    }
+    return result;
+  });
   if (outcome === 'not_found') return { ok: false, code: 'INVALID_STATUS_TRANSITION' };
   revalidateInvoices();
   return { ok: true, data: undefined };
@@ -177,9 +207,18 @@ export async function voidInvoiceAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
 
   const organizationId = await getOrgId();
-  const outcome = await withOrg(organizationId, (tx) =>
-    voidInvoice(tx, organizationId, id),
-  );
+  const actor = await auditActor();
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const result = await voidInvoice(tx, organizationId, id);
+    if (result === 'ok') {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'invoice.void',
+        entityType: 'invoice',
+        entityId: id,
+      });
+    }
+    return result;
+  });
   if (outcome === 'not_found') return { ok: false, code: 'INVALID_STATUS_TRANSITION' };
   revalidateInvoices();
   return { ok: true, data: undefined };
@@ -190,9 +229,18 @@ export async function deleteInvoiceAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
 
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    softDeleteDraftInvoice(tx, organizationId, id),
-  );
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const deleted = await softDeleteDraftInvoice(tx, organizationId, id);
+    if (deleted) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'invoice.delete',
+        entityType: 'invoice',
+        entityId: id,
+      });
+    }
+    return deleted;
+  });
   // null = missing OR not a draft (only drafts are trashable).
   if (!row) return { ok: false, code: 'INVOICE_LOCKED' };
   revalidateInvoices();

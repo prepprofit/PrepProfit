@@ -6,6 +6,7 @@ import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { isForeignKeyViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
+import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
   createEmployee,
   hardDeleteEmployee,
@@ -42,10 +43,18 @@ export async function createEmployeeAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
+  const actor = await auditActor();
   try {
-    const row = await withOrg(organizationId, (tx) =>
-      createEmployee(tx, organizationId, parsed.data),
-    );
+    const row = await withOrg(organizationId, async (tx) => {
+      const created = await createEmployee(tx, organizationId, parsed.data);
+      // PII-safe: log the id only, never the employee's name/email/rate.
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'employee.create',
+        entityType: 'employee',
+        entityId: created.id,
+      });
+      return created;
+    });
     revalidatePayroll();
     return { ok: true, data: { id: row.id } };
   } catch (err) {
@@ -63,9 +72,18 @@ export async function updateEmployeeAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    updateEmployee(tx, organizationId, id, parsed.data),
-  );
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const updated = await updateEmployee(tx, organizationId, id, parsed.data);
+    if (updated) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'employee.update',
+        entityType: 'employee',
+        entityId: id,
+      });
+    }
+    return updated;
+  });
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidatePayroll();
   return { ok: true, data: undefined };
@@ -79,9 +97,19 @@ export async function setEmployeeActiveAction(
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
 
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    setEmployeeActive(tx, organizationId, id, active),
-  );
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const updated = await setEmployeeActive(tx, organizationId, id, active);
+    if (updated) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'employee.archive',
+        entityType: 'employee',
+        entityId: id,
+        metadata: { active },
+      });
+    }
+    return updated;
+  });
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidatePayroll();
   return { ok: true, data: undefined };
@@ -92,9 +120,18 @@ export async function deleteEmployeeAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
 
   const organizationId = await getOrgId();
-  const deleted = await withOrg(organizationId, (tx) =>
-    hardDeleteEmployee(tx, organizationId, id),
-  );
+  const actor = await auditActor();
+  const deleted = await withOrg(organizationId, async (tx) => {
+    const removed = await hardDeleteEmployee(tx, organizationId, id);
+    if (removed) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'employee.delete',
+        entityType: 'employee',
+        entityId: id,
+      });
+    }
+    return removed;
+  });
   if (!deleted) return { ok: false, code: 'NOT_FOUND' };
   revalidatePayroll();
   return { ok: true, data: undefined };
@@ -109,10 +146,18 @@ export async function createShiftAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
+  const actor = await auditActor();
   try {
-    const row = await withOrg(organizationId, (tx) =>
-      createShift(tx, organizationId, parsed.data),
-    );
+    const row = await withOrg(organizationId, async (tx) => {
+      const created = await createShift(tx, organizationId, parsed.data);
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'shift.open',
+        entityType: 'shift',
+        entityId: created.id,
+        metadata: { employeeId: created.employeeId },
+      });
+      return created;
+    });
     revalidatePayroll();
     return { ok: true, data: { id: row.id } };
   } catch (err) {
@@ -132,10 +177,19 @@ export async function updateShiftAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
+  const actor = await auditActor();
   try {
-    const row = await withOrg(organizationId, (tx) =>
-      updateShift(tx, organizationId, id, parsed.data),
-    );
+    const row = await withOrg(organizationId, async (tx) => {
+      const updated = await updateShift(tx, organizationId, id, parsed.data);
+      if (updated) {
+        await writeAuditEvent(tx, organizationId, actor, {
+          action: 'shift.update',
+          entityType: 'shift',
+          entityId: id,
+        });
+      }
+      return updated;
+    });
     if (!row) return { ok: false, code: 'NOT_FOUND' };
   } catch (err) {
     if (isForeignKeyViolation(err)) return { ok: false, code: 'NOT_FOUND' };
@@ -158,6 +212,7 @@ export async function closeShiftAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
+  const actor = await auditActor();
   const row = await withOrg(organizationId, async (tx) => {
     const shift = await getShiftById(tx, organizationId, id);
     if (!shift) return { status: 'not_found' as const };
@@ -165,6 +220,13 @@ export async function closeShiftAction(
       return { status: 'invalid' as const };
     }
     const updated = await closeShift(tx, organizationId, id, parsed.data.endedAtMs);
+    if (updated) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'shift.close',
+        entityType: 'shift',
+        entityId: id,
+      });
+    }
     return { status: 'ok' as const, updated };
   });
 
@@ -178,9 +240,18 @@ export async function deleteShiftAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
 
   const organizationId = await getOrgId();
-  const deleted = await withOrg(organizationId, (tx) =>
-    deleteShift(tx, organizationId, id),
-  );
+  const actor = await auditActor();
+  const deleted = await withOrg(organizationId, async (tx) => {
+    const removed = await deleteShift(tx, organizationId, id);
+    if (removed) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'shift.delete',
+        entityType: 'shift',
+        entityId: id,
+      });
+    }
+    return removed;
+  });
   if (!deleted) return { ok: false, code: 'NOT_FOUND' };
   revalidatePayroll();
   return { ok: true, data: undefined };

@@ -5,6 +5,7 @@ import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { isForeignKeyViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
+import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
   createTransaction,
   softDeleteTransaction,
@@ -46,12 +47,19 @@ export async function createTransactionAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
+  const actor = await auditActor();
   try {
     const id = await withOrg(organizationId, async (tx) => {
       // The category must exist in this org AND match the transaction's side.
       const category = await getCategoryById(tx, organizationId, parsed.data.categoryId);
       if (!category || category.kind !== parsed.data.type) return null;
       const row = await createTransaction(tx, organizationId, parsed.data);
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'transaction.create',
+        entityType: 'transaction',
+        entityId: row.id,
+        metadata: { type: parsed.data.type, amountCents: parsed.data.amountCents },
+      });
       return row.id;
     });
     if (!id) return { ok: false, code: 'INVALID_INPUT' };
@@ -74,6 +82,7 @@ export async function updateTransactionAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
+  const actor = await auditActor();
   try {
     const outcome = await withOrg(organizationId, async (tx) => {
       const category = await getCategoryById(tx, organizationId, parsed.data.categoryId);
@@ -81,7 +90,14 @@ export async function updateTransactionAction(
         return 'invalid' as const;
       }
       const row = await updateTransaction(tx, organizationId, id, parsed.data);
-      return row ? ('ok' as const) : ('not_found' as const);
+      if (!row) return 'not_found' as const;
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'transaction.update',
+        entityType: 'transaction',
+        entityId: id,
+        metadata: { type: parsed.data.type, amountCents: parsed.data.amountCents },
+      });
+      return 'ok' as const;
     });
     if (outcome === 'invalid') return { ok: false, code: 'INVALID_INPUT' };
     if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
@@ -98,9 +114,18 @@ export async function deleteTransactionAction(id: string): Promise<ActionResult>
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
 
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    softDeleteTransaction(tx, organizationId, id),
-  );
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const deleted = await softDeleteTransaction(tx, organizationId, id);
+    if (deleted) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'transaction.delete',
+        entityType: 'transaction',
+        entityId: id,
+      });
+    }
+    return deleted;
+  });
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateFinance();
   return { ok: true, data: undefined };

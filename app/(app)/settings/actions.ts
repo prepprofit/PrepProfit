@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { upsertOrgSettings } from '@/lib/data/org-settings';
+import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import { orgSettingsSchema } from '@/lib/validation/org-settings';
 import type { ActionResult } from '@/lib/action-result';
 
@@ -30,9 +31,19 @@ export async function updateOrgSettingsAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
-  await withOrg(organizationId, (tx) =>
-    upsertOrgSettings(tx, organizationId, parsed.data),
-  );
+  const actor = await auditActor();
+  await withOrg(organizationId, async (tx) => {
+    await upsertOrgSettings(tx, organizationId, parsed.data);
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'settings.update',
+      entityType: 'organizationSettings',
+      entityId: organizationId,
+      metadata: {
+        currency: parsed.data.currency,
+        measurementSystem: parsed.data.measurementSystem,
+      },
+    });
+  });
   revalidatePath('/settings');
   return { ok: true, data: undefined };
 }
