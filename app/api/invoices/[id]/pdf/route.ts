@@ -9,6 +9,7 @@ import { enforceRateLimit } from '@/lib/rate-limit';
 import { buildInvoiceDocumentData, invoiceDocumentFilename } from '@/lib/documents/invoice-data';
 import { buildInvoiceLabels } from '@/lib/documents/invoice-labels';
 import { renderInvoicePdf } from '@/lib/documents/invoice-pdf';
+import { loadSafeLogo } from '@/lib/documents/logo';
 
 // @react-pdf/renderer + the neon-serverless Pool need Node; never cache a download.
 export const runtime = 'nodejs';
@@ -44,23 +45,12 @@ export async function GET(
 
   const { id } = await params;
 
+  // Load only (no audit here): the export is audited AFTER a successful render,
+  // so a render failure never leaves a record of an export that did not happen.
   const loaded = await withOrg(organizationId, async (tx) => {
     const detail = await getInvoiceWithItems(tx, organizationId, id);
     if (!detail) return null;
     const settings = await getOrgSettingsRow(tx, organizationId);
-    // Audit the document generation: who exported which invoice (status/number
-    // only — no amounts or PII).
-    await writeAuditEvent(
-      tx,
-      organizationId,
-      { userId, role: 'manager', requestId: crypto.randomUUID() },
-      {
-        action: 'export.invoicePdf',
-        entityType: 'invoice',
-        entityId: id,
-        metadata: { status: detail.invoice.status, number: detail.invoice.number },
-      },
-    );
     return { detail, settings };
   });
 
@@ -68,15 +58,34 @@ export async function GET(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const orgName = await getOrgName();
+  // Only round-trip to Clerk for the org name when there is no business name to
+  // fall back from.
+  const settings = loaded.settings ?? DEFAULT_ORG_SETTINGS;
+  const orgName = settings.businessName?.trim() ? null : await getOrgName();
   const t = await getTranslations('invoiceDocument');
-  const data = buildInvoiceDocumentData(
-    loaded.detail,
-    loaded.settings ?? DEFAULT_ORG_SETTINGS,
-    orgName,
-  );
+  const data = buildInvoiceDocumentData(loaded.detail, settings, orgName);
+  // SSRF/DoS-safe: fetch + validate the logo ourselves and embed local bytes, so
+  // the renderer never fetches a manager-supplied URL. Failure → no logo.
+  data.seller.logoUrl = await loadSafeLogo(data.seller.logoUrl);
+
   const pdf = await renderInvoicePdf(data, buildInvoiceLabels(t));
   const filename = `${invoiceDocumentFilename(loaded.detail.invoice)}.pdf`;
+
+  // Audit only now that the PDF rendered successfully (status/number only — no
+  // amounts or PII).
+  await withOrg(organizationId, (tx) =>
+    writeAuditEvent(
+      tx,
+      organizationId,
+      { userId, role: 'manager', requestId: crypto.randomUUID() },
+      {
+        action: 'export.invoicePdf',
+        entityType: 'invoice',
+        entityId: id,
+        metadata: { status: loaded.detail.invoice.status, number: loaded.detail.invoice.number },
+      },
+    ),
+  );
 
   return new NextResponse(new Uint8Array(pdf), {
     headers: {

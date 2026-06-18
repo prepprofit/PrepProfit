@@ -12,6 +12,7 @@ import { formatMoney, formatDocDate } from '@/lib/documents/format';
 import { Button } from '@/components/ui/button';
 import { NoAccess } from '@/components/app/no-access';
 import { PrintButton } from '@/components/app/invoices/print-button';
+import { PrintLogo } from '@/components/app/invoices/print-logo';
 
 // Always render fresh so the printed document reflects the latest invoice state.
 export const dynamic = 'force-dynamic';
@@ -33,26 +34,24 @@ export default async function InvoicePrintPage({
   const { id } = await params;
   const organizationId = await getOrgId();
 
-  const [loaded, orgName, t, tDetail] = await Promise.all([
+  const [loaded, t, tDetail] = await Promise.all([
     withOrg(organizationId, async (tx) => {
       const detail = await getInvoiceWithItems(tx, organizationId, id);
       if (!detail) return null;
       const settings = await getOrgSettingsRow(tx, organizationId);
       return { detail, settings };
     }),
-    getOrgName(),
     getTranslations('invoiceDocument'),
     getTranslations('invoices.detail'),
   ]);
 
   if (!loaded) notFound();
 
+  const settings = loaded.settings ?? DEFAULT_ORG_SETTINGS;
+  // Only round-trip to Clerk for the org name when there is no business name.
+  const orgName = settings.businessName?.trim() ? null : await getOrgName();
   const labels = buildInvoiceLabels(t);
-  const data = buildInvoiceDocumentData(
-    loaded.detail,
-    loaded.settings ?? DEFAULT_ORG_SETTINGS,
-    orgName,
-  );
+  const data = buildInvoiceDocumentData(loaded.detail, settings, orgName);
   const money = (cents: number) => formatMoney(cents, data.currency);
   const { seller, customer } = data;
 
@@ -88,14 +87,7 @@ export default async function InvoicePrintPage({
           {/* Header: seller + document meta */}
           <div className="flex items-start justify-between gap-6">
             <div className="flex flex-col gap-0.5">
-              {seller.logoUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={seller.logoUrl}
-                  alt={seller.name}
-                  className="mb-2 max-h-12 w-auto object-contain"
-                />
-              )}
+              {seller.logoUrl && <PrintLogo src={seller.logoUrl} alt={seller.name} />}
               <span className="text-lg font-semibold text-neutral-900">
                 {seller.name}
               </span>

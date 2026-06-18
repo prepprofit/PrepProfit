@@ -141,7 +141,7 @@ export function SettingsForm({ settings }: { settings: SettingsFormValues }) {
               type="url"
               inputMode="url"
               defaultValue={settings.businessLogoUrl ?? ''}
-              placeholder="https://"
+              placeholder={t('business.logoUrlPlaceholder')}
               maxLength={500}
             />
             <p className="text-xs text-muted-foreground">{t('business.logoUrlHelp')}</p>

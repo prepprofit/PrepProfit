@@ -264,6 +264,7 @@
       "taxId": "Tax ID / VAT number",
       "email": "Billing email",
       "logoUrl": "Logo URL",
+      "logoUrlPlaceholder": "https://",
       "logoUrlHelp": "Must be a public https:// image URL. It appears in the invoice header."
     },
     "save": "Save settings",
