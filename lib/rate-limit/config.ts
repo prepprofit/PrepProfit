@@ -1,0 +1,30 @@
+/**
+ * Rate-limit buckets (Sprint 3.1). One entry per abusable surface; the limiter
+ * (lib/rate-limit/index.ts) reads `{ limit, windowMs }` for the bucket. Keep the
+ * windows generous — this is abuse prevention, not quota billing (plan limits land
+ * in Sprint 4). Authenticated buckets are keyed per org+user; `cronPurge` is keyed
+ * by a hash of the cron auth header.
+ */
+export type RateLimitConfig = {
+  /** Max allowed hits within the window. */
+  limit: number;
+  /** Window length in milliseconds (fixed window). */
+  windowMs: number;
+};
+
+const MINUTE = 60_000;
+
+export const RATE_LIMITS = {
+  // Global search action — interactive, so allow a brisk cadence per user.
+  search: { limit: 30, windowMs: MINUTE },
+  // Transactions CSV export route — heavier, manager-only.
+  transactionsExport: { limit: 10, windowMs: MINUTE },
+  // Daily cron purge — generous ceiling; only abusive retries should ever trip it.
+  cronPurge: { limit: 5, windowMs: MINUTE },
+  // Reserved for later sprints (helper already exists; nothing wired yet):
+  //   documents:     Sprint 3.5A/B PDF/XLSX/email generation
+  //   import:        Sprint 4.5/4.6 staged imports
+  //   aiExtraction:  Sprint 4.7 photo recipe extraction
+} as const satisfies Record<string, RateLimitConfig>;
+
+export type RateLimitBucket = keyof typeof RATE_LIMITS;

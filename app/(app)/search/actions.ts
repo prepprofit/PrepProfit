@@ -1,9 +1,10 @@
 'use server';
 
 import { z } from 'zod';
-import { getOrgId, getUserRole } from '@/lib/auth';
-import { withOrg } from '@/lib/db';
+import { getOrgId, getUserId, getUserRole } from '@/lib/auth';
+import { getDb, withOrg } from '@/lib/db';
 import { unexpected } from '@/lib/observability';
+import { enforceRateLimit } from '@/lib/rate-limit';
 import { runSearch } from '@/lib/search/run';
 import type { ActionResult } from '@/lib/action-result';
 import type { GroupedSearchResults } from '@/lib/search/types';
@@ -30,9 +31,19 @@ export async function globalSearchAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
+  const userId = await getUserId();
   const role = await getUserRole();
 
   try {
+    // Abuse control (Sprint 3.1): per org+user, on the un-scoped infra table —
+    // checked before the org work so a flood never reaches the trigram queries.
+    const limit = await enforceRateLimit(
+      getDb(),
+      'search',
+      `${organizationId}:${userId}`,
+    );
+    if (!limit.allowed) return { ok: false, code: 'RATE_LIMITED' };
+
     const data = await withOrg(organizationId, (tx) =>
       runSearch(tx, organizationId, role, parsed.data.query, {
         type: parsed.data.type,

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { clerkClient } from '@clerk/nextjs/server';
-import { withOrg } from '@/lib/db';
+import { getDb, withOrg } from '@/lib/db';
 import { purgeExpired } from '@/lib/data/trash';
+import { writeAuditEvent } from '@/lib/data/audit';
 import { isCronAuthorized } from '@/lib/cron-auth';
+import { enforceRateLimit } from '@/lib/rate-limit';
 import { purgeCutoff } from '@/lib/trash';
 import { serverEnv } from '@/lib/env';
 
@@ -23,13 +25,16 @@ const PAGE_SIZE = 100;
  * carve-out is needed for a cross-org job.
  */
 export async function GET(req: Request): Promise<NextResponse> {
-  if (
-    !isCronAuthorized(
-      req.headers.get('authorization'),
-      serverEnv().CRON_SECRET,
-    )
-  ) {
+  const authHeader = req.headers.get('authorization');
+  if (!isCronAuthorized(authHeader, serverEnv().CRON_SECRET)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Abuse control (Sprint 3.1): keyed on a HASH of the auth header (never the raw
+  // secret), on the un-scoped infra table — the cron route has no org context.
+  const limit = await enforceRateLimit(getDb(), 'cronPurge', authHeader ?? '');
+  if (!limit.allowed) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
   }
 
   const cutoff = purgeCutoff();
@@ -51,9 +56,34 @@ export async function GET(req: Request): Promise<NextResponse> {
     if (data.length === 0) break;
 
     for (const org of data) {
-      const result = await withOrg(org.id, (tx) =>
-        purgeExpired(tx, org.id, cutoff),
-      );
+      const result = await withOrg(org.id, async (tx) => {
+        const purged = await purgeExpired(tx, org.id, cutoff);
+        // Audit the purge per org (Sprint 3.1), inside the same tx so it commits
+        // atomically. Actor is the org-less cron → `system` role, null user id.
+        if (
+          purged.recipes +
+            purged.ingredients +
+            purged.transactions +
+            purged.customers +
+            purged.invoices >
+          0
+        ) {
+          await writeAuditEvent(
+            tx,
+            org.id,
+            { userId: null, role: 'system', requestId: crypto.randomUUID() },
+            {
+              action: 'cron.purge',
+              entityType: 'trash',
+              metadata: {
+                cutoff: cutoff.toISOString(),
+                ...purged,
+              },
+            },
+          );
+        }
+        return purged;
+      });
       purgedRecipes += result.recipes;
       purgedIngredients += result.ingredients;
       purgedTransactions += result.transactions;

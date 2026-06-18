@@ -17,6 +17,7 @@
     "INVOICE_NO_CUSTOMER": "Add a customer before issuing this invoice.",
     "INVALID_STATUS_TRANSITION": "That status change isn't allowed for this invoice.",
     "FORBIDDEN": "You don't have permission to do that. Financial data is available to managers only.",
+    "RATE_LIMITED": "You're doing that too quickly. Please wait a moment and try again.",
     "UNEXPECTED": "Something went wrong on our end. Please try again."
   },
   "errors": {

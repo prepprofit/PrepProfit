@@ -25,6 +25,8 @@ export type ActionErrorCode =
   // A status change that the lifecycle does not allow (e.g. pay a draft).
   | 'INVALID_STATUS_TRANSITION'
   | 'FORBIDDEN'
+  // Too many requests in the rate-limit window (Sprint 3.1 limiter).
+  | 'RATE_LIMITED'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

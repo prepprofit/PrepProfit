@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getOrgId, isManager } from '@/lib/auth';
-import { withOrg } from '@/lib/db';
+import { getOrgId, getUserId, isManager } from '@/lib/auth';
+import { getDb, withOrg } from '@/lib/db';
 import { listTransactions, type TransactionFilter } from '@/lib/data/transactions';
+import { writeAuditEvent } from '@/lib/data/audit';
+import { enforceRateLimit } from '@/lib/rate-limit';
 import { transactionsToCsv } from '@/lib/finance/csv';
 import { transactionExportFilterSchema } from '@/lib/validation/transactions';
 
@@ -21,6 +23,18 @@ export async function GET(req: Request): Promise<NextResponse> {
   }
 
   const organizationId = await getOrgId();
+  const userId = await getUserId();
+
+  // Abuse control (Sprint 3.1): per org+user, on the un-scoped infra table.
+  const limit = await enforceRateLimit(
+    getDb(),
+    'transactionsExport',
+    `${organizationId}:${userId}`,
+  );
+  if (!limit.allowed) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   const { searchParams } = new URL(req.url);
 
   // Validate the filters server-side (RULE: Zod on all user input). Empty params
@@ -42,9 +56,22 @@ export async function GET(req: Request): Promise<NextResponse> {
   if (parsed.data.type) filter.type = parsed.data.type;
   if (parsed.data.category) filter.categoryId = parsed.data.category;
 
-  const items = await withOrg(organizationId, (tx) =>
-    listTransactions(tx, organizationId, filter),
-  );
+  const items = await withOrg(organizationId, async (tx) => {
+    const rows = await listTransactions(tx, organizationId, filter);
+    // Audit the export (Sprint 3.1): who exported how many rows under which filter.
+    // No PII or amounts — just counts/filter descriptors.
+    await writeAuditEvent(
+      tx,
+      organizationId,
+      { userId, role: 'manager', requestId: crypto.randomUUID() },
+      {
+        action: 'export.transactionsCsv',
+        entityType: 'transaction',
+        metadata: { rowCount: rows.length, filter: parsed.data },
+      },
+    );
+    return rows;
+  });
 
   const csv = transactionsToCsv(
     items.map((t) => ({
