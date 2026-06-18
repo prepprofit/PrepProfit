@@ -11,10 +11,19 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { CURRENCIES, MEASUREMENT_SYSTEMS } from '@/lib/validation/org-settings';
+import { canAccessFinancials, getUserRole } from '@/lib/auth';
+import { NoAccess } from '@/components/app/no-access';
 import { updateOrgSettingsAction } from './actions';
 
 export default async function SettingsPage() {
   const t = await getTranslations('settings');
+
+  // Org-wide config (currency, measurement system) is a manager concern; kitchen
+  // gets NoAccess here AND the action refuses (defense-in-depth).
+  if (!canAccessFinancials(await getUserRole())) {
+    return <NoAccess title={t('noAccess.title')} body={t('noAccess.body')} />;
+  }
+
   const settings = await getOrgSettings();
 
   return (

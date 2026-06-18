@@ -252,7 +252,11 @@
         "imperial": "Imperial (oz, lb, fl oz, cups)"
       }
     },
-    "save": "Save settings"
+    "save": "Save settings",
+    "noAccess": {
+      "title": "Managers only",
+      "body": "Workspace settings — currency and measurement system — can only be changed by a manager. Ask an organization manager if you need a change."
+    }
   },
   "trash": {
     "subtitle": "Deleted recipes and ingredients stay here for 30 days, then they are removed for good.",
