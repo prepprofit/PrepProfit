@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import {
   withOrg,
   ingredients,
@@ -224,10 +225,10 @@ async function main() {
   await withOrg(ORG, async (tx) => {
     // Clear in FK-safe order: transactions → recipes (cascades lines) →
     // ingredients (cascades movements) → folders.
-    await tx.delete(transactions);
-    await tx.delete(recipes);
-    await tx.delete(ingredients);
-    await tx.delete(recipeFolders);
+    await tx.delete(transactions).where(eq(transactions.organizationId, ORG));
+    await tx.delete(recipes).where(eq(recipes.organizationId, ORG));
+    await tx.delete(ingredients).where(eq(ingredients.organizationId, ORG));
+    await tx.delete(recipeFolders).where(eq(recipeFolders.organizationId, ORG));
 
     // Folders
     const folderRows = await tx

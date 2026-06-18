@@ -16,24 +16,50 @@ export type RecordMovementInput = {
   note?: string | null;
 };
 
+export type RecordMovementResult =
+  | { ok: true; ingredient: Ingredient }
+  | { ok: false; reason: 'not_found' | 'insufficient_stock' };
+
 /**
- * Append a movement and update the running stock total atomically. Stock is
- * clamped at zero (you cannot have negative physical stock). Returns the updated
- * ingredient, or null if it does not belong to the org or is in the trash.
+ * Append a movement and update the running stock total atomically. The ledger is
+ * AUTHORITATIVE: every entry is a real, fully-applied movement, so a stock-out
+ * larger than what's on hand is REJECTED rather than silently clamped (which
+ * would record a delta the stock never actually moved by — the two would stop
+ * reconciling). Returns:
+ *   - `not_found`         — wrong org, or the ingredient is in the trash;
+ *   - `insufficient_stock`— the stock-out would drive stock below zero.
  *
- * The ingredient UPDATE runs FIRST: if it affects no row (wrong org or
- * `deleted_at IS NOT NULL`), we bail out before writing anything, so a trashed
- * or foreign ingredient can never accumulate an orphan ledger entry.
+ * The active ingredient row is locked FOR UPDATE first, so the available-stock
+ * check and the write are consistent even under concurrent movements; a foreign
+ * or trashed ingredient never accumulates an orphan ledger entry.
  */
 export async function recordMovement(
   db: TenantClient,
   organizationId: string,
   input: RecordMovementInput,
-): Promise<Ingredient | null> {
+): Promise<RecordMovementResult> {
+  const [current] = await db
+    .select({ stock: ingredients.stockQuantity })
+    .from(ingredients)
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, input.ingredientId),
+        isNull(ingredients.deletedAt),
+      ),
+    )
+    .for('update')
+    .limit(1);
+  if (!current) return { ok: false, reason: 'not_found' };
+
+  if (Number(current.stock) + input.deltaCanonical < 0) {
+    return { ok: false, reason: 'insufficient_stock' };
+  }
+
   const [row] = await db
     .update(ingredients)
     .set({
-      stockQuantity: sql`GREATEST(${ingredients.stockQuantity} + ${input.deltaCanonical.toString()}::numeric, 0)`,
+      stockQuantity: sql`${ingredients.stockQuantity} + ${input.deltaCanonical.toString()}::numeric`,
     })
     .where(
       and(
@@ -43,7 +69,7 @@ export async function recordMovement(
       ),
     )
     .returning();
-  if (!row) return null;
+  if (!row) return { ok: false, reason: 'not_found' };
 
   await db.insert(inventoryMovements).values({
     organizationId,
@@ -51,7 +77,7 @@ export async function recordMovement(
     deltaCanonical: input.deltaCanonical.toString(),
     note: input.note ?? null,
   });
-  return row;
+  return { ok: true, ingredient: row };
 }
 
 export async function setLowStockThreshold(
@@ -70,6 +96,7 @@ export async function setLowStockThreshold(
       and(
         eq(ingredients.organizationId, organizationId),
         eq(ingredients.id, ingredientId),
+        isNull(ingredients.deletedAt),
       ),
     )
     .returning();

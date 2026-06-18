@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { withOrg, ingredients, recipes, recipeIngredients } from '../lib/db';
 import type { IngredientInput } from '../lib/data/ingredients';
 
@@ -90,8 +91,8 @@ async function seedOrg(organizationId: string, seed: Seed) {
   await withOrg(organizationId, async (tx) => {
     // Idempotent: clear this org's data first. Deleting recipes cascades their
     // lines; deleting ingredients cascades their inventory movements.
-    await tx.delete(recipes);
-    await tx.delete(ingredients);
+    await tx.delete(recipes).where(eq(recipes.organizationId, organizationId));
+    await tx.delete(ingredients).where(eq(ingredients.organizationId, organizationId));
 
     const insertedIngredients = await tx
       .insert(ingredients)

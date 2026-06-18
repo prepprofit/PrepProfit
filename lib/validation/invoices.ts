@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { dateStringSchema } from './transactions';
+import { invoiceTotals } from '@/lib/calculations/invoice';
+
+/** Postgres `integer` (int4) ceiling — the money columns are integer cents. */
+const INT4_MAX = 2_147_483_647;
 
 /**
  * Server-side validation for customers and invoices (CLAUDE.md: Zod on all user
@@ -38,13 +42,38 @@ export const invoiceItemSchema = z.object({
   taxRate: z.number().min(0).max(100),
 });
 
-export const invoiceDraftSchema = z.object({
-  // A draft may have no customer yet; one is required to issue (see the action).
-  customerId: z.string().min(1).nullable().default(null),
-  notes: optionalText(1000),
-  // At least one line; the cap keeps a single invoice's compute bounded.
-  items: z.array(invoiceItemSchema).min(1).max(200),
-});
+export const invoiceDraftSchema = z
+  .object({
+    // A draft may have no customer yet; one is required to issue (see the action).
+    customerId: z.string().min(1).nullable().default(null),
+    notes: optionalText(1000),
+    // At least one line; the cap keeps a single invoice's compute bounded.
+    items: z.array(invoiceItemSchema).min(1).max(200),
+  })
+  // The per-field caps each fit int4, but their PRODUCT/SUM (the stored subtotal,
+  // tax and total cents) can overflow the integer columns. Compute the totals with
+  // the SAME pure function used at issue and reject early with INVALID_INPUT,
+  // instead of letting Postgres throw "integer out of range" at insert.
+  .superRefine((draft, ctx) => {
+    const totals = invoiceTotals(
+      draft.items.map((it) => ({
+        quantity: it.quantity,
+        unitPriceCents: it.unitPriceCents,
+        taxRate: it.taxRate,
+      })),
+    );
+    if (
+      totals.subtotalCents > INT4_MAX ||
+      totals.taxCents > INT4_MAX ||
+      totals.totalCents > INT4_MAX
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invoice total exceeds the maximum supported amount.',
+        path: ['items'],
+      });
+    }
+  });
 
 export const issueInvoiceSchema = z.object({
   // Optional payment due date ('YYYY-MM-DD'); issue date is set server-side.

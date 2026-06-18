@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNull, lt } from 'drizzle-orm';
 import { shifts } from '@/lib/db/schema';
 import type { Shift } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
@@ -108,7 +108,12 @@ export async function updateShift(
   return row ?? null;
 }
 
-/** Closes an open shift by stamping its end instant. */
+/**
+ * Closes an OPEN shift by stamping its end instant. The `endedAt IS NULL`
+ * predicate makes this idempotent and tamper-resistant: a repeated or forged
+ * close matches no row (returns null) and can never rewrite an already-closed,
+ * payroll-relevant end time.
+ */
 export async function closeShift(
   db: TenantClient,
   organizationId: string,
@@ -118,7 +123,13 @@ export async function closeShift(
   const [row] = await db
     .update(shifts)
     .set({ endedAt: new Date(endedAtMs) })
-    .where(and(eq(shifts.organizationId, organizationId), eq(shifts.id, id)))
+    .where(
+      and(
+        eq(shifts.organizationId, organizationId),
+        eq(shifts.id, id),
+        isNull(shifts.endedAt),
+      ),
+    )
     .returning();
   return row ?? null;
 }

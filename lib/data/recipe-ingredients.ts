@@ -1,5 +1,5 @@
-import { and, eq } from 'drizzle-orm';
-import { recipeIngredients } from '@/lib/db/schema';
+import { and, eq, isNull } from 'drizzle-orm';
+import { ingredients, recipeIngredients, recipes } from '@/lib/db/schema';
 import type { RecipeIngredient } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 
@@ -17,11 +17,45 @@ export type AddRecipeIngredientInput = {
   sortOrder?: number;
 };
 
+export type AddRecipeIngredientResult =
+  | { ok: true; row: RecipeIngredient }
+  | { ok: false; reason: 'recipe_not_active' | 'ingredient_trashed' };
+
 export async function addRecipeIngredient(
   db: TenantClient,
   organizationId: string,
   input: AddRecipeIngredientInput,
-): Promise<RecipeIngredient> {
+): Promise<AddRecipeIngredientResult> {
+  // The composite FKs already force same-org links, but they do NOT see
+  // soft-delete state. Refuse to add to a trashed recipe, or to wire a trashed
+  // ingredient into an active recipe, so the invariant other code relies on —
+  // "an active recipe line references only active rows" — always holds.
+  const [recipe] = await db
+    .select({ id: recipes.id })
+    .from(recipes)
+    .where(
+      and(
+        eq(recipes.organizationId, organizationId),
+        eq(recipes.id, input.recipeId),
+        isNull(recipes.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!recipe) return { ok: false, reason: 'recipe_not_active' };
+
+  const [ingredient] = await db
+    .select({ id: ingredients.id })
+    .from(ingredients)
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, input.ingredientId),
+        isNull(ingredients.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!ingredient) return { ok: false, reason: 'ingredient_trashed' };
+
   const [row] = await db
     .insert(recipeIngredients)
     .values({
@@ -33,7 +67,7 @@ export async function addRecipeIngredient(
     })
     .returning();
   if (!row) throw new Error('Failed to add ingredient to recipe.');
-  return row;
+  return { ok: true, row };
 }
 
 export async function updateRecipeIngredient(

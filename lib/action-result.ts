@@ -13,6 +13,8 @@ export type ActionErrorCode =
   | 'DUPLICATE_NAME'
   | 'ALREADY_IN_RECIPE'
   | 'INGREDIENT_IN_USE'
+  // A stock-out larger than the ingredient's on-hand stock (would go negative).
+  | 'INSUFFICIENT_STOCK'
   | 'RECIPE_HAS_TRASHED_INGREDIENTS'
   | 'INGREDIENT_IN_TRASHED_RECIPE'
   | 'CATEGORY_IN_USE'

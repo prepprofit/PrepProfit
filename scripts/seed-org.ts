@@ -5,7 +5,7 @@ import {
   recipeIngredients,
   transactions,
 } from '../lib/db';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { IngredientInput } from '../lib/data/ingredients';
 import {
   ensureCategoriesSeeded,
@@ -199,9 +199,19 @@ async function main() {
 
   await withOrg(ORG, async (tx) => {
     const priorRecipes =
-      (await tx.select({ n: sql<number>`count(*)::int` }).from(recipes))[0]?.n ?? 0;
+      (
+        await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(recipes)
+          .where(eq(recipes.organizationId, ORG))
+      )[0]?.n ?? 0;
     const priorIngredients =
-      (await tx.select({ n: sql<number>`count(*)::int` }).from(ingredients))[0]?.n ?? 0;
+      (
+        await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(ingredients)
+          .where(eq(ingredients.organizationId, ORG))
+      )[0]?.n ?? 0;
     console.log(
       `  • existing data for this org: ${priorIngredients} ingredients, ${priorRecipes} recipes (will be replaced)`,
     );
@@ -209,9 +219,9 @@ async function main() {
     // Idempotent: clear this org's data first. Transactions go first (they
     // reference recipes via an ON DELETE restrict FK); deleting recipes cascades
     // their lines; deleting ingredients cascades their inventory movements.
-    await tx.delete(transactions);
-    await tx.delete(recipes);
-    await tx.delete(ingredients);
+    await tx.delete(transactions).where(eq(transactions.organizationId, ORG));
+    await tx.delete(recipes).where(eq(recipes.organizationId, ORG));
+    await tx.delete(ingredients).where(eq(ingredients.organizationId, ORG));
 
     const inserted = await tx
       .insert(ingredients)

@@ -85,11 +85,20 @@ export async function addRecipeIngredientAction(
 
   const organizationId = await getOrgId();
   try {
-    const row = await withOrg(organizationId, (tx) =>
+    const result = await withOrg(organizationId, (tx) =>
       addRecipeIngredient(tx, organizationId, { recipeId, ...parsed.data }),
     );
+    if (!result.ok) {
+      return {
+        ok: false,
+        code:
+          result.reason === 'recipe_not_active'
+            ? 'NOT_FOUND'
+            : 'RECIPE_HAS_TRASHED_INGREDIENTS',
+      };
+    }
     revalidateRecipe(recipeId);
-    return { ok: true, data: { id: row.id } };
+    return { ok: true, data: { id: result.row.id } };
   } catch (err) {
     if (isUniqueViolation(err)) {
       return { ok: false, code: 'ALREADY_IN_RECIPE' };

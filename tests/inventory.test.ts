@@ -43,38 +43,49 @@ describe('recordMovement', () => {
       ingredientId,
       deltaCanonical: 1000,
     });
-    expect(Number(after1?.stockQuantity)).toBe(1000);
+    expect(after1.ok).toBe(true);
+    if (after1.ok) expect(Number(after1.ingredient.stockQuantity)).toBe(1000);
 
     const after2 = await recordMovement(db, ORG_A, {
       ingredientId,
       deltaCanonical: 500,
       note: 'delivery',
     });
-    expect(Number(after2?.stockQuantity)).toBe(1500);
+    expect(after2.ok).toBe(true);
+    if (after2.ok) expect(Number(after2.ingredient.stockQuantity)).toBe(1500);
   });
 
-  it('clamps stock at zero on oversized stock-out', async () => {
-    const after = await recordMovement(db, ORG_A, {
+  it('rejects an oversized stock-out, leaving stock and the ledger untouched', async () => {
+    const result = await recordMovement(db, ORG_A, {
       ingredientId,
       deltaCanonical: -5000,
     });
-    expect(Number(after?.stockQuantity)).toBe(0);
-  });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('insufficient_stock');
 
-  it('records each movement in the ledger', async () => {
+    // Stock is unchanged (still 1500) and no ledger row was written: the ledger
+    // stays authoritative (no phantom -5000 entry against a -1500 real move).
+    const ing = await getIngredientById(db, ORG_A, ingredientId);
+    expect(Number(ing?.stockQuantity)).toBe(1500);
     const movements = await listMovements(db, ORG_A, ingredientId);
-    expect(movements.length).toBe(3);
+    expect(movements.length).toBe(2);
   });
 
-  it('does not move stock for another org (returns null, no orphan ledger row)', async () => {
+  it('records each successful movement in the ledger', async () => {
+    const movements = await listMovements(db, ORG_A, ingredientId);
+    expect(movements.length).toBe(2);
+  });
+
+  it('does not move stock for another org (not_found, no orphan ledger row)', async () => {
     const result = await recordMovement(db, ORG_B, {
       ingredientId,
       deltaCanonical: 100,
     });
-    expect(result).toBeNull();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('not_found');
     // The foreign ingredient's ledger is untouched (no orphan row written).
     const ledger = await listMovements(db, ORG_A, ingredientId);
-    expect(ledger.length).toBe(3);
+    expect(ledger.length).toBe(2);
   });
 
   it('refuses to move stock for a trashed ingredient (and writes no ledger row)', async () => {
@@ -89,9 +100,25 @@ describe('recordMovement', () => {
       ingredientId: ing.id,
       deltaCanonical: 500,
     });
-    expect(result).toBeNull();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('not_found');
     const ledger = await listMovements(db, ORG_A, ing.id);
     expect(ledger.length).toBe(0);
+  });
+
+  it('allows a stock-out down to exactly zero and records the applied delta', async () => {
+    // Stock is 1500; -1500 lands exactly at zero (the boundary is allowed).
+    const result = await recordMovement(db, ORG_A, {
+      ingredientId,
+      deltaCanonical: -1500,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(Number(result.ingredient.stockQuantity)).toBe(0);
+
+    const movements = await listMovements(db, ORG_A, ingredientId);
+    expect(movements.length).toBe(3);
+    // Newest first: the ledger entry equals the delta that was actually applied.
+    expect(Number(movements[0]?.deltaCanonical)).toBe(-1500);
   });
 });
 

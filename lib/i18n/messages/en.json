@@ -9,6 +9,7 @@
     "DUPLICATE_NAME": "A folder with that name already exists.",
     "ALREADY_IN_RECIPE": "That ingredient is already in this recipe.",
     "INGREDIENT_IN_USE": "This ingredient is used by an active recipe, so it can't be moved to the trash. Remove it from those recipes first.",
+    "INSUFFICIENT_STOCK": "That stock-out is larger than the quantity on hand. Recount the stock or enter a smaller amount.",
     "RECIPE_HAS_TRASHED_INGREDIENTS": "This recipe uses ingredients that are also in the trash. Restore those ingredients first.",
     "INGREDIENT_IN_TRASHED_RECIPE": "This ingredient is still part of a trashed recipe. Delete that recipe permanently first.",
     "CATEGORY_IN_USE": "This category is used by one or more transactions, so it can't be deleted. Reassign or remove those transactions first.",
@@ -253,6 +254,7 @@
       }
     },
     "save": "Save settings",
+    "saved": "Settings saved.",
     "noAccess": {
       "title": "Managers only",
       "body": "Workspace settings — currency and measurement system — can only be changed by a manager. Ask an organization manager if you need a change."
@@ -570,6 +572,10 @@
       "shifts": "Shifts",
       "hours": "Hours",
       "payDue": "Pay due"
+    },
+    "nav": {
+      "previous": "Previous period",
+      "next": "Next period"
     },
     "errors": {
       "nameRequired": "Enter a name.",

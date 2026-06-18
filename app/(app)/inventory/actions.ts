@@ -19,12 +19,20 @@ export async function recordMovementAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
+  const result = await withOrg(organizationId, (tx) =>
     recordMovement(tx, organizationId, parsed.data),
   );
-  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: result.reason === 'insufficient_stock' ? 'INSUFFICIENT_STOCK' : 'NOT_FOUND',
+    };
+  }
   revalidatePath('/inventory');
-  return { ok: true, data: { stockQuantity: Number(row.stockQuantity) } };
+  return {
+    ok: true,
+    data: { stockQuantity: Number(result.ingredient.stockQuantity) },
+  };
 }
 
 export async function setLowStockThresholdAction(
