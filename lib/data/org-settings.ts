@@ -12,16 +12,30 @@ import type { OrgSettingsInput } from '@/lib/validation/org-settings';
  * lib/data/ingredients.ts for the shared pattern.
  */
 
-/** The two values the rest of the app reads (currency + measurement system). */
+/**
+ * The values the rest of the app reads: currency + measurement system, plus the
+ * optional seller identity used by generated documents (Sprint 3.5A). Seller
+ * fields are null until the org fills them in `/settings`.
+ */
 export type OrgSettingsValues = {
   currency: string;
   measurementSystem: MeasurementSystem;
+  businessName: string | null;
+  businessAddress: string | null;
+  businessTaxId: string | null;
+  businessEmail: string | null;
+  businessLogoUrl: string | null;
 };
 
 /** Used until the org saves its own settings. */
 export const DEFAULT_ORG_SETTINGS: OrgSettingsValues = {
   currency: 'EUR',
   measurementSystem: 'metric',
+  businessName: null,
+  businessAddress: null,
+  businessTaxId: null,
+  businessEmail: null,
+  businessLogoUrl: null,
 };
 
 export async function getOrgSettingsRow(

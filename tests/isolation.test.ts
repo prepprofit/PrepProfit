@@ -86,10 +86,20 @@ beforeAll(async () => {
   await upsertOrgSettings(db, ORG_A, {
     currency: 'EUR',
     measurementSystem: 'metric',
+    businessName: null,
+    businessAddress: null,
+    businessTaxId: null,
+    businessEmail: null,
+    businessLogoUrl: null,
   });
   await upsertOrgSettings(db, ORG_B, {
     currency: 'USD',
     measurementSystem: 'imperial',
+    businessName: null,
+    businessAddress: null,
+    businessTaxId: null,
+    businessEmail: null,
+    businessLogoUrl: null,
   });
 });
 

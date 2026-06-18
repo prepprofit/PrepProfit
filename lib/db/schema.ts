@@ -57,6 +57,16 @@ export const organizationSettings = pgTable('organization_settings', {
   })
     .notNull()
     .default('metric'),
+  // Seller identity for generated documents (invoice PDF/print, Sprint 3.5A).
+  // All optional: existing rows stay valid and documents fall back to the Clerk
+  // org name when `businessName` is blank. `businessLogoUrl` is validated to be
+  // an https URL only (lib/validation/org-settings.ts) so it is safe to embed in
+  // the document header. None of these are PII of an individual.
+  businessName: text('business_name'),
+  businessAddress: text('business_address'),
+  businessTaxId: text('business_tax_id'),
+  businessEmail: text('business_email'),
+  businessLogoUrl: text('business_logo_url'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

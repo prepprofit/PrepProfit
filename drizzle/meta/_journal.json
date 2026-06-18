@@ -92,6 +92,13 @@
       "when": 1781804380791,
       "tag": "0012_exotic_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1781809912842,
+      "tag": "0013_chief_turbo",
+      "breakpoints": true
     }
   ]
 }

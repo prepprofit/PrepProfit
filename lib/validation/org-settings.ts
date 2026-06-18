@@ -58,9 +58,55 @@ export const CURRENCIES: ReadonlyArray<{ code: CurrencyCode; label: string }> = 
 
 export const MEASUREMENT_SYSTEMS = ['metric', 'imperial'] as const;
 
+/** Trim then coerce empty string → null, so a cleared field is stored as NULL. */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((s) => (s === '' ? null : s))
+    .nullable()
+    .default(null);
+
+/**
+ * Seller logo URL embedded in generated documents (invoice PDF/print). Restricted
+ * to `https://` so we never render `http`, `data:`, `javascript:` or other schemes
+ * into the document header. Empty → null.
+ */
+const logoUrlSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .transform((s) => (s === '' ? null : s))
+  .nullable()
+  .default(null)
+  .refine(
+    (v) => v === null || /^https:\/\//i.test(v),
+    'Logo URL must start with https://',
+  )
+  .refine((v) => {
+    if (v === null) return true;
+    try {
+      const u = new URL(v);
+      return u.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }, 'Logo URL must be a valid https URL');
+
 export const orgSettingsSchema = z.object({
   currency: z.enum(CURRENCY_CODES),
   measurementSystem: z.enum(MEASUREMENT_SYSTEMS),
+  // Seller identity for generated documents (Sprint 3.5A). All optional.
+  businessName: optionalText(120),
+  businessAddress: optionalText(400),
+  businessTaxId: optionalText(60),
+  businessEmail: z
+    .union([z.literal(''), z.string().trim().email().max(200)])
+    .transform((s) => (s === '' ? null : s))
+    .nullable()
+    .default(null),
+  businessLogoUrl: logoUrlSchema,
 });
 
 export type OrgSettingsInput = z.infer<typeof orgSettingsSchema>;
