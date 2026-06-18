@@ -117,7 +117,7 @@ export async function updateRecipeIngredientAction(
 
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
-    updateRecipeIngredient(tx, organizationId, lineId, parsed.data),
+    updateRecipeIngredient(tx, organizationId, recipeId, lineId, parsed.data),
   );
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateRecipe(recipeId);
@@ -129,9 +129,10 @@ export async function removeRecipeIngredientAction(
   lineId: string,
 ): Promise<ActionResult> {
   const organizationId = await getOrgId();
-  await withOrg(organizationId, (tx) =>
-    removeRecipeIngredient(tx, organizationId, lineId),
+  const removed = await withOrg(organizationId, (tx) =>
+    removeRecipeIngredient(tx, organizationId, recipeId, lineId),
   );
+  if (!removed) return { ok: false, code: 'NOT_FOUND' };
   revalidateRecipe(recipeId);
   return { ok: true, data: undefined };
 }

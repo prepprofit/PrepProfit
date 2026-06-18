@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, exists, isNull, sql } from 'drizzle-orm';
 import { ingredients, recipeIngredients, recipes } from '@/lib/db/schema';
 import type { RecipeIngredient } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
@@ -76,9 +76,33 @@ export async function addRecipeIngredient(
   return { ok: true, row };
 }
 
+/**
+ * EXISTS guard: the parent recipe (`recipeId`) is ACTIVE and in this org. Combined
+ * with `recipe_id = recipeId` on the line, a forged line id that belongs to a
+ * trashed recipe — or to a different recipe — matches no row, so update/remove are
+ * no-ops returning "not found". This upholds the "active recipe lines reference
+ * only active rows" invariant against forged ids (the add/trash/restore locks
+ * handle the concurrent case).
+ */
+function parentRecipeIsActive(db: TenantClient, organizationId: string, recipeId: string) {
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(recipes)
+      .where(
+        and(
+          eq(recipes.organizationId, organizationId),
+          eq(recipes.id, recipeId),
+          isNull(recipes.deletedAt),
+        ),
+      ),
+  );
+}
+
 export async function updateRecipeIngredient(
   db: TenantClient,
   organizationId: string,
+  recipeId: string,
   id: string,
   input: { quantity: number; sortOrder?: number },
 ): Promise<RecipeIngredient | null> {
@@ -94,23 +118,31 @@ export async function updateRecipeIngredient(
       and(
         eq(recipeIngredients.organizationId, organizationId),
         eq(recipeIngredients.id, id),
+        eq(recipeIngredients.recipeId, recipeId),
+        parentRecipeIsActive(db, organizationId, recipeId),
       ),
     )
     .returning();
   return row ?? null;
 }
 
+/** Returns true iff a line was actually removed (active same-org recipe, matching id). */
 export async function removeRecipeIngredient(
   db: TenantClient,
   organizationId: string,
+  recipeId: string,
   id: string,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const removed = await db
     .delete(recipeIngredients)
     .where(
       and(
         eq(recipeIngredients.organizationId, organizationId),
         eq(recipeIngredients.id, id),
+        eq(recipeIngredients.recipeId, recipeId),
+        parentRecipeIsActive(db, organizationId, recipeId),
       ),
-    );
+    )
+    .returning({ id: recipeIngredients.id });
+  return removed.length > 0;
 }

@@ -4,10 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { getOrgId } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import {
-  countActiveRecipesUsingIngredient,
   createIngredient,
-  lockActiveIngredient,
-  softDeleteIngredient,
+  trashIngredient,
   updateIngredient,
 } from '@/lib/data/ingredients';
 import { ingredientSchema } from '@/lib/validation/ingredients';
@@ -67,15 +65,9 @@ export async function deleteIngredientAction(
   id: string,
 ): Promise<ActionResult> {
   const organizationId = await getOrgId();
-  const outcome = await withOrg(organizationId, async (tx) => {
-    if (!(await lockActiveIngredient(tx, organizationId, id))) {
-      return { status: 'not_found' as const };
-    }
-    const inUse = await countActiveRecipesUsingIngredient(tx, organizationId, id);
-    if (inUse > 0) return { status: 'in_use' as const, inUse };
-    const row = await softDeleteIngredient(tx, organizationId, id);
-    return { status: row ? ('done' as const) : ('not_found' as const) };
-  });
+  const outcome = await withOrg(organizationId, (tx) =>
+    trashIngredient(tx, organizationId, id),
+  );
 
   if (outcome.status === 'in_use') {
     return { ok: false, code: 'INGREDIENT_IN_USE' };

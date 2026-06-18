@@ -167,6 +167,35 @@ export async function softDeleteIngredient(
   return row ?? null;
 }
 
+/** Outcome of {@link trashIngredient}. */
+export type TrashIngredientOutcome =
+  | { status: 'done' }
+  | { status: 'in_use'; inUse: number }
+  | { status: 'not_found' };
+
+/**
+ * The full "move an ingredient to the trash" transaction, as a data-layer service
+ * so it is testable without Clerk/cache (deleteIngredientAction is a thin wrapper).
+ * MUST run inside a `withOrg`/`runInOrg` transaction: it locks the active row FOR
+ * UPDATE, refuses if any ACTIVE recipe still uses it, then soft-deletes — all
+ * serialized against `addRecipeIngredient` (which takes the same lock), so the
+ * active-recipe-references-only-active-ingredient invariant holds under real
+ * Postgres concurrency.
+ */
+export async function trashIngredient(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<TrashIngredientOutcome> {
+  if (!(await lockActiveIngredient(db, organizationId, id))) {
+    return { status: 'not_found' };
+  }
+  const inUse = await countActiveRecipesUsingIngredient(db, organizationId, id);
+  if (inUse > 0) return { status: 'in_use', inUse };
+  const row = await softDeleteIngredient(db, organizationId, id);
+  return row ? { status: 'done' } : { status: 'not_found' };
+}
+
 /** Brings a trashed ingredient back. Returns null if it was not in the trash. */
 export async function restoreIngredient(
   db: TenantClient,
