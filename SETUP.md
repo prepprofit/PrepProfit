@@ -45,8 +45,9 @@ Roles:
 - Clerk `org:admin` maps to PrepProfit `manager`.
 - Other org roles map to `kitchen`.
 
-Managers can access financials, invoices, payroll, trash, settings, exports, and generated
-documents. Kitchen users can access operational surfaces only.
+Managers can access financials, invoices, payroll, trash, settings, exports, generated
+documents, billing, and AI extraction usage controls. Kitchen users can access operational
+surfaces only.
 
 ## 3. Environment variables
 
@@ -68,6 +69,7 @@ Planned later:
 
 - Billing/webhook secrets in Sprint 4
 - Resend/email secrets in Sprint 3.5B
+- AI provider key in Sprint 4.7
 - Sentry/PostHog secrets in Sprint 5
 
 ## 4. Migrations and RLS

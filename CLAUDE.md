@@ -4,7 +4,8 @@
 
 PrepProfit is a multi-tenant B2B SaaS for restaurant, bakery, patisserie, and food-business
 financial management. It replaces a spreadsheet kit with tested workflows for recipe costing,
-inventory, financials, break-even, invoices, payroll, search, documents, and imports.
+inventory, financials, break-even, invoices, payroll, search, documents, imports, and reviewed
+AI-assisted recipe extraction.
 
 ## Active stack
 
@@ -25,6 +26,7 @@ Planned additions must land only in their sprint:
 - PDF rendering: Sprint 3.5A
 - Resend email: Sprint 3.5B
 - Clerk Billing/Stripe: Sprint 4
+- Vision/AI recipe extraction: Sprint 4.7
 - Sentry/PostHog/Playwright launch operations: Sprint 5
 
 ## Rule 1 - Multi-tenancy is non-negotiable
@@ -43,35 +45,39 @@ Planned additions must land only in their sprint:
 - `org:admin` maps to `manager`; every other org role maps to `kitchen`.
 - Sensitive pages render `NoAccess` for kitchen users.
 - Sensitive Server Actions and Route Handlers return `FORBIDDEN` before any data access.
-- Sensitive surfaces include financials, transactions, break-even, invoices, payroll, trash,
-  settings, generated documents, billing, and sensitive exports.
-- Dashboard is a documented product exception: financial widgets are manager-only; operational
-  recipe/inventory widgets may be visible to kitchen only if PLANO.md keeps that decision.
+- Sensitive surfaces include financials, transactions, break-even, invoices, payroll, trash, settings, generated documents, billing, sensitive exports, and AI extraction usage controls.
+- Dashboard is a documented product exception: financial widgets are manager-only; operational recipe/inventory widgets may be visible to kitchen only if PLANO.md keeps that decision.
 - Plan/feature entitlement checks are server-side controls once Sprint 4 lands. UI hiding is never enough.
 
 ## Code rules
 
-- Mutations use Server Actions unless a file download, webhook, or cron route requires a Route Handler.
+- Mutations use Server Actions unless a file download, webhook, upload, or cron route requires a Route Handler.
 - All user input is validated with Zod on the server.
 - Action failures return stable `ActionErrorCode` values mapped through next-intl.
 - Unexpected errors go through `unexpected()` / `logError()`.
 - Monetary values are stored as integer cents. Never store money as floats.
-- Cost, margin, invoice, payroll, finance, inventory, and break-even calculations live in pure modules
-  under `lib/calculations/` with tests for rounding and edge cases.
+- Cost, margin, invoice, payroll, finance, inventory, and break-even calculations live in pure modules under `lib/calculations/` with tests for rounding and edge cases.
 - Soft-delete active reads filter `deleted_at IS NULL`.
 - Purge paths preserve history by nulling optional links before deleting referenced rows.
 - No `any`, no `@ts-ignore`. Types derive from Drizzle schema, Zod schemas, or explicit domain types.
 - UI strings always go through next-intl. No hardcoded user-visible strings.
 
+## AI and import rules
+
+- AI output is untrusted input. Validate with Zod, stage it server-side, and require human confirmation.
+- AI/photo extraction must never create final recipes or ingredients directly.
+- New ingredients from AI/import default to `priceCents = 0` and must be flagged as needing pricing.
+- Store provider/cost/status metadata, not raw sensitive image contents, unless an explicit retention decision is approved.
+- AI features require entitlement checks, usage limits, rate limits, audit logs, and stable error codes.
+
 ## Testing rules
 
-- RLS tests cover reads and writes: SELECT isolation, INSERT `WITH CHECK`, UPDATE retag attempts,
-  and DELETE reachability.
+- RLS tests cover reads and writes: SELECT isolation, INSERT `WITH CHECK`, UPDATE retag attempts, and DELETE reachability.
 - RBAC tests prove manager-only actions return `FORBIDDEN` before data access.
 - Money tests cover zero, negative, large values, rounding, NaN, and Infinity edges.
 - CSV/XLSX/document/export paths must test formula-injection-safe text handling.
-- PGlite is the default local DB test layer. Real Postgres concurrency tests are required before launch
-  for flows where PGlite cannot prove the property.
+- AI extraction tests use mocked provider output and must cover hallucinated/ambiguous data, low confidence, usage limits, and cross-org job access.
+- PGlite is the default local DB test layer. Real Postgres concurrency tests are required before launch for flows where PGlite cannot prove the property.
 
 ## Product modules
 
@@ -83,13 +89,14 @@ Planned additions must land only in their sprint:
 6. Invoices: customers, draft/issue/pay/void lifecycle, gap-free numbering.
 7. Documents: print/PDF/XLSX/email outputs, planned in Sprint 3.5A/3.5B.
 8. Imports: deterministic staged imports, planned in Sprint 4.5/4.6.
-9. Kitchen operations tasks: planned post-MVP unless prioritized by beta feedback.
+9. AI photo recipe extraction: reviewed recipe drafts from images, planned in Sprint 4.7.
+10. Kitchen operations tasks: planned post-MVP unless prioritized by beta feedback.
 
 ## Subscription plans - target mapping for Sprint 4
 
 - Starter: 1 user, up to 50 recipes, modules 1-3.
-- Pro: 5 users, unlimited recipes, modules 1-4 plus invoices.
-- Business: unlimited users and all modules, including payroll and advanced document/report workflows.
+- Pro: 5 users, unlimited recipes, modules 1-4 plus invoices and limited AI extraction.
+- Business: unlimited users and all modules, including payroll, advanced document/report workflows, and higher AI usage limits.
 
 Until Sprint 4 lands, do not pretend plan gating exists. Build explicit server-side entitlement helpers during Sprint 4.
 

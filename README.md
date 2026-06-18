@@ -36,7 +36,8 @@ break-even, invoice, payroll, and finance calculations live in pure tested modul
 | 7 | Global search | Typo-tolerant search across allowed entities with RBAC |
 
 Planned next: production hardening, document/PDF generation, billing, deterministic
-imports, launch readiness, and optional kitchen task lists. See [PLANO.md](PLANO.md).
+imports, AI photo recipe extraction, launch readiness, and optional kitchen task lists.
+See [PLANO.md](PLANO.md).
 
 ## Stack
 
@@ -52,7 +53,8 @@ Active stack:
 - Vercel deployment
 
 Planned stack additions are introduced only in their sprint: PDF rendering in Sprint 3.5A,
-Resend email in Sprint 3.5B, and Clerk Billing/Stripe in Sprint 4.
+Resend email in Sprint 3.5B, Clerk Billing/Stripe in Sprint 4, and vision/AI extraction in
+Sprint 4.7.
 
 ## Multi-tenant architecture
 
@@ -67,28 +69,6 @@ Writes run inside `withOrg(...)`, so RLS `USING` and `WITH CHECK` policies are a
 Tests cover both reads and write rejection paths.
 
 Money is stored as integer cents. Physical quantities may use numeric canonical units.
-
-## Project structure
-
-```text
-app/
-  (app)/              Authenticated application shell and modules
-  api/                File/cron routes only where Server Actions do not fit
-components/
-  ui/                 Shared UI primitives
-  app/                Product-specific components
-lib/
-  auth.ts             Clerk org id and role helpers
-  db/                 Drizzle schema, RLS, tenant transaction helpers
-  data/               Org-scoped data access
-  calculations/       Pure business math with tests
-  validation/         Zod schemas for server-side validation
-  search/             Search registry and query runner
-  i18n/               next-intl config and messages
-drizzle/              Generated migrations
-scripts/              Migration and seed scripts
-tests/                PGlite integration tests
-```
 
 ## Getting started
 
@@ -160,6 +140,7 @@ Required production checks:
 - [ ] Sprint 4 - Billing and entitlements
 - [ ] Sprint 4.5 - Deterministic import foundation
 - [ ] Sprint 4.6 - Recipe import
+- [ ] Sprint 4.7 - AI photo recipe extraction
 - [ ] Sprint 5 - Launch readiness
 - [ ] Sprint 6 - Kitchen operations tasks, if prioritized
 
