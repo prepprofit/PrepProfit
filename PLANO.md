@@ -207,7 +207,7 @@ Tasks:
 - [ ] Add `lib/entitlements.ts`: `requireFeature`, `canUseFeature`, `assertPlanLimit`.
 - [ ] Add `/pricing` with Clerk PricingTable and an in-app billing/settings page.
 - [ ] Enforce Starter limits server-side: 1 user and 50 recipes. Imports and forged actions must not bypass limits.
-- [ ] Add post-signup onboarding: create org, choose plan, short setup tour.
+- [x] Add post-signup onboarding: create org, choose plan, short setup tour. (Slice 4d — guided `/onboarding` flow: business-identity setup, plan selection via `<PricingTable>`, short module tour; gated once from `/dashboard` for a not-yet-onboarded manager via the set-once `organization_settings.onboarded_at` column, migration **0015**. Org defaults are also seeded eagerly on the `organization.created` webhook. PROD: run `npm run db:migrate` (0015) against prod Neon.)
 - [ ] Add verified Clerk/Stripe webhooks for subscription changes, member removal, and org lifecycle.
 - [ ] Add custom Owner role/lifecycle rules so customers cannot accidentally self-delete an org unless explicitly allowed.
 - [ ] Add tests for entitlement bypass attempts, plan-limit races, forged webhooks, and fail-closed behavior.
