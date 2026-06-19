@@ -163,6 +163,9 @@ export async function applyIngredientRecords(
       name: r.name,
       dimension: r.dimension,
       priceCents: r.priceCents,
+      // Persist the "needs pricing" flag (Sprint 4.6 column): a blank/zero price
+      // imports as 0 cents and is flagged for pricing, so cost stays honest.
+      needsPricing: r.needsPricing,
       supplier: r.supplier,
     })),
   );

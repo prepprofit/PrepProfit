@@ -80,6 +80,7 @@ type GridMeta = {
   dimensionLabel: (d: Dimension) => string;
   deleteLabel: string;
   savedLabel: string;
+  needsPricingLabel: string;
 };
 
 export function IngredientGrid({
@@ -224,14 +225,24 @@ export function IngredientGrid({
           const draft = meta.drafts[row.original.id];
           if (!draft) return null;
           return (
-            <Input
-              aria-label={t('columns.name')}
-              value={draft.name}
-              disabled={meta.pending}
-              onChange={(e) => meta.onField(row.original.id, { name: e.target.value })}
-              onKeyDown={commitOnEnter}
-              onBlur={() => meta.onCommit(row.original.id)}
-            />
+            <div className="flex flex-col gap-1">
+              <Input
+                aria-label={t('columns.name')}
+                value={draft.name}
+                disabled={meta.pending}
+                onChange={(e) => meta.onField(row.original.id, { name: e.target.value })}
+                onKeyDown={commitOnEnter}
+                onBlur={() => meta.onCommit(row.original.id)}
+              />
+              {row.original.needsPricing && (
+                <span
+                  className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                  title={meta.needsPricingLabel}
+                >
+                  {meta.needsPricingLabel}
+                </span>
+              )}
+            </div>
           );
         },
       },
@@ -362,6 +373,7 @@ export function IngredientGrid({
       dimensionLabel,
       deleteLabel: t('actions.delete'),
       savedLabel: t('saved'),
+      needsPricingLabel: t('needsPricing'),
     } satisfies GridMeta,
   });
 

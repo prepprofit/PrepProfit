@@ -45,9 +45,15 @@ export async function updateIngredientAction(
   const parsed = ingredientSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
+  // Setting a real price clears the import "needs pricing" flag (the cost is now
+  // honest); a 0 price leaves the flag untouched. The flag is server-controlled —
+  // never part of the form payload (Sprint 4.6).
+  const data =
+    parsed.data.priceCents > 0 ? { ...parsed.data, needsPricing: false } : parsed.data;
+
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
-    updateIngredient(tx, organizationId, id, parsed.data),
+    updateIngredient(tx, organizationId, id, data),
   );
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateIngredientConsumers();

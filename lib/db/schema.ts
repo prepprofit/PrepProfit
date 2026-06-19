@@ -97,6 +97,10 @@ export const ingredients = pgTable(
     // Price per canonical purchase unit, in integer cents:
     //   weight → per kg, volume → per litre, count → per piece.
     priceCents: integer('price_cents').notNull().default(0),
+    // TRUE when the ingredient was created without a real price (import / future
+    // AI extraction default to priceCents 0 and set this), so the UI can flag it
+    // for pricing and a "0" cost is honestly "unpriced", not "free" (Sprint 4.6).
+    needsPricing: boolean('needs_pricing').notNull().default(false),
     supplier: text('supplier'),
     // Current stock on hand, in the ingredient's canonical unit (g / ml / count).
     // Maintained transactionally alongside the inventory_movements ledger.
