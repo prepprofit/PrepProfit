@@ -60,21 +60,43 @@ export function serverEnv(): ServerEnv {
  * `serverEnvSchema`, so a missing or malformed value fails only when an email is
  * actually sent (mapped to the stable `EMAIL_FAILED` code) and never bricks the
  * DB-backed pages. The API key is a secret — it is NEVER logged.
+ *
+ * `RESEND_FROM_EMAIL` is the bare address only — the human display name lives in
+ * `RESEND_FROM_NAME` (default below) and is composed into the `From` header by
+ * {@link emailEnv}. Keeping them separate means the address still passes strict
+ * `.email()` validation; do NOT put `Name <addr>` in `RESEND_FROM_EMAIL`.
  */
 const emailEnvSchema = z.object({
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY must not be empty'),
   RESEND_FROM_EMAIL: z
     .string()
     .email('RESEND_FROM_EMAIL must be a valid email address'),
+  RESEND_FROM_NAME: z.string().min(1).optional(),
   RESEND_REPLY_TO: z
     .string()
     .email('RESEND_REPLY_TO must be a valid email address')
     .optional(),
 });
 
+/** Sender display name shown to recipients when `RESEND_FROM_NAME` is unset. */
+const DEFAULT_FROM_NAME = 'PrepProfit';
+
+/**
+ * Build an RFC 5322 `From` header value: `Name <addr>`. The display name is
+ * quoted only when it contains characters outside a plain atom (e.g. a comma in
+ * "PrepProfit, Inc."), so simple brand names stay unquoted.
+ */
+function formatFrom(name: string, email: string): string {
+  const display = /^[A-Za-z0-9 ]+$/.test(name)
+    ? name
+    : `"${name.replace(/"/g, '\\"')}"`;
+  return `${display} <${email}>`;
+}
+
 /** The Resend config required to actually send mail (a narrowed, non-optional view). */
 export type EmailEnv = {
   apiKey: string;
+  /** Ready-to-send `From` header, e.g. `PrepProfit <info@prepprofit.com>`. */
   from: string;
   replyTo?: string;
 };
@@ -94,7 +116,10 @@ export function emailEnv(): EmailEnv {
   }
   return {
     apiKey: parsed.data.RESEND_API_KEY,
-    from: parsed.data.RESEND_FROM_EMAIL,
+    from: formatFrom(
+      parsed.data.RESEND_FROM_NAME ?? DEFAULT_FROM_NAME,
+      parsed.data.RESEND_FROM_EMAIL,
+    ),
     replyTo: parsed.data.RESEND_REPLY_TO,
   };
 }

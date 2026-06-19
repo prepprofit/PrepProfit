@@ -72,17 +72,37 @@ describe('emailEnv', () => {
     process.env = { ...ORIGINAL };
   });
 
-  it('returns narrowed config when the Resend vars are valid', async () => {
+  it('returns narrowed config and a branded From header when valid', async () => {
     const { emailEnv } = await loadEnv({
       RESEND_API_KEY: 're_live_key',
       RESEND_FROM_EMAIL: 'documents@example.com',
+      RESEND_FROM_NAME: undefined,
       RESEND_REPLY_TO: 'hello@example.com',
     });
     expect(emailEnv()).toEqual({
       apiKey: 're_live_key',
-      from: 'documents@example.com',
+      // Defaults the display name to the PrepProfit brand.
+      from: 'PrepProfit <documents@example.com>',
       replyTo: 'hello@example.com',
     });
+  });
+
+  it('uses RESEND_FROM_NAME as the display name when set', async () => {
+    const { emailEnv } = await loadEnv({
+      RESEND_API_KEY: 're_live_key',
+      RESEND_FROM_EMAIL: 'documents@example.com',
+      RESEND_FROM_NAME: 'Acme Kitchen',
+    });
+    expect(emailEnv().from).toBe('Acme Kitchen <documents@example.com>');
+  });
+
+  it('quotes a display name that contains special characters', async () => {
+    const { emailEnv } = await loadEnv({
+      RESEND_API_KEY: 're_live_key',
+      RESEND_FROM_EMAIL: 'documents@example.com',
+      RESEND_FROM_NAME: 'PrepProfit, Inc.',
+    });
+    expect(emailEnv().from).toBe('"PrepProfit, Inc." <documents@example.com>');
   });
 
   it('treats RESEND_REPLY_TO as optional', async () => {

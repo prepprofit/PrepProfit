@@ -49,3 +49,7 @@ Wibox-dashboard-app-main.zip
 /.agents/
 /.claude/
 /skills-lock.json
+.vercel
+.env.prod.tmp
+.vercel-prod.env.tmp
+scripts/test-email.mjs

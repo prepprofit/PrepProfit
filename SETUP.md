@@ -68,7 +68,8 @@ Required when scheduled purge is enabled:
 Required when emailing documents is enabled (Sprint 3.5C):
 
 - `RESEND_API_KEY` - Resend API key. A secret; never commit it and it is never logged.
-- `RESEND_FROM_EMAIL` - the verified sender address (e.g. `documents@yourdomain.com`).
+- `RESEND_FROM_EMAIL` - the verified sender address, **bare email only** (e.g. `documents@yourdomain.com`). Do not include a display name here.
+- `RESEND_FROM_NAME` (optional) - sender display name recipients see; composed into the `From` header as `Name <address>`. Defaults to `PrepProfit`.
 - `RESEND_REPLY_TO` (optional) - reply-to address; set on outbound mail when present.
 
 These are validated lazily (`emailEnv()` in `lib/env.ts`): the rest of the app runs without
