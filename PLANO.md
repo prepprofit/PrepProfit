@@ -239,19 +239,21 @@ Schema:
 
 Tasks:
 
-- [ ] Template generator for ingredients and transactions. Columns match export/import docs exactly.
-- [ ] CSV/XLSX parsers that never evaluate formulas/macros and reject unknown sheets/columns.
-- [ ] Zod row schemas and `parseImport()` that returns typed normalized rows plus per-row issues.
-- [ ] Dry-run action: upload/parse/validate/plan rows, store `import_jobs`, return preview id.
-- [ ] Confirm action: load job by id inside `withOrg`, re-check role and plan limits, apply rows in one transaction, mark committed with idempotency protection.
-- [ ] UI: upload, entity/format selection, preview grid, per-row status, confirm, error handling, mobile usability, all localized.
-- [ ] Tests: parser fixtures, formula/macro safety, unknown columns, row/file caps, locale money parsing, confirm idempotency, org isolation, and plan-limit enforcement.
+- [x] Template generator for ingredients and transactions. Columns match export/import docs exactly. (`lib/import/templates.ts`; transaction columns mirror `lib/finance/csv.ts`; round-trip tested.)
+- [x] CSV/XLSX parsers that never evaluate formulas/macros and reject unknown sheets/columns. (`lib/import/csv.ts` dependency-free RFC-4180 reader; `lib/import/xlsx.ts` over `read-excel-file` — cached values only; unknown/missing/dup columns reject the file.)
+- [x] Zod row schemas and `parseImport()` that returns typed normalized rows plus per-row issues. (`lib/validation/import.ts` + pure `lib/import/parse.ts` → draft rows + stable issue codes.)
+- [x] Dry-run action: upload/parse/validate/plan rows, store `import_jobs`, return preview id. (`previewImportAction`; DB planning in `lib/data/import.ts` resolves categories/dedupe.)
+- [x] Confirm action: load job by id inside `withOrg`, re-check role, apply rows in one transaction, mark committed with idempotency protection. (`confirmImportAction`; FOR UPDATE lock + status flip; Zod re-validation of stored records; all-or-nothing. NOTE: ingredients/transactions are Starter modules with no numeric cap, so no plan-limit gate here — the recipe cap applies in Sprint 4.6.)
+- [x] UI: upload, entity/format selection, preview grid, per-row status, confirm, error handling, mobile usability, all localized. (`/import` manager-only page + `import-workbench.tsx`; `import.*` i18n.)
+- [x] Tests: parser fixtures, formula/macro safety, unknown columns, row/file caps, locale money parsing, confirm idempotency, org isolation. (`import-csv`/`-xlsx`/`-parse`/`-templates`/`-data`/`-actions` suites.)
 
 Acceptance criteria:
 
 - Download a template, fill 10 ingredient rows, import, preview, confirm, and see rows created in the active org only.
 - A transaction CSV exported by the app re-imports cleanly.
 - A forged confirm payload cannot alter rows, bypass limits, or write outside the job's org.
+
+Production note: ships migration **0016** (`import_jobs` table + RLS via `businessTables`). Run `npm run db:migrate` against prod after deploy. New `import` rate bucket (20/min per org+user) and `import.preview`/`import.commit` audit actions. The XLSX reader (`read-excel-file`) is externalized in `next.config.ts` (its `unzipper`→optional `@aws-sdk/client-s3` require must not be bundled). v1 scope: recipe links on transaction import are NOT restored (Sprint 4.6); category resolution matches the stored row name (locale-display names may not match — surfaced as `UNKNOWN_CATEGORY`).
 
 ---
 
