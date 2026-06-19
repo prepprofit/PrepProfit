@@ -58,8 +58,8 @@ export const IMPORT_SOFT_ISSUES: readonly ImportIssueCode[] = [
 
 /** One problem found on one source row, localized client-side by `code`. */
 export type ImportRowIssue = {
-  /** 1-based source DATA row number (header is row 0, excluded). */
-  row: number;
+  /** 1-based spreadsheet LINE number (the header is line 1) — what the user sees. */
+  line: number;
   /** The offending column header (machine name), or '' for a row-level issue. */
   column: string;
   code: ImportIssueCode;
