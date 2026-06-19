@@ -202,15 +202,15 @@ Decisions to lock before coding:
 
 Tasks:
 
-- [ ] Enable Clerk Billing for B2B organization plans and connect Stripe.
-- [ ] Create Starter / Pro / Business plans and features in Clerk.
-- [ ] Add `lib/entitlements.ts`: `requireFeature`, `canUseFeature`, `assertPlanLimit`.
-- [ ] Add `/pricing` with Clerk PricingTable and an in-app billing/settings page.
-- [ ] Enforce Starter limits server-side: 1 user and 50 recipes. Imports and forged actions must not bypass limits.
+- [x] Enable Clerk Billing for B2B organization plans and connect Stripe. (Slice 4a in dev; Stripe connected + catalogue live in PROD with `organization_enabled: true`.)
+- [x] Create Starter / Pro / Business plans and features in Clerk. (Catalogue version-controlled at `clerk/billing.json`; identical slugs live in dev AND prod: plans `free_org`/`pro`/`business`, features `invoices`/`break_even`/`payroll`/`advanced_documents`/`ai_extraction`.)
+- [x] Add `lib/entitlements.ts`: `requireFeature`, `canUseFeature`, `assertPlanLimit`. (Slice 4a — fail-closed over `auth().has()`.)
+- [x] Add `/pricing` with Clerk PricingTable and an in-app billing/settings page. (Slice 4a — manager-only `/pricing` + `/billing`.)
+- [x] Enforce Starter limits server-side: 1 user and 50 recipes. Imports and forged actions must not bypass limits. (Slice 4b — recipe cap via `assertPlanLimit`; feature gates via `requireFeature` after RBAC; 402 on download routes.)
 - [x] Add post-signup onboarding: create org, choose plan, short setup tour. (Slice 4d — guided `/onboarding` flow: business-identity setup, plan selection via `<PricingTable>`, short module tour; gated once from `/dashboard` for a not-yet-onboarded manager via the set-once `organization_settings.onboarded_at` column, migration **0015**. Org defaults are also seeded eagerly on the `organization.created` webhook. PROD: run `npm run db:migrate` (0015) against prod Neon.)
-- [ ] Add verified Clerk/Stripe webhooks for subscription changes, member removal, and org lifecycle.
-- [ ] Add custom Owner role/lifecycle rules so customers cannot accidentally self-delete an org unless explicitly allowed.
-- [ ] Add tests for entitlement bypass attempts, plan-limit races, forged webhooks, and fail-closed behavior.
+- [x] Add verified Clerk/Stripe webhooks for subscription changes, member removal, and org lifecycle. (Slice 4c — `verifyWebhook` route `/api/webhooks/clerk` + `subscriptions` mirror, migration **0014** prod-applied. Remaining OPS only: create the PROD Svix endpoint `https://www.prepprofit.com/api/webhooks/clerk` and set `CLERK_WEBHOOK_SIGNING_SECRET` in Vercel — not a blocker; the mirror is read-only observability and eager-seed has lazy fallback.)
+- [x] Add custom Owner role/lifecycle rules so customers cannot accidentally self-delete an org unless explicitly allowed. (Slice 4e — solved more simply than the original custom-role plan: Clerk's instance setting `organization_settings.admin_delete_enabled = false`, applied to BOTH dev AND prod, disables org self-deletion for all admins independent of role permissions. No system user / custom `org:owner` role needed.)
+- [x] Add tests for entitlement bypass attempts, plan-limit races, forged webhooks, and fail-closed behavior. (Slices 4b/4c — `tests/entitlement-enforcement.test.ts`, RBAC-before-feature tests, forged-webhook 400 test.)
 
 Acceptance criteria:
 

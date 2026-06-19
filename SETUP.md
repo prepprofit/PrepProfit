@@ -49,6 +49,16 @@ Managers can access financials, invoices, payroll, trash, settings, exports, gen
 documents, billing, and AI extraction usage controls. Kitchen users can access operational
 surfaces only.
 
+Organization self-delete lockdown (Sprint 4e):
+
+- PrepProfit is one organization per customer, and customers must not delete their own org.
+- This is enforced at the instance level by `organization_settings.admin_delete_enabled = false`
+  (applied to both the development and production instances). It disables org deletion for all
+  admins regardless of role permissions, so no custom role or reserved system user is required.
+- Set it via the Clerk CLI, e.g.:
+  `clerk config patch --json '{"organization_settings":{"admin_delete_enabled":false}}'`
+  (add `--instance <prod-instance-id>` for production), or via the Clerk Dashboard.
+
 ## 3. Environment variables
 
 ```bash
