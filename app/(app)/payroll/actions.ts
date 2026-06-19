@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { getOrgId, isManager } from '@/lib/auth';
+import { requireFeature } from '@/lib/entitlements';
 import { withOrg } from '@/lib/db';
 import { isForeignKeyViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
@@ -28,6 +29,10 @@ import type { ActionResult } from '@/lib/action-result';
  * every write inside `withOrg` (RLS active), Zod on the input. Employees are PII /
  * financial data — every action returns FORBIDDEN for non-managers BEFORE any data
  * access. A cross-tenant employee link on a shift is rejected by the composite FK.
+ *
+ * Payroll is a Business-plan module. After the manager check, each action gates
+ * on the `payroll` entitlement (Sprint 4) and returns UPGRADE_REQUIRED before any
+ * data access when the org's plan doesn't include it. Fail-closed.
  */
 
 function revalidatePayroll(): void {
@@ -38,6 +43,10 @@ export async function createEmployeeAction(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('payroll');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const parsed = employeeSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -67,6 +76,10 @@ export async function updateEmployeeAction(
   input: unknown,
 ): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('payroll');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const parsed = employeeSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -95,6 +108,10 @@ export async function setEmployeeActiveAction(
   active: boolean,
 ): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('payroll');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const organizationId = await getOrgId();
   const actor = await auditActor();
@@ -118,6 +135,10 @@ export async function setEmployeeActiveAction(
 /** Permanently delete an employee and cascade their shifts. */
 export async function deleteEmployeeAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('payroll');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const organizationId = await getOrgId();
   const actor = await auditActor();
@@ -141,6 +162,10 @@ export async function createShiftAction(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('payroll');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const parsed = shiftSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -172,6 +197,10 @@ export async function updateShiftAction(
   input: unknown,
 ): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('payroll');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const parsed = shiftSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -207,6 +236,10 @@ export async function closeShiftAction(
   input: unknown,
 ): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('payroll');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const parsed = closeShiftSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -238,6 +271,10 @@ export async function closeShiftAction(
 
 export async function deleteShiftAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('payroll');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const organizationId = await getOrgId();
   const actor = await auditActor();

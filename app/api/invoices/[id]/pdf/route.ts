@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getTranslations } from 'next-intl/server';
 import { getOrgId, getOrgName, getUserId, isManager } from '@/lib/auth';
+import { canUseFeature } from '@/lib/entitlements';
 import { getDb, withOrg } from '@/lib/db';
 import { getInvoiceWithItems } from '@/lib/data/invoices';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
@@ -28,6 +29,10 @@ export async function GET(
 ): Promise<NextResponse> {
   if (!(await isManager())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  // Paid module (Pro+): fail-closed plan gate before any data access (Sprint 4).
+  if (!(await canUseFeature('invoices'))) {
+    return NextResponse.json({ error: 'Upgrade required' }, { status: 402 });
   }
 
   const organizationId = await getOrgId();

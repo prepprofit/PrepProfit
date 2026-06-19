@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { ArrowLeft } from 'lucide-react';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
+import { canUseFeature } from '@/lib/entitlements';
 import {
   currentPeriodKey,
   isValidPeriodKey,
@@ -12,6 +13,7 @@ import { buildPlLabels } from '@/lib/documents/pl-labels';
 import { formatMoney } from '@/lib/documents/format';
 import { Button } from '@/components/ui/button';
 import { NoAccess } from '@/components/app/no-access';
+import { UpgradeRequired } from '@/components/app/upgrade-required';
 import { PrintButton } from '@/components/app/invoices/print-button';
 import { PrintLogo } from '@/components/app/invoices/print-logo';
 import { SendDocumentDialog } from '@/components/app/send-document-dialog';
@@ -30,6 +32,7 @@ export default async function PlPrintPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!canAccessFinancials(await getUserRole())) return <NoAccess />;
+  if (!(await canUseFeature('advanced_documents'))) return <UpgradeRequired />;
 
   const sp = await searchParams;
   const view: PeriodView = sp.view === 'year' ? 'year' : 'month';

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getOrgId, isManager } from '@/lib/auth';
+import { requireFeature } from '@/lib/entitlements';
 import { withOrg } from '@/lib/db';
 import { isForeignKeyViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
@@ -33,6 +34,10 @@ import type { ActionResult } from '@/lib/action-result';
  * non-managers BEFORE any data access. A customer/invoice from another org never
  * resolves (org-scoped read), and a cross-tenant link is rejected by the
  * composite FK.
+ *
+ * Invoicing is also a paid module (Pro+). After the manager check, each action
+ * gates on the `invoices` entitlement (Sprint 4) and returns UPGRADE_REQUIRED
+ * before any data access when the org's plan doesn't include it. Fail-closed.
  */
 
 function revalidateInvoices(): void {
@@ -44,6 +49,10 @@ export async function createCustomerAction(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('invoices');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const parsed = customerSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -65,6 +74,10 @@ export async function updateCustomerAction(
   input: unknown,
 ): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('invoices');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const parsed = customerSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -80,6 +93,10 @@ export async function updateCustomerAction(
 
 export async function deleteCustomerAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('invoices');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const organizationId = await getOrgId();
   const row = await withOrg(organizationId, (tx) =>
@@ -94,6 +111,10 @@ export async function createInvoiceAction(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('invoices');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const parsed = invoiceDraftSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -124,6 +145,10 @@ export async function updateInvoiceAction(
   input: unknown,
 ): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('invoices');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const parsed = invoiceDraftSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -148,6 +173,10 @@ export async function issueInvoiceAction(
   input: unknown,
 ): Promise<ActionResult<{ number: string }>> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('invoices');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const parsed = issueInvoiceSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -184,6 +213,10 @@ export async function issueInvoiceAction(
 
 export async function markInvoicePaidAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('invoices');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const organizationId = await getOrgId();
   const actor = await auditActor();
@@ -205,6 +238,10 @@ export async function markInvoicePaidAction(id: string): Promise<ActionResult> {
 
 export async function voidInvoiceAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('invoices');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const organizationId = await getOrgId();
   const actor = await auditActor();
@@ -227,6 +264,10 @@ export async function voidInvoiceAction(id: string): Promise<ActionResult> {
 /** Moves a DRAFT invoice to the trash (issued+ invoices are voided, not deleted). */
 export async function deleteInvoiceAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  {
+    const denied = await requireFeature('invoices');
+    if (denied) return { ok: false, code: denied };
+  }
 
   const organizationId = await getOrgId();
   const actor = await auditActor();

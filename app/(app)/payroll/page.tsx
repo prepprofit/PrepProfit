@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
+import { canUseFeature } from '@/lib/entitlements';
 import { withOrg } from '@/lib/db';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { listEmployees } from '@/lib/data/employees';
@@ -20,6 +21,7 @@ import {
 } from '@/lib/payroll/period';
 import { cn } from '@/lib/utils';
 import { NoAccess } from '@/components/app/no-access';
+import { UpgradeRequired } from '@/components/app/upgrade-required';
 import { PayrollWorkspace } from '@/components/app/payroll/payroll-workspace';
 
 /**
@@ -34,6 +36,7 @@ export default async function PayrollPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!canAccessFinancials(await getUserRole())) return <NoAccess />;
+  if (!(await canUseFeature('payroll'))) return <UpgradeRequired />;
 
   const t = await getTranslations('payroll');
   const sp = await searchParams;

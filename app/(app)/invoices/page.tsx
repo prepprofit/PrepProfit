@@ -1,11 +1,13 @@
 import { getTranslations } from 'next-intl/server';
 import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
+import { canUseFeature } from '@/lib/entitlements';
 import { withOrg } from '@/lib/db';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { listCustomers } from '@/lib/data/customers';
 import { listDraftInvoiceDetails, listInvoices } from '@/lib/data/invoices';
 import { centsToAmountInput } from '@/lib/format/money';
 import { NoAccess } from '@/components/app/no-access';
+import { UpgradeRequired } from '@/components/app/upgrade-required';
 import {
   InvoicesView,
   type DraftDetail,
@@ -18,6 +20,7 @@ import {
  */
 export default async function InvoicesPage() {
   if (!canAccessFinancials(await getUserRole())) return <NoAccess />;
+  if (!(await canUseFeature('invoices'))) return <UpgradeRequired />;
 
   const t = await getTranslations('invoices');
   const organizationId = await getOrgId();

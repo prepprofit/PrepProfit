@@ -22,7 +22,12 @@ const ORG_A = 'org_a';
 
 const h = vi.hoisted(() => ({
   db: null as unknown,
-  auth: { manager: true, orgId: 'org_a', userId: 'user_1' },
+  auth: { manager: true, orgId: 'org_a', userId: 'user_1' } as {
+    manager: boolean;
+    orgId: string;
+    userId: string;
+    feature?: boolean;
+  },
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -30,6 +35,11 @@ vi.mock('@/lib/auth', () => ({
   getOrgId: vi.fn(async () => h.auth.orgId),
   getUserId: vi.fn(async () => h.auth.userId),
   getOrgName: vi.fn(async () => 'Test Org'),
+}));
+
+// Plan gate (Sprint 4): allowed unless a test sets `feature: false`.
+vi.mock('@/lib/entitlements', () => ({
+  canUseFeature: vi.fn(async () => h.auth.feature !== false),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -93,6 +103,11 @@ describe('GET /api/financials/pl/xlsx', () => {
   it('rejects a malformed filter with 400', async () => {
     h.auth = { manager: true, orgId: ORG_A, userId: 'user_1' };
     expect((await call('?view=year&period=2026-13-99')).status).toBe(400);
+  });
+
+  it('returns 402 when the plan lacks advanced documents', async () => {
+    h.auth = { manager: true, orgId: ORG_A, userId: 'user_1', feature: false };
+    expect((await call('?view=month&period=2026-06')).status).toBe(402);
   });
 
   it('returns a valid .xlsx for a manager and audits it', async () => {

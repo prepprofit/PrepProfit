@@ -26,7 +26,12 @@ const ORG_B = 'org_b';
 // Mutable auth/db state shared with the hoisted mocks.
 const h = vi.hoisted(() => ({
   db: null as unknown,
-  auth: { manager: true, orgId: 'org_a', userId: 'user_1' },
+  auth: { manager: true, orgId: 'org_a', userId: 'user_1' } as {
+    manager: boolean;
+    orgId: string;
+    userId: string;
+    feature?: boolean;
+  },
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -34,6 +39,11 @@ vi.mock('@/lib/auth', () => ({
   getOrgId: vi.fn(async () => h.auth.orgId),
   getUserId: vi.fn(async () => h.auth.userId),
   getOrgName: vi.fn(async () => 'Test Org'),
+}));
+
+// Plan gate (Sprint 4): allowed unless a test sets `feature: false`.
+vi.mock('@/lib/entitlements', () => ({
+  canUseFeature: vi.fn(async () => h.auth.feature !== false),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -118,6 +128,12 @@ describe('GET /api/invoices/[id]/pdf', () => {
     h.auth = { manager: false, orgId: ORG_A, userId: 'kitchen_1' };
     const res = await call(invoiceId);
     expect(res.status).toBe(403);
+  });
+
+  it('returns 402 when the plan lacks the invoices feature', async () => {
+    h.auth = { manager: true, orgId: ORG_A, userId: 'user_1', feature: false };
+    const res = await call(invoiceId);
+    expect(res.status).toBe(402);
   });
 
   it('returns 404 for an invoice id belonging to another org', async () => {

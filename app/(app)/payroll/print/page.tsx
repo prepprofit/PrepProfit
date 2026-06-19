@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { ArrowLeft } from 'lucide-react';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
+import { canUseFeature } from '@/lib/entitlements';
 import { isValidAnchor, todayAnchor, type PayrollView } from '@/lib/payroll/period';
 import { loadPayrollDocument } from '@/lib/documents/payroll-loader';
 import { buildPayrollLabels } from '@/lib/documents/payroll-labels';
@@ -9,6 +10,7 @@ import { formatHours } from '@/lib/documents/payroll-data';
 import { formatMoney } from '@/lib/documents/format';
 import { Button } from '@/components/ui/button';
 import { NoAccess } from '@/components/app/no-access';
+import { UpgradeRequired } from '@/components/app/upgrade-required';
 import { PrintButton } from '@/components/app/invoices/print-button';
 import { PrintLogo } from '@/components/app/invoices/print-logo';
 
@@ -27,6 +29,7 @@ export default async function PayrollPrintPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!canAccessFinancials(await getUserRole())) return <NoAccess />;
+  if (!(await canUseFeature('payroll'))) return <UpgradeRequired />;
 
   const sp = await searchParams;
   const view: PayrollView = sp.view === 'week' ? 'week' : 'month';

@@ -578,6 +578,13 @@
     "title": "Choose a plan",
     "subtitle": "Pick the plan that fits your kitchen. You can change it any time."
   },
+  "entitlements": {
+    "upgrade": {
+      "title": "Not in your plan",
+      "body": "This feature isn't included in your current plan. Upgrade to unlock it.",
+      "cta": "View plans"
+    }
+  },
   "reports": {
     "print": {
       "back": "Back",
