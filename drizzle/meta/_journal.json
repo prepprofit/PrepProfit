@@ -99,6 +99,13 @@
       "when": 1781809912842,
       "tag": "0013_chief_turbo",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1781862856343,
+      "tag": "0014_bitter_the_professor",
+      "breakpoints": true
     }
   ]
 }

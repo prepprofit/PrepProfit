@@ -638,6 +638,44 @@ export const auditLog = pgTable(
 );
 
 /**
+ * Subscription state MIRROR (Sprint 4c). One row per org (the Clerk org id is the
+ * PK, like `organization_settings`) reflecting the latest billing state delivered
+ * by Clerk webhooks (`subscription.*` + `organization.deleted` lapse).
+ *
+ * NOT the enforcement source of truth — feature/plan gating reads Clerk LIVE via
+ * `auth().has()` in lib/entitlements.ts (fail-closed). This table is a READ-ONLY
+ * projection for display (`/billing`), observability, and ops lapse detection; it
+ * never grants access, so a stale or missing row can never widen entitlements.
+ *
+ * RULE #1 still holds: it carries `organization_id` and is in `businessTables`, so
+ * the standard `org_isolation` RLS applies. The webhook is org-less at entry but
+ * derives the org id from the VERIFIED payload and writes inside `withOrg(orgId)`
+ * (same pattern as the cron purge), so RLS stays active.
+ *
+ * `plan` stores the RESOLVED tier (`starter|pro|business`, see lib/entitlements);
+ * `status` is the raw Clerk subscription status. `last_event_at` is the source
+ * event's timestamp and guards against out-of-order Svix delivery (an older event
+ * never overwrites a newer state — see lib/data/subscriptions.ts).
+ */
+export const subscriptions = pgTable('subscriptions', {
+  organizationId: text('organization_id').primaryKey(),
+  // Resolved PlanTier: 'starter' | 'pro' | 'business' (lib/entitlements.ts).
+  plan: text('plan').notNull().default('starter'),
+  // Raw Clerk subscription status (active|past_due|canceled|ended|...).
+  status: text('status').notNull(),
+  // Clerk subscription id, for traceability against the Clerk/Stripe dashboard.
+  clerkSubscriptionId: text('clerk_subscription_id'),
+  // End of the current paid period when the payload carries it (else NULL).
+  currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+  // The last webhook event type applied to this row (e.g. 'subscription.active').
+  lastEventType: text('last_event_type').notNull(),
+  // The source event's own timestamp — the out-of-order guard compares against it.
+  lastEventAt: timestamp('last_event_at', { withTimezone: true }).notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/**
  * Rate-limit buckets (Sprint 3.1). INFRA table — DELIBERATELY NOT a business table:
  * it carries no `organization_id` and is NOT in `businessTables`, so it gets NO RLS.
  * This is the one documented exception to RULE #1 (CLAUDE.md "rate limiting"): the
@@ -687,6 +725,8 @@ export type Shift = InferSelectModel<typeof shifts>;
 export type NewShift = InferInsertModel<typeof shifts>;
 export type AuditLogEntry = InferSelectModel<typeof auditLog>;
 export type NewAuditLogEntry = InferInsertModel<typeof auditLog>;
+export type Subscription = InferSelectModel<typeof subscriptions>;
+export type NewSubscription = InferInsertModel<typeof subscriptions>;
 export type RateLimitRow = InferSelectModel<typeof rateLimits>;
 
 /** All business tables, for applying RLS in bulk. */
@@ -708,6 +748,8 @@ export const businessTables = [
   // Append-only audit log: org-isolated like the rest, but its RLS is
   // SELECT/INSERT-only (lib/db/rls.ts) so it can never be edited or erased.
   'audit_log',
+  // Billing-state mirror (Sprint 4c) — standard org_isolation RLS.
+  'subscriptions',
   // NOTE: `rate_limits` is intentionally ABSENT — it is infra, not tenant data,
   // and must work without an org context (see its table comment + lib/db/rls.ts).
 ] as const;

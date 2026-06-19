@@ -53,6 +53,15 @@ export type AuditAction =
   // AFTER the provider accepts; metadata is documentType + provider message id
   // only (never the recipient address, amounts, or names).
   | 'document.email'
+  // Billing webhooks (Sprint 4c, `system` actor — Clerk delivers them, no user).
+  // `subscription.update` = the subscription mirror moved to a new plan/status;
+  // `subscription.lapse` = a downgrade signal (past_due / org deleted);
+  // `organization.update` / `organization.membership` = lifecycle visibility.
+  // metadata holds only ids + resolved tier + status (never payer email/name).
+  | 'subscription.update'
+  | 'subscription.lapse'
+  | 'organization.update'
+  | 'organization.membership'
   // Automated cron purge (system actor)
   | 'cron.purge';
 
