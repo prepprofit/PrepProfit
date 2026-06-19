@@ -12,6 +12,13 @@ import {
   foreignKey,
   jsonb,
 } from 'drizzle-orm/pg-core';
+import type {
+  ImportEntity,
+  ImportFormat,
+  ImportStatus,
+  ImportRecord,
+  ImportRowIssue,
+} from '@/lib/import/types';
 
 /**
  * RULE #1 (CLAUDE.md): every business-data table has an `organization_id`
@@ -681,6 +688,66 @@ export const subscriptions = pgTable('subscriptions', {
 });
 
 /**
+ * Staged import jobs (Sprint 4.5). The server-side staging area for deterministic
+ * CSV/XLSX imports: a parse step writes one row here (status `parsed`) holding the
+ * NORMALIZED, validated records + per-row issues; a separate confirm step loads it
+ * by id under `withOrg` (RLS), re-checks role, applies the records in ONE
+ * transaction, and flips the status to `committed` (immutable thereafter).
+ *
+ * RULE #1 holds — it carries `organization_id` and is in `businessTables`, so the
+ * standard `org_isolation` RLS applies. The client never sends rows back: it holds
+ * only the job id, so a forged confirm payload can neither alter rows nor reach
+ * another org (RLS hides the row). Jobs `expires_at` (24h); the daily cron and a
+ * lazy check at confirm reject/clean expired `parsed` jobs.
+ *
+ * `normalized_rows` / `issues` are non-sensitive structured staging data (the same
+ * data the user is about to create) — not the audit log, so no append-only rule.
+ */
+export const importJobs = pgTable(
+  'import_jobs',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // The Clerk user who uploaded the file (never null — imports are authenticated).
+    actorUserId: text('actor_user_id').notNull(),
+    entity: text('entity', { enum: ['ingredients', 'transactions'] })
+      .$type<ImportEntity>()
+      .notNull(),
+    format: text('format', { enum: ['csv', 'xlsx'] })
+      .$type<ImportFormat>()
+      .notNull(),
+    status: text('status', {
+      enum: ['parsed', 'committed', 'expired', 'failed'],
+    })
+      .$type<ImportStatus>()
+      .notNull()
+      .default('parsed'),
+    sourceFilename: text('source_filename'),
+    // Count of IMPORTABLE records (rows with hard issues are excluded).
+    rowCount: integer('row_count').notNull().default(0),
+    // Insert-ready records (narrowed by `entity`) applied verbatim at confirm.
+    normalizedRows: jsonb('normalized_rows').$type<ImportRecord[]>(),
+    // Per-row problems (stable codes, localized client-side). Never PII.
+    issues: jsonb('issues').$type<ImportRowIssue[]>(),
+    // Traceability / dedupe hint; the authoritative confirm guard is the status
+    // flip under a FOR UPDATE lock, not this key.
+    idempotencyKey: text('idempotency_key'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('import_jobs_org_idx').on(t.organizationId),
+    index('import_jobs_org_status_idx').on(t.organizationId, t.status),
+    // One job per (org, idempotency_key); NULLs are distinct so it never blocks.
+    unique('import_jobs_org_idempotency_key').on(
+      t.organizationId,
+      t.idempotencyKey,
+    ),
+  ],
+);
+
+/**
  * Rate-limit buckets (Sprint 3.1). INFRA table — DELIBERATELY NOT a business table:
  * it carries no `organization_id` and is NOT in `businessTables`, so it gets NO RLS.
  * This is the one documented exception to RULE #1 (CLAUDE.md "rate limiting"): the
@@ -732,6 +799,8 @@ export type AuditLogEntry = InferSelectModel<typeof auditLog>;
 export type NewAuditLogEntry = InferInsertModel<typeof auditLog>;
 export type Subscription = InferSelectModel<typeof subscriptions>;
 export type NewSubscription = InferInsertModel<typeof subscriptions>;
+export type ImportJob = InferSelectModel<typeof importJobs>;
+export type NewImportJob = InferInsertModel<typeof importJobs>;
 export type RateLimitRow = InferSelectModel<typeof rateLimits>;
 
 /** All business tables, for applying RLS in bulk. */
@@ -755,6 +824,8 @@ export const businessTables = [
   'audit_log',
   // Billing-state mirror (Sprint 4c) — standard org_isolation RLS.
   'subscriptions',
+  // Staged import jobs (Sprint 4.5) — standard org_isolation RLS.
+  'import_jobs',
   // NOTE: `rate_limits` is intentionally ABSENT — it is infra, not tenant data,
   // and must work without an org context (see its table comment + lib/db/rls.ts).
 ] as const;
