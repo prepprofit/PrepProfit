@@ -21,6 +21,7 @@
     "EMAIL_FAILED": "The email couldn't be sent. Please check the address and try again.",
     "UPGRADE_REQUIRED": "This feature isn't included in your current plan. Upgrade to unlock it.",
     "PLAN_LIMIT_REACHED": "You've reached your plan's limit. Upgrade to add more.",
+    "IMPORT_EXPIRED": "This import preview has expired. Upload the file again to import it.",
     "UNEXPECTED": "Something went wrong on our end. Please try again."
   },
   "errors": {

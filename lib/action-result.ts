@@ -33,6 +33,8 @@ export type ActionErrorCode =
   | 'UPGRADE_REQUIRED'
   // A plan numeric limit (e.g. Starter's 50-recipe cap) was reached (Sprint 4).
   | 'PLAN_LIMIT_REACHED'
+  // A staged import job was confirmed after its 24h TTL (Sprint 4.5) — re-upload.
+  | 'IMPORT_EXPIRED'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =
