@@ -42,12 +42,33 @@ Use separate Neon branches/projects for local development, preview, and producti
 
 Roles:
 
-- Clerk `org:admin` maps to PrepProfit `manager`.
+- Clerk `org:admin` and the custom `org:owner` map to PrepProfit `manager`.
 - Other org roles map to `kitchen`.
 
 Managers can access financials, invoices, payroll, trash, settings, exports, generated
 documents, billing, and AI extraction usage controls. Kitchen users can access operational
 surfaces only.
+
+### Org self-delete lockdown (optional, Sprint 4e)
+
+Customers must not be able to delete their own org. Clerk forces the *creator* role to
+keep `org:sys_profile:delete`, so the lockdown reserves an internal **system user** as
+each org's `org:admin` (it keeps the delete permission for backend management) and demotes
+the human creator to a custom **`org:owner`** role — every system permission EXCEPT
+`org:sys_profile:delete`. Both `org:admin` and `org:owner` map to `manager`, so this only
+changes who can delete the org, not who can use the app.
+
+Per Clerk instance (dev and prod):
+
+1. Create the custom role `org:owner` with all system permissions except
+   `org:sys_profile:delete`.
+2. Create a dedicated system user and bump the org membership limit from 5 to 6 (so
+   customers keep 5 usable seats alongside the reserved system admin).
+3. Set `CLERK_SYSTEM_USER_ID` to that user's `user_...` id.
+
+When `CLERK_SYSTEM_USER_ID` is unset the lockdown no-ops, so the app runs fine without it.
+The lockdown runs idempotently from the `organization.created` webhook and as a safety net
+on the onboarding page; existing orgs are retrofitted with a one-off run after configuration.
 
 ## 3. Environment variables
 
@@ -64,6 +85,10 @@ Required now:
 Required when scheduled purge is enabled:
 
 - `CRON_SECRET`
+
+Optional (org self-delete lockdown, Sprint 4e — see section 2):
+
+- `CLERK_SYSTEM_USER_ID`
 
 Required when emailing documents is enabled (Sprint 3.5C):
 

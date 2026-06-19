@@ -1,7 +1,9 @@
+import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
 import { getOrgSettings } from '@/lib/data/org-settings';
+import { ensureOrgLockdown } from '@/lib/org/lockdown';
 import { OnboardingStepper } from './onboarding-stepper';
 
 // Plan selection (PricingTable) is per-session and onboarding state changes on
@@ -20,8 +22,19 @@ export const dynamic = 'force-dynamic';
 export default async function OnboardingPage() {
   const t = await getTranslations('onboarding');
 
+  const { orgId, orgRole } = await auth();
+
   if (!canAccessFinancials(await getUserRole())) {
     redirect('/recipes');
+  }
+
+  // Safety net for the org self-delete lockdown (Sprint 4e): in dev (no webhooks)
+  // or before the webhook lands, a manager reaching onboarding may still be the
+  // raw `org:admin` creator. Lock the org down idempotently. Cheap-guarded to the
+  // still-`org:admin` case so it doesn't call the Clerk API on every render once
+  // the creator has been demoted to `org:owner`. Fail-safe — never throws.
+  if (orgId && orgRole === 'org:admin') {
+    await ensureOrgLockdown(orgId);
   }
 
   const settings = await getOrgSettings();
