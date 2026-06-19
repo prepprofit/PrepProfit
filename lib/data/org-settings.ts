@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import { organizationSettings } from '@/lib/db/schema';
 import type { MeasurementSystem, OrganizationSettings } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
@@ -25,6 +25,8 @@ export type OrgSettingsValues = {
   businessTaxId: string | null;
   businessEmail: string | null;
   businessLogoUrl: string | null;
+  /** Set-once onboarding completion marker (Sprint 4d); null = not onboarded. */
+  onboardedAt: Date | null;
 };
 
 /** Used until the org saves its own settings. */
@@ -36,6 +38,7 @@ export const DEFAULT_ORG_SETTINGS: OrgSettingsValues = {
   businessTaxId: null,
   businessEmail: null,
   businessLogoUrl: null,
+  onboardedAt: null,
 };
 
 export async function getOrgSettingsRow(
@@ -66,6 +69,46 @@ export async function upsertOrgSettings(
     .returning();
   if (!row) throw new Error('Failed to save organization settings.');
   return row;
+}
+
+/**
+ * Ensures a settings row exists for a freshly-created org (Sprint 4d), seeded
+ * with the DB column defaults (currency/measurement system). Idempotent via
+ * `ON CONFLICT DO NOTHING`, so it never clobbers an org that already saved
+ * settings. Called eagerly from the `organization.created` webhook; the rest of
+ * the app tolerates a missing row (it falls back to {@link DEFAULT_ORG_SETTINGS})
+ * so this is a priming convenience, not a correctness requirement. Must run
+ * inside `withOrg` (RLS GUC set there).
+ */
+export async function ensureOrgSettingsRow(
+  db: TenantClient,
+  organizationId: string,
+): Promise<void> {
+  await db
+    .insert(organizationSettings)
+    .values({ organizationId })
+    .onConflictDoNothing({ target: organizationSettings.organizationId });
+}
+
+/**
+ * Marks the org's onboarding as complete (Sprint 4d) — SET ONCE. Creates the
+ * settings row with DB defaults if none exists yet (a brand-new org that never
+ * touched `/settings`), otherwise stamps `onboarded_at` only while it is still
+ * NULL (`setWhere`), so re-running never overwrites the original timestamp or
+ * disturbs the seller identity. Must run inside `withOrg` (RLS GUC set there).
+ */
+export async function markOnboarded(
+  db: TenantClient,
+  organizationId: string,
+): Promise<void> {
+  await db
+    .insert(organizationSettings)
+    .values({ organizationId, onboardedAt: new Date() })
+    .onConflictDoUpdate({
+      target: organizationSettings.organizationId,
+      set: { onboardedAt: new Date(), updatedAt: new Date() },
+      setWhere: isNull(organizationSettings.onboardedAt),
+    });
 }
 
 /**

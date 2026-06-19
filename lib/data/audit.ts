@@ -60,8 +60,13 @@ export type AuditAction =
   // metadata holds only ids + resolved tier + status (never payer email/name).
   | 'subscription.update'
   | 'subscription.lapse'
+  // `organization.create` = a new org was provisioned (defaults seeded via the
+  // org-created webhook, system actor, Sprint 4d).
+  | 'organization.create'
   | 'organization.update'
   | 'organization.membership'
+  // Post-signup onboarding completed by the org manager (Sprint 4d).
+  | 'onboarding.complete'
   // Automated cron purge (system actor)
   | 'cron.purge';
 

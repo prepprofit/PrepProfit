@@ -67,6 +67,11 @@ export const organizationSettings = pgTable('organization_settings', {
   businessTaxId: text('business_tax_id'),
   businessEmail: text('business_email'),
   businessLogoUrl: text('business_logo_url'),
+  // Set-once timestamp marking when the org's manager completed the post-signup
+  // onboarding flow (Sprint 4d). NULL = not onboarded yet → the /dashboard gate
+  // sends a manager to /onboarding. Never reset (markOnboarded only sets it when
+  // currently NULL). Purely a UX nudge — it gates no data.
+  onboardedAt: timestamp('onboarded_at', { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
