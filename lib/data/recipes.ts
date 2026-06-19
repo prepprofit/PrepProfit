@@ -240,6 +240,26 @@ export async function getRecipeWithIngredients(
   return { recipe, lines };
 }
 
+/**
+ * How many ACTIVE (non-trashed) recipes the org currently has. Drives the
+ * Starter plan's recipe cap (Sprint 4): `createRecipeAction` reads this inside
+ * the same `withOrg` transaction as the insert, so the count + cap check + write
+ * are one RLS-scoped unit and the limit can't be raced past by a hair. Trashed
+ * recipes don't count against the cap (they're restorable, not live).
+ */
+export async function countActiveRecipes(
+  db: TenantClient,
+  organizationId: string,
+): Promise<number> {
+  const rows = await db
+    .select({ value: count() })
+    .from(recipes)
+    .where(
+      and(eq(recipes.organizationId, organizationId), isNull(recipes.deletedAt)),
+    );
+  return rows[0]?.value ?? 0;
+}
+
 export async function createRecipe(
   db: TenantClient,
   organizationId: string,

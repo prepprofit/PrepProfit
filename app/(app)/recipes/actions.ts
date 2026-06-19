@@ -6,10 +6,12 @@ import { withOrg } from '@/lib/db';
 import { isUniqueViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
 import {
+  countActiveRecipes,
   createRecipe,
   softDeleteRecipe,
   updateRecipe,
 } from '@/lib/data/recipes';
+import { assertPlanLimit } from '@/lib/entitlements';
 import {
   addRecipeIngredient,
   removeRecipeIngredient,
@@ -40,9 +42,15 @@ export async function createRecipeAction(
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    createRecipe(tx, organizationId, parsed.data),
-  );
+  // Plan recipe cap (Sprint 4): count + cap check + insert share one withOrg
+  // transaction so the Starter limit can't be raced past. `null` = cap reached.
+  const row = await withOrg(organizationId, async (tx) => {
+    const current = await countActiveRecipes(tx, organizationId);
+    const { allowed } = await assertPlanLimit('recipes', current);
+    if (!allowed) return null;
+    return createRecipe(tx, organizationId, parsed.data);
+  });
+  if (!row) return { ok: false, code: 'PLAN_LIMIT_REACHED' };
   revalidateRecipe(row.id);
   return { ok: true, data: row };
 }
