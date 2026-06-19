@@ -48,7 +48,8 @@
     "invoices": "Invoices",
     "settings": "Settings",
     "trash": "Trash",
-    "billing": "Plans & billing"
+    "billing": "Plans & billing",
+    "onboarding": "Get started"
   },
   "navGroups": {
     "operations": "Operations",
@@ -583,6 +584,52 @@
       "title": "Not in your plan",
       "body": "This feature isn't included in your current plan. Upgrade to unlock it.",
       "cta": "View plans"
+    }
+  },
+  "onboarding": {
+    "title": "Welcome to PrepProfit",
+    "subtitle": "A few quick steps to set up your kitchen. You can change everything later in Settings.",
+    "steps": {
+      "setup": "Set up your business",
+      "plan": "Choose a plan",
+      "tour": "Quick tour"
+    },
+    "setup": {
+      "title": "Set up your business",
+      "description": "These details appear on your invoices and documents, and set how money and quantities are shown. All of this is optional now and editable later."
+    },
+    "plan": {
+      "title": "Choose a plan",
+      "description": "Pick the plan that fits your kitchen. You're on Starter by default — upgrade any time to unlock invoices, break-even, payroll, and advanced documents.",
+      "continueOnStarter": "Continue on Starter"
+    },
+    "tour": {
+      "title": "You're all set",
+      "description": "Here's what you can do in PrepProfit. Jump in wherever you like.",
+      "items": {
+        "recipes": {
+          "title": "Recipes",
+          "description": "Cost recipes with ingredients, yield, and hidden costs to see your margin."
+        },
+        "inventory": {
+          "title": "Inventory",
+          "description": "Track stock movements and get low-stock alerts before you run out."
+        },
+        "financials": {
+          "title": "Financials",
+          "description": "Log income and expenses, then watch your dashboards and break-even."
+        },
+        "invoices": {
+          "title": "Invoices",
+          "description": "Send invoices to customers with gap-free numbering and PDF export."
+        }
+      }
+    },
+    "nav": {
+      "back": "Back",
+      "next": "Next",
+      "skip": "Skip for now",
+      "finish": "Go to dashboard"
     }
   },
   "reports": {

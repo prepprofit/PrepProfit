@@ -45,7 +45,9 @@ export function TopBar({
       ? 'settings'
       : pathname.startsWith('/billing') || pathname.startsWith('/pricing')
         ? 'billing'
-        : null;
+        : pathname.startsWith('/onboarding')
+          ? 'onboarding'
+          : null;
   const titleKey = current?.key ?? systemKey;
 
   return (

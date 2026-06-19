@@ -122,8 +122,15 @@ export default async function DashboardPage({
   if (!canAccessFinancials(await getUserRole())) {
     redirect('/recipes');
   }
-  const firstName = await getFirstName();
   const settings = await getOrgSettings();
+  // Post-signup onboarding gate (Sprint 4d). A manager whose org hasn't finished
+  // onboarding lands here (the sign-up fallback redirect → /dashboard) and is sent
+  // through the guided setup once. Set-once, so this never loops. Kitchen staff are
+  // already redirected to /recipes above and never see this.
+  if (settings.onboardedAt == null) {
+    redirect('/onboarding');
+  }
+  const firstName = await getFirstName();
   const sp = await searchParams;
 
   // Period for the financial widgets — defaults to current month.
