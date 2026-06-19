@@ -4,13 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * `serverEnv()` caches at module scope, so each case re-imports a fresh module
  * (vi.resetModules) after setting process.env.
  */
-async function loadServerEnv(env: Record<string, string | undefined>) {
+async function loadEnv(env: Record<string, string | undefined>) {
   vi.resetModules();
   for (const [k, v] of Object.entries(env)) {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
-  return (await import('./env')).serverEnv;
+  return import('./env');
 }
 
 const ORIGINAL = { ...process.env };
@@ -25,7 +25,7 @@ describe('serverEnv', () => {
   });
 
   it('accepts a valid environment', async () => {
-    const serverEnv = await loadServerEnv({
+    const { serverEnv } = await loadEnv({
       DATABASE_URL: 'postgres://user:pass@host/db',
       CRON_SECRET: 'a-sufficiently-long-secret',
     });
@@ -34,7 +34,7 @@ describe('serverEnv', () => {
   });
 
   it('treats CRON_SECRET as optional', async () => {
-    const serverEnv = await loadServerEnv({
+    const { serverEnv } = await loadEnv({
       DATABASE_URL: 'postgres://user:pass@host/db',
       CRON_SECRET: undefined,
     });
@@ -42,15 +42,80 @@ describe('serverEnv', () => {
   });
 
   it('throws an aggregated error when DATABASE_URL is missing', async () => {
-    const serverEnv = await loadServerEnv({ DATABASE_URL: undefined });
+    const { serverEnv } = await loadEnv({ DATABASE_URL: undefined });
     expect(() => serverEnv()).toThrowError(/DATABASE_URL/);
   });
 
   it('rejects an invalid DATABASE_URL and a too-short CRON_SECRET', async () => {
-    const serverEnv = await loadServerEnv({
+    const { serverEnv } = await loadEnv({
       DATABASE_URL: 'not-a-url',
       CRON_SECRET: 'short',
     });
     expect(() => serverEnv()).toThrowError(/DATABASE_URL[\s\S]*CRON_SECRET/);
+  });
+
+  // Regression: a malformed Resend var must NOT crash the core env. It once made
+  // serverEnv() throw for every getDb() caller and 500'd every data page.
+  it('ignores a malformed RESEND_FROM_EMAIL (email config is not its concern)', async () => {
+    const { serverEnv } = await loadEnv({
+      DATABASE_URL: 'postgres://user:pass@host/db',
+      RESEND_FROM_EMAIL: 'not-an-email',
+      RESEND_API_KEY: 're_whatever',
+    });
+    expect(() => serverEnv()).not.toThrow();
+    expect(serverEnv().DATABASE_URL).toBe('postgres://user:pass@host/db');
+  });
+});
+
+describe('emailEnv', () => {
+  afterEach(() => {
+    process.env = { ...ORIGINAL };
+  });
+
+  it('returns narrowed config when the Resend vars are valid', async () => {
+    const { emailEnv } = await loadEnv({
+      RESEND_API_KEY: 're_live_key',
+      RESEND_FROM_EMAIL: 'documents@example.com',
+      RESEND_REPLY_TO: 'hello@example.com',
+    });
+    expect(emailEnv()).toEqual({
+      apiKey: 're_live_key',
+      from: 'documents@example.com',
+      replyTo: 'hello@example.com',
+    });
+  });
+
+  it('treats RESEND_REPLY_TO as optional', async () => {
+    const { emailEnv } = await loadEnv({
+      RESEND_API_KEY: 're_live_key',
+      RESEND_FROM_EMAIL: 'documents@example.com',
+      RESEND_REPLY_TO: undefined,
+    });
+    expect(emailEnv().replyTo).toBeUndefined();
+  });
+
+  it('throws when RESEND_FROM_EMAIL is malformed', async () => {
+    const { emailEnv } = await loadEnv({
+      RESEND_API_KEY: 're_live_key',
+      RESEND_FROM_EMAIL: 'not-an-email',
+    });
+    expect(() => emailEnv()).toThrowError(/RESEND_FROM_EMAIL/);
+  });
+
+  it('throws when RESEND_API_KEY is missing', async () => {
+    const { emailEnv } = await loadEnv({
+      RESEND_API_KEY: undefined,
+      RESEND_FROM_EMAIL: 'documents@example.com',
+    });
+    expect(() => emailEnv()).toThrowError(/RESEND_API_KEY/);
+  });
+
+  // The aggregated message must never echo a secret value — only var names.
+  it('does not leak the API key value in the error message', async () => {
+    const { emailEnv } = await loadEnv({
+      RESEND_API_KEY: 're_super_secret_value',
+      RESEND_FROM_EMAIL: 'not-an-email',
+    });
+    expect(() => emailEnv()).not.toThrowError(/re_super_secret_value/);
   });
 });
