@@ -5,9 +5,14 @@ import {
   INGREDIENT_REQUIRED_COLUMNS,
   TRANSACTION_COLUMNS,
   TRANSACTION_REQUIRED_COLUMNS,
+  RECIPE_COLUMNS,
+  RECIPE_REQUIRED_COLUMNS,
+  RECIPE_LIMITS,
   IMPORT_LIMITS,
   MAX_IMPORT_ROWS,
 } from '@/lib/validation/import';
+import { type Unit, type Dimension, dimensionOf, toCanonical } from '@/lib/units';
+import { normalizeIngredientName } from './resolveIngredient';
 import { parseCsv } from './csv';
 import { parseXlsx } from './xlsx';
 import type {
@@ -214,6 +219,200 @@ export function parseIngredients(
 
   if (dataRows === 0) return { ok: false, error: 'NO_DATA_ROWS' };
   return { ok: true, rows };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Recipes (Sprint 4.6)                                                       */
+/* -------------------------------------------------------------------------- */
+
+/** A parsed recipe line (pre-resolution): a canonical quantity of an ingredient. */
+export type DraftRecipeLine = {
+  /** Raw ingredient name (first occurrence) — display + create-new label. */
+  ingredientName: string;
+  /** Normalized name — the dedupe key within a recipe and the resolution key. */
+  normalizedName: string;
+  /** Quantity in the line unit's canonical amount (g / ml / count). */
+  quantityCanonical: number;
+  /** Dimension inferred from the line's unit. */
+  dimension: Dimension;
+};
+
+/** A parsed recipe (pre-resolution): a header + its grouped ingredient lines. */
+export type DraftRecipe = {
+  /** Display name (first occurrence's casing). */
+  name: string;
+  /** Lower/trimmed key used to group rows and detect org duplicates. */
+  normalizedKey: string;
+  yieldPortions: number;
+  yieldPercentage: number;
+  /** 1-based line of the recipe's first row (for ordering / messages). */
+  firstLine: number;
+  lines: DraftRecipeLine[];
+};
+
+export type ParseRecipesResult =
+  | { ok: false; error: ImportFileError }
+  | { ok: true; recipes: DraftRecipe[]; issues: ImportRowIssue[] };
+
+/** The accepted unit tokens (canonical `Unit`) plus friendly aliases. */
+const UNIT_SET = new Set<Unit>(['g', 'kg', 'oz', 'lb', 'ml', 'l', 'floz', 'cup', 'count']);
+const UNIT_ALIASES: Record<string, Unit> = {
+  gram: 'g', grams: 'g', g: 'g',
+  kilogram: 'kg', kilograms: 'kg', kilo: 'kg', kilos: 'kg',
+  ounce: 'oz', ounces: 'oz',
+  pound: 'lb', pounds: 'lb', lbs: 'lb',
+  millilitre: 'ml', milliliter: 'ml', millilitres: 'ml', milliliters: 'ml',
+  litre: 'l', liter: 'l', litres: 'l', liters: 'l',
+  fluidounce: 'floz', fluidounces: 'floz',
+  cups: 'cup',
+  piece: 'count', pieces: 'count', pc: 'count', pcs: 'count', unit: 'count', units: 'count', each: 'count',
+};
+
+/** Resolve a unit cell to a `Unit`; blank ⇒ count; unknown ⇒ issue. */
+function parseUnitCell(raw: string): { unit: Unit } | { error: 'INVALID_UNIT' } {
+  const v = raw.trim().toLowerCase().replace(/\s+/g, '');
+  if (v === '') return { unit: 'count' };
+  if (UNIT_SET.has(v as Unit)) return { unit: v as Unit };
+  const alias = UNIT_ALIASES[v];
+  if (alias) return { unit: alias };
+  return { error: 'INVALID_UNIT' };
+}
+
+/** Parse a plain positive quantity (decimal comma tolerated). Not money. */
+function parseQuantityCell(
+  raw: string,
+): { value: number } | { error: 'INVALID_NUMBER' | 'NEGATIVE_AMOUNT' } {
+  const trimmed = raw.trim();
+  if (!/\d/.test(trimmed) || /[A-Za-z]/.test(trimmed)) return { error: 'INVALID_NUMBER' };
+  const value = Number(trimmed.replace(',', '.'));
+  if (!Number.isFinite(value)) return { error: 'INVALID_NUMBER' };
+  if (value <= 0) return { error: 'NEGATIVE_AMOUNT' };
+  return { value };
+}
+
+/** Parse an optional positive integer cell within [min, max]; blank ⇒ fallback. */
+function parseIntCell(
+  raw: string,
+  fallback: number,
+  min: number,
+  max: number,
+): { value: number } | { error: 'INVALID_NUMBER' } {
+  const trimmed = raw.trim();
+  if (trimmed === '') return { value: fallback };
+  if (!/^\d+$/.test(trimmed)) return { error: 'INVALID_NUMBER' };
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < min || n > max) return { error: 'INVALID_NUMBER' };
+  return { value: n };
+}
+
+/** Lower/trim group key for a recipe name (matches the DB duplicate check). */
+const recipeKey = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Parse a LONG-format recipe matrix (one row per ingredient line, grouped by the
+ * `recipe` column — D1). Pure, no DB. Reads `yield_*` from the FIRST row of each
+ * group (blank → 1 / 100). Validates quantity + unit per line; merges repeated
+ * ingredient lines within one recipe by SUMMING canonical quantities (refinement:
+ * the recipe_ingredients unique key is per ingredient), flagging a conflicting
+ * dimension. Ingredient NAME→id resolution and org duplicate-recipe detection are
+ * the data layer's job (they need org data).
+ */
+export function parseRecipes(matrix: string[][]): ParseRecipesResult {
+  const planned = planHeader(matrix, RECIPE_COLUMNS, RECIPE_REQUIRED_COLUMNS);
+  if (!planned.ok) return planned;
+  const { plan } = planned;
+
+  const groups = new Map<string, DraftRecipe>();
+  const order: string[] = [];
+  const issues: ImportRowIssue[] = [];
+  let dataRows = 0;
+
+  for (let i = plan.headerRowIndex + 1; i < matrix.length; i++) {
+    const raw = matrix[i]!;
+    if (isBlankRow(raw)) continue;
+    dataRows += 1;
+    if (dataRows > MAX_IMPORT_ROWS) return { ok: false, error: 'TOO_MANY_ROWS' };
+
+    const line = i + 1;
+    const add = (column: string, code: ImportRowIssue['code']) =>
+      issues.push({ line, column, code });
+
+    const recipeRaw = cell(raw, plan, 'recipe');
+    if (recipeRaw === '') {
+      add('recipe', 'MISSING_REQUIRED');
+      continue; // cannot assign a line to a recipe group without a name
+    }
+    if (recipeRaw.length > RECIPE_LIMITS.recipeName) add('recipe', 'TOO_LONG');
+
+    const key = recipeKey(recipeRaw);
+    let group = groups.get(key);
+    if (!group) {
+      // Yield is read from the FIRST row of the group; invalid → default + issue.
+      const yp = parseIntCell(cell(raw, plan, 'yield_portions'), 1, 1, 1_000_000);
+      const ypct = parseIntCell(cell(raw, plan, 'yield_percentage'), 100, 1, 100);
+      if ('error' in yp) add('yield_portions', 'INVALID_NUMBER');
+      if ('error' in ypct) add('yield_percentage', 'INVALID_NUMBER');
+      if (order.length >= RECIPE_LIMITS.maxRecipes) {
+        return { ok: false, error: 'TOO_MANY_ROWS' };
+      }
+      group = {
+        name: recipeRaw.slice(0, RECIPE_LIMITS.recipeName),
+        normalizedKey: key,
+        yieldPortions: 'error' in yp ? 1 : yp.value,
+        yieldPercentage: 'error' in ypct ? 100 : ypct.value,
+        firstLine: line,
+        lines: [],
+      };
+      groups.set(key, group);
+      order.push(key);
+    }
+
+    const ingredientRaw = cell(raw, plan, 'ingredient');
+    if (ingredientRaw === '') add('ingredient', 'MISSING_REQUIRED');
+    else if (ingredientRaw.length > RECIPE_LIMITS.ingredientName) add('ingredient', 'TOO_LONG');
+
+    const qtyRaw = cell(raw, plan, 'quantity');
+    const qty = qtyRaw === '' ? { error: 'INVALID_NUMBER' as const } : parseQuantityCell(qtyRaw);
+    if ('error' in qty) add('quantity', qty.error);
+
+    const unitParsed = parseUnitCell(cell(raw, plan, 'unit'));
+    if ('error' in unitParsed) add('unit', unitParsed.error);
+
+    // A line needs a valid ingredient name, quantity, and unit to be importable.
+    if (
+      ingredientRaw === '' ||
+      ingredientRaw.length > RECIPE_LIMITS.ingredientName ||
+      'error' in qty ||
+      'error' in unitParsed
+    ) {
+      continue;
+    }
+
+    const unit = unitParsed.unit;
+    const dimension = dimensionOf(unit);
+    const quantityCanonical = toCanonical(qty.value, unit);
+    const normalizedName = normalizeIngredientName(ingredientRaw);
+
+    const existing = group.lines.find((l) => l.normalizedName === normalizedName);
+    if (existing) {
+      // Same ingredient twice in one recipe → sum (refinement #2), unless the two
+      // lines use incompatible dimensions (e.g. grams then millilitres).
+      if (existing.dimension !== dimension) {
+        add('unit', 'UNIT_MISMATCH');
+      } else {
+        existing.quantityCanonical += quantityCanonical;
+      }
+      continue;
+    }
+    if (group.lines.length >= RECIPE_LIMITS.maxLines) {
+      add('ingredient', 'TOO_LONG');
+      continue;
+    }
+    group.lines.push({ ingredientName: ingredientRaw, normalizedName, quantityCanonical, dimension });
+  }
+
+  if (dataRows === 0) return { ok: false, error: 'NO_DATA_ROWS' };
+  return { ok: true, recipes: order.map((k) => groups.get(k)!), issues };
 }
 
 /* -------------------------------------------------------------------------- */

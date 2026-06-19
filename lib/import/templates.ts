@@ -3,6 +3,7 @@ import { renderXlsx, headerCell, textCell, type Sheet } from '@/lib/documents/xl
 import {
   INGREDIENT_COLUMNS,
   TRANSACTION_COLUMNS,
+  RECIPE_COLUMNS,
 } from '@/lib/validation/import';
 import type { ImportEntity, ImportFormat } from './types';
 
@@ -17,6 +18,7 @@ import type { ImportEntity, ImportFormat } from './types';
 const COLUMNS: Record<ImportEntity, readonly string[]> = {
   ingredients: INGREDIENT_COLUMNS,
   transactions: TRANSACTION_COLUMNS,
+  recipes: RECIPE_COLUMNS,
 };
 
 /** Illustrative example rows (cells aligned to each entity's column order). */
@@ -36,6 +38,16 @@ const EXAMPLES: Record<ImportEntity, string[][]> = {
       '340.50',
       'Produce delivery',
     ],
+  ],
+  // Long format: one row per ingredient line, grouped by the recipe name. Yield
+  // columns are read from each recipe's FIRST row (leave blank on later lines).
+  recipes: [
+    ['Sourdough Bread', '10', '95', 'Flour T55', '1000', 'g'],
+    ['Sourdough Bread', '', '', 'Water', '650', 'ml'],
+    ['Sourdough Bread', '', '', 'Salt', '18', 'g'],
+    ['Tomato Sauce', '4', '100', 'Tomato', '800', 'g'],
+    ['Tomato Sauce', '', '', 'Olive oil', '30', 'ml'],
+    ['Tomato Sauce', '', '', 'Eggs', '2', 'count'],
   ],
 };
 

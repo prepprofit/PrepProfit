@@ -16,7 +16,7 @@ import type {
   ImportEntity,
   ImportFormat,
   ImportStatus,
-  ImportRecord,
+  ImportNormalizedRows,
   ImportRowIssue,
 } from '@/lib/import/types';
 
@@ -714,7 +714,7 @@ export const importJobs = pgTable(
     organizationId: orgId(),
     // The Clerk user who uploaded the file (never null — imports are authenticated).
     actorUserId: text('actor_user_id').notNull(),
-    entity: text('entity', { enum: ['ingredients', 'transactions'] })
+    entity: text('entity', { enum: ['ingredients', 'transactions', 'recipes'] })
       .$type<ImportEntity>()
       .notNull(),
     format: text('format', { enum: ['csv', 'xlsx'] })
@@ -729,8 +729,9 @@ export const importJobs = pgTable(
     sourceFilename: text('source_filename'),
     // Count of IMPORTABLE records (rows with hard issues are excluded).
     rowCount: integer('row_count').notNull().default(0),
-    // Insert-ready records (narrowed by `entity`) applied verbatim at confirm.
-    normalizedRows: jsonb('normalized_rows').$type<ImportRecord[]>(),
+    // Staged payload (narrowed by `entity`): a flat record array for ingredients/
+    // transactions, or the recipe payload (records + resolutions) for recipes.
+    normalizedRows: jsonb('normalized_rows').$type<ImportNormalizedRows>(),
     // Per-row problems (stable codes, localized client-side). Never PII.
     issues: jsonb('issues').$type<ImportRowIssue[]>(),
     // Traceability / dedupe hint; the authoritative confirm guard is the status

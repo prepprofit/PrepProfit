@@ -10,9 +10,12 @@
  * step applies them. The client never sends rows back — it holds only a job id.
  */
 
-/** Entities importable in v1. Recipes are deferred to Sprint 4.6. */
-export const IMPORT_ENTITIES = ['ingredients', 'transactions'] as const;
+/** Entities importable after Sprint 4.6 (recipes added; see lib/import/parse.ts). */
+export const IMPORT_ENTITIES = ['ingredients', 'transactions', 'recipes'] as const;
 export type ImportEntity = (typeof IMPORT_ENTITIES)[number];
+
+/** Physical dimension of a quantity — mirrors lib/units `Dimension`. */
+export type ImportDimension = 'weight' | 'volume' | 'count';
 
 /** Supported file formats in v1. `.docx` tables are a Sprint 4.6 question. */
 export const IMPORT_FORMATS = ['csv', 'xlsx'] as const;
@@ -41,6 +44,15 @@ export const IMPORT_ISSUE_CODES = [
   'INVALID_DIMENSION',
   'INVALID_TYPE',
   'UNKNOWN_CATEGORY',
+  // Recipe import (Sprint 4.6): an unrecognized unit token on a recipe line.
+  'INVALID_UNIT',
+  // Recipe import: a unit whose dimension conflicts with the existing ingredient's
+  // dimension (decided in the data-layer planner), or two lines for the same
+  // ingredient in one recipe using incompatible dimensions.
+  'UNIT_MISMATCH',
+  // Soft (recipe import): a recipe whose name already exists in the org → the whole
+  // recipe is skipped (no silent update; v1 only CREATES recipes).
+  'DUPLICATE_RECIPE',
   // Soft: an ingredient name that already exists in the org → row is skipped,
   // never an update (no silent price changes).
   'DUPLICATE',
@@ -53,6 +65,7 @@ export type ImportIssueCode = (typeof IMPORT_ISSUE_CODES)[number];
 /** Issue codes that do NOT make a row un-importable (skip / flag, not reject). */
 export const IMPORT_SOFT_ISSUES: readonly ImportIssueCode[] = [
   'DUPLICATE',
+  'DUPLICATE_RECIPE',
   'NEEDS_PRICING',
 ];
 
@@ -95,5 +108,63 @@ export type ImportTransactionRecord = {
   note: string | null;
 };
 
+/* -------------------------------------------------------------------------- */
+/* Recipe import (Sprint 4.6)                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The resolution computed for ONE distinct ingredient name at preview, stored in
+ * the job and used at confirm to VALIDATE the manager's choice (D8): a `link`
+ * must target an id that was offered here (an exact match or one of the fuzzy
+ * suggestions). `new` stages a fresh ingredient (priceCents 0, needs pricing).
+ *
+ * Resolution is NOT the final decision — the UI lets the manager pick among these
+ * options (a fuzzy match defaults to "create new", never auto-linked).
+ */
+export type ImportIngredientResolution =
+  | { kind: 'exact'; ingredientId: string; ingredientName: string }
+  | {
+      kind: 'fuzzy';
+      suggestions: { ingredientId: string; name: string; score: number }[];
+    }
+  | { kind: 'new' };
+
+/** One recipe line: an ingredient reference + a canonical quantity. */
+export type ImportRecipeLine = {
+  /** Raw ingredient name from the file (display + create-new label). */
+  ingredientName: string;
+  /** Normalized name — the key into the job's `resolutions` map. */
+  normalizedName: string;
+  /** Quantity in the line unit's canonical amount (g / ml / count). */
+  quantityCanonical: number;
+  /** Dimension inferred from the line's unit. */
+  dimension: ImportDimension;
+};
+
+/** A recipe to create, with its lines (pre-resolution-applied, names not ids). */
+export type ImportRecipeRecord = {
+  name: string;
+  yieldPortions: number;
+  yieldPercentage: number;
+  lines: ImportRecipeLine[];
+};
+
+/**
+ * The full stored payload for a `recipes` job. Unlike ingredient/transaction jobs
+ * (a flat record array), a recipe job also carries the per-distinct-ingredient
+ * `resolutions` map so confirm can validate the client's chosen links against
+ * exactly what the server offered (D8) — keyed by normalized ingredient name.
+ */
+export type ImportRecipePayload = {
+  recipes: ImportRecipeRecord[];
+  resolutions: Record<string, ImportIngredientResolution>;
+};
+
 /** The importable records stored in a job, narrowed by the job's `entity`. */
 export type ImportRecord = ImportIngredientRecord | ImportTransactionRecord;
+
+/**
+ * The shape of a job's `normalized_rows`, narrowed by `entity`: a flat record
+ * array for ingredients/transactions, or the recipe payload for recipes.
+ */
+export type ImportNormalizedRows = ImportRecord[] | ImportRecipePayload;

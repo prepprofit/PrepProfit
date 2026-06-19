@@ -5,7 +5,7 @@ import type { TenantClient } from '@/lib/db/tenant';
 import type {
   ImportEntity,
   ImportFormat,
-  ImportRecord,
+  ImportNormalizedRows,
   ImportRowIssue,
 } from '@/lib/import/types';
 
@@ -22,7 +22,7 @@ export type CreateImportJobInput = {
   format: ImportFormat;
   sourceFilename: string | null;
   rowCount: number;
-  normalizedRows: ImportRecord[];
+  normalizedRows: ImportNormalizedRows;
   issues: ImportRowIssue[];
   idempotencyKey: string | null;
   expiresAt: Date;
