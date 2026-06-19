@@ -3,7 +3,12 @@ import { and, eq, sql } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
-import { auditLog, subscriptions } from '@/lib/db/schema';
+import {
+  auditLog,
+  organizationSettings,
+  subscriptions,
+  transactionCategories,
+} from '@/lib/db/schema';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 
@@ -180,6 +185,37 @@ describe('POST /api/webhooks/clerk', () => {
     expect(rows[0]?.status).toBe('canceled');
     expect(rows[0]?.plan).toBe('starter');
     expect(await audits(ORG_A, 'subscription.lapse')).toHaveLength(2);
+  });
+
+  it('seeds tenant defaults + audits on organization.created (Sprint 4d)', async () => {
+    const NEW_ORG = 'org_fresh';
+    const res = await post({
+      type: 'organization.created',
+      object: 'event',
+      data: { id: NEW_ORG, object: 'organization' },
+    });
+    expect(res.status).toBe(200);
+
+    // Predefined transaction categories were seeded.
+    const cats = await runInOrg(db, NEW_ORG, (tx) =>
+      tx
+        .select()
+        .from(transactionCategories)
+        .where(eq(transactionCategories.organizationId, NEW_ORG)),
+    );
+    expect(cats.length).toBeGreaterThan(0);
+
+    // A settings row exists, primed but NOT onboarded.
+    const settings = await runInOrg(db, NEW_ORG, (tx) =>
+      tx
+        .select()
+        .from(organizationSettings)
+        .where(eq(organizationSettings.organizationId, NEW_ORG)),
+    );
+    expect(settings).toHaveLength(1);
+    expect(settings[0]?.onboardedAt).toBeNull();
+
+    expect(await audits(NEW_ORG, 'organization.create')).toHaveLength(1);
   });
 
   it('audits a membership event without touching the mirror', async () => {

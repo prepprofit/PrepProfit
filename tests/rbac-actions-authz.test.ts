@@ -34,6 +34,7 @@ import {
   purgeInvoiceAction,
 } from '@/app/(app)/trash/actions';
 import { updateOrgSettingsAction } from '@/app/(app)/settings/actions';
+import { completeOnboardingAction } from '@/app/(app)/onboarding/actions';
 
 const FORBIDDEN = { ok: false, code: 'FORBIDDEN' };
 
@@ -78,6 +79,13 @@ describe('manager-only actions reject kitchen before touching data', () => {
     // The guard must short-circuit BEFORE getOrgId (mocked to throw), so a
     // FORBIDDEN result proves kitchen was refused without touching data.
     const result = await updateOrgSettingsAction(null, new FormData());
+    expect(result).toEqual(FORBIDDEN);
+  });
+
+  it('blocks completing onboarding (manager-only, refused before data)', async () => {
+    // getOrgId is mocked to throw, so FORBIDDEN proves the guard short-circuits
+    // before markOnboarded / the audit write.
+    const result = await completeOnboardingAction();
     expect(result).toEqual(FORBIDDEN);
   });
 });
