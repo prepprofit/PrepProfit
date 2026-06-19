@@ -50,6 +50,7 @@
     "settings": "Settings",
     "trash": "Trash",
     "billing": "Plans & billing",
+    "import": "Import",
     "onboarding": "Get started"
   },
   "navGroups": {
@@ -285,6 +286,80 @@
       "title": "Managers only",
       "body": "Workspace settings — currency and measurement system — can only be changed by a manager. Ask an organization manager if you need a change."
     }
+  },
+  "import": {
+    "title": "Import",
+    "subtitle": "Bring ingredients or transactions in from a CSV or Excel file. Nothing is created until you review the preview and confirm.",
+    "noAccess": {
+      "title": "Managers only",
+      "body": "Importing creates financial and inventory records, so it is available to managers only. Ask an organization manager if you need to import data."
+    },
+    "entity": {
+      "label": "What do you want to import?",
+      "ingredients": "Ingredients",
+      "transactions": "Transactions"
+    },
+    "format": {
+      "label": "File format",
+      "csv": "CSV",
+      "xlsx": "Excel (.xlsx)"
+    },
+    "template": {
+      "title": "Start from a template",
+      "help": "The template has the exact columns the importer expects, with a couple of example rows.",
+      "download": "Download {format} template"
+    },
+    "file": {
+      "label": "Choose a file",
+      "help": "CSV or Excel (.xlsx), up to 1 MB and 1,000 rows."
+    },
+    "preview": "Preview file",
+    "previewing": "Reading file…",
+    "summary": {
+      "title": "Preview",
+      "file": "{name}",
+      "importable": "{count, plural, one {# row ready to import} other {# rows ready to import}}",
+      "skipped": "{count, plural, one {# row skipped} other {# rows skipped}}",
+      "invalid": "{count, plural, one {# row with errors} other {# rows with errors}}",
+      "total": "{count, plural, one {# row read} other {# rows read}}"
+    },
+    "issues": {
+      "title": "Rows needing attention",
+      "line": "Line {line}",
+      "column": "{column}",
+      "more": "+{count} more",
+      "codes": {
+        "MISSING_REQUIRED": "Missing a required value",
+        "TOO_LONG": "Value is too long",
+        "INVALID_NUMBER": "Not a valid number",
+        "NEGATIVE_AMOUNT": "Must be greater than zero",
+        "INVALID_DATE": "Not a valid date — use YYYY-MM-DD",
+        "INVALID_DIMENSION": "Unknown unit type — use weight, volume or count",
+        "INVALID_TYPE": "Type must be income or expense",
+        "UNKNOWN_CATEGORY": "No matching category in this workspace",
+        "DUPLICATE": "Already exists — will be skipped",
+        "NEEDS_PRICING": "No price — imported at 0 and flagged for pricing"
+      }
+    },
+    "grid": {
+      "title": "Ready to import",
+      "name": "Name",
+      "dimension": "Unit",
+      "price": "Price",
+      "supplier": "Supplier",
+      "date": "Date",
+      "type": "Type",
+      "category": "Category",
+      "amount": "Amount",
+      "note": "Note",
+      "more": "+{count, plural, one {# more row} other {# more rows}} not shown"
+    },
+    "confirm": "Import {count, plural, one {# row} other {# rows}}",
+    "confirming": "Importing…",
+    "nothingToImport": "No rows are ready to import. Fix the issues above and upload the file again.",
+    "committed": "Imported {count, plural, one {# row} other {# rows}}.",
+    "alreadyCommitted": "This preview was already imported. Nothing new was added.",
+    "startOver": "Import another file"
   },
   "trash": {
     "subtitle": "Deleted recipes and ingredients stay here for 30 days, then they are removed for good.",

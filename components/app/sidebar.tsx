@@ -18,6 +18,7 @@ import {
   FileText,
   Settings,
   CreditCard,
+  Upload,
   Trash2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -223,6 +224,20 @@ export function Sidebar({
             >
               <CreditCard className="size-4 shrink-0" />
               {!collapsed && t('billing')}
+            </Link>
+          )}
+          {/* Deterministic import (Sprint 4.5) — creates ingredients/transactions
+              from a file; manager-only, the server enforces the page + actions. */}
+          {canSeeFinance && (
+            <Link
+              href="/import"
+              onClick={onNavigate}
+              aria-current={isActive('/import') ? 'page' : undefined}
+              title={collapsed ? t('import') : undefined}
+              className={navRowClass(isActive('/import'), collapsed)}
+            >
+              <Upload className="size-4 shrink-0" />
+              {!collapsed && t('import')}
             </Link>
           )}
           {/* Settings edits org-wide config (currency, measurement system) — a
