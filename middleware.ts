@@ -8,6 +8,9 @@ const isPublicRoute = createRouteMatcher([
   // Cron jobs authenticate with CRON_SECRET (see lib/cron-auth.ts), not a
   // Clerk session — keep them out of auth.protect().
   '/api/cron(.*)',
+  // Clerk webhooks (Sprint 4c) authenticate by Svix signature (verifyWebhook),
+  // not a Clerk session — keep them out of auth.protect().
+  '/api/webhooks(.*)',
 ]);
 
 const isOrgSelectionRoute = createRouteMatcher(['/select-organization(.*)']);
