@@ -2,6 +2,8 @@ import { verifyWebhook } from '@clerk/nextjs/webhooks';
 import type { NextRequest } from 'next/server';
 import { withOrg } from '@/lib/db';
 import { writeAuditEvent, type AuditActor } from '@/lib/data/audit';
+import { ensureOrgSettingsRow } from '@/lib/data/org-settings';
+import { ensureCategoriesSeeded } from '@/lib/data/transaction-categories';
 import {
   resolveCurrentPeriodEnd,
   resolvePlanTier,
@@ -100,6 +102,28 @@ export async function POST(req: NextRequest): Promise<Response> {
           entityType: 'subscription',
           entityId: evt.data.id,
           metadata: { eventType: evt.type, plan, status: evt.data.status },
+        });
+      });
+      return new Response('OK', { status: 200 });
+    }
+
+    // ---- Org created: prime tenant defaults (Sprint 4d) ---------------------
+    // Seed the predefined transaction categories and a settings row eagerly the
+    // moment an org is provisioned, so a new manager starts with a primed tenant.
+    // Both writes are idempotent (lazy seeding remains the safety net if this
+    // endpoint is unconfigured), and the onboarding flow itself is gated by the
+    // app, not by this event.
+    if (evt.type === 'organization.created') {
+      const orgId = evt.data.id;
+      if (!orgId) return new Response('OK', { status: 200 });
+      await withOrg(orgId, async (tx) => {
+        await ensureCategoriesSeeded(tx, orgId);
+        await ensureOrgSettingsRow(tx, orgId);
+        await writeAuditEvent(tx, orgId, actor, {
+          action: 'organization.create',
+          entityType: 'organization',
+          entityId: orgId,
+          metadata: { eventType: evt.type },
         });
       });
       return new Response('OK', { status: 200 });
