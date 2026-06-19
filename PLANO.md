@@ -28,10 +28,13 @@ Completed (continued):
 - [x] Sprint 3.5A - document foundation and invoice PDF (PDF route + print view, seller-identity settings, `@react-pdf/renderer`)
 - [x] Sprint 3.5B - reports and Excel exports (recipe-card / P&L / payroll PDF + print, P&L + payroll XLSX via `write-excel-file`). Email split out to 3.5C.
 - [x] Sprint 3.5C - document email (Resend): generate server-side, recipient validation, dedicated rate bucket, audit-after-accept, no cross-tenant attachments
+- [x] Sprint 4 - billing, entitlements, and organization lifecycle (Clerk Billing + Stripe, `lib/entitlements.ts`, webhooks + `subscriptions` mirror, onboarding, org self-delete lockdown)
+- [x] Sprint 4.5 - deterministic import foundation: ingredients and transactions (`import_jobs`, CSV/XLSX readers, staged preview/confirm)
+- [x] Sprint 4.6 - recipe import and ingredient resolver (pure resolver, recipe parser/templates, staged resolution + confirm, migration 0017 `needs_pricing`)
 
 Next sprint:
 
-- [ ] Sprint 4 - billing, entitlements, and organization lifecycle
+- [ ] Sprint 4.7 - AI photo recipe extraction
 
 ---
 
@@ -269,19 +272,21 @@ Decisions to lock before coding:
 
 Tasks:
 
-- [ ] `lib/import/resolveIngredient.ts`: exact, normalized, fuzzy, and new match outcomes, pure and tested.
-- [ ] Recipe CSV/XLSX templates with recipe header rows and line rows, documented examples.
-- [ ] Recipe import parser + row schemas + staged preview using `import_jobs`.
-- [ ] Preview UI for resolving fuzzy ingredient matches and confirming creation of new ingredients.
-- [ ] Confirm action creates/updates recipes and lines transactionally, re-checks recipe plan limits, and keeps cost honest for unpriced ingredients.
-- [ ] Optional `.docx` table parser only if dependency and table extraction are proven in a spike.
-- [ ] Tests: exact/fuzzy/new resolver, unit conversion, unknown units, new unpriced ingredients, duplicate recipe handling, org isolation, and plan-limit races.
+- [x] `lib/import/resolveIngredient.ts`: exact, normalized, fuzzy, and new match outcomes, pure and tested. (Self-contained trigram Dice-coefficient resolver over a candidate list passed in by the data layer; normalizes case/accents/punctuation; auto-links only exact matches; fuzzy threshold 0.7, top 3 suggestions, never auto-linked.)
+- [x] Recipe CSV/XLSX templates with recipe header rows and line rows, documented examples. (Long format — one row per ingredient line, grouped by `recipe`, columns `recipe, yield_portions, yield_percentage, ingredient, quantity, unit`; served by the existing template route; round-trip tested.)
+- [x] Recipe import parser + row schemas + staged preview using `import_jobs`. (`parseRecipes` groups long-format rows case-insensitively, reads yield from each group's first row, validates quantity/unit, sums repeated lines per ingredient, flags `INVALID_UNIT`/`UNIT_MISMATCH`/`DUPLICATE_RECIPE`; `'recipes'` is a TS-only `import_jobs.entity` value — no migration.)
+- [x] Preview UI for resolving fuzzy ingredient matches and confirming creation of new ingredients. (`import-workbench.tsx` resolution panel: exact auto-linked, new flagged for pricing, fuzzy offers a radio of suggestions + "create new" default; recipe grid shows yield + lines; choices travel to confirm as a validated JSON `resolutions` field.)
+- [x] Confirm action creates/updates recipes and lines transactionally, re-checks recipe plan limits, and keeps cost honest for unpriced ingredients. (v1 only CREATES recipes; `confirmImportAction` validates resolutions against the stored suggestions (D8), re-checks linked ids are active org ingredients, enforces the recipe cap all-or-nothing (D7 → `PLAN_LIMIT_REACHED`), creates new ingredients at `priceCents 0` + `needs_pricing`, then recipes + lines via `addRecipeIngredient`; idempotent.)
+- [>] Optional `.docx` table parser only if dependency and table extraction are proven in a spike. (Deferred — out of scope for v1; revisit in Sprint 4.7/backlog.)
+- [x] Tests: exact/fuzzy/new resolver, unit conversion, unknown units, new unpriced ingredients, duplicate recipe handling, org isolation, and plan-limit races. (`resolveIngredient.test.ts`, `import-recipes-parse.test.ts`, `import-recipes-data.test.ts` (PGlite RLS read+write), `import-recipes-actions.test.ts` (RBAC, idempotency, forged resolution, plan cap, cross-org).)
 
 Acceptance criteria:
 
-- Import a recipe sheet referencing existing and new ingredients; existing ones link, new ones are staged as needing pricing, and recipe cost updates correctly once prices are filled.
-- Fuzzy matches require explicit user confirmation.
-- Confirm is idempotent and cannot write outside the active org.
+- Import a recipe sheet referencing existing and new ingredients; existing ones link, new ones are staged as needing pricing, and recipe cost updates correctly once prices are filled. (done)
+- Fuzzy matches require explicit user confirmation. (done — fuzzy defaults to "create new"; a link requires an explicit manager choice and is validated against the offered suggestions.)
+- Confirm is idempotent and cannot write outside the active org. (done)
+
+Production note: ships migration **0017** (`ingredients.needs_pricing boolean NOT NULL DEFAULT false`; additive — journal `when` 1781904288429 > 0016's 1781901704548, so the silent-skip gotcha does not apply). Run `npm run db:migrate` against prod Neon after deploy. No new env vars; reuses the Sprint 4.5 `import` rate bucket and `import.preview`/`import.commit` audit actions. New ingredients created by recipe import default to `priceCents 0` + `needs_pricing = true` and show a "Needs pricing" badge in `/ingredients`; setting a real price clears the flag.
 
 ---
 
