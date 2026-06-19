@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { dateStringSchema } from '@/lib/validation/transactions';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
 import { TRANSACTION_TYPES } from '@/lib/validation/transactions';
+import { IMPORT_ENTITIES, IMPORT_FORMATS } from '@/lib/import/types';
 
 /**
  * Server-side validation contracts for deterministic imports (Sprint 4.5).
@@ -19,6 +20,19 @@ export const MAX_IMPORT_ROWS = 1_000;
 
 /** How long a parsed job stays confirmable. */
 export const IMPORT_JOB_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+/** Entity + format selection (template download, preview upload). */
+export const importParamsSchema = z.object({
+  entity: z.enum(IMPORT_ENTITIES),
+  format: z.enum(IMPORT_FORMATS),
+});
+
+export type ImportParams = z.infer<typeof importParamsSchema>;
+
+/** A staged job id (confirm payload — the ONLY thing the client sends back). */
+export const confirmImportSchema = z.object({
+  jobId: z.string().min(1).max(60),
+});
 
 /**
  * Column header contracts (exact, lowercase machine names). The transaction set

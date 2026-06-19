@@ -67,6 +67,11 @@ export type AuditAction =
   | 'organization.membership'
   // Post-signup onboarding completed by the org manager (Sprint 4d).
   | 'onboarding.complete'
+  // Deterministic import (Sprint 4.5). `import.preview` = a file was parsed and
+  // staged (status `parsed`); `import.commit` = a staged job was applied. metadata
+  // holds only entity + counts (importable/created/skipped), never cell contents.
+  | 'import.preview'
+  | 'import.commit'
   // Automated cron purge (system actor)
   | 'cron.purge';
 

@@ -29,8 +29,11 @@ export const RATE_LIMITS = {
   // real cost and spam/reputation risk a local download does not, so it gets its
   // own, smaller budget per org+user.
   documentEmail: { limit: 10, windowMs: MINUTE },
+  // Staged import (Sprint 4.5): template download, dry-run preview (parses a file),
+  // and confirm. Per org+user; generous enough for normal use, tight enough that
+  // scripted file-upload abuse trips it.
+  import: { limit: 20, windowMs: MINUTE },
   // Reserved for later sprints (helper already exists; nothing wired yet):
-  //   import:        Sprint 4.5/4.6 staged imports
   //   aiExtraction:  Sprint 4.7 photo recipe extraction
 } as const satisfies Record<string, RateLimitConfig>;
 
