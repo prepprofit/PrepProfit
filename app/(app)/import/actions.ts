@@ -2,12 +2,16 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { getOrgId, getUserId, isManager } from '@/lib/auth';
 import { getDb, withOrg } from '@/lib/db';
+import { ingredients } from '@/lib/db/schema';
 import { isForeignKeyViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
 import { enforceRateLimit } from '@/lib/rate-limit';
+import { assertPlanLimit } from '@/lib/entitlements';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
+import { countActiveRecipes } from '@/lib/data/recipes';
 import {
   createImportJob,
   lockImportJob,
@@ -17,16 +21,26 @@ import {
 import {
   planIngredientImport,
   planTransactionImport,
+  planRecipeImport,
   applyIngredientRecords,
   applyTransactionRecords,
+  applyRecipeImport,
+  buildResolvedChoices,
   type ImportPlan,
+  type RecipeImportPlan,
 } from '@/lib/data/import';
-import { readImportMatrix, parseIngredients, parseTransactions } from '@/lib/import/parse';
+import {
+  readImportMatrix,
+  parseIngredients,
+  parseTransactions,
+  parseRecipes,
+} from '@/lib/import/parse';
 import {
   importParamsSchema,
   confirmImportSchema,
   importIngredientRecordSchema,
   importTransactionRecordSchema,
+  importRecipePayloadSchema,
   MAX_IMPORT_BYTES,
   IMPORT_JOB_TTL_MS,
 } from '@/lib/validation/import';
@@ -34,6 +48,7 @@ import type {
   ImportEntity,
   ImportFormat,
   ImportRecord,
+  ImportRecipePayload,
   ImportRowIssue,
 } from '@/lib/import/types';
 import type { ActionErrorCode } from '@/lib/action-result';
@@ -61,7 +76,10 @@ export type ImportPreview = {
   filename: string | null;
   counts: { total: number; importable: number; skipped: number; invalid: number };
   issues: ImportRowIssue[];
+  /** Flat sample records for ingredients/transactions (empty for recipes). */
   sample: ImportRecord[];
+  /** Recipe-only staged payload (records + per-name resolutions) for the UI. */
+  recipePayload?: ImportRecipePayload;
 };
 
 export type ImportActionState =
@@ -117,6 +135,15 @@ export async function previewImportAction(
       if (!parsed.ok) return fail('INVALID_INPUT');
       const preview = await stageJob(organizationId, userId, actor, entity, format, filename, (tx) =>
         planIngredientImport(tx, organizationId, parsed.rows),
+      );
+      return { ok: true, phase: 'preview', preview };
+    }
+
+    if (entity === 'recipes') {
+      const parsed = parseRecipes(matrix);
+      if (!parsed.ok) return fail('INVALID_INPUT');
+      const preview = await stageRecipeJob(organizationId, userId, actor, format, filename, (tx) =>
+        planRecipeImport(tx, organizationId, parsed.recipes, parsed.issues),
       );
       return { ok: true, phase: 'preview', preview };
     }
@@ -177,6 +204,51 @@ async function stageJob(
   });
 }
 
+/**
+ * Recipe staging: like `stageJob`, but stores the recipe PAYLOAD (records +
+ * per-name resolutions) and reports `importable` as the recipe count. The UI uses
+ * `recipePayload` to render the ingredient-resolution panel before confirm.
+ */
+async function stageRecipeJob(
+  organizationId: string,
+  userId: string,
+  actor: Awaited<ReturnType<typeof auditActor>>,
+  format: ImportFormat,
+  filename: string,
+  plan: (tx: Parameters<Parameters<typeof withOrg>[1]>[0]) => Promise<RecipeImportPlan>,
+): Promise<ImportPreview> {
+  return withOrg(organizationId, async (tx) => {
+    const result = await plan(tx);
+    const job = await createImportJob(tx, organizationId, {
+      actorUserId: userId,
+      entity: 'recipes',
+      format,
+      sourceFilename: filename,
+      rowCount: result.counts.importable,
+      normalizedRows: result.payload,
+      issues: result.issues,
+      idempotencyKey: null,
+      expiresAt: new Date(Date.now() + IMPORT_JOB_TTL_MS),
+    });
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'import.preview',
+      entityType: 'importJob',
+      entityId: job.id,
+      metadata: { entity: 'recipes', format, ...result.counts },
+    });
+    return {
+      jobId: job.id,
+      entity: 'recipes' as const,
+      format,
+      filename: job.sourceFilename,
+      counts: result.counts,
+      issues: result.issues,
+      sample: [],
+      recipePayload: result.payload,
+    };
+  });
+}
+
 /* -------------------------------------------------------------------------- */
 /* Confirm                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -193,9 +265,26 @@ export async function confirmImportAction(
   const limit = await enforceRateLimit(getDb(), 'import', `${organizationId}:${userId}`);
   if (!limit.allowed) return fail('RATE_LIMITED');
 
-  const parsed = confirmImportSchema.safeParse({ jobId: formData.get('jobId') });
+  // Recipe confirm also carries the resolution choices as a JSON array; other
+  // entities omit it. The choices are re-validated server-side against the job's
+  // stored suggestions (never trusted blindly).
+  const rawResolutions = formData.get('resolutions');
+  let resolutions: unknown;
+  if (typeof rawResolutions === 'string' && rawResolutions.length > 0) {
+    try {
+      resolutions = JSON.parse(rawResolutions);
+    } catch {
+      return fail('INVALID_INPUT');
+    }
+  }
+
+  const parsed = confirmImportSchema.safeParse({
+    jobId: formData.get('jobId'),
+    resolutions,
+  });
   if (!parsed.success) return fail('INVALID_INPUT');
   const { jobId } = parsed.data;
+  const clientResolutions = parsed.data.resolutions ?? [];
 
   const actor = await auditActor();
   try {
@@ -215,16 +304,54 @@ export async function confirmImportAction(
 
       // Defense-in-depth: never trust the stored JSON blindly — re-validate with
       // Zod, scoped to the job's entity, before inserting.
-      const rows = job.normalizedRows ?? [];
+      const stored = job.normalizedRows ?? [];
       let created = 0;
       if (job.entity === 'ingredients') {
-        const valid = z.array(importIngredientRecordSchema).safeParse(rows);
+        const valid = z.array(importIngredientRecordSchema).safeParse(stored);
         if (!valid.success) return { kind: 'invalid' as const };
         created = await applyIngredientRecords(tx, organizationId, valid.data);
-      } else {
-        const valid = z.array(importTransactionRecordSchema).safeParse(rows);
+      } else if (job.entity === 'transactions') {
+        const valid = z.array(importTransactionRecordSchema).safeParse(stored);
         if (!valid.success) return { kind: 'invalid' as const };
         created = await applyTransactionRecords(tx, organizationId, valid.data);
+      } else {
+        // Recipes: validate the stored payload, the client's resolution choices
+        // (D8), re-check that every linked id is an ACTIVE org ingredient, enforce
+        // the recipe plan cap all-or-nothing (D7), then apply.
+        const valid = importRecipePayloadSchema.safeParse(stored);
+        if (!valid.success) return { kind: 'invalid' as const };
+        const payload = valid.data as ImportRecipePayload;
+
+        const built = buildResolvedChoices(payload.resolutions, clientResolutions);
+        if (!built.ok) return { kind: 'invalid' as const };
+
+        if (built.linkIds.length > 0) {
+          const active = await tx
+            .select({ id: ingredients.id })
+            .from(ingredients)
+            .where(
+              and(
+                eq(ingredients.organizationId, organizationId),
+                isNull(ingredients.deletedAt),
+                inArray(ingredients.id, built.linkIds),
+              ),
+            );
+          const activeIds = new Set(active.map((r) => r.id));
+          if (built.linkIds.some((id) => !activeIds.has(id))) {
+            return { kind: 'invalid' as const };
+          }
+        }
+
+        const toCreate = payload.recipes.length;
+        if (toCreate > 0) {
+          const current = await countActiveRecipes(tx, organizationId);
+          // assertPlanLimit checks "room for one more"; the LAST recipe added must
+          // still fit, so probe at (current + toCreate - 1).
+          const { allowed } = await assertPlanLimit('recipes', current + toCreate - 1);
+          if (!allowed) return { kind: 'plan_limit' as const };
+        }
+
+        created = await applyRecipeImport(tx, organizationId, payload, built.choices);
       }
 
       await markImportJobCommitted(tx, organizationId, jobId);
@@ -240,6 +367,7 @@ export async function confirmImportAction(
     if (outcome.kind === 'not_found') return fail('NOT_FOUND');
     if (outcome.kind === 'expired') return fail('IMPORT_EXPIRED');
     if (outcome.kind === 'invalid') return fail('INVALID_INPUT');
+    if (outcome.kind === 'plan_limit') return fail('PLAN_LIMIT_REACHED');
 
     revalidateForEntity(outcome.entity);
     return {
@@ -262,6 +390,10 @@ function revalidateForEntity(entity: ImportEntity): void {
   if (entity === 'ingredients') {
     revalidatePath('/ingredients');
     revalidatePath('/inventory');
+  } else if (entity === 'recipes') {
+    // Recipe import may also create new (unpriced) ingredients.
+    revalidatePath('/recipes');
+    revalidatePath('/ingredients');
   } else {
     revalidatePath('/transactions');
     revalidatePath('/financials');
