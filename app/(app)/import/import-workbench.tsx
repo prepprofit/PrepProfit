@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useActionState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Upload, FileDown, CheckCircle2, AlertTriangle } from 'lucide-react';
@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { formatMoney } from '@/lib/format/money';
+import { formatQuantity, type MeasurementSystem } from '@/lib/units';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { IMPORT_ENTITIES, IMPORT_FORMATS } from '@/lib/import/types';
 import type {
@@ -22,6 +23,7 @@ import type {
   ImportFormat,
   ImportIngredientRecord,
   ImportTransactionRecord,
+  ImportRecipePayload,
 } from '@/lib/import/types';
 import {
   previewImportAction,
@@ -37,7 +39,13 @@ const ISSUE_DISPLAY_LIMIT = 50;
  * template download live in the outer shell; the per-attempt action state lives
  * in `<ImportFlow>`, remounted via `key` on "start over" so the form resets.
  */
-export function ImportWorkbench({ currency }: { currency: string }) {
+export function ImportWorkbench({
+  currency,
+  measurementSystem,
+}: {
+  currency: string;
+  measurementSystem: MeasurementSystem;
+}) {
   const t = useTranslations('import');
   const [entity, setEntity] = useState<ImportEntity>('ingredients');
   const [format, setFormat] = useState<ImportFormat>('csv');
@@ -103,6 +111,7 @@ export function ImportWorkbench({ currency }: { currency: string }) {
         entity={entity}
         format={format}
         currency={currency}
+        measurementSystem={measurementSystem}
         onStartOver={() => setResetKey((k) => k + 1)}
       />
     </div>
@@ -113,11 +122,13 @@ function ImportFlow({
   entity,
   format,
   currency,
+  measurementSystem,
   onStartOver,
 }: {
   entity: ImportEntity;
   format: ImportFormat;
   currency: string;
+  measurementSystem: MeasurementSystem;
   onStartOver: () => void;
 }) {
   const t = useTranslations('import');
@@ -193,6 +204,7 @@ function ImportFlow({
         <PreviewResult
           preview={preview}
           currency={currency}
+          measurementSystem={measurementSystem}
           confirmState={confirmState}
           confirmAction={confirmAction}
           confirming={confirming}
@@ -206,6 +218,7 @@ function ImportFlow({
 function PreviewResult({
   preview,
   currency,
+  measurementSystem,
   confirmState,
   confirmAction,
   confirming,
@@ -215,6 +228,7 @@ function PreviewResult({
     Extract<ImportActionState, { phase: 'preview' }>['preview']
   >;
   currency: string;
+  measurementSystem: MeasurementSystem;
   confirmState: ImportActionState | null;
   confirmAction: (formData: FormData) => void;
   confirming: boolean;
@@ -224,6 +238,18 @@ function PreviewResult({
   const actionError = useActionError();
   const { counts, issues, sample, entity } = preview;
   const shownIssues = issues.slice(0, ISSUE_DISPLAY_LIMIT);
+
+  // Recipe-only: the per-distinct-ingredient resolution choices. A FUZZY name
+  // defaults to "create new" (never auto-linked); EXACT/NEW are server-forced and
+  // not user-editable here. The chosen links travel to confirm as a JSON field.
+  const recipePayload = preview.recipePayload;
+  const [linkChoices, setLinkChoices] = useState<Record<string, string>>(() =>
+    initFuzzyChoices(recipePayload),
+  );
+  const resolutionsJson = useMemo(
+    () => JSON.stringify(buildResolutions(linkChoices)),
+    [linkChoices],
+  );
 
   return (
     <Card>
@@ -270,7 +296,21 @@ function PreviewResult({
           </div>
         )}
 
-        {/* Ready-to-import grid. */}
+        {/* Recipe resolution panel + recipe grid. */}
+        {entity === 'recipes' && recipePayload && (
+          <>
+            <RecipeResolutionPanel
+              payload={recipePayload}
+              choices={linkChoices}
+              onChange={(name, value) =>
+                setLinkChoices((prev) => ({ ...prev, [name]: value }))
+              }
+            />
+            <RecipeGrid payload={recipePayload} measurementSystem={measurementSystem} />
+          </>
+        )}
+
+        {/* Ready-to-import grid (ingredients / transactions). */}
         {sample.length > 0 && (
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium text-foreground">{t('grid.title')}</p>
@@ -306,6 +346,9 @@ function PreviewResult({
           {counts.importable > 0 ? (
             <form action={confirmAction}>
               <input type="hidden" name="jobId" value={preview.jobId} />
+              {entity === 'recipes' && (
+                <input type="hidden" name="resolutions" value={resolutionsJson} />
+              )}
               <Button type="submit" disabled={confirming}>
                 {confirming
                   ? t('confirming')
@@ -321,6 +364,170 @@ function PreviewResult({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Sentinel choice value meaning "stage a new ingredient" (vs an ingredient id). */
+const CREATE_NEW = '__new__';
+
+/** Default each FUZZY name to "create new" — fuzzy matches are never auto-linked. */
+function initFuzzyChoices(
+  payload: ImportRecipePayload | undefined,
+): Record<string, string> {
+  if (!payload) return {};
+  const init: Record<string, string> = {};
+  for (const [name, res] of Object.entries(payload.resolutions)) {
+    if (res.kind === 'fuzzy') init[name] = CREATE_NEW;
+  }
+  return init;
+}
+
+/** Build the confirm `resolutions` payload from the fuzzy link choices. */
+function buildResolutions(
+  choices: Record<string, string>,
+): { name: string; action: 'link' | 'create'; ingredientId?: string }[] {
+  return Object.entries(choices).map(([name, value]) =>
+    value === CREATE_NEW
+      ? { name, action: 'create' }
+      : { name, action: 'link', ingredientId: value },
+  );
+}
+
+/**
+ * Per-distinct-ingredient resolution. EXACT names show their auto-link (read-only),
+ * NEW names show "will be created (needs pricing)", and FUZZY names offer a radio
+ * group of the suggested matches plus "create new" (the default) — the only place a
+ * suggestion can be linked, and only by explicit choice.
+ */
+function RecipeResolutionPanel({
+  payload,
+  choices,
+  onChange,
+}: {
+  payload: ImportRecipePayload;
+  choices: Record<string, string>;
+  onChange: (name: string, value: string) => void;
+}) {
+  const t = useTranslations('import.recipes');
+  const entries = Object.entries(payload.resolutions);
+  const exactCount = entries.filter(([, r]) => r.kind === 'exact').length;
+  const newCount = entries.filter(([, r]) => r.kind === 'new').length;
+  const fuzzy = entries.filter(([, r]) => r.kind === 'fuzzy');
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm font-medium text-foreground">{t('resolve.title')}</p>
+      <div className="flex flex-wrap gap-2 text-xs">
+        {exactCount > 0 && (
+          <Stat tone="good" label={t('resolve.linked', { count: exactCount })} />
+        )}
+        {newCount > 0 && (
+          <Stat tone="muted" label={t('resolve.willCreate', { count: newCount })} />
+        )}
+        {fuzzy.length > 0 && (
+          <Stat tone="bad" label={t('resolve.review', { count: fuzzy.length })} />
+        )}
+      </div>
+
+      {fuzzy.length > 0 && (
+        <ul className="flex flex-col gap-3">
+          {fuzzy.map(([name, res]) => {
+            if (res.kind !== 'fuzzy') return null;
+            const selected = choices[name] ?? CREATE_NEW;
+            return (
+              <li
+                key={name}
+                className="flex flex-col gap-2 rounded-lg border border-border bg-surface-2/40 p-3"
+              >
+                <p className="text-sm font-medium text-foreground">
+                  {t('resolve.forName', { name })}
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {res.suggestions.map((s) => (
+                    <label
+                      key={s.ingredientId}
+                      className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+                    >
+                      <input
+                        type="radio"
+                        name={`resolve-${name}`}
+                        value={s.ingredientId}
+                        checked={selected === s.ingredientId}
+                        onChange={() => onChange(name, s.ingredientId)}
+                        className="size-4 accent-accent-600"
+                      />
+                      <span>{s.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {t('resolve.match', { percent: Math.round(s.score * 100) })}
+                      </span>
+                    </label>
+                  ))}
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="radio"
+                      name={`resolve-${name}`}
+                      value={CREATE_NEW}
+                      checked={selected === CREATE_NEW}
+                      onChange={() => onChange(name, CREATE_NEW)}
+                      className="size-4 accent-accent-600"
+                    />
+                    <span>{t('resolve.createNew')}</span>
+                  </label>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** The staged recipes with their grouped ingredient lines (read-only preview). */
+function RecipeGrid({
+  payload,
+  measurementSystem,
+}: {
+  payload: ImportRecipePayload;
+  measurementSystem: MeasurementSystem;
+}) {
+  const t = useTranslations('import.recipes');
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm font-medium text-foreground">{t('grid.title')}</p>
+      <div className="flex flex-col gap-3">
+        {payload.recipes.map((recipe, i) => (
+          <div key={i} className="rounded-lg border border-border">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border bg-surface-2/50 px-3 py-2">
+              <span className="text-sm font-medium text-foreground">{recipe.name}</span>
+              <span className="text-xs text-muted-foreground">
+                {t('grid.yield', {
+                  portions: recipe.yieldPortions,
+                  percent: recipe.yieldPercentage,
+                })}
+              </span>
+            </div>
+            {recipe.lines.length > 0 ? (
+              <ul className="divide-y divide-border">
+                {recipe.lines.map((line, j) => (
+                  <li
+                    key={j}
+                    className="flex items-center justify-between gap-3 px-3 py-1.5 text-sm"
+                  >
+                    <span className="text-foreground">{line.ingredientName}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {formatQuantity(line.quantityCanonical, line.dimension, measurementSystem)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-3 py-2 text-xs text-muted-foreground">{t('grid.noLines')}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

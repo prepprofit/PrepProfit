@@ -21,7 +21,10 @@ export default async function ImportPage() {
   return (
     <div className="flex flex-col gap-5">
       <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
-      <ImportWorkbench currency={settings.currency} />
+      <ImportWorkbench
+        currency={settings.currency}
+        measurementSystem={settings.measurementSystem}
+      />
     </div>
   );
 }

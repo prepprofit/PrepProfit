@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import { runInOrg } from '@/lib/db/tenant';

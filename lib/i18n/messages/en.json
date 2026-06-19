@@ -290,7 +290,7 @@
   },
   "import": {
     "title": "Import",
-    "subtitle": "Bring ingredients or transactions in from a CSV or Excel file. Nothing is created until you review the preview and confirm.",
+    "subtitle": "Bring ingredients, transactions or recipes in from a CSV or Excel file. Nothing is created until you review the preview and confirm.",
     "noAccess": {
       "title": "Managers only",
       "body": "Importing creates financial and inventory records, so it is available to managers only. Ask an organization manager if you need to import data."
@@ -298,7 +298,8 @@
     "entity": {
       "label": "What do you want to import?",
       "ingredients": "Ingredients",
-      "transactions": "Transactions"
+      "transactions": "Transactions",
+      "recipes": "Recipes"
     },
     "format": {
       "label": "File format",
@@ -338,6 +339,9 @@
         "INVALID_DIMENSION": "Unknown unit type — use weight, volume or count",
         "INVALID_TYPE": "Type must be income or expense",
         "UNKNOWN_CATEGORY": "No matching category in this workspace",
+        "INVALID_UNIT": "Unknown unit — use g, kg, ml, l, oz, lb, cup or count",
+        "UNIT_MISMATCH": "Unit does not match the ingredient's type — line skipped",
+        "DUPLICATE_RECIPE": "A recipe with this name already exists — will be skipped",
         "DUPLICATE": "Already exists — will be skipped",
         "NEEDS_PRICING": "No price — imported at 0 and flagged for pricing"
       }
@@ -360,7 +364,23 @@
     "nothingToImport": "No rows are ready to import. Fix the issues above and upload the file again.",
     "committed": "Imported {count, plural, one {# row} other {# rows}}.",
     "alreadyCommitted": "This preview was already imported. Nothing new was added.",
-    "startOver": "Import another file"
+    "startOver": "Import another file",
+    "recipes": {
+      "resolve": {
+        "title": "Match ingredients",
+        "linked": "{count, plural, one {# ingredient matched} other {# ingredients matched}}",
+        "willCreate": "{count, plural, one {# new ingredient} other {# new ingredients}}",
+        "review": "{count, plural, one {# to review} other {# to review}}",
+        "forName": "“{name}”",
+        "match": "{percent}% match",
+        "createNew": "Create a new ingredient (priced at 0, flagged for pricing)"
+      },
+      "grid": {
+        "title": "Recipes to create",
+        "yield": "{portions, plural, one {# portion} other {# portions}} · {percent}% yield",
+        "noLines": "No valid ingredient lines."
+      }
+    }
   },
   "trash": {
     "subtitle": "Deleted recipes and ingredients stay here for 30 days, then they are removed for good.",
