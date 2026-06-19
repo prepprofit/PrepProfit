@@ -24,6 +24,12 @@ const serverEnvSchema = z.object({
     .string()
     .min(16, 'CRON_SECRET must be at least 16 characters')
     .optional(),
+  // Clerk user id of the reserved internal "system" admin that holds the org's
+  // delete permission (Sprint 4e org self-delete lockdown). Optional: when unset,
+  // `ensureOrgLockdown` no-ops, so sign-up/build/CI stay green before the Clerk
+  // side (custom `org:owner` role + system user) is configured. Consumed ONLY by
+  // lib/org/lockdown.ts — never on a hot data path.
+  CLERK_SYSTEM_USER_ID: z.string().min(1).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

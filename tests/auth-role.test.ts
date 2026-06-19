@@ -20,6 +20,12 @@ describe('getUserRole — scoped to the active organization', () => {
     expect(await isManager()).toBe(true);
   });
 
+  it('maps the custom org:owner role to manager (Sprint 4e lockdown)', async () => {
+    authMock.mockResolvedValue({ orgRole: 'org:owner' });
+    expect(await getUserRole()).toBe('manager');
+    expect(await isManager()).toBe(true);
+  });
+
   it('maps org:member to kitchen (least privilege)', async () => {
     authMock.mockResolvedValue({ orgRole: 'org:member' });
     expect(await getUserRole()).toBe('kitchen');

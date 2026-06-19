@@ -43,6 +43,14 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
+// The org lockdown (Sprint 4e) hits the Clerk Backend API — stub it here and
+// assert the route wires it on organization.created. Its own behavior is covered
+// by tests/org-lockdown.test.ts.
+const ensureOrgLockdownMock = vi.fn(async (_orgId: string) => {});
+vi.mock('@/lib/org/lockdown', () => ({
+  ensureOrgLockdown: (orgId: string) => ensureOrgLockdownMock(orgId),
+}));
+
 // Import the route AFTER the mocks are registered.
 import { POST } from '@/app/api/webhooks/clerk/route';
 
@@ -216,6 +224,9 @@ describe('POST /api/webhooks/clerk', () => {
     expect(settings[0]?.onboardedAt).toBeNull();
 
     expect(await audits(NEW_ORG, 'organization.create')).toHaveLength(1);
+
+    // The org self-delete lockdown was triggered for the new org (Sprint 4e).
+    expect(ensureOrgLockdownMock).toHaveBeenCalledWith(NEW_ORG);
   });
 
   it('audits a membership event without touching the mirror', async () => {

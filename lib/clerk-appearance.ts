@@ -18,8 +18,18 @@ export function clerkAppearance(isDark: boolean): ClerkAppearance {
     // their own orgs — hide the "Create organization" action in the switcher.
     // (Real enforcement is the instance-level org-creation setting in Clerk;
     // this just removes the affordance from the UI.)
+    //
+    // Likewise hide "Leave" and "Delete organization" in the org profile —
+    // reinforcement only. The real lockdown is server-side: the customer's
+    // `org:owner` role lacks `org:sys_profile:delete` (Sprint 4e, lib/org/lockdown).
     elements: {
       organizationSwitcherPopoverActionButton__createOrganization: {
+        display: 'none',
+      },
+      organizationSwitcherPopoverActionButton__leaveOrganization: {
+        display: 'none',
+      },
+      organizationProfileDangerSection: {
         display: 'none',
       },
     },

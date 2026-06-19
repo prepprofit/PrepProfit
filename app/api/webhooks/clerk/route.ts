@@ -4,6 +4,7 @@ import { withOrg } from '@/lib/db';
 import { writeAuditEvent, type AuditActor } from '@/lib/data/audit';
 import { ensureOrgSettingsRow } from '@/lib/data/org-settings';
 import { ensureCategoriesSeeded } from '@/lib/data/transaction-categories';
+import { ensureOrgLockdown } from '@/lib/org/lockdown';
 import {
   resolveCurrentPeriodEnd,
   resolvePlanTier,
@@ -126,6 +127,11 @@ export async function POST(req: NextRequest): Promise<Response> {
           metadata: { eventType: evt.type },
         });
       });
+      // Lock the org down so the customer can't self-delete it: reserve the
+      // system user as `org:admin` and demote the human creator to `org:owner`.
+      // Idempotent + fail-safe (no-ops without CLERK_SYSTEM_USER_ID, never throws),
+      // and uses the Clerk Backend API only — outside the DB transaction.
+      await ensureOrgLockdown(orgId);
       return new Response('OK', { status: 200 });
     }
 
