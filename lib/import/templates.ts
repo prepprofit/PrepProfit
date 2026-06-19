@@ -28,7 +28,14 @@ const EXAMPLES: Record<ImportEntity, string[][]> = {
   ],
   transactions: [
     ['2026-06-01', 'income', 'Food sales', '', '1250.00', 'Saturday service'],
-    ['2026-06-02', 'expense', 'Ingredients', '', '340.50', 'Produce delivery'],
+    [
+      '2026-06-02',
+      'expense',
+      'Ingredients / Food cost',
+      '',
+      '340.50',
+      'Produce delivery',
+    ],
   ],
 };
 
