@@ -11,7 +11,8 @@ import {
   IMPORT_LIMITS,
   MAX_IMPORT_ROWS,
 } from '@/lib/validation/import';
-import { type Unit, type Dimension, dimensionOf, toCanonical } from '@/lib/units';
+import { type Dimension, dimensionOf, toCanonical } from '@/lib/units';
+import { parseUnitToken } from '@/lib/units/token';
 import { normalizeIngredientName } from './resolveIngredient';
 import { parseCsv } from './csv';
 import { parseXlsx } from './xlsx';
@@ -254,30 +255,6 @@ export type ParseRecipesResult =
   | { ok: false; error: ImportFileError }
   | { ok: true; recipes: DraftRecipe[]; issues: ImportRowIssue[] };
 
-/** The accepted unit tokens (canonical `Unit`) plus friendly aliases. */
-const UNIT_SET = new Set<Unit>(['g', 'kg', 'oz', 'lb', 'ml', 'l', 'floz', 'cup', 'count']);
-const UNIT_ALIASES: Record<string, Unit> = {
-  gram: 'g', grams: 'g', g: 'g',
-  kilogram: 'kg', kilograms: 'kg', kilo: 'kg', kilos: 'kg',
-  ounce: 'oz', ounces: 'oz',
-  pound: 'lb', pounds: 'lb', lbs: 'lb',
-  millilitre: 'ml', milliliter: 'ml', millilitres: 'ml', milliliters: 'ml',
-  litre: 'l', liter: 'l', litres: 'l', liters: 'l',
-  fluidounce: 'floz', fluidounces: 'floz',
-  cups: 'cup',
-  piece: 'count', pieces: 'count', pc: 'count', pcs: 'count', unit: 'count', units: 'count', each: 'count',
-};
-
-/** Resolve a unit cell to a `Unit`; blank ⇒ count; unknown ⇒ issue. */
-function parseUnitCell(raw: string): { unit: Unit } | { error: 'INVALID_UNIT' } {
-  const v = raw.trim().toLowerCase().replace(/\s+/g, '');
-  if (v === '') return { unit: 'count' };
-  if (UNIT_SET.has(v as Unit)) return { unit: v as Unit };
-  const alias = UNIT_ALIASES[v];
-  if (alias) return { unit: alias };
-  return { error: 'INVALID_UNIT' };
-}
-
 /** Parse a plain positive quantity (decimal comma tolerated). Not money. */
 function parseQuantityCell(
   raw: string,
@@ -375,7 +352,7 @@ export function parseRecipes(matrix: string[][]): ParseRecipesResult {
     const qty = qtyRaw === '' ? { error: 'INVALID_NUMBER' as const } : parseQuantityCell(qtyRaw);
     if ('error' in qty) add('quantity', qty.error);
 
-    const unitParsed = parseUnitCell(cell(raw, plan, 'unit'));
+    const unitParsed = parseUnitToken(cell(raw, plan, 'unit'));
     if ('error' in unitParsed) add('unit', unitParsed.error);
 
     // A line needs a valid ingredient name, quantity, and unit to be importable.
