@@ -3,6 +3,16 @@
     "name": "PrepProfit",
     "tagline": "Financial management for chefs and food businesses"
   },
+  "notifications": {
+    "welcome": {
+      "subject": "Welcome to PrepProfit, {org}",
+      "body": "Your organization {org} is ready. Add your ingredients and recipes to start costing, then explore financials, invoices and inventory. Reply to this email if you need a hand."
+    },
+    "lowStock": {
+      "subject": "{count, plural, one {# ingredient is running low} other {# ingredients are running low}}",
+      "body": "These ingredients in {org} are at or below their low-stock threshold and may need reordering:"
+    }
+  },
   "actionErrors": {
     "INVALID_INPUT": "Please check the values and try again.",
     "NOT_FOUND": "That item could not be found. It may have been removed.",

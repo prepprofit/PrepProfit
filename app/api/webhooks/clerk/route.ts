@@ -1,6 +1,10 @@
 import { verifyWebhook } from '@clerk/nextjs/webhooks';
+import { clerkClient } from '@clerk/nextjs/server';
 import type { NextRequest } from 'next/server';
 import { withOrg } from '@/lib/db';
+import { isEmailConfigured } from '@/lib/env';
+import { getEmailSender } from '@/lib/email/resend';
+import { sendWelcomeEmail } from '@/lib/email/notifications';
 import { writeAuditEvent, type AuditActor } from '@/lib/data/audit';
 import { ensureOrgSettingsRow } from '@/lib/data/org-settings';
 import { ensureCategoriesSeeded } from '@/lib/data/transaction-categories';
@@ -126,6 +130,28 @@ export async function POST(req: NextRequest): Promise<Response> {
           metadata: { eventType: evt.type },
         });
       });
+
+      // Best-effort welcome email (Sprint 5d) to the creating admin. Guarded by
+      // `isEmailConfigured` so an unconfigured environment skips QUIETLY, and fully
+      // try/caught so a Clerk/user-lookup or send failure never 500s the webhook
+      // (which would make Svix retry a delivery that already seeded the tenant).
+      if (isEmailConfigured()) {
+        try {
+          const createdBy = evt.data.created_by;
+          if (createdBy) {
+            const user = await (await clerkClient()).users.getUser(createdBy);
+            const to = user.primaryEmailAddress?.emailAddress;
+            if (to) {
+              await sendWelcomeEmail(getEmailSender(), {
+                to,
+                orgName: evt.data.name ?? 'your organization',
+              });
+            }
+          }
+        } catch (err) {
+          logError({ action: 'clerkWebhook.welcomeEmail' }, err);
+        }
+      }
       return new Response('OK', { status: 200 });
     }
 

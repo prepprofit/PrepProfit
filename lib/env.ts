@@ -93,6 +93,18 @@ function formatFrom(name: string, email: string): string {
   return `${display} <${email}>`;
 }
 
+/**
+ * True when Resend is configured enough to send mail, WITHOUT throwing. Lifecycle
+ * notifications (Sprint 5d: welcome, low-stock digest) are best-effort and
+ * non-critical, so their call sites check this first and skip QUIETLY when email is
+ * not set up — never logging a config error for an optional feature. (The
+ * user-triggered document email path, by contrast, calls {@link emailEnv} and
+ * surfaces `EMAIL_FAILED`.)
+ */
+export function isEmailConfigured(): boolean {
+  return emailEnvSchema.safeParse(process.env).success;
+}
+
 /** The Resend config required to actually send mail (a narrowed, non-optional view). */
 export type EmailEnv = {
   apiKey: string;

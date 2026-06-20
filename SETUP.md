@@ -86,6 +86,11 @@ These are validated lazily (`emailEnv()` in `lib/env.ts`): the rest of the app r
 them, and only the email send path requires them. A missing key surfaces as the stable
 `EMAIL_FAILED` action error, never a leaked secret.
 
+The same `RESEND_*` config also powers the Sprint 5d lifecycle emails — a welcome email on
+organization creation and a daily low-stock digest (to the org's business email) from the
+purge cron. These are best-effort: when Resend is unconfigured they are skipped silently
+(`isEmailConfigured()`), never erroring.
+
 Required when AI photo recipe extraction is enabled (Sprint 4.7):
 
 - `GEMINI_API_KEY` - Google Gemini API key (Google AI Studio → API keys). A secret; never

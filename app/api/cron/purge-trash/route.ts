@@ -6,7 +6,13 @@ import { writeAuditEvent } from '@/lib/data/audit';
 import { isCronAuthorized } from '@/lib/cron-auth';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { purgeCutoff } from '@/lib/trash';
-import { serverEnv } from '@/lib/env';
+import { isEmailConfigured, serverEnv } from '@/lib/env';
+import { listIngredients } from '@/lib/data/ingredients';
+import { getOrgSettingsRow } from '@/lib/data/org-settings';
+import { selectLowStock } from '@/lib/calculations/inventory';
+import { getEmailSender } from '@/lib/email/resend';
+import { sendLowStockEmail, type LowStockLineItem } from '@/lib/email/notifications';
+import { logError } from '@/lib/observability';
 
 // Needs Node (neon-serverless Pool/WebSocket + node:crypto), never the Edge
 // runtime; force-dynamic so it is never statically cached.
@@ -40,6 +46,10 @@ export async function GET(req: Request): Promise<NextResponse> {
   const cutoff = purgeCutoff();
   const client = await clerkClient();
 
+  // Low-stock digest (Sprint 5d) piggybacks on this daily org sweep, but only when
+  // email is actually configured — otherwise we skip the extra per-org reads.
+  const emailOn = isEmailConfigured();
+
   let offset = 0;
   let orgs = 0;
   let purgedRecipes = 0;
@@ -47,6 +57,7 @@ export async function GET(req: Request): Promise<NextResponse> {
   let purgedTransactions = 0;
   let purgedCustomers = 0;
   let purgedInvoices = 0;
+  let lowStockEmails = 0;
 
   for (;;) {
     const { data, totalCount } = await client.organizations.getOrganizationList({
@@ -90,6 +101,46 @@ export async function GET(req: Request): Promise<NextResponse> {
       purgedCustomers += result.customers;
       purgedInvoices += result.invoices;
       orgs += 1;
+
+      // Best-effort low-stock digest (Sprint 5d): send only when the org has a
+      // business email AND ingredients at/below threshold. Fully try/caught and
+      // sent OUTSIDE the purge tx, so a mail failure never affects the purge or
+      // other orgs.
+      if (emailOn) {
+        try {
+          const digest = await withOrg(org.id, async (tx) => {
+            const settings = await getOrgSettingsRow(tx, org.id);
+            const to = settings?.businessEmail?.trim() || null;
+            if (!to) return null;
+            const low = selectLowStock(
+              (await listIngredients(tx, org.id)).map((i) => ({
+                name: i.name,
+                dimension: i.dimension,
+                stockCanonical: Number(i.stockQuantity),
+                thresholdCanonical:
+                  i.lowStockThreshold == null ? null : Number(i.lowStockThreshold),
+              })),
+            );
+            return low.length > 0 ? { to, low } : null;
+          });
+          if (digest) {
+            const items: LowStockLineItem[] = digest.low.map((i) => ({
+              name: i.name,
+              stockCanonical: i.stockCanonical,
+              thresholdCanonical: i.thresholdCanonical as number,
+              dimension: i.dimension,
+            }));
+            await sendLowStockEmail(getEmailSender(), {
+              to: digest.to,
+              orgName: org.name,
+              items,
+            });
+            lowStockEmails += 1;
+          }
+        } catch (err) {
+          logError({ action: 'cron.lowStockEmail', orgId: org.id }, err);
+        }
+      }
     }
 
     offset += data.length;
@@ -105,5 +156,6 @@ export async function GET(req: Request): Promise<NextResponse> {
     purgedTransactions,
     purgedCustomers,
     purgedInvoices,
+    lowStockEmails,
   });
 }
