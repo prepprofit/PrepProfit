@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Sidebar } from './sidebar';
 import { TopBar } from './top-bar';
 import { CommandPalette } from './command-palette';
@@ -19,6 +20,7 @@ export function AppShell({
   /** Forwarded to both Sidebar instances; hides Finance for kitchen role. */
   canSeeFinance: boolean;
 }) {
+  const tTop = useTranslations('topbar');
   const [open, setOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState(false);
@@ -101,6 +103,7 @@ export function AppShell({
           ref={dialogRef}
           role="dialog"
           aria-modal="true"
+          aria-label={tTop('menuTitle')}
           tabIndex={-1}
           className={cn(
             'absolute inset-y-0 left-0 w-64 max-w-[85%] shadow-xl outline-none transition-transform duration-200',
