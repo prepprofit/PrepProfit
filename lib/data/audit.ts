@@ -72,6 +72,13 @@ export type AuditAction =
   // holds only entity + counts (importable/created/skipped), never cell contents.
   | 'import.preview'
   | 'import.commit'
+  // AI photo recipe extraction (Sprint 4.7). `ai.extract` = an image was extracted
+  // and staged as a recipe_photo job (status `parsed`); `ai.extractFailed` = the
+  // provider/validation failed and a `failed` attempt was recorded. metadata holds
+  // only provider/model/token counts/quality-flag + issue COUNTS — never the image
+  // or recipe text.
+  | 'ai.extract'
+  | 'ai.extractFailed'
   // Automated cron purge (system actor)
   | 'cron.purge';
 

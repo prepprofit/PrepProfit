@@ -39,9 +39,16 @@ export type FileImportEntity = (typeof FILE_IMPORT_ENTITIES)[number];
 /** Physical dimension of a quantity — mirrors lib/units `Dimension`. */
 export type ImportDimension = 'weight' | 'volume' | 'count';
 
-/** Supported file formats in v1. `.docx` tables are a Sprint 4.6 question. */
+/** Supported spreadsheet FILE formats (template + upload). `.docx` is backlog. */
 export const IMPORT_FORMATS = ['csv', 'xlsx'] as const;
-export type ImportFormat = (typeof IMPORT_FORMATS)[number];
+export type FileImportFormat = (typeof IMPORT_FORMATS)[number];
+
+/**
+ * Source format stored on a job. A spreadsheet job is `csv`/`xlsx`; an AI photo
+ * extraction job (Sprint 4.7) is `photo`. TS-only on the column (drizzle text-enum
+ * emits no DB CHECK) — adding `photo` needs no migration.
+ */
+export type ImportFormat = FileImportFormat | 'photo';
 
 /**
  * Job lifecycle. `parsed` = staged, awaiting confirm; `committed` = applied

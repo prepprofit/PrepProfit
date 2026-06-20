@@ -22,6 +22,8 @@
     "UPGRADE_REQUIRED": "This feature isn't included in your current plan. Upgrade to unlock it.",
     "PLAN_LIMIT_REACHED": "You've reached your plan's limit. Upgrade to add more.",
     "IMPORT_EXPIRED": "This import preview has expired. Upload the file again to import it.",
+    "AI_EXTRACTION_FAILED": "We couldn't read a recipe from that photo. Try a clearer, well-lit image.",
+    "USAGE_LIMIT_REACHED": "You've used all of this month's photo extractions on your plan. They reset next month, or upgrade for more.",
     "UNEXPECTED": "Something went wrong on our end. Please try again."
   },
   "errors": {

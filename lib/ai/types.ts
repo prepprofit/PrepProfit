@@ -6,7 +6,10 @@
  * `ai_extraction_attempts` column `$type`s without dragging the Gemini SDK into the
  * schema / migration tooling. The SDK-coupled extractor + Zod validation live in
  * `lib/ai/recipe-extraction.ts`; the staged-payload MAPPING reuses `lib/import`.
+ *
+ * The type-only import below is erased at runtime, so this stays dependency-free.
  */
+import type { ImportRecipePayload, ImportRowIssue } from '@/lib/import/types';
 
 /**
  * Lifecycle of one extraction attempt. `pending` is written BEFORE the provider
@@ -34,3 +37,17 @@ export const AI_QUALITY_FLAGS = [
   'unreadable_image',
 ] as const;
 export type AiQualityFlag = (typeof AI_QUALITY_FLAGS)[number];
+
+/**
+ * The success body of the photo-extraction route: a staged `recipe_photo` job the
+ * client reviews (the SAME `ImportRecipePayload` + issues the 4.6 panel renders),
+ * plus the derived quality flags to warn on. Confirm reuses `confirmImportAction`
+ * with `{ jobId, resolutions }`.
+ */
+export type PhotoExtractionPreview = {
+  jobId: string;
+  counts: { total: number; importable: number; skipped: number; invalid: number };
+  issues: ImportRowIssue[];
+  recipePayload: ImportRecipePayload;
+  qualityFlags: AiQualityFlag[];
+};

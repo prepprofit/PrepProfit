@@ -48,6 +48,7 @@ import {
   RECIPE_IMPORT_ENTITIES,
   type ImportEntity,
   type ImportFormat,
+  type FileImportFormat,
   type ImportRecord,
   type ImportRecipePayload,
   type ImportRowIssue,
@@ -91,7 +92,7 @@ export type ImportActionState =
 const fail = (code: ActionErrorCode): ImportActionState => ({ ok: false, code });
 
 /** Allowed file extension per selected format (rejects `.xlsm`, etc.). */
-const EXT: Record<ImportFormat, string> = { csv: '.csv', xlsx: '.xlsx' };
+const EXT: Record<FileImportFormat, string> = { csv: '.csv', xlsx: '.xlsx' };
 
 /* -------------------------------------------------------------------------- */
 /* Preview (dry-run)                                                          */

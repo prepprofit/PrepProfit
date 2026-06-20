@@ -37,6 +37,18 @@ export const PLAN_LIMITS = {
 
 export type PlanLimitKind = keyof (typeof PLAN_LIMITS)[PlanTier];
 
+/**
+ * Monthly AI photo-extraction allowance per tier (Sprint 4.7, D4/Q2). App-enforced
+ * (counted in `ai_extraction_attempts`), NOT a Clerk feature — the `ai_extraction`
+ * FEATURE flag (Pro/Business) gates access; this map caps usage within it. Starter
+ * has no access, hence 0. Tunable here without a deploy of the gating logic.
+ */
+export const AI_EXTRACTION_MONTHLY_LIMIT = {
+  starter: 0,
+  pro: 50,
+  business: 300,
+} as const satisfies Record<PlanTier, number>;
+
 /* -------------------------------------------------------------------------- */
 /* Pure helpers (no Clerk I/O) — unit-testable without mocks.                 */
 /* -------------------------------------------------------------------------- */
@@ -106,4 +118,19 @@ export async function assertPlanLimit(
     limit: PLAN_LIMITS[tier][kind],
     tier,
   };
+}
+
+/**
+ * The active org's monthly AI-extraction allowance, read fail-closed (`starter` ⇒
+ * 0). The caller compares it against the count of this month's succeeded attempts
+ * inside `withOrg` and returns `USAGE_LIMIT_REACHED` when the next call would exceed
+ * it. Reads the tier fail-closed so an indeterminate billing state never widens the
+ * cap.
+ */
+export async function aiExtractionMonthlyLimit(): Promise<{
+  limit: number;
+  tier: PlanTier;
+}> {
+  const tier = await getPlanTier();
+  return { limit: AI_EXTRACTION_MONTHLY_LIMIT[tier], tier };
 }

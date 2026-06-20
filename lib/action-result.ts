@@ -35,6 +35,11 @@ export type ActionErrorCode =
   | 'PLAN_LIMIT_REACHED'
   // A staged import job was confirmed after its 24h TTL (Sprint 4.5) — re-upload.
   | 'IMPORT_EXPIRED'
+  // The AI vision provider failed or returned unusable output (Sprint 4.7). The
+  // image is discarded; nothing is staged.
+  | 'AI_EXTRACTION_FAILED'
+  // The org reached its monthly AI-extraction allowance for the plan (Sprint 4.7).
+  | 'USAGE_LIMIT_REACHED'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

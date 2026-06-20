@@ -33,8 +33,11 @@ export const RATE_LIMITS = {
   // and confirm. Per org+user; generous enough for normal use, tight enough that
   // scripted file-upload abuse trips it.
   import: { limit: 20, windowMs: MINUTE },
-  // Reserved for later sprints (helper already exists; nothing wired yet):
-  //   aiExtraction:  Sprint 4.7 photo recipe extraction
+  // AI photo recipe extraction (Sprint 4.7). TIGHT: each call uploads an image and
+  // hits a paid vision provider, so it gets a much smaller per-minute budget than a
+  // local import. This is burst/abuse control; the monthly per-plan cap (counted in
+  // ai_extraction_attempts) is the separate quota control.
+  aiExtraction: { limit: 5, windowMs: MINUTE },
 } as const satisfies Record<string, RateLimitConfig>;
 
 export type RateLimitBucket = keyof typeof RATE_LIMITS;

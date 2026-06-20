@@ -720,7 +720,7 @@ export const importJobs = pgTable(
     })
       .$type<ImportEntity>()
       .notNull(),
-    format: text('format', { enum: ['csv', 'xlsx'] })
+    format: text('format', { enum: ['csv', 'xlsx', 'photo'] })
       .$type<ImportFormat>()
       .notNull(),
     status: text('status', {

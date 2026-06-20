@@ -5,7 +5,7 @@ import {
   TRANSACTION_COLUMNS,
   RECIPE_COLUMNS,
 } from '@/lib/validation/import';
-import type { FileImportEntity, ImportFormat } from './types';
+import type { FileImportEntity, FileImportFormat } from './types';
 
 /**
  * Import TEMPLATE generation (Sprint 4.5). The downloadable starter files whose
@@ -67,7 +67,7 @@ export function buildXlsxTemplate(entity: FileImportEntity): Promise<Buffer> {
 /** The download filename for a template, e.g. `ingredients-import-template.csv`. */
 export function templateFilename(
   entity: FileImportEntity,
-  format: ImportFormat,
+  format: FileImportFormat,
 ): string {
   // Entity + format are validated enums; neutralize defensively anyway.
   return neutralizeFormula(`${entity}-import-template.${format}`);
