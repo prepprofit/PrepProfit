@@ -19,6 +19,7 @@ import type {
   ImportNormalizedRows,
   ImportRowIssue,
 } from '@/lib/import/types';
+import type { AiExtractionStatus, AiQualityFlag } from '@/lib/ai/types';
 
 /**
  * RULE #1 (CLAUDE.md): every business-data table has an `organization_id`
@@ -749,6 +750,73 @@ export const importJobs = pgTable(
       t.organizationId,
       t.idempotencyKey,
     ),
+    // Backs the composite (org, id) FK from `ai_extraction_attempts` (Sprint 4.7),
+    // so an attempt can never link to a job in another org.
+    unique('import_jobs_org_id_key').on(t.organizationId, t.id),
+  ],
+);
+
+/**
+ * AI photo recipe extraction attempts (Sprint 4.7). One row per extraction try:
+ * written `pending` BEFORE the provider call, flipped to `succeeded` (with a link
+ * to the staged `import_jobs` row) or `failed` (with an `error_code`). It is the
+ * observability + USAGE-METERING ledger — the monthly cap (D4) counts `succeeded`
+ * rows for the org in the current month, all inside the extract action's `withOrg`.
+ *
+ * RULE #1: it carries `organization_id`, is in `businessTables` (standard
+ * `org_isolation` RLS), and the optional `import_job_id` link is a composite
+ * (org, id) FK so it can only reference THIS org's jobs. `import_job_id` is NULL
+ * until a job is staged (a failed attempt has none) — MATCH SIMPLE means NULL rows
+ * skip the FK. ON DELETE restrict mirrors the other tables; import jobs are never
+ * hard-deleted, so it never blocks.
+ *
+ * It stores ONLY non-sensitive metadata (provider/model/status, token counts,
+ * derived quality flags, an error code) — NEVER the image bytes or raw model prose
+ * (CLAUDE.md: ephemeral images, log metadata not contents).
+ */
+export const aiExtractionAttempts = pgTable(
+  'ai_extraction_attempts',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // The Clerk user who ran the extraction (never null — extraction is authenticated).
+    actorUserId: text('actor_user_id').notNull(),
+    // The staged job this attempt produced; NULL until/unless a job is staged.
+    importJobId: text('import_job_id'),
+    // Vendor + pinned model id (lib/ai/recipe-extraction.ts), for traceability.
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    status: text('status', { enum: ['pending', 'succeeded', 'failed'] })
+      .$type<AiExtractionStatus>()
+      .notNull()
+      .default('pending'),
+    // Images sent in this attempt (1 in v1, D3); kept for future multi-image.
+    imageCount: integer('image_count').notNull().default(1),
+    // Provider token usage, when reported (NULL otherwise). Cost observability only.
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    // Estimated provider cost in micros (millionths of a currency unit); NULL when
+    // not computed. This is provider spend metadata, NOT tenant money.
+    costMicros: integer('cost_micros'),
+    // Derived, stable quality-flag codes (lib/ai/types.ts). Never raw model prose.
+    qualityFlags: jsonb('quality_flags').$type<AiQualityFlag[]>(),
+    // Stable ActionErrorCode/reason on a failed attempt (NULL when succeeded).
+    errorCode: text('error_code'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('ai_extraction_attempts_org_idx').on(t.organizationId),
+    // Serves the monthly usage count: succeeded rows per org, newest-first.
+    index('ai_extraction_attempts_org_created_idx').on(
+      t.organizationId,
+      t.createdAt,
+    ),
+    // Same-tenant link enforced at the DB level; NULL import_job_id rows skip it.
+    foreignKey({
+      columns: [t.organizationId, t.importJobId],
+      foreignColumns: [importJobs.organizationId, importJobs.id],
+      name: 'ai_extraction_attempts_job_fk',
+    }).onDelete('restrict'),
   ],
 );
 
@@ -806,6 +874,8 @@ export type Subscription = InferSelectModel<typeof subscriptions>;
 export type NewSubscription = InferInsertModel<typeof subscriptions>;
 export type ImportJob = InferSelectModel<typeof importJobs>;
 export type NewImportJob = InferInsertModel<typeof importJobs>;
+export type AiExtractionAttempt = InferSelectModel<typeof aiExtractionAttempts>;
+export type NewAiExtractionAttempt = InferInsertModel<typeof aiExtractionAttempts>;
 export type RateLimitRow = InferSelectModel<typeof rateLimits>;
 
 /** All business tables, for applying RLS in bulk. */
@@ -831,6 +901,9 @@ export const businessTables = [
   'subscriptions',
   // Staged import jobs (Sprint 4.5) — standard org_isolation RLS.
   'import_jobs',
+  // AI extraction attempts (Sprint 4.7) — observability + usage metering, standard
+  // org_isolation RLS.
+  'ai_extraction_attempts',
   // NOTE: `rate_limits` is intentionally ABSENT — it is infra, not tenant data,
   // and must work without an org context (see its table comment + lib/db/rls.ts).
 ] as const;
