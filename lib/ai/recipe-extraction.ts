@@ -29,17 +29,18 @@ import { aiEnv } from '@/lib/env';
 /* -------------------------------------------------------------------------- */
 
 /**
- * The pinned extraction model. **GA Gemini 3 Flash** (decision D1/Q3): cheap
- * single-call multimodal with native structured (JSON-schema) output and strong
- * vision. This is the only place the id appears.
+ * The pinned extraction model. **Gemini 3.5 Flash (Stable)** (decision D1/Q3):
+ * cheap single-call multimodal with native structured (JSON-schema) output and
+ * strong vision — the most capable Flash, and STABLE (Gemini 3 Flash is still
+ * Preview, so we avoid it in production). This is the only place the id appears.
  *
  * SWAP PATH (if this id is deprecated or a better model ships): change this
- * constant only. The provider is GA, not Preview, so no preview-deprecation risk;
- * the exact GA id should be re-confirmed against https://ai.google.dev/gemini-api/docs/models
- * at deploy time. A larger provider change (e.g. a Claude vision model) means
- * swapping the body of {@link getRecipeExtractor} behind the unchanged interface.
+ * constant only. Re-confirm the exact id against
+ * https://ai.google.dev/gemini-api/docs/models at deploy time. A larger provider
+ * change (e.g. a Claude vision model) means swapping the body of
+ * {@link getRecipeExtractor} behind the unchanged interface.
  */
-export const RECIPE_EXTRACTION_MODEL = 'gemini-3-flash';
+export const RECIPE_EXTRACTION_MODEL = 'gemini-3.5-flash';
 
 /** The provider/vendor label recorded on each `ai_extraction_attempts` row. */
 export const RECIPE_EXTRACTION_PROVIDER = 'google';

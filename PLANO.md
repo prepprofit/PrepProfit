@@ -31,7 +31,7 @@ Completed (continued):
 - [x] Sprint 4 - billing, entitlements, and organization lifecycle (Clerk Billing + Stripe, `lib/entitlements.ts`, webhooks + `subscriptions` mirror, onboarding, org self-delete lockdown)
 - [x] Sprint 4.5 - deterministic import foundation: ingredients and transactions (`import_jobs`, CSV/XLSX readers, staged preview/confirm)
 - [x] Sprint 4.6 - recipe import and ingredient resolver (pure resolver, recipe parser/templates, staged resolution + confirm, migration 0017 `needs_pricing`)
-- [x] Sprint 4.7 - AI photo recipe extraction (GA Gemini 3 Flash behind an injectable/mockable wrapper, migration 0018 `ai_extraction_attempts`, staged `recipe_photo` job reusing the 4.6 confirm, monthly caps Pro 50 / Business 300, ephemeral images; prod migrated to 0018)
+- [x] Sprint 4.7 - AI photo recipe extraction (Gemini 3.5 Flash (Stable) behind an injectable/mockable wrapper, migration 0018 `ai_extraction_attempts`, staged `recipe_photo` job reusing the 4.6 confirm, monthly caps Pro 50 / Business 300, ephemeral images; prod migrated to 0018)
 
 Next sprint:
 
@@ -320,7 +320,7 @@ Schema/infra:
 Tasks:
 
 - [x] Add image upload validation: MIME allowlist, file size cap, image count cap, basic dimension checks, and malware-safe handling. Reject PDFs and arbitrary files. (`lib/ai/image.ts` sniffs the REAL format from magic bytes — a renamed/spoofed PDF is rejected; 8 MB cap; min/max dimensions; 1 image in v1.)
-- [x] Add AI extraction service wrapper that accepts image input and returns a strict Zod-validated structure. (`lib/ai/recipe-extraction.ts` — injectable GA Gemini 3 Flash behind `RecipeExtractor`, structured JSON-schema output, model id pinned in one constant; `parseExtractionResponse` is the untrusted-input boundary; key via lazy `aiEnv()`, never logged.)
+- [x] Add AI extraction service wrapper that accepts image input and returns a strict Zod-validated structure. (`lib/ai/recipe-extraction.ts` — injectable Gemini 3.5 Flash (Stable) behind `RecipeExtractor`, structured JSON-schema output, model id pinned in one constant; `parseExtractionResponse` is the untrusted-input boundary; key via lazy `aiEnv()`, never logged.)
 - [x] Normalize extracted units through `lib/units`; unknown/ambiguous units become row issues, never silent guesses. (Shared `lib/units/token.ts`, reused by the spreadsheet parser; `lib/ai/map-extraction.ts` maps to the 4.6 `DraftRecipe[]` shape.)
 - [x] Run extracted ingredients through `resolveIngredient`: exact link, fuzzy suggestion, or staged new ingredient with `priceCents = 0` and `needs pricing`. (Reuses `planRecipeImport` unchanged.)
 - [x] Store the extraction result in `import_jobs` (entity `recipe_photo`, format `photo`, status `parsed`); confirm reuses Sprint 4.6 `confirmImportAction`.
@@ -349,7 +349,7 @@ Production notes (deploy checklist):
 
 - **Migration 0018** (`ai_extraction_attempts` + `import_jobs` unique `(organization_id, id)`): apply to prod Neon via `npm run db:migrate`. Journal `when` `1781946749470` > 0017's `1781904288429`, so the migrate-guard passes. The `recipe_photo` entity and `photo` job format are TS-only (no DB CHECK, confirmed by `db:generate`).
 - **`GEMINI_API_KEY`**: set in Vercel (Production) — validated lazily by `aiEnv()`; a missing/invalid key surfaces as `AI_EXTRACTION_FAILED`, never crashes other pages. Never logged.
-- **Model**: pinned in `RECIPE_EXTRACTION_MODEL` (`lib/ai/recipe-extraction.ts`); GA Gemini 3 Flash. Re-confirm the exact GA id at deploy; swapping is a one-line change.
+- **Model**: pinned in `RECIPE_EXTRACTION_MODEL` (`lib/ai/recipe-extraction.ts`); Gemini 3.5 Flash (Stable). Re-confirm the exact id at deploy; swapping is a one-line change.
 - **Caps**: monthly usage is Pro 50 / Business 300 (`AI_EXTRACTION_MONTHLY_LIMIT` in `lib/entitlements.ts`) — tunable without redeploying the gating logic. The `aiExtraction` rate bucket is 5/min.
 
 ---

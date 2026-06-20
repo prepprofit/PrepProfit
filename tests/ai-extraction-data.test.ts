@@ -63,7 +63,7 @@ describe('attempt lifecycle', () => {
       createExtractionAttempt(tx, ORG_A, {
         actorUserId: 'user_a',
         provider: 'google',
-        model: 'gemini-3-flash',
+        model: 'gemini-3.5-flash',
         imageCount: 1,
       }),
     );
@@ -96,7 +96,7 @@ describe('attempt lifecycle', () => {
       createExtractionAttempt(tx, ORG_A, {
         actorUserId: 'user_a',
         provider: 'google',
-        model: 'gemini-3-flash',
+        model: 'gemini-3.5-flash',
         imageCount: 1,
       }),
     );
@@ -142,7 +142,7 @@ describe('monthly usage count', () => {
         createExtractionAttempt(tx, org, {
           actorUserId: 'u',
           provider: 'google',
-          model: 'gemini-3-flash',
+          model: 'gemini-3.5-flash',
           imageCount: 1,
         }),
       );
@@ -160,7 +160,7 @@ describe('monthly usage count', () => {
       createExtractionAttempt(tx, org, {
         actorUserId: 'u',
         provider: 'google',
-        model: 'gemini-3-flash',
+        model: 'gemini-3.5-flash',
         imageCount: 1,
       }),
     );
@@ -168,7 +168,7 @@ describe('monthly usage count', () => {
       createExtractionAttempt(tx, org, {
         actorUserId: 'u',
         provider: 'google',
-        model: 'gemini-3-flash',
+        model: 'gemini-3.5-flash',
         imageCount: 1,
       }),
     );
@@ -198,7 +198,7 @@ describe('org isolation + RLS', () => {
       createExtractionAttempt(tx, ORG_B, {
         actorUserId: 'user_b',
         provider: 'google',
-        model: 'gemini-3-flash',
+        model: 'gemini-3.5-flash',
         imageCount: 1,
       }),
     );
@@ -252,7 +252,7 @@ describe('RLS WITH CHECK rejects cross-org writes', () => {
           organizationId: ORG_B,
           actorUserId: 'smuggler',
           provider: 'google',
-          model: 'gemini-3-flash',
+          model: 'gemini-3.5-flash',
         }),
       ),
     ).rejects.toThrow();
@@ -266,7 +266,7 @@ describe('RLS WITH CHECK rejects cross-org writes', () => {
           organizationId: ORG_A,
           actorUserId: 'user_a',
           provider: 'google',
-          model: 'gemini-3-flash',
+          model: 'gemini-3.5-flash',
         })
         .returning({ id: aiExtractionAttempts.id }),
     ).then((r) => r[0]?.id);
@@ -292,7 +292,7 @@ describe('composite FK blocks cross-tenant job links', () => {
         organizationId: ORG_A,
         actorUserId: 'user_a',
         provider: 'google',
-        model: 'gemini-3-flash',
+        model: 'gemini-3.5-flash',
         importJobId: jobB,
       }),
     ).rejects.toThrow();

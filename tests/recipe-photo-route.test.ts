@@ -50,7 +50,7 @@ const h = vi.hoisted(() => ({
   result: {
     recipe: null as unknown,
     usage: { inputTokens: 1000, outputTokens: 200 },
-    model: 'gemini-3-flash',
+    model: 'gemini-3.5-flash',
     provider: 'google',
   } as ExtractResult,
 }));
@@ -83,7 +83,7 @@ vi.mock('@/lib/ai/recipe-extraction', () => ({
     },
   }),
   RecipeExtractionError: class RecipeExtractionError extends Error {},
-  RECIPE_EXTRACTION_MODEL: 'gemini-3-flash',
+  RECIPE_EXTRACTION_MODEL: 'gemini-3.5-flash',
   RECIPE_EXTRACTION_PROVIDER: 'google',
 }));
 
@@ -134,7 +134,7 @@ beforeEach(() => {
   h.result = {
     recipe: goodRecipe,
     usage: { inputTokens: 1000, outputTokens: 200 },
-    model: 'gemini-3-flash',
+    model: 'gemini-3.5-flash',
     provider: 'google',
   };
 });
