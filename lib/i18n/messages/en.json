@@ -959,7 +959,33 @@
     "headline": "Stop guessing. Know what every dish really costs.",
     "subhead": "PrepProfit replaces your spreadsheets with a financial dashboard built for kitchens.",
     "ctaPrimary": "Start 14-day free trial",
-    "ctaSecondary": "Sign in"
+    "ctaSecondary": "Sign in",
+    "features": {
+      "title": "Everything a food business needs to run on the numbers",
+      "subtitle": "From the cost of a single dish to the month's profit — in one place, multi-tenant and secure.",
+      "costing": {
+        "title": "Recipe costing",
+        "body": "Ingredient cost, yield and loss, hidden costs and live margin on every recipe. Change a price, see the impact instantly."
+      },
+      "financials": {
+        "title": "Financials & break-even",
+        "body": "Track income and expenses, see dashboards and P&L, and simulate break-even scenarios before you commit."
+      },
+      "operations": {
+        "title": "Invoices, payroll & inventory",
+        "body": "Gap-free invoicing, employee shifts and period summaries, and an authoritative stock ledger with low-stock alerts."
+      },
+      "ai": {
+        "title": "Imports & AI photo extraction",
+        "body": "Import ingredients, transactions and recipes from CSV/Excel, or photograph a recipe and review an AI-drafted card."
+      }
+    },
+    "ctaBand": {
+      "title": "Ready to cook with confidence?",
+      "subtitle": "Start free. No spreadsheet surgery required.",
+      "action": "Create your account"
+    },
+    "footerNote": "Multi-tenant, role-based and secure by design."
   },
   "selectOrg": {
     "title": "Choose or create an organization",
