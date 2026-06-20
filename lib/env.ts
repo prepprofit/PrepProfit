@@ -102,6 +102,39 @@ export type EmailEnv = {
 };
 
 /**
+ * AI photo recipe extraction config (Sprint 4.7). Validated on its OWN narrow
+ * schema, read only by {@link aiEnv} on the extraction path — deliberately NOT
+ * part of `serverEnvSchema`, so a missing or malformed key fails only when an
+ * extraction is actually attempted (mapped to the stable `AI_EXTRACTION_FAILED`
+ * code) and never bricks the DB-backed pages. The API key is a secret — it is
+ * NEVER logged (the thrown message names only the var, never its value).
+ */
+const aiEnvSchema = z.object({
+  GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY must not be empty'),
+});
+
+/** The Gemini config required to call the extraction provider. */
+export type AiEnv = {
+  apiKey: string;
+};
+
+/**
+ * Asserts the AI-extraction key is configured and returns it narrowed. Throws a
+ * readable (key-free) error if `GEMINI_API_KEY` is missing or empty — the extract
+ * action maps that to a stable `AI_EXTRACTION_FAILED` code and logs it via
+ * `logError` (which never receives the key itself). Call only on the extraction
+ * path: validation is scoped here so missing AI config never crashes the rest of
+ * the app. The thrown message lists only the var NAME, never its (secret) value.
+ */
+export function aiEnv(): AiEnv {
+  const parsed = aiEnvSchema.safeParse(process.env);
+  if (!parsed.success) {
+    throw new Error(`AI extraction is not configured:\n${formatIssues(parsed.error)}`);
+  }
+  return { apiKey: parsed.data.GEMINI_API_KEY };
+}
+
+/**
  * Asserts the email-sending vars are configured and returns them narrowed. Throws
  * a readable (key-free) error if `RESEND_API_KEY` / `RESEND_FROM_EMAIL` are missing
  * or malformed — the email action maps that to a stable `EMAIL_FAILED` code and
