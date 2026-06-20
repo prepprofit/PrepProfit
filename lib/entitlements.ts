@@ -63,6 +63,28 @@ export function isWithinLimit(
 }
 
 /* -------------------------------------------------------------------------- */
+/* Comped orgs (operator / internal) — env-driven allowlist.                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Org ids that are COMPED to the highest tier (Business, all features) regardless
+ * of their Clerk billing state. This is for the SaaS operator's own org(s) and
+ * internal/staff orgs — NOT a role bypass: only the exact ids listed in the
+ * `COMPED_ORG_IDS` env var (comma-separated) are affected, everything else still
+ * reads the real plan fail-closed. Empty/unset by default, so production billing
+ * for customers is untouched. Read fresh each call so changing the env var (and
+ * redeploying) takes effect without code changes.
+ */
+function compedOrgIds(): Set<string> {
+  return new Set(
+    (process.env.COMPED_ORG_IDS ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean),
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Clerk-bound helpers (server only).                                         */
 /* -------------------------------------------------------------------------- */
 
@@ -72,7 +94,9 @@ export function isWithinLimit(
  */
 export async function getPlanTier(): Promise<PlanTier> {
   try {
-    const { has } = await auth();
+    const { has, orgId } = await auth();
+    // Operator/internal comp: a listed org is treated as Business.
+    if (orgId && compedOrgIds().has(orgId)) return 'business';
     if (typeof has !== 'function') return 'starter';
     if (has({ plan: 'business' })) return 'business';
     if (has({ plan: 'pro' })) return 'pro';
@@ -85,7 +109,9 @@ export async function getPlanTier(): Promise<PlanTier> {
 /** Whether the active org's plan includes `feature`. Fail-closed to `false`. */
 export async function canUseFeature(feature: Feature): Promise<boolean> {
   try {
-    const { has } = await auth();
+    const { has, orgId } = await auth();
+    // Operator/internal comp: a listed org has every feature.
+    if (orgId && compedOrgIds().has(orgId)) return true;
     return typeof has === 'function' ? has({ feature }) === true : false;
   } catch {
     return false;

@@ -95,6 +95,17 @@ Required when AI photo recipe extraction is enabled (Sprint 4.7):
   The model id is pinned in one place (`RECIPE_EXTRACTION_MODEL` in
   `lib/ai/recipe-extraction.ts`); swapping models is a one-line change there.
 
+Optional (operator/internal access):
+
+- `COMPED_ORG_IDS` - comma-separated Clerk organization ids that are treated as the
+  Business tier (all paid features, unlimited recipe cap) regardless of their Clerk
+  billing state. Empty/unset by default, so customer billing is untouched. Use it to
+  grant your own org full access without a paid subscription (e.g. when production
+  Clerk Billing runs against live Stripe and you don't want to charge yourself). This
+  is an explicit per-org allowlist read server-side (`lib/entitlements.ts`), NOT a
+  role bypass — only the exact ids listed are affected; every other org still reads
+  its real plan fail-closed.
+
 Optional (tests only):
 
 - `TEST_DATABASE_URL` - a disposable Neon branch for the opt-in real-Postgres

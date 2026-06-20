@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 type HasFn = (params: { plan?: string; feature?: string }) => boolean;
 
 const h = vi.hoisted(() => ({
-  auth: null as null | (() => Promise<{ has?: HasFn }>),
+  auth: null as null | (() => Promise<{ has?: HasFn; orgId?: string }>),
 }));
 
 vi.mock('@clerk/nextjs/server', () => ({
@@ -30,8 +30,14 @@ function setHas(fn: HasFn) {
   h.auth = async () => ({ has: fn });
 }
 
+/** Point `auth()` at a fake `has` + an active org id (for comp-allowlist tests). */
+function setAuth(fn: HasFn, orgId: string) {
+  h.auth = async () => ({ has: fn, orgId });
+}
+
 afterEach(() => {
   h.auth = null;
+  delete process.env.COMPED_ORG_IDS;
   vi.restoreAllMocks();
 });
 
@@ -104,6 +110,33 @@ describe('canUseFeature / requireFeature', () => {
     };
     expect(await canUseFeature('invoices')).toBe(false);
     expect(await requireFeature('invoices')).toBe('UPGRADE_REQUIRED');
+  });
+});
+
+describe('comped orgs (COMPED_ORG_IDS allowlist)', () => {
+  const OPERATOR = 'org_operator';
+
+  it('grants Business tier + every feature to a listed org with no paid plan', async () => {
+    process.env.COMPED_ORG_IDS = `org_other, ${OPERATOR} `; // spaces/extra ids tolerated
+    setAuth(() => false, OPERATOR); // Clerk says: no plan, no feature
+    expect(await getPlanTier()).toBe('business');
+    expect(await canUseFeature('ai_extraction')).toBe(true);
+    expect(await canUseFeature('payroll')).toBe(true);
+    const cap = await assertPlanLimit('recipes', 99_999);
+    expect(cap).toEqual({ allowed: true, limit: Infinity, tier: 'business' });
+  });
+
+  it('does NOT affect an org that is not on the list', async () => {
+    process.env.COMPED_ORG_IDS = OPERATOR;
+    setAuth(() => false, 'org_customer');
+    expect(await getPlanTier()).toBe('starter');
+    expect(await canUseFeature('ai_extraction')).toBe(false);
+  });
+
+  it('is inert when COMPED_ORG_IDS is unset (default: customer gating untouched)', async () => {
+    setAuth(() => false, OPERATOR);
+    expect(await getPlanTier()).toBe('starter');
+    expect(await canUseFeature('ai_extraction')).toBe(false);
   });
 });
 
