@@ -131,6 +131,25 @@ Optional (tests only):
   (`DATABASE_URL=<branch-url> npm run db:migrate`), then
   `TEST_DATABASE_URL=<branch-url> npm test`. Never point it at production.
 
+Optional (Playwright E2E smoke, Sprint 5b):
+
+- `npm run test:e2e` runs the launch smoke (`tests/e2e/smoke.spec.ts`). With no Clerk
+  test instance configured it runs only the always-on public checks (landing + sign-in
+  render) and passes. The authed manager + kitchen-RBAC specs skip themselves unless the
+  vars below are set against a **Clerk TEST instance** (never production):
+  - `CLERK_PUBLISHABLE_KEY` / `CLERK_SECRET_KEY` - the test instance keys (`@clerk/testing`
+    exchanges the secret for a Testing Token so sign-in bypasses bot/CAPTCHA challenges).
+  - `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` - a seeded manager (`org:admin`) test user.
+  - `E2E_KITCHEN_EMAIL` / `E2E_KITCHEN_PASSWORD` (optional) - a seeded kitchen member, to
+    assert `/financials` renders NoAccess server-side.
+  - `E2E_BASE_URL` (optional) - target an already-running/remote app instead of having
+    Playwright build+start one locally.
+  In CI the `e2e` job runs only when the repo **variable** `RUN_E2E == 'true'`; provide the
+  same values as secrets prefixed `E2E_CLERK_PUBLISHABLE_KEY`/`E2E_CLERK_SECRET_KEY` plus
+  `E2E_DATABASE_URL`, `E2E_USER_*`, and optional `E2E_KITCHEN_*`. Until then the job is
+  skipped (never a red check). Dependency upgrades are automated via
+  `.github/dependabot.yml` and a prod `npm audit --audit-level=high` CI step.
+
 Required when billing webhooks are enabled (Sprint 4c):
 
 - `CLERK_WEBHOOK_SIGNING_SECRET` - from Clerk Dashboard → Webhooks; verifies the
