@@ -8,6 +8,7 @@ import { getDb, withOrg } from '@/lib/db';
 import { ingredients } from '@/lib/db/schema';
 import { isForeignKeyViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
+import { trackEvent } from '@/lib/analytics';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { assertPlanLimit } from '@/lib/entitlements';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
@@ -377,6 +378,14 @@ export async function confirmImportAction(
     if (outcome.kind === 'plan_limit') return fail('PLAN_LIMIT_REACHED');
 
     revalidateForEntity(outcome.entity);
+    // Product analytics (Sprint 5c): post-success, PII-free (entity + count only).
+    if (outcome.kind === 'ok') {
+      await trackEvent({
+        event: 'import_committed',
+        orgId: organizationId,
+        properties: { entity: outcome.entity, created: outcome.created },
+      });
+    }
     return {
       ok: true,
       phase: 'committed',

@@ -5,6 +5,7 @@ import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { markOnboarded } from '@/lib/data/org-settings';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
+import { trackEvent } from '@/lib/analytics';
 import type { ActionResult } from '@/lib/action-result';
 
 /**
@@ -33,6 +34,9 @@ export async function completeOnboardingAction(): Promise<ActionResult> {
       metadata: {},
     });
   });
+
+  // Product analytics (Sprint 5c): post-success, before the redirect throws.
+  await trackEvent({ event: 'organization_onboarded', orgId: organizationId });
 
   redirect('/dashboard');
 }

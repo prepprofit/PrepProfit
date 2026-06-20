@@ -4,6 +4,7 @@ import { canUseFeature, aiExtractionMonthlyLimit } from '@/lib/entitlements';
 import { getDb, withOrg } from '@/lib/db';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { logError } from '@/lib/observability';
+import { trackEvent } from '@/lib/analytics';
 import { writeAuditEvent } from '@/lib/data/audit';
 import { createImportJob } from '@/lib/data/import-jobs';
 import { planRecipeImport } from '@/lib/data/import';
@@ -174,6 +175,12 @@ export async function POST(req: Request): Promise<NextResponse> {
         recipePayload: plan.payload,
         qualityFlags: mapped.qualityFlags,
       };
+    });
+    // Product analytics (Sprint 5c): post-success, PII-free (counts only).
+    await trackEvent({
+      event: 'recipe_photo_extracted',
+      orgId: organizationId,
+      properties: { importable: preview.counts.importable },
     });
     return NextResponse.json(preview, { status: 200, headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {

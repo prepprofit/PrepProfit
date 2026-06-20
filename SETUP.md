@@ -160,9 +160,14 @@ Required when billing webhooks are enabled (Sprint 4c):
 - `CLERK_WEBHOOK_SIGNING_SECRET` - from Clerk Dashboard → Webhooks; verifies the
   billing webhook (`/api/webhooks/clerk`). Not used until slice 4c lands.
 
-Planned later:
+Optional (product analytics, Sprint 5c):
 
-- PostHog analytics keys in Sprint 5c
+- `POSTHOG_KEY` - PostHog project API key. When unset, analytics is a no-op
+  (fail-open): a small allowlist of PII-free business events (recipe created,
+  invoice issued, import committed, photo extracted, org onboarded) is simply not
+  captured. Validated lazily (`analyticsEnv()` in `lib/env.ts`); never logged.
+- `POSTHOG_HOST` (optional) - PostHog ingestion host. Defaults to
+  `https://us.i.posthog.com`; set to `https://eu.i.posthog.com` for the EU cloud.
 
 ## 4. Migrations and RLS
 

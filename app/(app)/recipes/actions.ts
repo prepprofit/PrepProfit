@@ -5,6 +5,7 @@ import { getOrgId } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { isUniqueViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
+import { trackEvent } from '@/lib/analytics';
 import {
   countActiveRecipes,
   createRecipe,
@@ -52,6 +53,12 @@ export async function createRecipeAction(
   });
   if (!row) return { ok: false, code: 'PLAN_LIMIT_REACHED' };
   revalidateRecipe(row.id);
+  // Product analytics (Sprint 5c): post-success, PII-free, best-effort.
+  await trackEvent({
+    event: 'recipe_created',
+    orgId: organizationId,
+    properties: { hasFolder: row.folderId !== null },
+  });
   return { ok: true, data: row };
 }
 

@@ -114,6 +114,40 @@ export type EmailEnv = {
 };
 
 /**
+ * Product analytics config (Sprint 5c). PostHog server-side capture of a small
+ * allowlist of business events (no PII, no money). Validated on its OWN narrow
+ * schema, read only by {@link analyticsEnv} on the capture path — NOT part of
+ * `serverEnvSchema`, so a missing key just disables analytics (fail-open) and never
+ * affects a request. The key is a project write key (not a secret like an API
+ * secret), but is still only read from env, never logged.
+ */
+const analyticsEnvSchema = z.object({
+  POSTHOG_KEY: z.string().min(1),
+  POSTHOG_HOST: z
+    .string()
+    .url()
+    .optional()
+    .default('https://us.i.posthog.com'),
+});
+
+export type AnalyticsEnv = { key: string; host: string };
+
+/** True when PostHog is configured, WITHOUT throwing (fail-open analytics gate). */
+export function isAnalyticsConfigured(): boolean {
+  return analyticsEnvSchema.safeParse(process.env).success;
+}
+
+/**
+ * Returns the analytics config, or `null` when unconfigured (so the caller no-ops
+ * instead of throwing — analytics is never load-bearing). Never logs the key.
+ */
+export function analyticsEnv(): AnalyticsEnv | null {
+  const parsed = analyticsEnvSchema.safeParse(process.env);
+  if (!parsed.success) return null;
+  return { key: parsed.data.POSTHOG_KEY, host: parsed.data.POSTHOG_HOST };
+}
+
+/**
  * AI photo recipe extraction config (Sprint 4.7). Validated on its OWN narrow
  * schema, read only by {@link aiEnv} on the extraction path — deliberately NOT
  * part of `serverEnvSchema`, so a missing or malformed key fails only when an

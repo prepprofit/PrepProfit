@@ -6,6 +6,7 @@ import { requireFeature } from '@/lib/entitlements';
 import { withOrg } from '@/lib/db';
 import { isForeignKeyViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
+import { trackEvent } from '@/lib/analytics';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
   createCustomer,
@@ -205,6 +206,8 @@ export async function issueInvoiceAction(
     }
     if (outcome.status === 'empty') return { ok: false, code: 'INVALID_INPUT' };
     revalidateInvoices();
+    // Product analytics (Sprint 5c): post-success, PII-free (no number/amount).
+    await trackEvent({ event: 'invoice_issued', orgId: organizationId });
     return { ok: true, data: { number: outcome.invoice.number ?? '' } };
   } catch (err) {
     return unexpected('issueInvoiceAction', err, organizationId);
