@@ -1,8 +1,15 @@
 import { getTranslations } from 'next-intl/server';
-import { getOrgSettings } from '@/lib/data/org-settings';
+import { getOrgId } from '@/lib/auth';
+import {
+  getOrgSettingsRow,
+  readAccountDeletionState,
+  DEFAULT_ORG_SETTINGS,
+} from '@/lib/data/org-settings';
+import { withOrg } from '@/lib/db';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
 import { NoAccess } from '@/components/app/no-access';
 import { SettingsForm } from './settings-form';
+import { AccountPrivacy } from './account-privacy';
 
 export default async function SettingsPage() {
   const t = await getTranslations('settings');
@@ -13,7 +20,13 @@ export default async function SettingsPage() {
     return <NoAccess title={t('noAccess.title')} body={t('noAccess.body')} />;
   }
 
-  const settings = await getOrgSettings();
+  // One read for both the form values and the pending-deletion state.
+  const organizationId = await getOrgId();
+  const row = await withOrg(organizationId, (tx) =>
+    getOrgSettingsRow(tx, organizationId),
+  );
+  const settings = row ?? DEFAULT_ORG_SETTINGS;
+  const deletion = readAccountDeletionState(row);
 
   return (
     <div className="flex flex-col gap-5">
@@ -29,6 +42,10 @@ export default async function SettingsPage() {
           businessEmail: settings.businessEmail,
           businessLogoUrl: settings.businessLogoUrl,
         }}
+      />
+
+      <AccountPrivacy
+        deletionRequestedAt={deletion.requestedAt?.toISOString() ?? null}
       />
     </div>
   );

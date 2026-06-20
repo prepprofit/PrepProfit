@@ -38,6 +38,10 @@ export const RATE_LIMITS = {
   // local import. This is burst/abuse control; the monthly per-plan cap (counted in
   // ai_extraction_attempts) is the separate quota control.
   aiExtraction: { limit: 5, windowMs: MINUTE },
+  // GDPR account data export (Sprint 5e). TIGHT: reads every business table and
+  // serialises the whole org, so it is the heaviest read in the app — a small
+  // per-org+user budget is plenty for a legitimate portability request.
+  accountExport: { limit: 3, windowMs: MINUTE },
 } as const satisfies Record<string, RateLimitConfig>;
 
 export type RateLimitBucket = keyof typeof RATE_LIMITS;

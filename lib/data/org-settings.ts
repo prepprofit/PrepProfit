@@ -111,6 +111,72 @@ export async function markOnboarded(
     });
 }
 
+/** A pending GDPR deletion request's state (Sprint 5e); all null = none pending. */
+export type AccountDeletionState = {
+  requestedAt: Date | null;
+  requestedBy: string | null;
+  reason: string | null;
+};
+
+/** Read the pending-deletion fields off a settings row (null row = no request). */
+export function readAccountDeletionState(
+  row: OrganizationSettings | null,
+): AccountDeletionState {
+  return {
+    requestedAt: row?.deletionRequestedAt ?? null,
+    requestedBy: row?.deletionRequestedBy ?? null,
+    reason: row?.deletionReason ?? null,
+  };
+}
+
+/**
+ * Records a manager's request to erase the org's data (Sprint 5e). This ONLY marks
+ * the request — it deletes nothing; org self-delete is disabled in Clerk (Sprint
+ * 4e) and an operator fulfils erasure out-of-band. Upserts so a brand-new org with
+ * no settings row still works; re-requesting refreshes the timestamp/reason. Must
+ * run inside `withOrg`.
+ */
+export async function requestAccountDeletion(
+  db: TenantClient,
+  organizationId: string,
+  params: { userId: string | null; reason: string | null },
+): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(organizationSettings)
+    .values({
+      organizationId,
+      deletionRequestedAt: now,
+      deletionRequestedBy: params.userId,
+      deletionReason: params.reason,
+    })
+    .onConflictDoUpdate({
+      target: organizationSettings.organizationId,
+      set: {
+        deletionRequestedAt: now,
+        deletionRequestedBy: params.userId,
+        deletionReason: params.reason,
+        updatedAt: now,
+      },
+    });
+}
+
+/** Clears a pending deletion request (Sprint 5e). Must run inside `withOrg`. */
+export async function cancelAccountDeletion(
+  db: TenantClient,
+  organizationId: string,
+): Promise<void> {
+  await db
+    .update(organizationSettings)
+    .set({
+      deletionRequestedAt: null,
+      deletionRequestedBy: null,
+      deletionReason: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(organizationSettings.organizationId, organizationId));
+}
+
 /**
  * Server convenience: current org's settings (currency + measurement system),
  * falling back to {@link DEFAULT_ORG_SETTINGS} before the org has saved any.

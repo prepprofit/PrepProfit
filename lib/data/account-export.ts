@@ -1,0 +1,93 @@
+import { eq } from 'drizzle-orm';
+import type { TenantClient } from '@/lib/db/tenant';
+import {
+  organizationSettings,
+  ingredients,
+  recipeFolders,
+  recipes,
+  recipeIngredients,
+  inventoryMovements,
+  transactionCategories,
+  transactions,
+  customers,
+  invoiceCounters,
+  invoices,
+  invoiceItems,
+  employees,
+  shifts,
+  auditLog,
+  subscriptions,
+  importJobs,
+  aiExtractionAttempts,
+} from '@/lib/db/schema';
+
+/**
+ * GDPR org data export (Sprint 5e). Builds a single JSON bundle of EVERY business
+ * table the org owns, for a portability/access request. RULE #1: must run inside
+ * `withOrg(orgId)` so RLS scopes every read to the active tenant; we ALSO filter
+ * each query by `organization_id` explicitly (belt-and-suspenders, and so the pure
+ * builder is correct even in a non-RLS test harness).
+ *
+ * Scope: the same tables listed in `businessTables` (lib/db/schema.ts) EXCEPT
+ * `rate_limits`, which is infra, not tenant data, carries no `organization_id`, and
+ * is absent from `businessTables`. The `audit_log` IS included — it is the org's own
+ * activity trail. This is a read-only snapshot; it deletes nothing.
+ */
+
+/** Bump when the bundle's shape changes, so importers can detect the version. */
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 1;
+
+export type OrgDataExport = {
+  schemaVersion: number;
+  organizationId: string;
+  exportedAt: string;
+  data: Record<string, unknown[]>;
+};
+
+export async function buildOrgDataExport(
+  tx: TenantClient,
+  organizationId: string,
+): Promise<OrgDataExport> {
+  // One ordered list keeps the output stable and the org filter uniform. Every
+  // business table exposes `.organizationId` (RULE #1).
+  const tables = [
+    ['organizationSettings', organizationSettings],
+    ['ingredients', ingredients],
+    ['recipeFolders', recipeFolders],
+    ['recipes', recipes],
+    ['recipeIngredients', recipeIngredients],
+    ['inventoryMovements', inventoryMovements],
+    ['transactionCategories', transactionCategories],
+    ['transactions', transactions],
+    ['customers', customers],
+    ['invoiceCounters', invoiceCounters],
+    ['invoices', invoices],
+    ['invoiceItems', invoiceItems],
+    ['employees', employees],
+    ['shifts', shifts],
+    ['auditLog', auditLog],
+    ['subscriptions', subscriptions],
+    ['importJobs', importJobs],
+    ['aiExtractionAttempts', aiExtractionAttempts],
+  ] as const;
+
+  const data: Record<string, unknown[]> = {};
+  for (const [key, table] of tables) {
+    data[key] = await tx
+      .select()
+      .from(table)
+      .where(eq(table.organizationId, organizationId));
+  }
+
+  return {
+    schemaVersion: ACCOUNT_EXPORT_SCHEMA_VERSION,
+    organizationId,
+    exportedAt: new Date().toISOString(),
+    data,
+  };
+}
+
+/** Total row count across every table — a cheap, PII-free descriptor for the audit log. */
+export function countExportRows(bundle: OrgDataExport): number {
+  return Object.values(bundle.data).reduce((sum, rows) => sum + rows.length, 0);
+}

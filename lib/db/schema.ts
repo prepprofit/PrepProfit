@@ -80,6 +80,14 @@ export const organizationSettings = pgTable('organization_settings', {
   // sends a manager to /onboarding. Never reset (markOnboarded only sets it when
   // currently NULL). Purely a UX nudge — it gates no data.
   onboardedAt: timestamp('onboarded_at', { withTimezone: true }),
+  // GDPR account-deletion request (Sprint 5e). A manager can REQUEST erasure of the
+  // org's data; org self-delete is disabled in Clerk (Sprint 4e), so an operator
+  // fulfils it out-of-band. NULL = no pending request. These record the request,
+  // they do NOT delete anything: `deletionRequestedBy` is the Clerk user id who
+  // asked, `deletionReason` is an optional free-text note. Cleared on cancel.
+  deletionRequestedAt: timestamp('deletion_requested_at', { withTimezone: true }),
+  deletionRequestedBy: text('deletion_requested_by'),
+  deletionReason: text('deletion_reason'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

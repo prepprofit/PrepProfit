@@ -79,6 +79,13 @@ export type AuditAction =
   // or recipe text.
   | 'ai.extract'
   | 'ai.extractFailed'
+  // GDPR account lifecycle (Sprint 5e). `account.export` = a manager downloaded the
+  // full org data bundle (metadata = row count only, never the data). `account.
+  // deletionRequest` / `account.deletionCancel` = a manager asked to erase / undid
+  // the request (metadata = whether a reason was given, never its text).
+  | 'account.export'
+  | 'account.deletionRequest'
+  | 'account.deletionCancel'
   // Automated cron purge (system actor)
   | 'cron.purge';
 

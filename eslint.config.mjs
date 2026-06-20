@@ -12,6 +12,20 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
+    // Underscore-prefixed args/vars are intentionally unused (e.g. the
+    // `useActionState` (_prevState, _formData) signature on input-less actions).
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
+    },
+  },
+  {
     ignores: [
       'node_modules/**',
       '.next/**',

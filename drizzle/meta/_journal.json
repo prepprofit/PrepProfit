@@ -134,6 +134,13 @@
       "when": 1781946749470,
       "tag": "0018_brave_night_thrasher",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1781982276678,
+      "tag": "0019_minor_mysterio",
+      "breakpoints": true
     }
   ]
 }

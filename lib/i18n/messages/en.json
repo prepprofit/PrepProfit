@@ -323,6 +323,25 @@
     },
     "save": "Save settings",
     "saved": "Settings saved.",
+    "privacy": {
+      "title": "Data & privacy",
+      "description": "Export your organization's data or request its deletion.",
+      "export": {
+        "title": "Export your data",
+        "help": "Download a complete JSON copy of your organization's data — recipes, ingredients, financials, invoices, payroll, imports and activity log.",
+        "action": "Download data export"
+      },
+      "delete": {
+        "title": "Delete this organization",
+        "help": "Request permanent deletion of your organization and all its data. This records the request — our team processes it and confirms by email. It does not delete anything immediately.",
+        "reasonLabel": "Reason (optional)",
+        "reasonPlaceholder": "Tell us why you're leaving (optional)",
+        "requestAction": "Request account deletion",
+        "cancelAction": "Cancel deletion request",
+        "pending": "A deletion request is pending. Our team will process it shortly.",
+        "pendingSince": "A deletion request is pending since {date}. Our team will process it shortly."
+      }
+    },
     "noAccess": {
       "title": "Managers only",
       "body": "Workspace settings — currency and measurement system — can only be changed by a manager. Ask an organization manager if you need a change."
