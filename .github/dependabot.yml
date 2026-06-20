@@ -9,6 +9,17 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Hold these majors: Next is a pinned stack choice (CLAUDE.md — no stack change
+    # without explicit approval), eslint-config-next must track Next's major, and
+    # write-excel-file v4 breaks our XLSX export API. Major bumps for these are a
+    # deliberate, separately-tested exercise — not an automated PR.
+    ignore:
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "write-excel-file"
+        update-types: ["version-update:semver-major"]
     groups:
       production-minor-patch:
         applies-to: version-updates
