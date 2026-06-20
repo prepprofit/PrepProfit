@@ -42,7 +42,7 @@
     "recharts": "^3.8.1",
     "resend": "^6.14.0",
     "tailwind-merge": "^3.6.0",
-    "write-excel-file": "^2.3.10",
+    "write-excel-file": "^4.1.1",
     "ws": "^8.21.0",
     "zod": "^4.4.3"
   },
