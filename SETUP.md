@@ -86,6 +86,15 @@ These are validated lazily (`emailEnv()` in `lib/env.ts`): the rest of the app r
 them, and only the email send path requires them. A missing key surfaces as the stable
 `EMAIL_FAILED` action error, never a leaked secret.
 
+Required when AI photo recipe extraction is enabled (Sprint 4.7):
+
+- `GEMINI_API_KEY` - Google Gemini API key (Google AI Studio → API keys). A secret; never
+  commit it and it is never logged. Validated lazily (`aiEnv()` in `lib/env.ts`): the rest
+  of the app runs without it, and only the extraction route requires it. A missing/invalid
+  key surfaces as the stable `AI_EXTRACTION_FAILED` action error, never a leaked secret.
+  The model id is pinned in one place (`RECIPE_EXTRACTION_MODEL` in
+  `lib/ai/recipe-extraction.ts`); swapping models is a one-line change there.
+
 Optional (tests only):
 
 - `TEST_DATABASE_URL` - a disposable Neon branch for the opt-in real-Postgres

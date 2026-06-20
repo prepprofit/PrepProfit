@@ -318,15 +318,15 @@ Schema/infra:
 
 Tasks:
 
-- [ ] Add image upload validation: MIME allowlist, file size cap, image count cap, basic dimension checks, and malware-safe handling. Reject PDFs and arbitrary files in this sprint.
-- [ ] Add AI extraction service wrapper that accepts image input and returns a strict Zod-validated structure: recipe name, yield/portions, ingredient lines, quantities, units, preparation notes, warnings, and confidence per field.
-- [ ] Normalize extracted units through `lib/units`; unknown/ambiguous units become row issues, never silent guesses.
-- [ ] Run extracted ingredients through `resolveIngredient`: exact link, fuzzy suggestion, or staged new ingredient with `priceCents = 0` and `needs pricing`.
-- [ ] Store the extraction result in `import_jobs` with status `parsed`; confirm reuses Sprint 4.6 recipe import confirm path.
-- [ ] Build `/recipes/import/photo` UI: camera/upload on mobile, progress state, preview grid, image-quality warnings, ingredient match resolution, required confirmation.
-- [ ] Add rate limit, entitlement checks, monthly usage cap, audit events, and provider error mapping to stable `ActionErrorCode`s.
-- [ ] Add test fixtures with mocked AI output: good photo, blurry/incomplete photo, ambiguous units, hallucinated ingredient, duplicate ingredient, cross-org confirm attempt, usage-limit exceeded.
-- [ ] Add observability for extraction success/failure/cost without logging raw recipe text beyond normal org-scoped import job data.
+- [x] Add image upload validation: MIME allowlist, file size cap, image count cap, basic dimension checks, and malware-safe handling. Reject PDFs and arbitrary files. (`lib/ai/image.ts` sniffs the REAL format from magic bytes — a renamed/spoofed PDF is rejected; 8 MB cap; min/max dimensions; 1 image in v1.)
+- [x] Add AI extraction service wrapper that accepts image input and returns a strict Zod-validated structure. (`lib/ai/recipe-extraction.ts` — injectable GA Gemini 3 Flash behind `RecipeExtractor`, structured JSON-schema output, model id pinned in one constant; `parseExtractionResponse` is the untrusted-input boundary; key via lazy `aiEnv()`, never logged.)
+- [x] Normalize extracted units through `lib/units`; unknown/ambiguous units become row issues, never silent guesses. (Shared `lib/units/token.ts`, reused by the spreadsheet parser; `lib/ai/map-extraction.ts` maps to the 4.6 `DraftRecipe[]` shape.)
+- [x] Run extracted ingredients through `resolveIngredient`: exact link, fuzzy suggestion, or staged new ingredient with `priceCents = 0` and `needs pricing`. (Reuses `planRecipeImport` unchanged.)
+- [x] Store the extraction result in `import_jobs` (entity `recipe_photo`, format `photo`, status `parsed`); confirm reuses Sprint 4.6 `confirmImportAction`.
+- [x] Build `/recipes/import/photo` UI: camera/upload on mobile, progress state, preview grid, image-quality warnings, ingredient match resolution, required confirmation. (Reuses the 4.6 resolution panel + recipe grid, extracted to `recipe-resolution.tsx`.)
+- [x] Add rate limit (`aiExtraction` bucket), entitlement checks (`ai_extraction`, Pro/Business), monthly usage cap (Pro 50 / Business 300), audit events (`ai.extract` / `ai.extractFailed`), and provider error mapping to stable `ActionErrorCode`s (`AI_EXTRACTION_FAILED`, `USAGE_LIMIT_REACHED`). Migration 0018 = `ai_extraction_attempts` (org-scoped, RLS, observability + usage meter).
+- [x] Add test fixtures with mocked AI output: good photo, blurry/incomplete photo, ambiguous units, hallucinated ingredient, duplicate ingredient, cross-org confirm attempt, usage-limit exceeded. (Provider always mocked, never called.)
+- [x] Add observability for extraction success/failure/cost without logging raw recipe text. (`ai_extraction_attempts` stores provider/model/token/quality-flag metadata only; audit metadata is counts only.)
 
 Acceptance criteria:
 
@@ -343,6 +343,13 @@ Out of scope:
 - Automatic creation without review.
 - OCR tuning for every handwriting style.
 - Free-form text/doc extraction beyond recipe photos. Promote these only after v1 usage proves demand.
+
+Production notes (deploy checklist):
+
+- **Migration 0018** (`ai_extraction_attempts` + `import_jobs` unique `(organization_id, id)`): apply to prod Neon via `npm run db:migrate`. Journal `when` `1781946749470` > 0017's `1781904288429`, so the migrate-guard passes. The `recipe_photo` entity and `photo` job format are TS-only (no DB CHECK, confirmed by `db:generate`).
+- **`GEMINI_API_KEY`**: set in Vercel (Production) — validated lazily by `aiEnv()`; a missing/invalid key surfaces as `AI_EXTRACTION_FAILED`, never crashes other pages. Never logged.
+- **Model**: pinned in `RECIPE_EXTRACTION_MODEL` (`lib/ai/recipe-extraction.ts`); GA Gemini 3 Flash. Re-confirm the exact GA id at deploy; swapping is a one-line change.
+- **Caps**: monthly usage is Pro 50 / Business 300 (`AI_EXTRACTION_MONTHLY_LIMIT` in `lib/entitlements.ts`) — tunable without redeploying the gating logic. The `aiExtraction` rate bucket is 5/min.
 
 ---
 
