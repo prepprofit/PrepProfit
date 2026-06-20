@@ -1,5 +1,7 @@
+import Link from 'next/link';
+import { Camera } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
-import { getOrgId } from '@/lib/auth';
+import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listRecipes, type RecipeFilter } from '@/lib/data/recipes';
 import { listFoldersWithCounts } from '@/lib/data/recipe-folders';
@@ -48,10 +50,22 @@ export default async function RecipesPage({
   );
 
   const folderOptions = listing.folders.map((f) => ({ id: f.id, name: f.name }));
+  const canImportPhoto = canAccessFinancials(await getUserRole());
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+        {canImportPhoto && (
+          <Link
+            href="/recipes/import/photo"
+            className="inline-flex items-center gap-2 text-sm font-medium text-accent-700 transition-colors hover:text-accent-800 dark:text-accent-300"
+          >
+            <Camera className="size-4" />
+            {t('importPhoto.link')}
+          </Link>
+        )}
+      </div>
       <div className="grid items-start gap-5 lg:grid-cols-[20rem_1fr]">
         <FolderRail listing={listing} activeKey={activeKey} />
         <RecipeList

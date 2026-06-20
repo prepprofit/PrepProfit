@@ -137,6 +137,44 @@
   "recipes": {
     "title": "Recipes",
     "subtitle": "Build a recipe, see what it really costs, and price it with confidence.",
+    "importPhoto": {
+      "link": "Import from photo",
+      "subtitle": "Snap a photo of a recipe and we'll turn it into a draft you review before anything is saved.",
+      "noAccess": {
+        "title": "Managers only",
+        "body": "Photo extraction creates recipes and ingredients, so it's available to managers only. Ask an organization manager if you need to import a recipe."
+      },
+      "upgrade": {
+        "body": "AI photo extraction is included on the Pro and Business plans. Upgrade to turn recipe photos into reviewable drafts."
+      },
+      "upload": {
+        "title": "Upload a recipe photo",
+        "help": "Use a clear, well-lit photo of a printed or handwritten recipe (JPEG, PNG or WebP, up to 8 MB). One recipe per photo.",
+        "cta": "Extract recipe",
+        "extracting": "Reading the photo…"
+      },
+      "preview": {
+        "title": "Review the draft",
+        "subtitle": "Check the ingredients and matches. Nothing is created until you confirm.",
+        "qualityTitle": "Check these — the photo wasn't fully clear",
+        "importable": "{count, plural, one {# recipe ready} other {# recipes ready}}",
+        "skipped": "{count, plural, one {# line skipped} other {# lines skipped}}",
+        "confirm": "Create {count, plural, one {# recipe} other {# recipes}}",
+        "confirming": "Creating…",
+        "nothingToImport": "We couldn't read any usable lines from this photo. Try a clearer image."
+      },
+      "committed": {
+        "created": "Created {count, plural, one {# recipe} other {# recipes}}.",
+        "already": "This draft was already imported. Nothing new was added."
+      },
+      "flags": {
+        "low_confidence": "Some values were read with low confidence — double-check them.",
+        "ambiguous_unit": "A unit couldn't be recognized, so that line was left out.",
+        "missing_quantity": "A quantity couldn't be read, so that line was left out.",
+        "unreadable_image": "The photo was hard to read — results may be incomplete."
+      },
+      "startOver": "Start over"
+    },
     "empty": "No recipes yet. Create your first one above.",
     "newName": "New recipe name",
     "portions": "{count} portions",
