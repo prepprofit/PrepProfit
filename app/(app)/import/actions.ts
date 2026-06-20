@@ -44,12 +44,13 @@ import {
   MAX_IMPORT_BYTES,
   IMPORT_JOB_TTL_MS,
 } from '@/lib/validation/import';
-import type {
-  ImportEntity,
-  ImportFormat,
-  ImportRecord,
-  ImportRecipePayload,
-  ImportRowIssue,
+import {
+  RECIPE_IMPORT_ENTITIES,
+  type ImportEntity,
+  type ImportFormat,
+  type ImportRecord,
+  type ImportRecipePayload,
+  type ImportRowIssue,
 } from '@/lib/import/types';
 import type { ActionErrorCode } from '@/lib/action-result';
 
@@ -314,8 +315,10 @@ export async function confirmImportAction(
         const valid = z.array(importTransactionRecordSchema).safeParse(stored);
         if (!valid.success) return { kind: 'invalid' as const };
         created = await applyTransactionRecords(tx, organizationId, valid.data);
-      } else {
-        // Recipes: validate the stored payload, the client's resolution choices
+      } else if (RECIPE_IMPORT_ENTITIES.includes(job.entity)) {
+        // Recipes (spreadsheet) and recipe_photo (AI extraction) BOTH stage an
+        // ImportRecipePayload and confirm identically. Validate the stored payload,
+        // the client's resolution choices
         // (D8), re-check that every linked id is an ACTIVE org ingredient, enforce
         // the recipe plan cap all-or-nothing (D7), then apply.
         const valid = importRecipePayloadSchema.safeParse(stored);
@@ -352,6 +355,9 @@ export async function confirmImportAction(
         }
 
         created = await applyRecipeImport(tx, organizationId, payload, built.choices);
+      } else {
+        // Defense: an unrecognized entity is never applied.
+        return { kind: 'invalid' as const };
       }
 
       await markImportJobCommitted(tx, organizationId, jobId);
@@ -390,8 +396,8 @@ function revalidateForEntity(entity: ImportEntity): void {
   if (entity === 'ingredients') {
     revalidatePath('/ingredients');
     revalidatePath('/inventory');
-  } else if (entity === 'recipes') {
-    // Recipe import may also create new (unpriced) ingredients.
+  } else if (entity === 'recipes' || entity === 'recipe_photo') {
+    // Recipe import (spreadsheet or photo) may also create new (unpriced) ingredients.
     revalidatePath('/recipes');
     revalidatePath('/ingredients');
   } else {

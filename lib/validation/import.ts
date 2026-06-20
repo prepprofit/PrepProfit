@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { dateStringSchema } from '@/lib/validation/transactions';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
 import { TRANSACTION_TYPES } from '@/lib/validation/transactions';
-import { IMPORT_ENTITIES, IMPORT_FORMATS } from '@/lib/import/types';
+import { FILE_IMPORT_ENTITIES, IMPORT_FORMATS } from '@/lib/import/types';
 import { MAX_SUGGESTIONS } from '@/lib/import/resolveIngredient';
 
 /**
@@ -22,9 +22,9 @@ export const MAX_IMPORT_ROWS = 1_000;
 /** How long a parsed job stays confirmable. */
 export const IMPORT_JOB_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
-/** Entity + format selection (template download, preview upload). */
+/** Entity + format selection (template download, preview upload — file flows only). */
 export const importParamsSchema = z.object({
-  entity: z.enum(IMPORT_ENTITIES),
+  entity: z.enum(FILE_IMPORT_ENTITIES),
   format: z.enum(IMPORT_FORMATS),
 });
 

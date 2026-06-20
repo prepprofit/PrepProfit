@@ -5,7 +5,7 @@ import {
   TRANSACTION_COLUMNS,
   RECIPE_COLUMNS,
 } from '@/lib/validation/import';
-import type { ImportEntity, ImportFormat } from './types';
+import type { FileImportEntity, ImportFormat } from './types';
 
 /**
  * Import TEMPLATE generation (Sprint 4.5). The downloadable starter files whose
@@ -15,14 +15,14 @@ import type { ImportEntity, ImportFormat } from './types';
  * formula-trigger characters; the XLSX writer still neutralizes text cells.
  */
 
-const COLUMNS: Record<ImportEntity, readonly string[]> = {
+const COLUMNS: Record<FileImportEntity, readonly string[]> = {
   ingredients: INGREDIENT_COLUMNS,
   transactions: TRANSACTION_COLUMNS,
   recipes: RECIPE_COLUMNS,
 };
 
 /** Illustrative example rows (cells aligned to each entity's column order). */
-const EXAMPLES: Record<ImportEntity, string[][]> = {
+const EXAMPLES: Record<FileImportEntity, string[][]> = {
   ingredients: [
     ['Flour T55', 'weight', '1.20', 'ACME Foods'],
     ['Olive oil', 'volume', '8.50', ''],
@@ -52,12 +52,12 @@ const EXAMPLES: Record<ImportEntity, string[][]> = {
 };
 
 /** Build the CSV template bytes for an entity. */
-export function buildCsvTemplate(entity: ImportEntity): string {
+export function buildCsvTemplate(entity: FileImportEntity): string {
   return toCsv([...COLUMNS[entity]], EXAMPLES[entity]);
 }
 
 /** Build the XLSX template bytes for an entity (Node runtime). */
-export function buildXlsxTemplate(entity: ImportEntity): Promise<Buffer> {
+export function buildXlsxTemplate(entity: FileImportEntity): Promise<Buffer> {
   const header = COLUMNS[entity].map((c) => headerCell(c));
   const body = EXAMPLES[entity].map((row) => row.map((v) => textCell(v)));
   const sheet: Sheet = { name: entity, rows: [header, ...body] };
@@ -66,7 +66,7 @@ export function buildXlsxTemplate(entity: ImportEntity): Promise<Buffer> {
 
 /** The download filename for a template, e.g. `ingredients-import-template.csv`. */
 export function templateFilename(
-  entity: ImportEntity,
+  entity: FileImportEntity,
   format: ImportFormat,
 ): string {
   // Entity + format are validated enums; neutralize defensively anyway.

@@ -10,9 +10,31 @@
  * step applies them. The client never sends rows back — it holds only a job id.
  */
 
-/** Entities importable after Sprint 4.6 (recipes added; see lib/import/parse.ts). */
-export const IMPORT_ENTITIES = ['ingredients', 'transactions', 'recipes'] as const;
+/**
+ * Import entities. `recipes` (Sprint 4.6) and `recipe_photo` (Sprint 4.7) BOTH
+ * stage an `ImportRecipePayload` and share the confirm path; they differ only in
+ * origin (a spreadsheet vs an AI photo extraction) for audit/observability. All are
+ * TS-only `import_jobs.entity` values — the drizzle text-enum emits no DB CHECK, so
+ * adding one needs no migration.
+ */
+export const IMPORT_ENTITIES = [
+  'ingredients',
+  'transactions',
+  'recipes',
+  'recipe_photo',
+] as const;
 export type ImportEntity = (typeof IMPORT_ENTITIES)[number];
+
+/** Entities whose staged payload is an `ImportRecipePayload` (share the confirm path). */
+export const RECIPE_IMPORT_ENTITIES: readonly ImportEntity[] = ['recipes', 'recipe_photo'];
+
+/**
+ * Entities importable from a spreadsheet FILE — they have a downloadable template
+ * and go through the generic preview→confirm upload. `recipe_photo` is NOT here: it
+ * is staged only by the AI extract action, never the file/template routes.
+ */
+export const FILE_IMPORT_ENTITIES = ['ingredients', 'transactions', 'recipes'] as const;
+export type FileImportEntity = (typeof FILE_IMPORT_ENTITIES)[number];
 
 /** Physical dimension of a quantity — mirrors lib/units `Dimension`. */
 export type ImportDimension = 'weight' | 'volume' | 'count';

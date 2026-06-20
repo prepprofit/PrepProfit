@@ -715,7 +715,9 @@ export const importJobs = pgTable(
     organizationId: orgId(),
     // The Clerk user who uploaded the file (never null — imports are authenticated).
     actorUserId: text('actor_user_id').notNull(),
-    entity: text('entity', { enum: ['ingredients', 'transactions', 'recipes'] })
+    entity: text('entity', {
+      enum: ['ingredients', 'transactions', 'recipes', 'recipe_photo'],
+    })
       .$type<ImportEntity>()
       .notNull(),
     format: text('format', { enum: ['csv', 'xlsx'] })
