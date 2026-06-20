@@ -31,10 +31,11 @@ Completed (continued):
 - [x] Sprint 4 - billing, entitlements, and organization lifecycle (Clerk Billing + Stripe, `lib/entitlements.ts`, webhooks + `subscriptions` mirror, onboarding, org self-delete lockdown)
 - [x] Sprint 4.5 - deterministic import foundation: ingredients and transactions (`import_jobs`, CSV/XLSX readers, staged preview/confirm)
 - [x] Sprint 4.6 - recipe import and ingredient resolver (pure resolver, recipe parser/templates, staged resolution + confirm, migration 0017 `needs_pricing`)
+- [x] Sprint 4.7 - AI photo recipe extraction (GA Gemini 3 Flash behind an injectable/mockable wrapper, migration 0018 `ai_extraction_attempts`, staged `recipe_photo` job reusing the 4.6 confirm, monthly caps Pro 50 / Business 300, ephemeral images; prod migrated to 0018)
 
 Next sprint:
 
-- [ ] Sprint 4.7 - AI photo recipe extraction
+- [ ] Sprint 5 - launch readiness and beta operations
 
 ---
 
