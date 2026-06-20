@@ -1,12 +1,16 @@
+import * as Sentry from '@sentry/nextjs';
 import type { ActionResult } from './action-result';
 
 /**
- * Minimal, dependency-free error observability. Every unexpected failure gets a
- * single structured `console.error` line with a correlation `eventId`, so prod
- * logs (Vercel) are searchable and the user-facing message can reference the id.
- * Deliberately tiny — swapping in Sentry later means changing only `logError`.
+ * Error observability seam. Every unexpected failure gets a single structured
+ * `console.error` line with a correlation `eventId` (searchable in Vercel logs and
+ * surfaced to the user) AND is forwarded to Sentry (Sprint 5a) tagged with that
+ * same id, so a log line and its Sentry issue cross-link. Sentry is FAIL-OPEN: with
+ * no DSN configured it is a no-op, and a forwarding failure can never escalate the
+ * original error — `logError` always returns the id and never throws.
  *
- * Privacy: we log the org id (needed to scope an incident) but never user PII.
+ * Privacy: we attach the org id (needed to scope an incident) but never user PII;
+ * `sendDefaultPii: false` in the Sentry config enforces the same rule provider-side.
  */
 
 export type ErrorContext = {
@@ -36,6 +40,18 @@ export function logError(context: ErrorContext, err: unknown): string {
       stack,
     }),
   );
+
+  // Forward to Sentry under the SAME correlation id. Guarded so an SDK hiccup (or
+  // an unconfigured DSN edge case) can never turn an observed error into a thrown
+  // one. No-op when Sentry has no DSN.
+  try {
+    Sentry.captureException(err, {
+      tags: { action: context.action, eventId },
+      extra: { orgId: context.orgId },
+    });
+  } catch {
+    // Intentionally swallowed: observability must never break the request.
+  }
 
   return eventId;
 }

@@ -358,9 +358,14 @@ Production notes (deploy checklist):
 
 Goal: first real customers can use the product with supportable operations.
 
+Sliced into 5a-5g (each its own branch + gate + merge), recommended order
+`5a -> 5b -> 5e -> 5d -> 5c -> 5f -> 5g`: 5a observability, 5b CI hardening
+(E2E + dependency policy), 5c analytics, 5d lifecycle emails, 5e GDPR/data
+lifecycle, 5f accessibility/mobile, 5g launch ops + landing page.
+
 Tasks:
 
-- [ ] Sentry client/server integration, preserving current `logError`/`eventId` shape.
+- [x] **Sprint 5a** - Sentry client/server integration, preserving current `logError`/`eventId` shape. `@sentry/nextjs` wired through the existing `lib/observability.ts` seam (forwards every `logError` with its `eventId`/`action` tags, org id as extra, no PII; `sendDefaultPii: false`). FAIL-OPEN: with no DSN, `Sentry.init` is a no-op and a forwarding failure can never escalate the original error (`captureException` is `try/catch`-guarded). Config files: `instrumentation.ts` (`register` + `onRequestError`), `sentry.server.config.ts`, `sentry.edge.config.ts`, `instrumentation-client.ts`; `next.config.ts` wrapped with `withSentryConfig` (source-map upload only when `SENTRY_AUTH_TOKEN`/org/project set, so CI/local builds stay green). New env (all optional): `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` (documented in SETUP.md + `.env.example`; never logged). Test: `lib/observability.test.ts` (eventId unchanged, forwards tagged, fail-open). Production note: set `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN` (+ build-only `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT`) in Vercel; no migration.
 - [ ] Playwright E2E smoke in CI: sign in, create recipe, enter transaction, view dashboard, create invoice, and verify kitchen RBAC blocks sensitive routes.
 - [ ] Dependency maintenance: Dependabot/Renovate and `npm audit` policy in CI.
 - [ ] PostHog or equivalent product analytics for key events, with no sensitive payloads.

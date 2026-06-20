@@ -95,6 +95,22 @@ Required when AI photo recipe extraction is enabled (Sprint 4.7):
   The model id is pinned in one place (`RECIPE_EXTRACTION_MODEL` in
   `lib/ai/recipe-extraction.ts`); swapping models is a one-line change there.
 
+Optional (error monitoring, Sprint 5a):
+
+- `SENTRY_DSN` - server/edge Sentry DSN. When unset, Sentry is a no-op (fail-open): the
+  app behaves exactly as before, just console-only error logging. A DSN is not strictly
+  secret but is read only from env.
+- `NEXT_PUBLIC_SENTRY_DSN` - browser DSN (usually the same value). Inlined into the client
+  bundle at build time; also fail-open when unset.
+- `SENTRY_AUTH_TOKEN` (build/CI only) - uploads source maps so stack traces are readable.
+  A secret; never commit it and it is never logged. Without it the build still succeeds,
+  just without uploaded source maps.
+- `SENTRY_ORG` / `SENTRY_PROJECT` (build/CI only) - target org/project for source-map upload.
+
+  Sentry is wired through the existing `logError` seam (`lib/observability.ts`): every
+  unexpected error is forwarded with its correlation `eventId` and no PII (`sendDefaultPii:
+  false`). A forwarding failure can never escalate the original error.
+
 Optional (operator/internal access):
 
 - `COMPED_ORG_IDS` - comma-separated Clerk organization ids that are treated as the
@@ -122,8 +138,7 @@ Required when billing webhooks are enabled (Sprint 4c):
 
 Planned later:
 
-- AI provider key in Sprint 4.7
-- Sentry/PostHog secrets in Sprint 5
+- PostHog analytics keys in Sprint 5c
 
 ## 4. Migrations and RLS
 

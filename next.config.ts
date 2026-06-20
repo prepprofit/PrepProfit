@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 import createNextIntlPlugin from 'next-intl/plugin';
 
 const withNextIntl = createNextIntlPlugin('./lib/i18n/request.ts');
@@ -12,4 +13,13 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['read-excel-file', 'unzipper'],
 };
 
-export default withNextIntl(nextConfig);
+// Sentry (Sprint 5a) wraps the already-composed config. Source-map upload only
+// runs when `SENTRY_AUTH_TOKEN` (+ org/project) are present — so builds without
+// those secrets (CI, local) stay green; `silent` keeps non-CI build output clean.
+export default withSentryConfig(withNextIntl(nextConfig), {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  disableLogger: true,
+});
