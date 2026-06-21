@@ -8,6 +8,7 @@ import {
   timestamp,
   date,
   index,
+  uniqueIndex,
   unique,
   foreignKey,
   jsonb,
@@ -262,9 +263,20 @@ export const recipeIngredients = pgTable(
 );
 
 /**
- * Append-only inventory ledger. Each row is a signed canonical change to an
- * ingredient's stock (positive = in, negative = out). `ingredients.stock_quantity`
- * is the running total, updated in the same transaction (see lib/data/inventory.ts).
+ * Append-only inventory ledger (Sprint F1). Each row is a signed canonical change
+ * to an ingredient's stock (positive = in, negative = out).
+ * `ingredients.stock_quantity` is the running total, updated in the SAME
+ * transaction (see lib/data/inventory.ts). The ledger is AUTHORITATIVE and
+ * append-only at the DB layer — its RLS is SELECT/INSERT-only (lib/db/rls.ts), so
+ * a movement is never updated or deleted; corrections/reversals are new inserts.
+ *
+ * PROVENANCE + IDEMPOTENCY (F1):
+ *  - `source_type`/`source_id`/`source_line_id` trace WHY a movement happened
+ *    (which order/production/sale/count line produced it).
+ *  - `idempotency_key` is a DETERMINISTIC, caller-built key, unique per org, so a
+ *    retried/double-submitted write applies the movement exactly once.
+ *  - `reversal_of` (set only on `reversal` rows) points at the movement being
+ *    undone: an equal-and-opposite insert, never an edit/delete.
  */
 export const inventoryMovements = pgTable(
   'inventory_movements',
@@ -275,6 +287,19 @@ export const inventoryMovements = pgTable(
     // Signed canonical change (g / ml / count): + stock in, − stock out.
     deltaCanonical: numeric('delta_canonical', { precision: 12, scale: 2 }).notNull(),
     note: text('note'),
+    // Provenance: what kind of event produced this movement. NOT NULL — every
+    // movement has a source (legacy rows backfilled to 'seed'/'manual').
+    sourceType: text('source_type').notNull(),
+    // The source document id (order/production/sale/count) and its specific line.
+    // Both nullable: a manual/seed movement has no document; aggregated
+    // document-level consumption has no single line.
+    sourceId: text('source_id'),
+    sourceLineId: text('source_line_id'),
+    // Set ONLY on `source_type='reversal'` rows: the movement being undone (same
+    // org). A movement can be reversed at most once (partial unique below).
+    reversalOf: text('reversal_of'),
+    // Deterministic, caller-built dedup key, unique per org. NOT NULL.
+    idempotencyKey: text('idempotency_key').notNull(),
     createdAt: createdAt(),
   },
   (t) => [
@@ -283,12 +308,39 @@ export const inventoryMovements = pgTable(
       t.organizationId,
       t.ingredientId,
     ),
+    // Traceability: "every movement from order/production/sale X" (F1).
+    index('inventory_movements_org_source_idx').on(
+      t.organizationId,
+      t.sourceType,
+      t.sourceId,
+    ),
     // Same-tenant link enforced at the DB level; removing an ingredient also
-    // removes its movement history.
+    // removes its movement history (cascade is exempt from child-table RLS).
     foreignKey({
       columns: [t.organizationId, t.ingredientId],
       foreignColumns: [ingredients.organizationId, ingredients.id],
       name: 'inventory_movements_ingredient_fk',
+    }).onDelete('cascade'),
+    // Target for the composite self-FK below — lets a reversal reference the
+    // original by (organization_id, id), enforcing same-org at the DB level.
+    unique('inventory_movements_org_id_key').on(t.organizationId, t.id),
+    // Idempotency: one row per (org, deterministic key) → retries dedup.
+    unique('inventory_movements_org_idempotency_key').on(
+      t.organizationId,
+      t.idempotencyKey,
+    ),
+    // A movement can be reversed AT MOST ONCE. Partial unique so the many
+    // non-reversal rows (reversal_of NULL) don't collide.
+    uniqueIndex('inventory_movements_org_reversal_of_key')
+      .on(t.organizationId, t.reversalOf)
+      .where(sql`${t.reversalOf} is not null`),
+    // Composite self-FK: a reversal's target must be a real movement in the SAME
+    // org. Cascade so purging the original (only ever via ingredient purge) takes
+    // the reversal with it, avoiding self-referential delete-ordering issues.
+    foreignKey({
+      columns: [t.organizationId, t.reversalOf],
+      foreignColumns: [t.organizationId, t.id],
+      name: 'inventory_movements_reversal_of_fk',
     }).onDelete('cascade'),
   ],
 );

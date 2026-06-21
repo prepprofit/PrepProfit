@@ -12,21 +12,31 @@ import type { ActionResult } from '@/lib/action-result';
  * server, writes inside `withOrg` (RLS active), Zod validation on the server.
  */
 
+const MOVEMENT_ERROR_CODES = {
+  insufficient_stock: 'INSUFFICIENT_STOCK',
+  idempotency_conflict: 'IDEMPOTENCY_CONFLICT',
+  not_found: 'NOT_FOUND',
+} as const;
+
 export async function recordMovementAction(
   input: unknown,
 ): Promise<ActionResult<{ stockQuantity: number }>> {
   const parsed = movementSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
+  const { mutationId, ...movement } = parsed.data;
   const organizationId = await getOrgId();
   const result = await withOrg(organizationId, (tx) =>
-    recordMovement(tx, organizationId, parsed.data),
+    recordMovement(tx, organizationId, {
+      ...movement,
+      source: { type: 'manual' },
+      // CLIENT-generated, stable across retry/double-click (F1 criterion #2): the
+      // server never mints a fresh id, so a resubmit dedups instead of duplicating.
+      idempotencyKey: `manual:${mutationId}`,
+    }),
   );
   if (!result.ok) {
-    return {
-      ok: false,
-      code: result.reason === 'insufficient_stock' ? 'INSUFFICIENT_STOCK' : 'NOT_FOUND',
-    };
+    return { ok: false, code: MOVEMENT_ERROR_CODES[result.reason] };
   }
   revalidatePath('/inventory');
   return {

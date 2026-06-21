@@ -10,6 +10,10 @@ export const movementSchema = z.object({
     .min(-100_000_000)
     .max(100_000_000)
     .refine((v) => v !== 0, { message: 'Quantity must not be zero.' }),
+  // CLIENT-generated stable id (F1 mandatory criterion #2): the manual movement's
+  // idempotency key = `"manual:<mutationId>"`. The same id is resent on a retry/
+  // double-click so the movement applies exactly once; the server never mints it.
+  mutationId: z.string().uuid(),
   note: z
     .string()
     .trim()

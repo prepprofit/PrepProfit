@@ -141,6 +141,13 @@
       "when": 1781982276678,
       "tag": "0019_minor_mysterio",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1782023545688,
+      "tag": "0020_gigantic_bromley",
+      "breakpoints": true
     }
   ]
 }

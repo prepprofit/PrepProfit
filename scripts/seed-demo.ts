@@ -258,10 +258,22 @@ async function main() {
     let movementCount = 0;
     for (const i of INGREDIENTS) {
       const id = ingIdByName.get(i.name)!;
-      await recordMovement(tx, ORG, { ingredientId: id, deltaCanonical: i.opening, note: 'Opening stock' });
+      await recordMovement(tx, ORG, {
+        ingredientId: id,
+        deltaCanonical: i.opening,
+        note: 'Opening stock',
+        source: { type: 'seed' },
+        idempotencyKey: `seed:${id}:opening`,
+      });
       movementCount++;
       if (i.used) {
-        await recordMovement(tx, ORG, { ingredientId: id, deltaCanonical: -i.used, note: 'Production usage' });
+        await recordMovement(tx, ORG, {
+          ingredientId: id,
+          deltaCanonical: -i.used,
+          note: 'Production usage',
+          source: { type: 'seed' },
+          idempotencyKey: `seed:${id}:usage`,
+        });
         movementCount++;
       }
     }

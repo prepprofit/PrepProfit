@@ -42,6 +42,8 @@ describe('recordMovement', () => {
     const after1 = await recordMovement(db, ORG_A, {
       ingredientId,
       deltaCanonical: 1000,
+      source: { type: 'manual' },
+      idempotencyKey: 'test:add-1',
     });
     expect(after1.ok).toBe(true);
     if (after1.ok) expect(Number(after1.ingredient.stockQuantity)).toBe(1000);
@@ -50,6 +52,8 @@ describe('recordMovement', () => {
       ingredientId,
       deltaCanonical: 500,
       note: 'delivery',
+      source: { type: 'manual' },
+      idempotencyKey: 'test:add-2',
     });
     expect(after2.ok).toBe(true);
     if (after2.ok) expect(Number(after2.ingredient.stockQuantity)).toBe(1500);
@@ -59,6 +63,8 @@ describe('recordMovement', () => {
     const result = await recordMovement(db, ORG_A, {
       ingredientId,
       deltaCanonical: -5000,
+      source: { type: 'manual' },
+      idempotencyKey: 'test:oversized',
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('insufficient_stock');
@@ -80,6 +86,8 @@ describe('recordMovement', () => {
     const result = await recordMovement(db, ORG_B, {
       ingredientId,
       deltaCanonical: 100,
+      source: { type: 'manual' },
+      idempotencyKey: 'test:foreign-org',
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('not_found');
@@ -99,6 +107,8 @@ describe('recordMovement', () => {
     const result = await recordMovement(db, ORG_A, {
       ingredientId: ing.id,
       deltaCanonical: 500,
+      source: { type: 'manual' },
+      idempotencyKey: 'test:trashed',
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('not_found');
@@ -111,6 +121,8 @@ describe('recordMovement', () => {
     const result = await recordMovement(db, ORG_A, {
       ingredientId,
       deltaCanonical: -1500,
+      source: { type: 'manual' },
+      idempotencyKey: 'test:to-zero',
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(Number(result.ingredient.stockQuantity)).toBe(0);

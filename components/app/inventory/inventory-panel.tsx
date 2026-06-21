@@ -124,6 +124,11 @@ function InventoryRow({
   );
   const [thresholdUnit, setThresholdUnit] = React.useState<Unit>(du);
   const [pending, startTransition] = React.useTransition();
+  // Stable client-generated id for the CURRENT pending movement (F1 idempotency):
+  // a double-click / retry resends the SAME id → the server dedups instead of
+  // recording two movements. Rotated only after a SUCCESSFUL submit so the next
+  // intentional movement gets a fresh id.
+  const mutationIdRef = React.useRef(crypto.randomUUID());
 
   const low = isLowStock(stock, threshold);
 
@@ -138,12 +143,15 @@ function InventoryRow({
       const result = await recordMovementAction({
         ingredientId: ingredient.id,
         deltaCanonical: direction * magnitude,
+        mutationId: mutationIdRef.current,
         note,
       });
       if (result.ok) {
         setStock(result.data.stockQuantity);
         setAdjustValue('');
         setNote('');
+        // Fresh id for the next movement; a retry of THIS one reused the old id.
+        mutationIdRef.current = crypto.randomUUID();
       } else {
         onError(actionError(result.code));
       }

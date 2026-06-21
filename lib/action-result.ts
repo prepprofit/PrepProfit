@@ -15,6 +15,9 @@ export type ActionErrorCode =
   | 'INGREDIENT_IN_USE'
   // A stock-out larger than the ingredient's on-hand stock (would go negative).
   | 'INSUFFICIENT_STOCK'
+  // The same idempotency key was reused for a DIFFERENT movement payload (F1) —
+  // a real conflict, never silently deduped.
+  | 'IDEMPOTENCY_CONFLICT'
   | 'RECIPE_HAS_TRASHED_INGREDIENTS'
   | 'INGREDIENT_IN_TRASHED_RECIPE'
   | 'CATEGORY_IN_USE'
