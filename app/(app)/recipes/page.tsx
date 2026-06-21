@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Camera } from 'lucide-react';
+import { Camera, FileSpreadsheet, ShieldAlert } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import {
   canAccessFinancials,
@@ -68,15 +68,32 @@ export default async function RecipesPage({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
-        {canImportPhoto && (
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Allergen matrix is OPERATIONAL + money-free → visible to kitchen too. */}
           <Link
-            href="/recipes/import/photo"
+            href="/api/recipes/allergen-matrix/pdf"
             className="inline-flex items-center gap-2 text-sm font-medium text-accent-700 transition-colors hover:text-accent-800 dark:text-accent-300"
           >
-            <Camera className="size-4" />
-            {t('importPhoto.link')}
+            <ShieldAlert className="size-4" />
+            {t('allergenMatrix.pdf')}
           </Link>
-        )}
+          <Link
+            href="/api/recipes/allergen-matrix/xlsx"
+            className="inline-flex items-center gap-2 text-sm font-medium text-accent-700 transition-colors hover:text-accent-800 dark:text-accent-300"
+          >
+            <FileSpreadsheet className="size-4" />
+            {t('allergenMatrix.xlsx')}
+          </Link>
+          {canImportPhoto && (
+            <Link
+              href="/recipes/import/photo"
+              className="inline-flex items-center gap-2 text-sm font-medium text-accent-700 transition-colors hover:text-accent-800 dark:text-accent-300"
+            >
+              <Camera className="size-4" />
+              {t('importPhoto.link')}
+            </Link>
+          )}
+        </div>
       </div>
       <div className="grid items-start gap-5 lg:grid-cols-[20rem_1fr]">
         <FolderRail listing={listing} activeKey={activeKey} />

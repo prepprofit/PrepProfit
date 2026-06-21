@@ -1,4 +1,5 @@
 import type { InvoiceStatus } from '@/lib/db/schema';
+import type { AllergenSlug, Presence } from '@/lib/allergens/catalog';
 
 /**
  * Shared document view-models (Sprint 3.5A). Both the PDF renderer
@@ -219,4 +220,48 @@ export type PayrollDocumentLabels = {
   pay: string;
   total: string;
   empty: string;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Sprint 9 — kitchen allergen matrix (OPERATIONAL, money-free)               */
+/* -------------------------------------------------------------------------- */
+
+/** One recipe row in the allergen matrix: effective presence per shown allergen. */
+export type AllergenMatrixRow = {
+  recipeName: string;
+  /** Effective presence per allergen column; absent key = not present. */
+  cells: Partial<Record<AllergenSlug, Presence>>;
+  /** True if any ingredient on the recipe is unreviewed (warns, never "free"). */
+  hasUnreviewedIngredient: boolean;
+};
+
+/**
+ * Kitchen allergen matrix view-model (Sprint 9). Recipe × allergen, OPERATIONAL —
+ * it carries NO monetary key or value (it replaces the manager-only cost card for
+ * the kitchen's allergen needs). `allergens` are the columns actually present
+ * across the org's recipes, in catalog order; `rows` are the active recipes.
+ */
+export type AllergenMatrixData = {
+  seller: SellerIdentity;
+  /** Allergen columns present anywhere, catalog-sorted (may be empty). */
+  allergens: AllergenSlug[];
+  rows: AllergenMatrixRow[];
+  /** Bare 'YYYY-MM-DD' generation date. */
+  generatedOn: string;
+};
+
+export type AllergenMatrixLabels = {
+  title: string;
+  generatedOn: string;
+  recipe: string;
+  /** Non-legal disclaimer — load-bearing; printed on every surface. */
+  disclaimer: string;
+  /** Shown when the org has recorded no allergens at all (never "allergen-free"). */
+  noAllergensRecorded: string;
+  /** Marker text per presence level (e.g. "Contains" / "May contain"). */
+  presence: Record<Presence, string>;
+  /** "Unreviewed ingredients" warning note for a recipe. */
+  unreviewed: string;
+  /** Per-allergen column labels, keyed by slug. */
+  allergenLabels: Record<AllergenSlug, string>;
 };

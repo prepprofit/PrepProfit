@@ -45,6 +45,19 @@ export type AuditAction =
   // an ingredient, not a person), never names or notes.
   | 'ingredient.priceUpdate'
   | 'ingredient.priceAccept'
+  // Allergens (Sprint 9). `allergen.ingredientReview` = an ingredient's allergen
+  // tags were replaced + the review stamped (kitchen OR manager — metadata carries
+  // the before/after presence SETS as slugs, plus the reviewer is `actor_user_id`).
+  // `allergen.overrideAdd` = a recipe add/escalate override; `allergen.overrideClear`
+  // = a manual override cleared. metadata = allergen slug(s) + presence only, never
+  // a free-text reason or any PII.
+  | 'allergen.ingredientReview'
+  | 'allergen.overrideAdd'
+  | 'allergen.overrideClear'
+  // Kitchen-visible allergen matrix document (Sprint 9) — money-free; metadata is
+  // recipe count only, never costs.
+  | 'export.allergenMatrixPdf'
+  | 'export.allergenMatrixXlsx'
   // Org settings
   | 'settings.update'
   // Sensitive exports / generated documents

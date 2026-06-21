@@ -2,6 +2,10 @@ import { getTranslations } from 'next-intl/server';
 import { canSeeRecipeCosts, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listIngredients, toKitchenIngredient } from '@/lib/data/ingredients';
+import {
+  loadIngredientAllergensByIngredient,
+  type AllergenTag,
+} from '@/lib/data/allergens';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { IngredientGrid } from '@/components/app/ingredients/ingredient-grid';
 
@@ -26,6 +30,23 @@ export default async function IngredientsPage({
     ? ingredientRows
     : ingredientRows.map(toKitchenIngredient);
 
+  // Allergens (Sprint 9): batch-load tags for every listed ingredient (no N+1) and
+  // derive the reviewed flag from `allergens_reviewed_at`. Operational + money-free,
+  // so this is the SAME for kitchen and managers.
+  const allergenMap = await withOrg(organizationId, (tx) =>
+    loadIngredientAllergensByIngredient(
+      tx,
+      organizationId,
+      ingredientRows.map((r) => r.id),
+    ),
+  );
+  const initialAllergens: Record<string, AllergenTag[]> = {};
+  const initialReviewed: Record<string, boolean> = {};
+  for (const row of ingredientRows) {
+    initialAllergens[row.id] = allergenMap.get(row.id) ?? [];
+    initialReviewed[row.id] = row.allergensReviewedAt !== null;
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
@@ -34,6 +55,8 @@ export default async function IngredientsPage({
         canSeeCosts={canSeeCosts}
         currency={settings.currency}
         highlightId={typeof highlight === 'string' ? highlight : undefined}
+        initialAllergens={initialAllergens}
+        initialReviewed={initialReviewed}
       />
     </div>
   );

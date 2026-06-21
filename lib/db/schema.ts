@@ -22,6 +22,14 @@ import type {
   ImportRowIssue,
 } from '@/lib/import/types';
 import type { AiExtractionStatus, AiQualityFlag } from '@/lib/ai/types';
+import { ALLERGEN_SLUGS, PRESENCE_VALUES } from '@/lib/allergens/catalog';
+
+// The 14-slug + 2-presence whitelists as SQL string literals, so the DB CHECK
+// constraints repeat the catalog (defense-in-depth beside the Zod enum). Built
+// from the single source of truth (lib/allergens/catalog.ts) so they can never
+// drift. e.g. "'cereals_gluten','crustaceans',...".
+const ALLERGEN_SLUG_SQL_LIST = ALLERGEN_SLUGS.map((s) => `'${s}'`).join(', ');
+const PRESENCE_SQL_LIST = PRESENCE_VALUES.map((p) => `'${p}'`).join(', ');
 
 /**
  * RULE #1 (CLAUDE.md): every business-data table has an `organization_id`
@@ -137,6 +145,13 @@ export const ingredients = pgTable(
       .default(sql`0`),
     // Optional low-stock threshold (canonical); a low-stock alert fires at/below it.
     lowStockThreshold: numeric('low_stock_threshold', { precision: 12, scale: 2 }),
+    // Allergen review provenance (Sprint 9). `reviewed_at` NULL = the ingredient's
+    // allergens have never been reviewed (NOT "no allergens" — correctly unreviewed);
+    // a timestamp = reviewed then. `reviewed_by` is the Clerk user id who reviewed.
+    // The derived boolean "reviewed" = `reviewed_at IS NOT NULL`. Stamped atomically
+    // by the allergen-replace flow (lib/data/allergens.ts), even on an empty set.
+    allergensReviewedAt: timestamp('allergens_reviewed_at', { withTimezone: true }),
+    allergensReviewedBy: text('allergens_reviewed_by'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL`.
@@ -277,6 +292,101 @@ export const recipeIngredients = pgTable(
       foreignColumns: [ingredients.organizationId, ingredients.id],
       name: 'recipe_ingredients_ingredient_fk',
     }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * Allergen tags on an ingredient (Sprint 9). One row per (ingredient, allergen)
+ * with a `presence` level (certainty, NOT severity). The recipe rollup derives
+ * its allergens from these (lib/calculations/allergens.ts). OPERATIONAL data —
+ * not a legal declaration, and kitchen-editable (audited), unlike money.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard org_isolation
+ * RLS. Two DB CHECKs repeat the catalog (the 14 slugs + 2 presence values) beside
+ * the Zod enum. The composite (org, ingredient_id) FK is ON DELETE cascade: tags
+ * die with the ingredient on full purge. `unique (org, ingredient_id, allergen)`
+ * — one presence per allergen per ingredient.
+ */
+export const ingredientAllergens = pgTable(
+  'ingredient_allergens',
+  {
+    id: id(),
+    organizationId: orgId(),
+    ingredientId: text('ingredient_id').notNull(),
+    allergen: text('allergen').notNull(),
+    presence: text('presence').notNull(),
+  },
+  (t) => [
+    index('ingredient_allergens_org_idx').on(t.organizationId),
+    index('ingredient_allergens_org_ingredient_idx').on(
+      t.organizationId,
+      t.ingredientId,
+    ),
+    unique('ingredient_allergens_org_ingredient_allergen_key').on(
+      t.organizationId,
+      t.ingredientId,
+      t.allergen,
+    ),
+    check(
+      'ingredient_allergens_allergen_chk',
+      sql.raw(`allergen IN (${ALLERGEN_SLUG_SQL_LIST})`),
+    ),
+    check(
+      'ingredient_allergens_presence_chk',
+      sql.raw(`presence IN (${PRESENCE_SQL_LIST})`),
+    ),
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'ingredient_allergens_ingredient_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Recipe-level allergen overrides (Sprint 9). An override row only ever ADDS or
+ * ESCALATES an allergen on a recipe (cross-contamination, a process step) — there
+ * is NO "suppress" row. The effective presence is `max(derived, override)` at read
+ * time (lib/calculations/allergens.ts); the add/escalate guarantee comes from that
+ * `max()` + the action guard (lib/data/allergens.ts), NOT this schema.
+ *
+ * Same shape/constraints as ingredient_allergens: org-isolated, the two catalog
+ * CHECKs, `unique (org, recipe_id, allergen)`, composite (org, recipe_id) FK ON
+ * DELETE cascade.
+ */
+export const recipeAllergenOverrides = pgTable(
+  'recipe_allergen_overrides',
+  {
+    id: id(),
+    organizationId: orgId(),
+    recipeId: text('recipe_id').notNull(),
+    allergen: text('allergen').notNull(),
+    presence: text('presence').notNull(),
+  },
+  (t) => [
+    index('recipe_allergen_overrides_org_idx').on(t.organizationId),
+    index('recipe_allergen_overrides_org_recipe_idx').on(
+      t.organizationId,
+      t.recipeId,
+    ),
+    unique('recipe_allergen_overrides_org_recipe_allergen_key').on(
+      t.organizationId,
+      t.recipeId,
+      t.allergen,
+    ),
+    check(
+      'recipe_allergen_overrides_allergen_chk',
+      sql.raw(`allergen IN (${ALLERGEN_SLUG_SQL_LIST})`),
+    ),
+    check(
+      'recipe_allergen_overrides_presence_chk',
+      sql.raw(`presence IN (${PRESENCE_SQL_LIST})`),
+    ),
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_allergen_overrides_recipe_fk',
+    }).onDelete('cascade'),
   ],
 );
 
@@ -1029,6 +1139,12 @@ export type RecipeFolder = InferSelectModel<typeof recipeFolders>;
 export type NewRecipeFolder = InferInsertModel<typeof recipeFolders>;
 export type RecipeIngredient = InferSelectModel<typeof recipeIngredients>;
 export type NewRecipeIngredient = InferInsertModel<typeof recipeIngredients>;
+export type IngredientAllergen = InferSelectModel<typeof ingredientAllergens>;
+export type NewIngredientAllergen = InferInsertModel<typeof ingredientAllergens>;
+export type RecipeAllergenOverride = InferSelectModel<typeof recipeAllergenOverrides>;
+export type NewRecipeAllergenOverride = InferInsertModel<
+  typeof recipeAllergenOverrides
+>;
 export type OrganizationSettings = InferSelectModel<typeof organizationSettings>;
 export type NewOrganizationSettings = InferInsertModel<typeof organizationSettings>;
 export type MeasurementSystem = OrganizationSettings['measurementSystem'];
@@ -1067,6 +1183,9 @@ export const businessTables = [
   'recipe_folders',
   'recipes',
   'recipe_ingredients',
+  // Allergen tags + recipe overrides (Sprint 9) — standard org_isolation RLS.
+  'ingredient_allergens',
+  'recipe_allergen_overrides',
   'inventory_movements',
   // Ingredient price history (Sprint F2) — standard org_isolation RLS.
   'ingredient_price_history',

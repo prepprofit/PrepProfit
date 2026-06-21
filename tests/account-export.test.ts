@@ -2,7 +2,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { and, eq, sql } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
-import { ingredients, auditLog, organizationSettings } from '@/lib/db/schema';
+import {
+  ingredients,
+  ingredientAllergens,
+  auditLog,
+  organizationSettings,
+} from '@/lib/db/schema';
 import { allocatePoNumber } from '@/lib/data/po-counters';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
@@ -113,8 +118,12 @@ describe('buildOrgDataExport', () => {
     expect(names.sort()).toEqual(['Butter A', 'Sugar A']);
     expect(names).not.toContain('Flour B');
     expect(bundle.organizationId).toBe(ORG_A);
-    expect(bundle.schemaVersion).toBe(4);
+    expect(bundle.schemaVersion).toBe(5);
     expect(countExportRows(bundle)).toBeGreaterThanOrEqual(2);
+
+    // Sprint 9: the allergen tables are part of the bundle (empty arrays are fine).
+    expect(bundle.data).toHaveProperty('ingredientAllergens');
+    expect(bundle.data).toHaveProperty('recipeAllergenOverrides');
 
     // F5 columns flow through the `select()` bundle automatically.
     const settings = bundle.data.organizationSettings as Record<string, unknown>[];
@@ -135,6 +144,31 @@ describe('buildOrgDataExport', () => {
     const b = await runInOrg(db, ORG_B, (tx) => buildOrgDataExport(tx, ORG_B));
     const bCounters = b.data.poCounters as { organizationId: string }[];
     expect(bCounters.map((r) => r.organizationId)).toEqual([ORG_B]);
+  });
+
+  it('includes a real ingredientAllergens row, never another tenant (Sprint 9)', async () => {
+    // Tag one of org A's ingredients, then assert the row is in A's export only.
+    await runInOrg(db, ORG_A, async (tx) => {
+      const [ing] = await tx
+        .select({ id: ingredients.id })
+        .from(ingredients)
+        .where(eq(ingredients.organizationId, ORG_A))
+        .limit(1);
+      await tx.insert(ingredientAllergens).values({
+        organizationId: ORG_A,
+        ingredientId: ing!.id,
+        allergen: 'milk',
+        presence: 'contains',
+      });
+    });
+
+    const a = await runInOrg(db, ORG_A, (tx) => buildOrgDataExport(tx, ORG_A));
+    const aRows = a.data.ingredientAllergens as { organizationId: string }[];
+    expect(aRows.length).toBeGreaterThanOrEqual(1);
+    expect(aRows.every((r) => r.organizationId === ORG_A)).toBe(true);
+
+    const b = await runInOrg(db, ORG_B, (tx) => buildOrgDataExport(tx, ORG_B));
+    expect((b.data.ingredientAllergens as unknown[]).length).toBe(0);
   });
 
   it("org B's export never sees org A's data", async () => {

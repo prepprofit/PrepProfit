@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
-import { Check, Plus, Trash2 } from 'lucide-react';
+import { Check, Plus, ShieldAlert, Trash2 } from 'lucide-react';
 import {
   type ColumnDef,
   flexRender,
@@ -25,6 +25,8 @@ import {
   deleteIngredientAction,
   updateIngredientAction,
 } from '@/app/(app)/ingredients/actions';
+import { IngredientAllergenDialog } from '@/components/app/ingredients/ingredient-allergen-dialog';
+import type { AllergenTag } from '@/lib/data/allergens';
 
 type Dimension = Ingredient['dimension'];
 
@@ -92,10 +94,15 @@ type GridMeta = {
   onField: (id: string, patch: Partial<Draft>) => void;
   onCommit: (id: string) => void;
   onDelete: (id: string) => void;
+  onEditAllergens: (id: string) => void;
+  /** True when the ingredient's allergens have NOT been reviewed yet. */
+  unreviewedAllergens: (id: string) => boolean;
   dimensionLabel: (d: Dimension) => string;
   deleteLabel: string;
   savedLabel: string;
   needsPricingLabel: string;
+  allergensLabel: string;
+  allergensUnreviewedLabel: string;
 };
 
 export function IngredientGrid({
@@ -103,6 +110,8 @@ export function IngredientGrid({
   canSeeCosts,
   currency,
   highlightId,
+  initialAllergens,
+  initialReviewed,
 }: {
   initialIngredients: IngredientRow[];
   /** Manager only: render + edit the Price column. Kitchen rows carry no price. */
@@ -110,11 +119,16 @@ export function IngredientGrid({
   currency: string;
   /** Record id to scroll to + flash, from a ⌘K search deep-link (?highlight=). */
   highlightId?: string;
+  /** Allergen tags per ingredient id (Sprint 9) — operational, money-free. */
+  initialAllergens: Record<string, AllergenTag[]>;
+  /** Which ingredient ids have had their allergens reviewed (reviewed_at set). */
+  initialReviewed: Record<string, boolean>;
 }) {
   const t = useTranslations('ingredients');
   const flashId = useRowHighlight(highlightId, 'ingredient-row-');
   const tDim = useTranslations('dimensions');
   const tCommon = useTranslations('common');
+  const tAllergens = useTranslations('allergens');
   const actionError = useActionError();
   const [rows, setRows] = React.useState<IngredientRow[]>(initialIngredients);
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>(() =>
@@ -125,8 +139,16 @@ export function IngredientGrid({
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [savedId, setSavedId] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
+  // Allergens (Sprint 9): tags + reviewed state per ingredient, plus which row's
+  // allergen editor is open. Editing an allergen set marks the ingredient reviewed.
+  const [allergens, setAllergens] =
+    React.useState<Record<string, AllergenTag[]>>(initialAllergens);
+  const [reviewed, setReviewed] =
+    React.useState<Record<string, boolean>>(initialReviewed);
+  const [allergenEditId, setAllergenEditId] = React.useState<string | null>(null);
 
   const confirmTarget = rows.find((r) => r.id === confirmId) ?? null;
+  const allergenTarget = rows.find((r) => r.id === allergenEditId) ?? null;
 
   // Briefly flag a row as "saved" after a successful auto-save, so the silent
   // blur-commit gives the user visible feedback.
@@ -196,6 +218,11 @@ export function IngredientGrid({
   );
 
   const requestDelete = React.useCallback((id: string) => setConfirmId(id), []);
+  const editAllergens = React.useCallback((id: string) => setAllergenEditId(id), []);
+  const unreviewedAllergens = React.useCallback(
+    (id: string) => reviewed[id] !== true,
+    [reviewed],
+  );
 
   const confirmDelete = React.useCallback(() => {
     const id = confirmId;
@@ -371,6 +398,27 @@ export function IngredientGrid({
                 type="button"
                 variant="ghost"
                 size="sm"
+                aria-label={meta.allergensLabel}
+                title={
+                  meta.unreviewedAllergens(row.original.id)
+                    ? meta.allergensUnreviewedLabel
+                    : meta.allergensLabel
+                }
+                disabled={meta.pending}
+                onClick={() => meta.onEditAllergens(row.original.id)}
+              >
+                <ShieldAlert
+                  className={cn(
+                    'size-4',
+                    meta.unreviewedAllergens(row.original.id) &&
+                      'text-amber-600 dark:text-amber-400',
+                  )}
+                />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
                 aria-label={meta.deleteLabel}
                 disabled={meta.pending}
                 onClick={() => meta.onDelete(row.original.id)}
@@ -398,10 +446,14 @@ export function IngredientGrid({
       onField,
       onCommit,
       onDelete: requestDelete,
+      onEditAllergens: editAllergens,
+      unreviewedAllergens,
       dimensionLabel,
       deleteLabel: t('actions.delete'),
       savedLabel: t('saved'),
       needsPricingLabel: t('needsPricing'),
+      allergensLabel: tAllergens('editor.open'),
+      allergensUnreviewedLabel: tAllergens('editor.unreviewed'),
     } satisfies GridMeta,
   });
 
@@ -550,6 +602,22 @@ export function IngredientGrid({
         onConfirm={confirmDelete}
         onCancel={() => setConfirmId(null)}
       />
+
+      {allergenTarget && (
+        <IngredientAllergenDialog
+          open={allergenEditId !== null}
+          ingredientId={allergenTarget.id}
+          ingredientName={allergenTarget.name}
+          initialTags={allergens[allergenTarget.id] ?? []}
+          onClose={() => setAllergenEditId(null)}
+          onSaved={(tags) => {
+            const id = allergenTarget.id;
+            setAllergens((prev) => ({ ...prev, [id]: tags }));
+            // Saving (even an empty set) marks the ingredient reviewed.
+            setReviewed((prev) => ({ ...prev, [id]: true }));
+          }}
+        />
+      )}
     </div>
   );
 }

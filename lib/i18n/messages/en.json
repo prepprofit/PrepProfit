@@ -36,6 +36,7 @@
     "IMPORT_EXPIRED": "This import preview has expired. Upload the file again to import it.",
     "AI_EXTRACTION_FAILED": "We couldn't read a recipe from that photo. Try a clearer, well-lit image.",
     "USAGE_LIMIT_REACHED": "You've used all of this month's photo extractions on your plan. They reset next month, or upgrade for more.",
+    "ALLERGEN_CANNOT_DOWNGRADE": "A recipe allergen can only be added or raised, never lowered or removed. Allergens from ingredients can't be suppressed here.",
     "UNEXPECTED": "Something went wrong on our end. Please try again."
   },
   "errors": {
@@ -150,6 +151,10 @@
   "recipes": {
     "title": "Recipes",
     "subtitle": "Build a recipe, see what it really costs, and price it with confidence.",
+    "allergenMatrix": {
+      "pdf": "Allergen matrix (PDF)",
+      "xlsx": "Allergen matrix (Excel)"
+    },
     "importPhoto": {
       "link": "Import from photo",
       "subtitle": "Snap a photo of a recipe and we'll turn it into a draft you review before anything is saved.",
@@ -675,6 +680,62 @@
       "issued": "Issued",
       "paid": "Paid",
       "void": "Void"
+    }
+  },
+  "allergens": {
+    "disclaimer": "Operational allergen aid for kitchen use only — not a legal allergen declaration. Always verify against ingredient packaging and supplier information. Never described as allergen-free.",
+    "labels": {
+      "cereals_gluten": "Cereals containing gluten",
+      "crustaceans": "Crustaceans",
+      "eggs": "Eggs",
+      "fish": "Fish",
+      "peanuts": "Peanuts",
+      "soybeans": "Soybeans",
+      "milk": "Milk",
+      "nuts": "Tree nuts",
+      "celery": "Celery",
+      "mustard": "Mustard",
+      "sesame": "Sesame",
+      "sulphites": "Sulphur dioxide and sulphites",
+      "lupin": "Lupin",
+      "molluscs": "Molluscs"
+    },
+    "presence": {
+      "none": "Not present",
+      "may_contain": "May contain",
+      "contains": "Contains"
+    },
+    "editor": {
+      "title": "Allergens",
+      "open": "Edit allergens",
+      "unreviewed": "Allergens not reviewed yet",
+      "save": "Save allergens",
+      "cancel": "Cancel"
+    },
+    "recipe": {
+      "title": "Allergens",
+      "noneRecorded": "No allergens recorded.",
+      "unreviewedWarning": "Some ingredients on this recipe haven't had their allergens reviewed. This list may be incomplete — it never means the recipe is allergen-free.",
+      "fromIngredients": "From ingredients",
+      "added": "Added on this recipe",
+      "fromBoth": "From ingredients, raised on this recipe",
+      "addAllergen": "Allergen",
+      "selectAllergen": "Select an allergen…",
+      "presence": "Presence",
+      "add": "Add / escalate",
+      "clearOverride": "Remove this manual addition"
+    }
+  },
+  "allergenMatrixDocument": {
+    "title": "ALLERGEN MATRIX",
+    "generatedOn": "Generated",
+    "recipe": "Recipe",
+    "disclaimer": "Operational allergen aid for kitchen use only — not a legal allergen declaration. Always verify against ingredient packaging and supplier information. Never described as allergen-free.",
+    "noAllergensRecorded": "No allergens recorded.",
+    "unreviewed": "unreviewed",
+    "presence": {
+      "may_contain": "May contain",
+      "contains": "Contains"
     }
   },
   "recipeCardDocument": {

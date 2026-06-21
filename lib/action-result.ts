@@ -46,6 +46,9 @@ export type ActionErrorCode =
   | 'AI_EXTRACTION_FAILED'
   // The org reached its monthly AI-extraction allowance for the plan (Sprint 4.7).
   | 'USAGE_LIMIT_REACHED'
+  // A recipe allergen override tried to lower/remove a presence — overrides may only
+  // ADD or ESCALATE (Sprint 9). The derived allergens are never suppressible.
+  | 'ALLERGEN_CANNOT_DOWNGRADE'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

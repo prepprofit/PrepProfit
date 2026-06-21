@@ -6,6 +6,8 @@ import {
   recipeFolders,
   recipes,
   recipeIngredients,
+  ingredientAllergens,
+  recipeAllergenOverrides,
   inventoryMovements,
   ingredientPriceHistory,
   transactionCategories,
@@ -41,7 +43,9 @@ import {
 // v3 (Sprint F5): `organizationSettings` gained default_tax_rate_bps +
 // stock_control_start_date; `transactions` gained source_type + source_id.
 // v4 (Sprint F6): added `poCounters`.
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 4;
+// v5 (Sprint 9): added `ingredientAllergens` + `recipeAllergenOverrides`; the
+// `ingredients` rows now carry allergens_reviewed_at/_by (flow through `select()`).
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 5;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -62,6 +66,8 @@ export async function buildOrgDataExport(
     ['recipeFolders', recipeFolders],
     ['recipes', recipes],
     ['recipeIngredients', recipeIngredients],
+    ['ingredientAllergens', ingredientAllergens],
+    ['recipeAllergenOverrides', recipeAllergenOverrides],
     ['inventoryMovements', inventoryMovements],
     ['ingredientPriceHistory', ingredientPriceHistory],
     ['transactionCategories', transactionCategories],
