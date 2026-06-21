@@ -1,0 +1,4 @@
+recipe,yield_portions,yield_percentage,ingredient,quantity,unit
+Teste,1,100,Acucar,2,colheres
+Teste,,,Olive Oil,50,g
+Teste,,,Sal,5,g

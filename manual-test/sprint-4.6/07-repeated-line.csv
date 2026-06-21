@@ -1,0 +1,3 @@
+recipe,yield_portions,yield_percentage,ingredient,quantity,unit
+Soma,1,100,Farinha,500,g
+Soma,,,Farinha,250,g

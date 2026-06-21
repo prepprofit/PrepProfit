@@ -1,0 +1,9 @@
+recipe,yield_portions,yield_percentage,ingredient,quantity,unit
+Focaccia,8,95,Bread Flour,1000,g
+Focaccia,,,Water,650,ml
+Focaccia,,,Olive oil,80,ml
+Focaccia,,,Salt,18,g
+Bechamel,6,100,Butter,60,g
+Bechamel,,,Flour,60,g
+Bechamel,,,Milk,1,l
+Bechamel,,,Eggs,2,count
