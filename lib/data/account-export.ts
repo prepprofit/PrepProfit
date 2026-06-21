@@ -12,6 +12,7 @@ import {
   transactions,
   customers,
   invoiceCounters,
+  poCounters,
   invoices,
   invoiceItems,
   employees,
@@ -39,7 +40,8 @@ import {
 // v2 (Sprint F2): added `ingredientPriceHistory`.
 // v3 (Sprint F5): `organizationSettings` gained default_tax_rate_bps +
 // stock_control_start_date; `transactions` gained source_type + source_id.
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 3;
+// v4 (Sprint F6): added `poCounters`.
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 4;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -66,6 +68,7 @@ export async function buildOrgDataExport(
     ['transactions', transactions],
     ['customers', customers],
     ['invoiceCounters', invoiceCounters],
+    ['poCounters', poCounters],
     ['invoices', invoices],
     ['invoiceItems', invoiceItems],
     ['employees', employees],

@@ -595,6 +595,32 @@ export const invoiceCounters = pgTable(
 );
 
 /**
+ * Purchase-order reference counter (Sprint F6). One row per org holding the LAST
+ * PO number handed out (`last_seq`, mirroring `invoice_counters`). Allocation is an
+ * atomic upsert-increment (lib/data/po-counters.ts), so it is row-locked and
+ * concurrency-safe — NOT `MAX(number)+1`.
+ *
+ * UNLIKE invoices, PO numbers are gap-TOLERANT and editable: the counter only yields
+ * the suggested default; the real `purchase_orders.number` (Sprint 8a) is an editable
+ * column with `unique (org, number)` + a positive-integer check. A manual edit calls
+ * `advancePoCounterAtLeast` so the counter never re-issues a number. Per-org single
+ * sequence, no yearly reset. Standard org_isolation RLS (it is normal org data, not
+ * append-only — do NOT copy the audit-log policy).
+ */
+export const poCounters = pgTable(
+  'po_counters',
+  {
+    organizationId: text('organization_id').primaryKey(),
+    // Highest PO number handed out for this org so far (0 = none yet).
+    lastSeq: integer('last_seq').notNull().default(0),
+  },
+  (t) => [
+    // A counter never goes negative.
+    check('po_counters_last_seq_chk', sql`${t.lastSeq} >= 0`),
+  ],
+);
+
+/**
  * Invoices (Sprint 3, module 6). Lifecycle: draft → issued → paid / void.
  *
  * A `draft` is freely editable and has NO number. At the `draft → issued`
@@ -1019,6 +1045,7 @@ export type NewInvoice = InferInsertModel<typeof invoices>;
 export type InvoiceStatus = Invoice['status'];
 export type InvoiceItem = InferSelectModel<typeof invoiceItems>;
 export type NewInvoiceItem = InferInsertModel<typeof invoiceItems>;
+export type PoCounter = InferSelectModel<typeof poCounters>;
 export type Employee = InferSelectModel<typeof employees>;
 export type NewEmployee = InferInsertModel<typeof employees>;
 export type Shift = InferSelectModel<typeof shifts>;
@@ -1047,6 +1074,8 @@ export const businessTables = [
   'transactions',
   'customers',
   'invoice_counters',
+  // PO reference counter (Sprint F6) — standard org_isolation RLS.
+  'po_counters',
   'invoices',
   'invoice_items',
   'employees',

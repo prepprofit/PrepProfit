@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import { ingredients, auditLog, organizationSettings } from '@/lib/db/schema';
+import { allocatePoNumber } from '@/lib/data/po-counters';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import {
@@ -112,13 +113,28 @@ describe('buildOrgDataExport', () => {
     expect(names.sort()).toEqual(['Butter A', 'Sugar A']);
     expect(names).not.toContain('Flour B');
     expect(bundle.organizationId).toBe(ORG_A);
-    expect(bundle.schemaVersion).toBe(3);
+    expect(bundle.schemaVersion).toBe(4);
     expect(countExportRows(bundle)).toBeGreaterThanOrEqual(2);
 
     // F5 columns flow through the `select()` bundle automatically.
     const settings = bundle.data.organizationSettings as Record<string, unknown>[];
     expect(settings[0]).toHaveProperty('defaultTaxRateBps');
     expect(settings[0]).toHaveProperty('stockControlStartDate');
+  });
+
+  it('includes the org poCounters row and never another tenant (F6)', async () => {
+    // Allocate a real PO number for each org so both have a counter row.
+    await runInOrg(db, ORG_A, (tx) => allocatePoNumber(tx, ORG_A));
+    await runInOrg(db, ORG_B, (tx) => allocatePoNumber(tx, ORG_B));
+
+    const a = await runInOrg(db, ORG_A, (tx) => buildOrgDataExport(tx, ORG_A));
+    const aCounters = a.data.poCounters as { organizationId: string }[];
+    expect(aCounters).toHaveLength(1);
+    expect(aCounters[0]!.organizationId).toBe(ORG_A);
+
+    const b = await runInOrg(db, ORG_B, (tx) => buildOrgDataExport(tx, ORG_B));
+    const bCounters = b.data.poCounters as { organizationId: string }[];
+    expect(bCounters.map((r) => r.organizationId)).toEqual([ORG_B]);
   });
 
   it("org B's export never sees org A's data", async () => {
