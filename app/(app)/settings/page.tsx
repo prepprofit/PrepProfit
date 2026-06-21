@@ -7,6 +7,7 @@ import {
 } from '@/lib/data/org-settings';
 import { withOrg } from '@/lib/db';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
+import { bpsToPercent } from '@/lib/calculations/tax';
 import { NoAccess } from '@/components/app/no-access';
 import { SettingsForm } from './settings-form';
 import { AccountPrivacy } from './account-privacy';
@@ -41,6 +42,11 @@ export default async function SettingsPage() {
           businessTaxId: settings.businessTaxId,
           businessEmail: settings.businessEmail,
           businessLogoUrl: settings.businessLogoUrl,
+          defaultTaxRatePercent:
+            settings.defaultTaxRateBps == null
+              ? null
+              : String(bpsToPercent(settings.defaultTaxRateBps)),
+          stockControlStartDate: settings.stockControlStartDate,
         }}
       />
 

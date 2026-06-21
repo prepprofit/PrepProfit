@@ -95,6 +95,9 @@ export async function purgeExpired(
     .returning({ id: ingredients.id });
 
   // Expired trashed transactions have no dependents — delete them directly.
+  // EXCEPT sale-sourced rows (Sprint F5): a voided sale's income row is a
+  // permanent historical projection, never garbage-collected. `IS DISTINCT FROM`
+  // (not `<>`) so the NULL-source normal rows are still purged.
   const purgedTransactions = await db
     .delete(transactions)
     .where(
@@ -102,6 +105,7 @@ export async function purgeExpired(
         eq(transactions.organizationId, organizationId),
         isNotNull(transactions.deletedAt),
         lte(transactions.deletedAt, cutoff),
+        sql`${transactions.sourceType} is distinct from 'sale'`,
       ),
     )
     .returning({ id: transactions.id });

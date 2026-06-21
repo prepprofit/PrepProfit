@@ -70,3 +70,51 @@ describe('orgSettingsSchema — business identity', () => {
     ).toBe(false);
   });
 });
+
+/**
+ * Sprint F5 — fiscal fields. The tax rate is entered as a percentage (0..100) and
+ * stored as integer basis points (0..10000); empty → null ("not configured"). The
+ * stock-control date is a real calendar date or null.
+ */
+describe('orgSettingsSchema — fiscal config (F5)', () => {
+  const parse = (overrides: Record<string, unknown>) =>
+    orgSettingsSchema.safeParse({ ...base, ...overrides });
+
+  it('converts whole and decimal percents to basis points', () => {
+    const whole = parse({ defaultTaxRateBps: '23' });
+    expect(whole.success && whole.data.defaultTaxRateBps).toBe(2300);
+    const dec = parse({ defaultTaxRateBps: '8.5' });
+    expect(dec.success && dec.data.defaultTaxRateBps).toBe(850);
+  });
+
+  it('accepts the 0 and 100 bounds', () => {
+    const zero = parse({ defaultTaxRateBps: '0' });
+    expect(zero.success && zero.data.defaultTaxRateBps).toBe(0);
+    const max = parse({ defaultTaxRateBps: '100' });
+    expect(max.success && max.data.defaultTaxRateBps).toBe(10000);
+  });
+
+  it('treats empty / missing tax rate as null', () => {
+    const empty = parse({ defaultTaxRateBps: '' });
+    expect(empty.success && empty.data.defaultTaxRateBps).toBeNull();
+    const missing = parse({});
+    expect(missing.success && missing.data.defaultTaxRateBps).toBeNull();
+  });
+
+  it('rejects over-100 and negative percents', () => {
+    expect(parse({ defaultTaxRateBps: '101' }).success).toBe(false);
+    expect(parse({ defaultTaxRateBps: '-1' }).success).toBe(false);
+  });
+
+  it('accepts a real calendar start date, blank → null', () => {
+    const ok = parse({ stockControlStartDate: '2026-06-01' });
+    expect(ok.success && ok.data.stockControlStartDate).toBe('2026-06-01');
+    const blank = parse({ stockControlStartDate: '' });
+    expect(blank.success && blank.data.stockControlStartDate).toBeNull();
+  });
+
+  it('rejects an impossible start date', () => {
+    expect(parse({ stockControlStartDate: '2026-02-30' }).success).toBe(false);
+    expect(parse({ stockControlStartDate: 'nope' }).success).toBe(false);
+  });
+});

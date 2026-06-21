@@ -26,6 +26,10 @@ export type SettingsFormValues = {
   businessTaxId: string | null;
   businessEmail: string | null;
   businessLogoUrl: string | null;
+  /** Tax rate as a percentage string for the input (bps → percent in the page). */
+  defaultTaxRatePercent: string | null;
+  /** Financial-only mode start date 'YYYY-MM-DD'. */
+  stockControlStartDate: string | null;
 };
 
 /**
@@ -78,6 +82,45 @@ export function SettingsForm({ settings }: { settings: SettingsFormValues }) {
               ))}
             </Select>
             <p className="text-xs text-muted-foreground">{t('measurement.help')}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('fiscal.title')}</CardTitle>
+          <CardDescription>{t('fiscal.description')}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-5">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="defaultTaxRatePercent">{t('fiscal.taxRate.label')}</Label>
+            <Input
+              id="defaultTaxRatePercent"
+              name="defaultTaxRatePercent"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={100}
+              step={0.01}
+              defaultValue={settings.defaultTaxRatePercent ?? ''}
+              placeholder={t('fiscal.taxRate.placeholder')}
+            />
+            <p className="text-xs text-muted-foreground">{t('fiscal.taxRate.help')}</p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="stockControlStartDate">
+              {t('fiscal.stockControl.label')}
+            </Label>
+            <Input
+              id="stockControlStartDate"
+              name="stockControlStartDate"
+              type="date"
+              defaultValue={settings.stockControlStartDate ?? ''}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t('fiscal.stockControl.help')}
+            </p>
           </div>
         </CardContent>
       </Card>

@@ -8,6 +8,7 @@ import { unexpected } from '@/lib/observability';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
   createTransaction,
+  getTransactionAnyState,
   softDeleteTransaction,
   updateTransaction,
 } from '@/lib/data/transactions';
@@ -85,6 +86,12 @@ export async function updateTransactionAction(
   const actor = await auditActor();
   try {
     const outcome = await withOrg(organizationId, async (tx) => {
+      // Load first so NOT_FOUND and PROTECTED are distinguished atomically; a
+      // sale-sourced row is owned by the sale lifecycle (Sprint F5) — refuse it
+      // BEFORE any write or audit (no audit event on a refused mutation).
+      const existing = await getTransactionAnyState(tx, organizationId, id);
+      if (!existing) return 'not_found' as const;
+      if (existing.sourceType === 'sale') return 'protected' as const;
       const category = await getCategoryById(tx, organizationId, parsed.data.categoryId);
       if (!category || category.kind !== parsed.data.type) {
         return 'invalid' as const;
@@ -100,6 +107,7 @@ export async function updateTransactionAction(
       return 'ok' as const;
     });
     if (outcome === 'invalid') return { ok: false, code: 'INVALID_INPUT' };
+    if (outcome === 'protected') return { ok: false, code: 'PROTECTED_TRANSACTION' };
     if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
     revalidateFinance();
     return { ok: true, data: undefined };
@@ -115,18 +123,22 @@ export async function deleteTransactionAction(id: string): Promise<ActionResult>
 
   const organizationId = await getOrgId();
   const actor = await auditActor();
-  const row = await withOrg(organizationId, async (tx) => {
+  const outcome = await withOrg(organizationId, async (tx) => {
+    // Atomic NOT_FOUND-vs-PROTECTED distinction, no audit on refusal (Sprint F5).
+    const existing = await getTransactionAnyState(tx, organizationId, id);
+    if (!existing) return 'not_found' as const;
+    if (existing.sourceType === 'sale') return 'protected' as const;
     const deleted = await softDeleteTransaction(tx, organizationId, id);
-    if (deleted) {
-      await writeAuditEvent(tx, organizationId, actor, {
-        action: 'transaction.delete',
-        entityType: 'transaction',
-        entityId: id,
-      });
-    }
-    return deleted;
+    if (!deleted) return 'not_found' as const;
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'transaction.delete',
+      entityType: 'transaction',
+      entityId: id,
+    });
+    return 'ok' as const;
   });
-  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  if (outcome === 'protected') return { ok: false, code: 'PROTECTED_TRANSACTION' };
+  if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
   revalidateFinance();
   return { ok: true, data: undefined };
 }

@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   unique,
   foreignKey,
+  check,
   jsonb,
 } from 'drizzle-orm/pg-core';
 import type {
@@ -76,6 +77,18 @@ export const organizationSettings = pgTable('organization_settings', {
   businessTaxId: text('business_tax_id'),
   businessEmail: text('business_email'),
   businessLogoUrl: text('business_logo_url'),
+  // Sales fiscal config (Sprint F5). `default_tax_rate_bps` is the org's single
+  // VAT rate in integer BASIS POINTS (2300 = 23%), 0..10000; NULL = NOT configured
+  // (Sprint 12a must require a rate before posting sales — no silent 0%). Sale
+  // lines default from it and may override per item (see lib/calculations/tax.ts).
+  // It is validated/capped in Zod + the tax module, not by a DB constraint.
+  defaultTaxRateBps: integer('default_tax_rate_bps'),
+  // Financial-only mode (Sprint F5). Events (sales/productions) dated BEFORE this
+  // bare calendar date book revenue/cost but do NOT move stock — so importing
+  // history can't wreck on-hand quantities. NULL = stock control always active.
+  // Evaluated AT POSTING TIME ONLY (lib/finance/stock-control.ts): changing it
+  // later does NOT recalc or reverse movements already posted.
+  stockControlStartDate: date('stock_control_start_date', { mode: 'string' }),
   // Set-once timestamp marking when the org's manager completed the post-signup
   // onboarding flow (Sprint 4d). NULL = not onboarded yet → the /dashboard gate
   // sends a manager to /onboarding. Never reset (markOnboarded only sets it when
@@ -465,6 +478,14 @@ export const transactions = pgTable(
     // Positive magnitude in integer cents; sign/direction implied by `type`.
     amountCents: integer('amount_cents').notNull(),
     note: text('note'),
+    // Provenance (Sprint F5): when a transaction is the financial PROJECTION of
+    // another domain event (a posted sale), these record what produced it. Both
+    // nullable — a normal manual transaction has neither. A `source_type='sale'`
+    // row is PROTECTED: owned solely by the sale lifecycle, so the generic
+    // mutators refuse it, Trash excludes it, and auto-purge skips it. See
+    // lib/data/transactions.ts (postSaleTransaction / voidSaleTransaction).
+    sourceType: text('source_type'),
+    sourceId: text('source_id'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL` (Trash pattern).
@@ -479,6 +500,19 @@ export const transactions = pgTable(
     // pg_trgm GIN index for typo-tolerant global search (Sprint 2.7), on the
     // free-text note (the only searchable text column on a transaction).
     index('transactions_note_trgm_idx').using('gin', t.note.op('gin_trgm_ops')),
+    // A sale posts AT MOST ONE transaction (Sprint F5 dedup): one row per
+    // (org, source_type, source_id). Partial — the many normal rows (source_type
+    // NULL) don't collide; it also serves "the transaction for sale X" lookups,
+    // so no separate plain index is needed.
+    uniqueIndex('transactions_org_source_key')
+      .on(t.organizationId, t.sourceType, t.sourceId)
+      .where(sql`${t.sourceType} is not null`),
+    // Provenance is all-or-nothing: both columns NULL or both set. No
+    // half-populated source can exist.
+    check(
+      'transactions_source_pair_chk',
+      sql`(${t.sourceType} is null) = (${t.sourceId} is null)`,
+    ),
     // Composite FK: the category must share THIS transaction's organization_id —
     // a cross-tenant link is impossible at the DB level. ON DELETE restrict: a
     // category still in use cannot be deleted (the action surfaces CATEGORY_IN_USE).

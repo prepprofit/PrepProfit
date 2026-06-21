@@ -27,6 +27,9 @@ export type ActionErrorCode =
   | 'INVOICE_NO_CUSTOMER'
   // A status change that the lifecycle does not allow (e.g. pay a draft).
   | 'INVALID_STATUS_TRANSITION'
+  // A sale-sourced transaction was edited/trashed/restored/purged directly — it is
+  // owned by the sale lifecycle and can only change by voiding the sale (Sprint F5).
+  | 'PROTECTED_TRANSACTION'
   | 'FORBIDDEN'
   // Too many requests in the rate-limit window (Sprint 3.1 limiter).
   | 'RATE_LIMITED'

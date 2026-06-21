@@ -37,7 +37,9 @@ import {
 
 /** Bump when the bundle's shape changes, so importers can detect the version. */
 // v2 (Sprint F2): added `ingredientPriceHistory`.
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 2;
+// v3 (Sprint F5): `organizationSettings` gained default_tax_rate_bps +
+// stock_control_start_date; `transactions` gained source_type + source_id.
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 3;
 
 export type OrgDataExport = {
   schemaVersion: number;

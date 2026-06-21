@@ -25,6 +25,10 @@ export type OrgSettingsValues = {
   businessTaxId: string | null;
   businessEmail: string | null;
   businessLogoUrl: string | null;
+  /** Single org VAT rate in integer basis points (Sprint F5); null = not configured. */
+  defaultTaxRateBps: number | null;
+  /** Financial-only mode start date 'YYYY-MM-DD' (Sprint F5); null = always moves stock. */
+  stockControlStartDate: string | null;
   /** Set-once onboarding completion marker (Sprint 4d); null = not onboarded. */
   onboardedAt: Date | null;
 };
@@ -38,6 +42,8 @@ export const DEFAULT_ORG_SETTINGS: OrgSettingsValues = {
   businessTaxId: null,
   businessEmail: null,
   businessLogoUrl: null,
+  defaultTaxRateBps: null,
+  stockControlStartDate: null,
   onboardedAt: null,
 };
 

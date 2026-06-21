@@ -13,7 +13,11 @@ import {
   purgeRecipe,
   restoreRecipe,
 } from '@/lib/data/recipes';
-import { purgeTransaction, restoreTransaction } from '@/lib/data/transactions';
+import {
+  getTransactionAnyState,
+  purgeTransaction,
+  restoreTransaction,
+} from '@/lib/data/transactions';
 import { purgeCustomer, restoreCustomer } from '@/lib/data/customers';
 import { purgeInvoice, restoreInvoice } from '@/lib/data/invoices';
 import type { ActionResult } from '@/lib/action-result';
@@ -154,18 +158,23 @@ export async function restoreTransactionAction(
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   const actor = await auditActor();
-  const row = await withOrg(organizationId, async (tx) => {
+  const outcome = await withOrg(organizationId, async (tx) => {
+    // Sale-sourced rows are never user-trash (Sprint F5): refuse atomically with
+    // no audit on refusal, distinct from NOT_FOUND.
+    const existing = await getTransactionAnyState(tx, organizationId, id);
+    if (!existing) return 'not_found' as const;
+    if (existing.sourceType === 'sale') return 'protected' as const;
     const restored = await restoreTransaction(tx, organizationId, id);
-    if (restored) {
-      await writeAuditEvent(tx, organizationId, actor, {
-        action: 'trash.restore',
-        entityType: 'transaction',
-        entityId: id,
-      });
-    }
-    return restored;
+    if (!restored) return 'not_found' as const;
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'trash.restore',
+      entityType: 'transaction',
+      entityId: id,
+    });
+    return 'ok' as const;
   });
-  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  if (outcome === 'protected') return { ok: false, code: 'PROTECTED_TRANSACTION' };
+  if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
   revalidateTrashFinance();
   return { ok: true, data: undefined };
 }
@@ -175,14 +184,20 @@ export async function purgeTransactionAction(id: string): Promise<ActionResult> 
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   const actor = await auditActor();
-  await withOrg(organizationId, async (tx) => {
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const existing = await getTransactionAnyState(tx, organizationId, id);
+    if (!existing) return 'not_found' as const;
+    if (existing.sourceType === 'sale') return 'protected' as const;
     await purgeTransaction(tx, organizationId, id);
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'trash.purge',
       entityType: 'transaction',
       entityId: id,
     });
+    return 'ok' as const;
   });
+  if (outcome === 'protected') return { ok: false, code: 'PROTECTED_TRANSACTION' };
+  if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
   revalidateTrashFinance();
   return { ok: true, data: undefined };
 }

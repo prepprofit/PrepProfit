@@ -112,8 +112,13 @@ describe('buildOrgDataExport', () => {
     expect(names.sort()).toEqual(['Butter A', 'Sugar A']);
     expect(names).not.toContain('Flour B');
     expect(bundle.organizationId).toBe(ORG_A);
-    expect(bundle.schemaVersion).toBe(2);
+    expect(bundle.schemaVersion).toBe(3);
     expect(countExportRows(bundle)).toBeGreaterThanOrEqual(2);
+
+    // F5 columns flow through the `select()` bundle automatically.
+    const settings = bundle.data.organizationSettings as Record<string, unknown>[];
+    expect(settings[0]).toHaveProperty('defaultTaxRateBps');
+    expect(settings[0]).toHaveProperty('stockControlStartDate');
   });
 
   it("org B's export never sees org A's data", async () => {

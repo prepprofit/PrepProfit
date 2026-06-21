@@ -26,6 +26,10 @@ export const CATEGORY_SEED: readonly CategorySeed[] = [
   { slug: 'catering', kind: 'income', name: 'Catering & events' },
   { slug: 'delivery', kind: 'income', name: 'Delivery / takeaway' },
   { slug: 'other_income', kind: 'income', name: 'Other income' },
+  // System category for aggregated daily-close sales (Sprint F5). Sale postings
+  // resolve THIS slug; it is never a caller-supplied id. Appended last so adding
+  // it never reindexes the sort_order of categories already seeded in existing orgs.
+  { slug: 'daily_sales', kind: 'income', name: 'Daily sales' },
   // Expense
   { slug: 'ingredients', kind: 'expense', name: 'Ingredients / Food cost' },
   { slug: 'staff_wages', kind: 'expense', name: 'Staff wages' },

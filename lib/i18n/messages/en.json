@@ -27,6 +27,7 @@
     "INVOICE_LOCKED": "This invoice has already been issued, so it can no longer be edited or deleted. Void it instead.",
     "INVOICE_NO_CUSTOMER": "Add a customer before issuing this invoice.",
     "INVALID_STATUS_TRANSITION": "That status change isn't allowed for this invoice.",
+    "PROTECTED_TRANSACTION": "This entry comes from a sale and can't be edited or deleted here. Void the sale instead.",
     "FORBIDDEN": "You don't have permission to do that. Financial data is available to managers only.",
     "RATE_LIMITED": "You're doing that too quickly. Please wait a moment and try again.",
     "EMAIL_FAILED": "The email couldn't be sent. Please check the address and try again.",
@@ -320,6 +321,19 @@
         "imperial": "Imperial (oz, lb, fl oz, cups)"
       }
     },
+    "fiscal": {
+      "title": "Sales tax & stock control",
+      "description": "Applies to sales recorded in this organization. Invoices keep their own tax settings.",
+      "taxRate": {
+        "label": "Default sales tax rate (%)",
+        "placeholder": "e.g. 23",
+        "help": "A single rate applied to sales, in percent (0–100). Each sale line can override it. Leave blank if not configured yet."
+      },
+      "stockControl": {
+        "label": "Stock control start date",
+        "help": "Sales and production dated before this still record money but don't move stock — useful when importing past activity. Leave blank to track stock for all dates."
+      }
+    },
     "business": {
       "title": "Business identity",
       "description": "Shown as the sender on generated invoices and documents. Leave blank to use your organization name.",
@@ -540,6 +554,7 @@
       "catering": "Catering & events",
       "delivery": "Delivery / takeaway",
       "other_income": "Other income",
+      "daily_sales": "Daily sales",
       "ingredients": "Ingredients / Food cost",
       "staff_wages": "Staff wages",
       "rent": "Rent",

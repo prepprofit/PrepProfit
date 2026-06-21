@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
 import { getOrgSettings } from '@/lib/data/org-settings';
+import { bpsToPercent } from '@/lib/calculations/tax';
 import { OnboardingStepper } from './onboarding-stepper';
 
 // Plan selection (PricingTable) is per-session and onboarding state changes on
@@ -47,6 +48,11 @@ export default async function OnboardingPage() {
           businessTaxId: settings.businessTaxId,
           businessEmail: settings.businessEmail,
           businessLogoUrl: settings.businessLogoUrl,
+          defaultTaxRatePercent:
+            settings.defaultTaxRateBps == null
+              ? null
+              : String(bpsToPercent(settings.defaultTaxRateBps)),
+          stockControlStartDate: settings.stockControlStartDate,
         }}
       />
     </div>

@@ -32,6 +32,9 @@ export async function updateOrgSettingsAction(
     businessTaxId: formData.get('businessTaxId'),
     businessEmail: formData.get('businessEmail'),
     businessLogoUrl: formData.get('businessLogoUrl'),
+    // The tax rate is entered as a percentage; Zod converts it to basis points.
+    defaultTaxRateBps: formData.get('defaultTaxRatePercent'),
+    stockControlStartDate: formData.get('stockControlStartDate'),
   });
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
@@ -55,6 +58,10 @@ export async function updateOrgSettingsAction(
           email: parsed.data.businessEmail !== null,
           logoUrl: parsed.data.businessLogoUrl !== null,
         },
+        // Fiscal config (Sprint F5): the bps value + whether a start date is set.
+        // Not PII — a rate and a flag.
+        defaultTaxRateBps: parsed.data.defaultTaxRateBps,
+        stockControlStartDateSet: parsed.data.stockControlStartDate !== null,
       },
     });
   });

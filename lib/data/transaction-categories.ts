@@ -59,6 +59,29 @@ export async function ensureCategoriesSeeded(
     });
 }
 
+/**
+ * Resolve a PREDEFINED category's id by its stable slug (Sprint F5). Used by
+ * `postSaleTransaction` to find the system `daily_sales` row after seeding it.
+ * Returns null only if the slug was never seeded (caller seeds first).
+ */
+export async function getCategoryIdBySlug(
+  db: TenantClient,
+  organizationId: string,
+  slug: string,
+): Promise<string | null> {
+  const rows = await db
+    .select({ id: transactionCategories.id })
+    .from(transactionCategories)
+    .where(
+      and(
+        eq(transactionCategories.organizationId, organizationId),
+        eq(transactionCategories.slug, slug),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
 /** Predefined first (by seed order), then custom (alphabetical). Filter by kind. */
 export async function listCategories(
   db: TenantClient,
