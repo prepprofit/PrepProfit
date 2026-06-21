@@ -6,15 +6,20 @@ import { withOrg } from '@/lib/db';
 import {
   createIngredient,
   lockActiveIngredientRow,
+  toKitchenIngredient,
   trashIngredient,
   updateIngredient,
+  type KitchenIngredient,
 } from '@/lib/data/ingredients';
 import {
   acceptPendingCost,
   appendManualPriceHistory,
 } from '@/lib/data/ingredient-pricing';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
-import { ingredientSchema } from '@/lib/validation/ingredients';
+import {
+  ingredientSchema,
+  kitchenIngredientSchema,
+} from '@/lib/validation/ingredients';
 import type { ActionResult } from '@/lib/action-result';
 import type { Ingredient } from '@/lib/db/schema';
 
@@ -30,18 +35,50 @@ function revalidateIngredientConsumers(): void {
   revalidatePath('/recipes');
 }
 
+/**
+ * The numeric `priceCents` a (kitchen) client tried to send, if any — used to
+ * refuse a FORGED price change with FORBIDDEN rather than silently dropping it. The
+ * kitchen schema strips price, so we peek at the raw payload. Non-numeric → ignored.
+ */
+function forgedPriceCents(input: unknown): number | undefined {
+  if (typeof input === 'object' && input !== null && 'priceCents' in input) {
+    const value = (input as { priceCents?: unknown }).priceCents;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
 export async function createIngredientAction(
   input: unknown,
-): Promise<ActionResult<Ingredient>> {
-  const parsed = ingredientSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
-
+): Promise<ActionResult<Ingredient | KitchenIngredient>> {
   const organizationId = await getOrgId();
   const actor = await auditActor();
+
+  // KITCHEN: operational create only — the server forces priceCents=0 +
+  // needsPricing=true and never reads a client-sent price (Sprint F4, decision #4).
+  if (!(await isManager())) {
+    const parsed = kitchenIngredientSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+    const row = await withOrg(organizationId, (tx) =>
+      createIngredient(tx, organizationId, {
+        name: parsed.data.name,
+        dimension: parsed.data.dimension,
+        supplier: parsed.data.supplier ?? null,
+        priceCents: 0,
+        needsPricing: true,
+      }),
+    );
+    revalidateIngredientConsumers();
+    return { ok: true, data: toKitchenIngredient(row) };
+  }
+
+  // MANAGER: full create, may set an opening price.
+  const parsed = ingredientSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
   const row = await withOrg(organizationId, async (tx) => {
     const created = await createIngredient(tx, organizationId, parsed.data);
     // A real opening price gets a `source='manual'` history row (the price trail,
-    // Sprint F2). Create-with-price RBAC is completed in F4.
+    // Sprint F2).
     if (created.priceCents > 0) {
       await appendManualPriceHistory(
         tx,
@@ -60,23 +97,56 @@ export async function createIngredientAction(
 export async function updateIngredientAction(
   id: string,
   input: unknown,
-): Promise<ActionResult<Ingredient>> {
-  const parsed = ingredientSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
-
+): Promise<ActionResult<Ingredient | KitchenIngredient>> {
   const organizationId = await getOrgId();
-  // Changing price_cents is a financial action → manager-only (Sprint F2; the UI
-  // hides the field from kitchen in F4). Non-price edits (name/supplier) stay open.
   const manager = await isManager();
   const actor = await auditActor();
 
+  // KITCHEN: operational edit only (name/dimension/supplier). The stored price is
+  // preserved and never received from the client (Sprint F4). A price change is a
+  // financial action → FORBIDDEN before the write (the kitchen UI never sends a
+  // price; a forged one is refused, not silently dropped). Changing the `dimension`
+  // of an ALREADY-PRICED ingredient re-bases what its price means (per kg vs litre
+  // vs piece), so that is manager-only too.
+  if (!manager) {
+    const parsed = kitchenIngredientSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+    const forgedPrice = forgedPriceCents(input);
+    const outcome = await withOrg(organizationId, async (tx) => {
+      const current = await lockActiveIngredientRow(tx, organizationId, id);
+      if (!current) return 'not_found' as const;
+      if (forgedPrice !== undefined && forgedPrice !== current.priceCents) {
+        return 'forbidden' as const;
+      }
+      if (parsed.data.dimension !== current.dimension && current.priceCents > 0) {
+        return 'forbidden' as const;
+      }
+      const row = await updateIngredient(tx, organizationId, id, {
+        name: parsed.data.name,
+        dimension: parsed.data.dimension,
+        supplier: parsed.data.supplier ?? null,
+        // Preserve all financial state verbatim.
+        priceCents: current.priceCents,
+        needsPricing: current.needsPricing,
+        pendingPriceCents: current.pendingPriceCents,
+      });
+      return row ?? ('not_found' as const);
+    });
+    if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
+    if (outcome === 'forbidden') return { ok: false, code: 'FORBIDDEN' };
+    revalidateIngredientConsumers();
+    return { ok: true, data: toKitchenIngredient(outcome) };
+  }
+
+  // MANAGER: full edit, may change the price (Sprint F2 manager price-gate).
+  const parsed = ingredientSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
   const outcome = await withOrg(organizationId, async (tx) => {
     // Lock the row (serializes a manual edit against accept/observe — F2).
     const current = await lockActiveIngredientRow(tx, organizationId, id);
     if (!current) return 'not_found' as const;
 
     const priceChanged = parsed.data.priceCents !== current.priceCents;
-    if (priceChanged && !manager) return 'forbidden' as const;
 
     const row = await updateIngredient(tx, organizationId, id, {
       ...parsed.data,
@@ -109,7 +179,6 @@ export async function updateIngredientAction(
   });
 
   if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
-  if (outcome === 'forbidden') return { ok: false, code: 'FORBIDDEN' };
   revalidateIngredientConsumers();
   return { ok: true, data: outcome };
 }

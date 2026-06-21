@@ -15,12 +15,12 @@ import { runInOrg } from '@/lib/db/tenant';
 import { rateLimitKey } from '@/lib/rate-limit';
 
 /**
- * Integration test for the recipe-card PDF route (Sprint 3.5B). Runs the real
- * handler against PGlite under the non-privileged `tenant_app` role (RLS enforced),
- * with `@/lib/auth`, `@/lib/db` and next-intl stubbed. Proves: kitchen is ALLOWED
- * (this doc is not manager-only), a trashed recipe id → 404, a cross-org id → 404
- * with no audit leak, a successful render audits `export.recipeCardPdf` in the
- * active org only, and the `documents` rate limit returns 429.
+ * Integration test for the recipe-card PDF route (Sprint 3.5B; MANAGER-ONLY since
+ * F4). Runs the real handler against PGlite under the non-privileged `tenant_app`
+ * role (RLS enforced), with `@/lib/auth`, `@/lib/db` and next-intl stubbed. Proves:
+ * a manager render audits `export.recipeCardPdf` in the active org only, a trashed
+ * recipe id → 404, a cross-org id → 404 with no audit leak, and the `documents`
+ * rate limit returns 429. (Kitchen → 403 is covered in recipe-card-route-rbac.test.)
  */
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
@@ -35,6 +35,7 @@ vi.mock('@/lib/auth', () => ({
   getUserId: vi.fn(async () => h.auth.userId),
   getUserRole: vi.fn(async () => h.auth.role),
   getOrgName: vi.fn(async () => 'Test Org'),
+  canSeeRecipeCosts: (role: string) => role === 'manager',
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -124,8 +125,8 @@ afterAll(async () => {
 });
 
 describe('GET /api/recipes/[id]/card/pdf', () => {
-  it('lets a kitchen user generate the card (not manager-only) and audits it', async () => {
-    h.auth = { orgId: ORG_A, userId: 'kitchen_1', role: 'kitchen' };
+  it('lets a manager generate the cost-sheet card and audits it', async () => {
+    h.auth = { orgId: ORG_A, userId: 'manager_1', role: 'manager' };
     const res = await call(recipeId);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/pdf');
@@ -169,7 +170,7 @@ describe('GET /api/recipes/[id]/card/pdf', () => {
     const key = rateLimitKey('documents', `${ORG_A}:rl_user`);
     await db.insert(rateLimits).values({ key, windowStart: sql`now()`, count: 20 });
 
-    h.auth = { orgId: ORG_A, userId: 'rl_user', role: 'kitchen' };
+    h.auth = { orgId: ORG_A, userId: 'rl_user', role: 'manager' };
     const res = await call(recipeId);
     expect(res.status).toBe(429);
   });

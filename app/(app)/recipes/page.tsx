@@ -1,9 +1,14 @@
 import Link from 'next/link';
 import { Camera } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
-import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
+import {
+  canAccessFinancials,
+  canSeeRecipeCosts,
+  getOrgId,
+  getUserRole,
+} from '@/lib/auth';
 import { withOrg } from '@/lib/db';
-import { listRecipes, type RecipeFilter } from '@/lib/data/recipes';
+import { listRecipes, toKitchenRecipe, type RecipeFilter } from '@/lib/data/recipes';
 import { listFoldersWithCounts } from '@/lib/data/recipe-folders';
 import { RecipeList } from '@/components/app/recipes/recipe-list';
 import { FolderRail } from '@/components/app/recipes/folder-rail';
@@ -45,12 +50,19 @@ export default async function RecipesPage({
     createFolderId = null;
   }
 
-  const recipes = await withOrg(organizationId, (tx) =>
+  const recipeRows = await withOrg(organizationId, (tx) =>
     listRecipes(tx, organizationId, filter),
   );
 
+  // Kitchen never sees recipe money — strip it from the list payload, not just the
+  // UI (the cards already show only name + portions, but the row carries the money).
+  const role = await getUserRole();
+  const recipes = canSeeRecipeCosts(role)
+    ? recipeRows
+    : recipeRows.map(toKitchenRecipe);
+
   const folderOptions = listing.folders.map((f) => ({ id: f.id, name: f.name }));
-  const canImportPhoto = canAccessFinancials(await getUserRole());
+  const canImportPhoto = canAccessFinancials(role);
 
   return (
     <div className="flex flex-col gap-5">

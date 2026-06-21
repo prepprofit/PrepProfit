@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ArrowLeft, Check, FileText, Plus, Trash2 } from 'lucide-react';
 import type { Ingredient, Recipe, RecipeFolder } from '@/lib/db/schema';
-import type { RecipeLineWithIngredient } from '@/lib/data/recipes';
 import {
   type MeasurementSystem,
   type Unit,
@@ -59,7 +58,38 @@ const LIGHT_VARIANT: Record<MarginLight, 'positive' | 'warning' | 'negative'> = 
   red: 'negative',
 };
 
-type Line = RecipeLineWithIngredient & { unit: Unit; valueText: string };
+/**
+ * Editor shapes (Sprint F4): money is OPTIONAL. For kitchen the server ships the
+ * recipe with no cost/selling-price keys and lines whose ingredient has no
+ * `priceCents`; the cost/pricing UI below is not rendered, so the values are never
+ * read. For managers every money field is present.
+ */
+type EditorRecipe = Omit<
+  Recipe,
+  'laborCostCents' | 'energyCostCents' | 'packagingCostCents' | 'sellingPriceCents'
+> & {
+  laborCostCents?: number;
+  energyCostCents?: number;
+  packagingCostCents?: number;
+  sellingPriceCents?: number | null;
+};
+
+type EditorLineBase = {
+  id: string;
+  ingredientId: string;
+  quantity: number;
+  sortOrder: number;
+  ingredient: { name: string; dimension: Ingredient['dimension']; priceCents?: number };
+};
+
+type IngredientOption = {
+  id: string;
+  name: string;
+  dimension: Ingredient['dimension'];
+  priceCents?: number;
+};
+
+type Line = EditorLineBase & { unit: Unit; valueText: string };
 
 function numberToText(n: number): string {
   return String(Math.round(n * 1000) / 1000);
@@ -70,6 +100,7 @@ function unitOptionLabel(unit: Unit): string {
 }
 
 export function RecipeEditor({
+  canSeeCosts,
   recipe,
   initialLines,
   ingredients,
@@ -77,9 +108,11 @@ export function RecipeEditor({
   currency,
   measurementSystem,
 }: {
-  recipe: Recipe;
-  initialLines: RecipeLineWithIngredient[];
-  ingredients: Ingredient[];
+  /** Manager only: render the cost column, cost/pricing cards and cost-sheet link. */
+  canSeeCosts: boolean;
+  recipe: EditorRecipe;
+  initialLines: EditorLineBase[];
+  ingredients: IngredientOption[];
   folders: RecipeFolder[];
   currency: string;
   measurementSystem: MeasurementSystem;
@@ -93,7 +126,7 @@ export function RecipeEditor({
   const router = useRouter();
 
   const makeLine = React.useCallback(
-    (l: RecipeLineWithIngredient): Line => {
+    (l: EditorLineBase): Line => {
       const unit = pickDisplayUnit(
         l.quantity,
         l.ingredient.dimension,
@@ -108,11 +141,14 @@ export function RecipeEditor({
     name: recipe.name,
     yieldPortions: String(recipe.yieldPortions),
     yieldPercentage: String(recipe.yieldPercentage),
-    laborText: centsToAmountInput(recipe.laborCostCents),
-    energyText: centsToAmountInput(recipe.energyCostCents),
-    packagingText: centsToAmountInput(recipe.packagingCostCents),
+    // Money is only loaded/edited by managers; kitchen never holds these values.
+    laborText: canSeeCosts ? centsToAmountInput(recipe.laborCostCents ?? 0) : '',
+    energyText: canSeeCosts ? centsToAmountInput(recipe.energyCostCents ?? 0) : '',
+    packagingText: canSeeCosts
+      ? centsToAmountInput(recipe.packagingCostCents ?? 0)
+      : '',
     sellingText:
-      recipe.sellingPriceCents != null
+      canSeeCosts && recipe.sellingPriceCents != null
         ? centsToAmountInput(recipe.sellingPriceCents)
         : '',
     notes: recipe.notes ?? '',
@@ -167,24 +203,28 @@ export function RecipeEditor({
     setSaved(false);
   };
 
-  // --- live cost & margin (recomputed from local state every render) ---
-  const cost = recipeCost({
-    yieldPortions: Number(form.yieldPortions) || 0,
-    yieldPercentage: Number(form.yieldPercentage) || 0,
-    laborCostCents: parseMoneyToCents(form.laborText),
-    energyCostCents: parseMoneyToCents(form.energyText),
-    packagingCostCents: parseMoneyToCents(form.packagingText),
-    lines: lines.map((l) => ({
-      dimension: l.ingredient.dimension,
-      priceCents: l.ingredient.priceCents,
-      quantity: l.quantity,
-    })),
-  });
+  // --- live cost & margin (managers only — kitchen sees no money) ---
+  const cost = canSeeCosts
+    ? recipeCost({
+        yieldPortions: Number(form.yieldPortions) || 0,
+        yieldPercentage: Number(form.yieldPercentage) || 0,
+        laborCostCents: parseMoneyToCents(form.laborText),
+        energyCostCents: parseMoneyToCents(form.energyText),
+        packagingCostCents: parseMoneyToCents(form.packagingText),
+        lines: lines.map((l) => ({
+          dimension: l.ingredient.dimension,
+          priceCents: l.ingredient.priceCents ?? 0,
+          quantity: l.quantity,
+        })),
+      })
+    : null;
   const sellingCents = parseMoneyToCents(form.sellingText);
-  const hasPrice = form.sellingText.trim() !== '' && sellingCents > 0;
-  const margin = marginPercent(cost.costPerPortionCents, sellingCents);
+  const hasPrice = canSeeCosts && form.sellingText.trim() !== '' && sellingCents > 0;
+  const margin = cost ? marginPercent(cost.costPerPortionCents, sellingCents) : 0;
   const light = trafficLight(margin);
-  const suggested = suggestedPriceCents(cost.costPerPortionCents, TARGET_MARGIN);
+  const suggested = cost
+    ? suggestedPriceCents(cost.costPerPortionCents, TARGET_MARGIN)
+    : 0;
 
   const availableIngredients = ingredients.filter(
     (i) => !lines.some((l) => l.ingredientId === i.id),
@@ -198,22 +238,28 @@ export function RecipeEditor({
       return;
     }
     setError(null);
-    const input = {
+    const base = {
       name,
       yieldPortions: Math.max(1, Math.round(Number(form.yieldPortions) || 1)),
       yieldPercentage: Math.min(
         100,
         Math.max(1, Math.round(Number(form.yieldPercentage) || 100)),
       ),
-      laborCostCents: parseMoneyToCents(form.laborText),
-      energyCostCents: parseMoneyToCents(form.energyText),
-      packagingCostCents: parseMoneyToCents(form.packagingText),
-      sellingPriceCents:
-        form.sellingText.trim() === ''
-          ? null
-          : parseMoneyToCents(form.sellingText),
       notes: form.notes.trim() === '' ? null : form.notes.trim(),
     };
+    // Kitchen sends operational fields only — never a cost or selling price.
+    const input = canSeeCosts
+      ? {
+          ...base,
+          laborCostCents: parseMoneyToCents(form.laborText),
+          energyCostCents: parseMoneyToCents(form.energyText),
+          packagingCostCents: parseMoneyToCents(form.packagingText),
+          sellingPriceCents:
+            form.sellingText.trim() === ''
+              ? null
+              : parseMoneyToCents(form.sellingText),
+        }
+      : base;
     startTransition(async () => {
       const result = await updateRecipeAction(recipe.id, input);
       if (result.ok) {
@@ -323,7 +369,7 @@ export function RecipeEditor({
               dimension: ing.dimension,
               priceCents: ing.priceCents,
             },
-          }),
+          } satisfies EditorLineBase),
         ]);
         setNewIngredientId('');
         setNewValueText('');
@@ -358,12 +404,14 @@ export function RecipeEditor({
               {t('saved')}
             </span>
           )}
-          <Button asChild type="button" variant="outline">
-            <Link href={`/recipes/${recipe.id}/card/print`}>
-              <FileText className="size-4" />
-              {tCard('action')}
-            </Link>
-          </Button>
+          {canSeeCosts && (
+            <Button asChild type="button" variant="outline">
+              <Link href={`/recipes/${recipe.id}/card/print`}>
+                <FileText className="size-4" />
+                {tCard('action')}
+              </Link>
+            </Button>
+          )}
           <Button type="button" onClick={onSave} disabled={pending}>
             {t('actions.save')}
           </Button>
@@ -401,7 +449,9 @@ export function RecipeEditor({
                   <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     <th className="pb-2">{t('ingredients.name')}</th>
                     <th className="pb-2">{t('ingredients.quantity')}</th>
-                    <th className="pb-2 text-right">{t('ingredients.cost')}</th>
+                    {canSeeCosts && (
+                      <th className="pb-2 text-right">{t('ingredients.cost')}</th>
+                    )}
                     <th className="pb-2"></th>
                   </tr>
                 </thead>
@@ -409,7 +459,7 @@ export function RecipeEditor({
                   {lines.length === 0 && (
                     <tr>
                       <td
-                        colSpan={4}
+                        colSpan={canSeeCosts ? 4 : 3}
                         className="py-6 text-center text-sm text-muted-foreground"
                       >
                         {t('ingredients.empty')}
@@ -421,13 +471,15 @@ export function RecipeEditor({
                       line.ingredient.dimension,
                       measurementSystem,
                     );
-                    const lineCost = Math.round(
-                      lineCostCents({
-                        dimension: line.ingredient.dimension,
-                        priceCents: line.ingredient.priceCents,
-                        quantity: line.quantity,
-                      }),
-                    );
+                    const lineCost = canSeeCosts
+                      ? Math.round(
+                          lineCostCents({
+                            dimension: line.ingredient.dimension,
+                            priceCents: line.ingredient.priceCents ?? 0,
+                            quantity: line.quantity,
+                          }),
+                        )
+                      : 0;
                     return (
                       <tr
                         key={line.id}
@@ -474,9 +526,11 @@ export function RecipeEditor({
                             </Select>
                           </div>
                         </td>
-                        <td className="py-2 pr-2 text-right tabular-nums">
-                          {formatMoney(lineCost, currency)}
-                        </td>
+                        {canSeeCosts && (
+                          <td className="py-2 pr-2 text-right tabular-nums">
+                            {formatMoney(lineCost, currency)}
+                          </td>
+                        )}
                         <td className="py-2 text-right">
                           <div className="flex items-center justify-end gap-1">
                             {savedLineId === line.id && (
@@ -612,33 +666,41 @@ export function RecipeEditor({
                   onChange={(e) => setField({ yieldPercentage: e.target.value })}
                 />
               </Field>
-              <Field label={`${t('fields.labor')} · ${currency}`}>
-                <Input
-                  inputMode="decimal"
-                  value={form.laborText}
-                  disabled={pending}
-                  onChange={(e) => setField({ laborText: e.target.value })}
-                />
-              </Field>
-              <Field label={`${t('fields.energy')} · ${currency}`}>
-                <Input
-                  inputMode="decimal"
-                  value={form.energyText}
-                  disabled={pending}
-                  onChange={(e) => setField({ energyText: e.target.value })}
-                />
-              </Field>
-              <Field label={`${t('fields.packaging')} · ${currency}`}>
-                <Input
-                  inputMode="decimal"
-                  value={form.packagingText}
-                  disabled={pending}
-                  onChange={(e) => setField({ packagingText: e.target.value })}
-                />
-              </Field>
+              {/* Hidden costs are financial — managers only (Sprint F4). */}
+              {canSeeCosts && (
+                <>
+                  <Field label={`${t('fields.labor')} · ${currency}`}>
+                    <Input
+                      inputMode="decimal"
+                      value={form.laborText}
+                      disabled={pending}
+                      onChange={(e) => setField({ laborText: e.target.value })}
+                    />
+                  </Field>
+                  <Field label={`${t('fields.energy')} · ${currency}`}>
+                    <Input
+                      inputMode="decimal"
+                      value={form.energyText}
+                      disabled={pending}
+                      onChange={(e) => setField({ energyText: e.target.value })}
+                    />
+                  </Field>
+                  <Field label={`${t('fields.packaging')} · ${currency}`}>
+                    <Input
+                      inputMode="decimal"
+                      value={form.packagingText}
+                      disabled={pending}
+                      onChange={(e) => setField({ packagingText: e.target.value })}
+                    />
+                  </Field>
+                </>
+              )}
             </CardContent>
           </Card>
 
+          {/* Cost breakdown + pricing are financial — managers only (Sprint F4). */}
+          {cost && (
+            <>
           <Card>
             <CardHeader>
               <CardTitle>{t('cost.title')}</CardTitle>
@@ -703,6 +765,8 @@ export function RecipeEditor({
               </div>
             </CardContent>
           </Card>
+            </>
+          )}
         </div>
       </div>
 

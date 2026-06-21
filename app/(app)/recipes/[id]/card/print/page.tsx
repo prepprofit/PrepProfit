@@ -13,25 +13,33 @@ import { Button } from '@/components/ui/button';
 import { PrintButton } from '@/components/app/invoices/print-button';
 import { PrintLogo } from '@/components/app/invoices/print-logo';
 import { SendDocumentDialog } from '@/components/app/send-document-dialog';
+import { NoAccess } from '@/components/app/no-access';
 
 // Always render fresh so the printed card reflects the latest recipe + prices.
 export const dynamic = 'force-dynamic';
 
 /**
- * Print-friendly recipe card / cost sheet (Sprint 3.5B). NOT manager-only — the
- * recipe editor already shows kitchen the same cost + margin. Org-scoped; a trashed
- * or cross-org id → notFound. Reuses the SAME `buildRecipeCardData` view-model as
- * the PDF route so the two never drift.
+ * Print-friendly recipe card / cost sheet (Sprint 3.5B; MANAGER-ONLY since F4). The
+ * card is entirely cost + margin + selling price, so kitchen — which sees no money —
+ * is blocked here (renders NoAccess) just like the PDF route returns 403. Org-scoped;
+ * a trashed or cross-org id → notFound. Reuses the SAME `buildRecipeCardData`
+ * view-model as the PDF route so the two never drift.
  */
 export default async function RecipeCardPrintPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // The cost sheet is financial — managers only (Sprint F4). Kitchen is blocked
+  // before any data access.
+  if (!(await isManager())) {
+    return <NoAccess />;
+  }
+
   const { id } = await params;
   const organizationId = await getOrgId();
 
-  const [loaded, t, tCard, canEmail] = await Promise.all([
+  const [loaded, t, tCard] = await Promise.all([
     withOrg(organizationId, async (tx) => {
       const recipe = await getRecipeWithIngredients(tx, organizationId, id);
       if (!recipe) return null;
@@ -40,12 +48,12 @@ export default async function RecipeCardPrintPage({
     }),
     getTranslations('recipeCardDocument'),
     getTranslations('recipes.card'),
-    // Emailing is manager-only (the action enforces it); only show the trigger to
-    // managers, even though the recipe card itself is kitchen-visible.
-    isManager(),
   ]);
 
   if (!loaded) notFound();
+
+  // Emailing is manager-only too; the trigger is always shown here now.
+  const canEmail = true;
 
   const settings = loaded.settings ?? DEFAULT_ORG_SETTINGS;
   const orgName = settings.businessName?.trim() ? null : await getOrgName();

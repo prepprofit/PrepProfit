@@ -28,6 +28,15 @@ import {
 
 type Dimension = Ingredient['dimension'];
 
+/**
+ * Row shape the grid renders. Price is OPTIONAL: for kitchen the server ships rows
+ * with no `priceCents` key at all (Sprint F4), and the Price column is not rendered.
+ */
+export type IngredientRow = Omit<Ingredient, 'priceCents' | 'pendingPriceCents'> & {
+  priceCents?: number;
+  pendingPriceCents?: number | null;
+};
+
 type Draft = {
   name: string;
   dimension: Dimension;
@@ -42,11 +51,11 @@ const PER_UNIT_SUFFIX: Record<Dimension, string> = {
   count: '/pc',
 };
 
-function draftFromRow(row: Ingredient): Draft {
+function draftFromRow(row: IngredientRow): Draft {
   return {
     name: row.name,
     dimension: row.dimension,
-    priceText: centsToAmountInput(row.priceCents),
+    priceText: row.priceCents != null ? centsToAmountInput(row.priceCents) : '',
     supplier: row.supplier ?? '',
   };
 }
@@ -55,13 +64,18 @@ function emptyDraft(): Draft {
   return { name: '', dimension: 'weight', priceText: '', supplier: '' };
 }
 
-function draftToInput(draft: Draft) {
+/** Operational fields only — what a kitchen edit sends (no price). */
+function operationalInput(draft: Draft) {
   return {
     name: draft.name.trim(),
     dimension: draft.dimension,
-    priceCents: parseMoneyToCents(draft.priceText),
     supplier: draft.supplier.trim() === '' ? null : draft.supplier.trim(),
   };
+}
+
+/** Full input including price — only built/sent for managers. */
+function draftToInput(draft: Draft) {
+  return { ...operationalInput(draft), priceCents: parseMoneyToCents(draft.priceText) };
 }
 
 /** Enter commits the edited cell by blurring it (auto-save fires on blur). */
@@ -72,6 +86,7 @@ function commitOnEnter(e: React.KeyboardEvent<HTMLInputElement>) {
 type GridMeta = {
   drafts: Record<string, Draft>;
   currency: string;
+  canSeeCosts: boolean;
   pending: boolean;
   savedId: string | null;
   onField: (id: string, patch: Partial<Draft>) => void;
@@ -85,10 +100,13 @@ type GridMeta = {
 
 export function IngredientGrid({
   initialIngredients,
+  canSeeCosts,
   currency,
   highlightId,
 }: {
-  initialIngredients: Ingredient[];
+  initialIngredients: IngredientRow[];
+  /** Manager only: render + edit the Price column. Kitchen rows carry no price. */
+  canSeeCosts: boolean;
   currency: string;
   /** Record id to scroll to + flash, from a ⌘K search deep-link (?highlight=). */
   highlightId?: string;
@@ -98,7 +116,7 @@ export function IngredientGrid({
   const tDim = useTranslations('dimensions');
   const tCommon = useTranslations('common');
   const actionError = useActionError();
-  const [rows, setRows] = React.useState<Ingredient[]>(initialIngredients);
+  const [rows, setRows] = React.useState<IngredientRow[]>(initialIngredients);
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>(() =>
     Object.fromEntries(initialIngredients.map((r) => [r.id, draftFromRow(r)])),
   );
@@ -143,17 +161,20 @@ export function IngredientGrid({
       const draft = drafts[id];
       const row = rows.find((r) => r.id === id);
       if (!draft || !row) return;
-      const input = draftToInput(draft);
-      if (input.name === '') {
+      // Kitchen sends operational fields only (never a price); manager includes it.
+      const op = operationalInput(draft);
+      const priceCents = parseMoneyToCents(draft.priceText);
+      const input = canSeeCosts ? { ...op, priceCents } : op;
+      if (op.name === '') {
         setDrafts((prev) => ({ ...prev, [id]: draftFromRow(row) }));
         return;
       }
       // Skip the round-trip when nothing actually changed.
       const unchanged =
-        input.name === row.name &&
-        input.dimension === row.dimension &&
-        input.priceCents === row.priceCents &&
-        (input.supplier ?? null) === (row.supplier ?? null);
+        op.name === row.name &&
+        op.dimension === row.dimension &&
+        (op.supplier ?? null) === (row.supplier ?? null) &&
+        (!canSeeCosts || priceCents === (row.priceCents ?? 0));
       if (unchanged) {
         setDrafts((prev) => ({ ...prev, [id]: draftFromRow(row) }));
         return;
@@ -171,7 +192,7 @@ export function IngredientGrid({
         }
       });
     },
-    [drafts, rows, flashSaved, actionError],
+    [drafts, rows, flashSaved, actionError, canSeeCosts],
   );
 
   const requestDelete = React.useCallback((id: string) => setConfirmId(id), []);
@@ -197,7 +218,8 @@ export function IngredientGrid({
   }, [confirmId, actionError]);
 
   const onCreate = React.useCallback(() => {
-    const input = draftToInput(newDraft);
+    // Kitchen creates operationally (no price); manager may set an opening price.
+    const input = canSeeCosts ? draftToInput(newDraft) : operationalInput(newDraft);
     if (input.name === '') {
       setError(t('errors.nameRequired'));
       return;
@@ -213,9 +235,9 @@ export function IngredientGrid({
         setError(actionError(result.code));
       }
     });
-  }, [newDraft, t, actionError]);
+  }, [newDraft, t, actionError, canSeeCosts]);
 
-  const columns = React.useMemo<ColumnDef<Ingredient>[]>(
+  const columns = React.useMemo<ColumnDef<IngredientRow>[]>(
     () => [
       {
         id: 'name',
@@ -274,34 +296,39 @@ export function IngredientGrid({
           );
         },
       },
-      {
-        id: 'price',
-        header: `${t('columns.price')} · ${currency}`,
-        cell: ({ row, table }) => {
-          const meta = table.options.meta as GridMeta;
-          const draft = meta.drafts[row.original.id];
-          if (!draft) return null;
-          return (
-            <div className="flex items-center gap-1.5">
-              <Input
-                aria-label={t('columns.price')}
-                inputMode="decimal"
-                className="w-28"
-                value={draft.priceText}
-                disabled={meta.pending}
-                onChange={(e) =>
-                  meta.onField(row.original.id, { priceText: e.target.value })
-                }
-                onKeyDown={commitOnEnter}
-                onBlur={() => meta.onCommit(row.original.id)}
-              />
-              <span className="text-xs text-muted-foreground">
-                {PER_UNIT_SUFFIX[draft.dimension]}
-              </span>
-            </div>
-          );
-        },
-      },
+      // Price is manager-only (Sprint F4) — kitchen rows have no price at all.
+      ...(canSeeCosts
+        ? [
+            {
+              id: 'price',
+              header: `${t('columns.price')} · ${currency}`,
+              cell: ({ row, table }) => {
+                const meta = table.options.meta as GridMeta;
+                const draft = meta.drafts[row.original.id];
+                if (!draft) return null;
+                return (
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      aria-label={t('columns.price')}
+                      inputMode="decimal"
+                      className="w-28"
+                      value={draft.priceText}
+                      disabled={meta.pending}
+                      onChange={(e) =>
+                        meta.onField(row.original.id, { priceText: e.target.value })
+                      }
+                      onKeyDown={commitOnEnter}
+                      onBlur={() => meta.onCommit(row.original.id)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {PER_UNIT_SUFFIX[draft.dimension]}
+                    </span>
+                  </div>
+                );
+              },
+            } satisfies ColumnDef<IngredientRow>,
+          ]
+        : []),
       {
         id: 'supplier',
         header: t('columns.supplier'),
@@ -355,7 +382,7 @@ export function IngredientGrid({
         },
       },
     ],
-    [t, currency],
+    [t, currency, canSeeCosts],
   );
 
   const table = useReactTable({
@@ -365,6 +392,7 @@ export function IngredientGrid({
     meta: {
       drafts,
       currency,
+      canSeeCosts,
       pending,
       savedId,
       onField,
@@ -392,7 +420,10 @@ export function IngredientGrid({
       <div className="rounded-xl border border-dashed border-border bg-surface p-3">
         <div
           className={cn(
-            'grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto_1fr_auto] sm:items-center',
+            'grid grid-cols-1 gap-2 sm:items-center',
+            canSeeCosts
+              ? 'sm:grid-cols-[1fr_auto_auto_1fr_auto]'
+              : 'sm:grid-cols-[1fr_auto_1fr_auto]',
           )}
         >
           <Input
@@ -419,25 +450,27 @@ export function IngredientGrid({
               </option>
             ))}
           </Select>
-          <div className="flex items-center gap-1.5">
-            <Input
-              aria-label={t('columns.price')}
-              inputMode="decimal"
-              placeholder="0.00"
-              className="w-24"
-              value={newDraft.priceText}
-              disabled={pending}
-              onChange={(e) =>
-                setNewDraft((d) => ({ ...d, priceText: e.target.value }))
-              }
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onCreate();
-              }}
-            />
-            <span className="text-xs text-muted-foreground">
-              {PER_UNIT_SUFFIX[newDraft.dimension]}
-            </span>
-          </div>
+          {canSeeCosts && (
+            <div className="flex items-center gap-1.5">
+              <Input
+                aria-label={t('columns.price')}
+                inputMode="decimal"
+                placeholder="0.00"
+                className="w-24"
+                value={newDraft.priceText}
+                disabled={pending}
+                onChange={(e) =>
+                  setNewDraft((d) => ({ ...d, priceText: e.target.value }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onCreate();
+                }}
+              />
+              <span className="text-xs text-muted-foreground">
+                {PER_UNIT_SUFFIX[newDraft.dimension]}
+              </span>
+            </div>
+          )}
           <Input
             aria-label={t('columns.supplier')}
             placeholder={t('placeholders.supplier')}

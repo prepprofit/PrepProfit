@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getTranslations } from 'next-intl/server';
-import { getOrgId, getOrgName, getUserId, getUserRole } from '@/lib/auth';
+import {
+  canSeeRecipeCosts,
+  getOrgId,
+  getOrgName,
+  getUserId,
+  getUserRole,
+} from '@/lib/auth';
 import { getDb, withOrg } from '@/lib/db';
 import { getRecipeWithIngredients } from '@/lib/data/recipes';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
@@ -20,23 +26,26 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Recipe card (cost sheet) PDF download (Sprint 3.5B) — a justified API route.
- * Unlike the financial documents this is NOT manager-only: the recipe editor
- * already shows the same live cost + margin to kitchen, so the card exposes nothing
- * new. It is still org-scoped (RULE #1) — the org id is derived server-side and the
- * read runs inside `withOrg` so RLS is active — rate-limited (`documents` bucket),
- * and audited (`export.recipeCardPdf`) only after a successful render. A trashed or
- * cross-org recipe id returns 404 (never leaks existence).
+ * Recipe card (cost sheet) PDF download (Sprint 3.5B; MANAGER-ONLY since F4) — a
+ * justified API route. The card is entirely cost + margin + selling price, so a
+ * non-manager (kitchen, who sees no money) gets 403 before any data access. It is
+ * org-scoped (RULE #1) — the org id is derived server-side and the read runs inside
+ * `withOrg` so RLS is active — rate-limited (`documents` bucket), and audited
+ * (`export.recipeCardPdf`) only after a successful render. A trashed or cross-org
+ * recipe id returns 404 (never leaks existence).
  */
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  // Recipes are visible to every role; no manager gate. Resolve the actor for
-  // rate limiting + audit (any authenticated org member).
   const organizationId = await getOrgId();
   const userId = await getUserId();
   const role = await getUserRole();
+
+  // The cost sheet is financial — managers only (Sprint F4). Refuse before any work.
+  if (!canSeeRecipeCosts(role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   // Abuse control (Sprint 3.1): per org+user, on the un-scoped infra table.
   const limit = await enforceRateLimit(

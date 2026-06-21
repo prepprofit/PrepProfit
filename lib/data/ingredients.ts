@@ -19,6 +19,22 @@ export type IngredientInput = Omit<
   'id' | 'organizationId' | 'createdAt' | 'updatedAt' | 'deletedAt'
 >;
 
+/**
+ * Kitchen-facing ingredient shape (Sprint F4): the full row with the financial
+ * columns (`priceCents`, `pendingPriceCents`) OMITTED — the keys are literally
+ * absent, not zeroed, so a kitchen payload can never carry a cost. Built with
+ * {@link toKitchenIngredient}. Pages/actions ship this to kitchen instead of the
+ * full `Ingredient` (UI hiding alone is never enough — CLAUDE.md).
+ */
+export type KitchenIngredient = Omit<Ingredient, 'priceCents' | 'pendingPriceCents'>;
+
+/** Strips the financial columns from an ingredient row for a kitchen payload. */
+export function toKitchenIngredient(row: Ingredient): KitchenIngredient {
+  const { priceCents: _priceCents, pendingPriceCents: _pendingPriceCents, ...rest } =
+    row;
+  return rest;
+}
+
 export async function listIngredients(
   db: TenantClient,
   organizationId: string,

@@ -7,6 +7,8 @@ import { useTranslations } from 'next-intl';
 import { ChevronRight, Plus, Trash2 } from 'lucide-react';
 import type { Recipe } from '@/lib/db/schema';
 import { Input } from '@/components/ui/input';
+// The list never shows money — accept only the operational fields, so a recipe's
+// cost/selling price is not even part of this client component's props (Sprint F4).
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -18,6 +20,12 @@ import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
 
 export type FolderOption = { id: string; name: string };
+
+/** Operational recipe fields the list renders — deliberately no money (Sprint F4). */
+export type RecipeListItem = Pick<
+  Recipe,
+  'id' | 'name' | 'yieldPortions' | 'folderId'
+>;
 
 /**
  * Recipe grid for the active folder view. Server-driven: it renders the recipes
@@ -32,7 +40,7 @@ export function RecipeList({
   createFolderId,
   activeKey,
 }: {
-  recipes: Recipe[];
+  recipes: RecipeListItem[];
   folders: FolderOption[];
   /** Folder a newly created recipe is filed into (null = "No folder"). */
   createFolderId: string | null;

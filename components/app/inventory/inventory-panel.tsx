@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { Ingredient } from '@/lib/db/schema';
+import type { KitchenIngredient } from '@/lib/data/ingredients';
 import {
   type MeasurementSystem,
   type Unit,
@@ -45,7 +46,8 @@ export function InventoryPanel({
   ingredients,
   measurementSystem,
 }: {
-  ingredients: Ingredient[];
+  // Inventory is operational — no money. Accepts the price-free kitchen projection.
+  ingredients: KitchenIngredient[];
   measurementSystem: MeasurementSystem;
 }) {
   const t = useTranslations('inventory');
@@ -99,7 +101,7 @@ function InventoryRow({
   measurementSystem,
   onError,
 }: {
-  ingredient: Ingredient;
+  ingredient: KitchenIngredient;
   measurementSystem: MeasurementSystem;
   onError: (message: string | null) => void;
 }) {

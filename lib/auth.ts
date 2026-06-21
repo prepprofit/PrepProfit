@@ -89,3 +89,16 @@ export async function getFirstName(): Promise<string | null> {
 export function canAccessFinancials(role: UserRole): boolean {
   return role === 'manager';
 }
+
+/**
+ * Pure role predicate — recipe/ingredient COST and PRICE (ingredient prices,
+ * recipe cost breakdown, per-portion cost, selling price, margin, the cost sheet)
+ * are financial and managers-only (Sprint F4). Kitchen sees the OPERATIONAL recipe
+ * (names, quantities, units, yield, steps) but never money. Same shape as
+ * {@link canAccessFinancials}; enforced server-side at the data, UI and write
+ * layers (UI hiding alone is never enough — money is stripped from kitchen
+ * payloads, and price/cost writes are refused for kitchen).
+ */
+export function canSeeRecipeCosts(role: UserRole): boolean {
+  return role === 'manager';
+}

@@ -39,6 +39,59 @@ export type RecipeWithIngredients = {
 };
 
 /**
+ * Kitchen-facing recipe shapes (Sprint F4): the recipe with its money columns
+ * (`laborCostCents` / `energyCostCents` / `packagingCostCents` /
+ * `sellingPriceCents`) OMITTED, and lines whose ingredient carries NO `priceCents`.
+ * The keys are literally absent, not zeroed, so a kitchen payload can never carry a
+ * cost or selling price. Pages ship these to kitchen instead of the full shapes.
+ */
+export type KitchenRecipe = Omit<
+  Recipe,
+  'laborCostCents' | 'energyCostCents' | 'packagingCostCents' | 'sellingPriceCents'
+>;
+
+export type KitchenRecipeLine = {
+  id: string;
+  ingredientId: string;
+  quantity: number;
+  sortOrder: number;
+  ingredient: { name: string; dimension: Ingredient['dimension'] };
+};
+
+export type KitchenRecipeWithIngredients = {
+  recipe: KitchenRecipe;
+  lines: KitchenRecipeLine[];
+};
+
+/** Strips the money columns from a recipe row for a kitchen payload. */
+export function toKitchenRecipe(row: Recipe): KitchenRecipe {
+  const {
+    laborCostCents: _labor,
+    energyCostCents: _energy,
+    packagingCostCents: _packaging,
+    sellingPriceCents: _selling,
+    ...rest
+  } = row;
+  return rest;
+}
+
+/** Strips all money (recipe + per-line ingredient price) for a kitchen payload. */
+export function toKitchenRecipeWithIngredients(
+  data: RecipeWithIngredients,
+): KitchenRecipeWithIngredients {
+  return {
+    recipe: toKitchenRecipe(data.recipe),
+    lines: data.lines.map((l) => ({
+      id: l.id,
+      ingredientId: l.ingredientId,
+      quantity: l.quantity,
+      sortOrder: l.sortOrder,
+      ingredient: { name: l.ingredient.name, dimension: l.ingredient.dimension },
+    })),
+  };
+}
+
+/**
  * Which folder view to list. `all` = every active recipe; `uncategorized` = those
  * with no folder ("No folder"); `folder` = a single folder. The folder filter is
  * additive — `deleted_at IS NULL` always applies, so trashed recipes never show.

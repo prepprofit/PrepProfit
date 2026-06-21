@@ -26,6 +26,30 @@ export const recipeSchema = z.object({
 
 export type RecipeFormInput = z.infer<typeof recipeSchema>;
 
+/**
+ * Operational-only recipe input for KITCHEN (Sprint F4). NO money fields
+ * (`laborCostCents` / `energyCostCents` / `packagingCostCents` /
+ * `sellingPriceCents`): kitchen edits only name/folder/yield/notes and never holds
+ * nor transmits a cost or price. On create the server zeroes the money fields; on
+ * update it preserves the stored ones. Zod strips unknown keys, so a forged money
+ * field is dropped here.
+ */
+export const kitchenRecipeSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  folderId: z.string().min(1).nullable().optional(),
+  yieldPortions: z.number().int().min(1).max(1_000_000),
+  yieldPercentage: z.number().int().min(1).max(100),
+  notes: z
+    .string()
+    .trim()
+    .max(2000)
+    .transform((s) => (s === '' ? null : s))
+    .nullable()
+    .optional(),
+});
+
+export type KitchenRecipeFormInput = z.infer<typeof kitchenRecipeSchema>;
+
 /** A recipe line: a canonical quantity (g / ml / count) of an ingredient. */
 export const recipeLineSchema = z.object({
   ingredientId: z.string().min(1),
