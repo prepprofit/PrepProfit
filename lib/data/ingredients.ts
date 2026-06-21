@@ -147,6 +147,32 @@ export async function lockActiveIngredient(
   return rows.length > 0;
 }
 
+/**
+ * Like {@link lockActiveIngredient}, but returns the FULL locked row (or null).
+ * The F2 pricing flows (record observation / accept cost / manual price edit) take
+ * this FOR UPDATE lock so they serialize on the ingredient — a concurrent observe
+ * and accept can't race and accept the wrong "latest" history line.
+ */
+export async function lockActiveIngredientRow(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<Ingredient | null> {
+  const rows = await db
+    .select()
+    .from(ingredients)
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, id),
+        isNull(ingredients.deletedAt),
+      ),
+    )
+    .for('update')
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 /** Moves an active ingredient to the trash. Returns null if it was not active. */
 export async function softDeleteIngredient(
   db: TenantClient,

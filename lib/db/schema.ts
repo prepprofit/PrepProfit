@@ -111,6 +111,11 @@ export const ingredients = pgTable(
     // AI extraction default to priceCents 0 and set this), so the UI can flag it
     // for pricing and a "0" cost is honestly "unpriced", not "free" (Sprint 4.6).
     needsPricing: boolean('needs_pricing').notNull().default(false),
+    // A newer approved cost OBSERVED (quote/receipt, Sprint F2) but not yet
+    // accepted by a manager. NULL = nothing pending. Receiving/quotes raise this;
+    // only the manager-only "accept cost" action moves it into price_cents. So the
+    // approved cost (price_cents) never changes silently.
+    pendingPriceCents: integer('pending_price_cents'),
     supplier: text('supplier'),
     // Current stock on hand, in the ingredient's canonical unit (g / ml / count).
     // Maintained transactionally alongside the inventory_movements ledger.
@@ -341,6 +346,58 @@ export const inventoryMovements = pgTable(
       columns: [t.organizationId, t.reversalOf],
       foreignColumns: [t.organizationId, t.id],
       name: 'inventory_movements_reversal_of_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Ingredient price history (Sprint F2). An append log of observed/derived costs
+ * per ingredient: a manual per-unit price entry, or a purchase PACK price seen on
+ * a quote/receipt converted to the approved per-unit cost
+ * (lib/calculations/purchasePrice.ts). `accepted` flips TRUE on the row whose
+ * value became `ingredients.price_cents` via the manager-only "accept cost" action
+ * — receiving/quotes NEVER mutate `price_cents` silently (they raise
+ * `ingredients.pending_price_cents` instead). Standard org_isolation RLS (it is a
+ * log, and accept must flip `accepted`). Retained until the ingredient is fully
+ * purged (cascade FK).
+ */
+export const ingredientPriceHistory = pgTable(
+  'ingredient_price_history',
+  {
+    id: id(),
+    organizationId: orgId(),
+    ingredientId: text('ingredient_id').notNull(),
+    // Where this observation came from.
+    source: text('source', {
+      enum: ['manual', 'order', 'quote', 'import'],
+    }).notNull(),
+    // The purchase pack (NULL for a direct manual per-unit price entry).
+    packSize: numeric('pack_size', { precision: 12, scale: 2 }),
+    packUnit: text('pack_unit'),
+    packPriceCents: integer('pack_price_cents'),
+    // The approved cost per priced unit (per kg / litre / piece) derived from the
+    // pack, or the directly entered manual price. Integer cents.
+    derivedPriceCents: integer('derived_price_cents').notNull(),
+    // TRUE on the row whose value became ingredients.price_cents.
+    accepted: boolean('accepted').notNull().default(false),
+    // Clerk user who recorded it (NULL for system / import).
+    actorUserId: text('actor_user_id'),
+    note: text('note'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('ingredient_price_history_org_idx').on(t.organizationId),
+    // History view: newest-first per ingredient.
+    index('ingredient_price_history_org_ingredient_idx').on(
+      t.organizationId,
+      t.ingredientId,
+      t.createdAt,
+    ),
+    // Same-tenant link; history dies with the ingredient on full purge (F3).
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'ingredient_price_history_ingredient_fk',
     }).onDelete('cascade'),
   ],
 );
@@ -904,6 +961,8 @@ export type Ingredient = InferSelectModel<typeof ingredients>;
 export type NewIngredient = InferInsertModel<typeof ingredients>;
 export type InventoryMovement = InferSelectModel<typeof inventoryMovements>;
 export type NewInventoryMovement = InferInsertModel<typeof inventoryMovements>;
+export type IngredientPriceHistory = InferSelectModel<typeof ingredientPriceHistory>;
+export type NewIngredientPriceHistory = InferInsertModel<typeof ingredientPriceHistory>;
 export type Recipe = InferSelectModel<typeof recipes>;
 export type NewRecipe = InferInsertModel<typeof recipes>;
 export type RecipeFolder = InferSelectModel<typeof recipeFolders>;
@@ -948,6 +1007,8 @@ export const businessTables = [
   'recipes',
   'recipe_ingredients',
   'inventory_movements',
+  // Ingredient price history (Sprint F2) — standard org_isolation RLS.
+  'ingredient_price_history',
   'transaction_categories',
   'transactions',
   'customers',

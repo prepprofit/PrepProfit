@@ -112,7 +112,7 @@ describe('buildOrgDataExport', () => {
     expect(names.sort()).toEqual(['Butter A', 'Sugar A']);
     expect(names).not.toContain('Flour B');
     expect(bundle.organizationId).toBe(ORG_A);
-    expect(bundle.schemaVersion).toBe(1);
+    expect(bundle.schemaVersion).toBe(2);
     expect(countExportRows(bundle)).toBeGreaterThanOrEqual(2);
   });
 

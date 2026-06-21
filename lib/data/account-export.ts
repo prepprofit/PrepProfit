@@ -7,6 +7,7 @@ import {
   recipes,
   recipeIngredients,
   inventoryMovements,
+  ingredientPriceHistory,
   transactionCategories,
   transactions,
   customers,
@@ -35,7 +36,8 @@ import {
  */
 
 /** Bump when the bundle's shape changes, so importers can detect the version. */
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 1;
+// v2 (Sprint F2): added `ingredientPriceHistory`.
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 2;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -57,6 +59,7 @@ export async function buildOrgDataExport(
     ['recipes', recipes],
     ['recipeIngredients', recipeIngredients],
     ['inventoryMovements', inventoryMovements],
+    ['ingredientPriceHistory', ingredientPriceHistory],
     ['transactionCategories', transactionCategories],
     ['transactions', transactions],
     ['customers', customers],

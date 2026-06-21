@@ -44,8 +44,12 @@ export type RecipeCost = {
   costPerPortionCents: number;
 };
 
-/** Canonical units per priced purchase unit, by dimension. */
-const CANONICAL_PER_PRICE_UNIT: Record<Dimension, number> = {
+/**
+ * Canonical units per priced purchase unit, by dimension. The single source of
+ * truth for "price is per kg / litre / piece": both this module and the F2
+ * purchase-price conversion (lib/calculations/purchasePrice.ts) import it.
+ */
+export const CANONICAL_PER_PRICE_UNIT: Record<Dimension, number> = {
   weight: 1000, // grams per kg
   volume: 1000, // millilitres per litre
   count: 1, // pieces per piece

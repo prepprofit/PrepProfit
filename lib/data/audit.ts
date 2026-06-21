@@ -39,6 +39,12 @@ export type AuditAction =
   // Trash lifecycle (restore / permanent purge)
   | 'trash.restore'
   | 'trash.purge'
+  // Ingredient approved-cost changes (Sprint F2). `ingredient.priceUpdate` = a
+  // manager manually changed price_cents; `ingredient.priceAccept` = a manager
+  // accepted a pending observed cost. metadata = old/new cents only (money tied to
+  // an ingredient, not a person), never names or notes.
+  | 'ingredient.priceUpdate'
+  | 'ingredient.priceAccept'
   // Org settings
   | 'settings.update'
   // Sensitive exports / generated documents
