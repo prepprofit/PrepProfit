@@ -49,6 +49,12 @@ export type ActionErrorCode =
   // A recipe allergen override tried to lower/remove a presence — overrides may only
   // ADD or ESCALATE (Sprint 9). The derived allergens are never suppressible.
   | 'ALLERGEN_CANNOT_DOWNGRADE'
+  // A menu line referenced a recipe that is missing/trashed/cross-org at save time
+  // (Sprint 10) — fix the line (remove/replace/restore the recipe) before saving.
+  | 'MENU_RECIPE_INVALID'
+  // A recipe still referenced by a menu was manually purged (Sprint 10) — remove the
+  // menu line (or purge the menu) first; the purge does nothing until then.
+  | 'RECIPE_IN_MENU'
   // A supplier still in use (the default for ≥1 ingredient) was archived (Sprint 7) —
   // replace/remove the default link first.
   | 'SUPPLIER_IN_USE'

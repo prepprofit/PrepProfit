@@ -13,6 +13,7 @@ import type { TenantTx } from '@/lib/db/tenant';
 /** Entity kinds the registry can search. */
 export type SearchEntityType =
   | 'recipe'
+  | 'menu'
   | 'ingredient'
   | 'transaction'
   | 'invoice'

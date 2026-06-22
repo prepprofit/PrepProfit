@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
+  BookOpen,
   Building2,
   Carrot,
   ChefHat,
@@ -46,6 +47,7 @@ const GROUP_ICON: Record<
   React.ComponentType<{ className?: string }>
 > = {
   recipe: ChefHat,
+  menu: BookOpen,
   ingredient: Carrot,
   transaction: Receipt,
   invoice: FileText,
@@ -150,6 +152,7 @@ export function CommandPalette({
 
   const GROUP_LABEL: Record<SearchEntityType, string> = {
     recipe: t('groups.recipes'),
+    menu: t('groups.menus'),
     ingredient: t('groups.ingredients'),
     transaction: t('groups.transactions'),
     invoice: t('groups.invoices'),

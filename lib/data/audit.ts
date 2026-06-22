@@ -65,6 +65,13 @@ export type AuditAction =
   | 'allergen.ingredientReview'
   | 'allergen.overrideAdd'
   | 'allergen.overrideClear'
+  // Menus / combos (Sprint 10, manager-only). `.create/.update/.delete` = menu
+  // lifecycle (restore/purge use the generic `trash.*`). metadata = ids, item count
+  // and a `priceChanged` boolean + changed field names only — NEVER the menu price
+  // value or notes.
+  | 'menu.create'
+  | 'menu.update'
+  | 'menu.delete'
   // Kitchen-visible allergen matrix document (Sprint 9) — money-free; metadata is
   // recipe count only, never costs.
   | 'export.allergenMatrixPdf'

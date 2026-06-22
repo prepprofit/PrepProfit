@@ -32,7 +32,14 @@ import {
   purgeCustomerAction,
   restoreInvoiceAction,
   purgeInvoiceAction,
+  restoreMenuAction,
+  purgeMenuAction,
 } from '@/app/(app)/trash/actions';
+import {
+  createMenuAction,
+  updateMenuAction,
+  deleteMenuAction,
+} from '@/app/(app)/menus/actions';
 import { updateOrgSettingsAction } from '@/app/(app)/settings/actions';
 import { completeOnboardingAction } from '@/app/(app)/onboarding/actions';
 
@@ -71,6 +78,17 @@ describe('manager-only actions reject kitchen before touching data', () => {
       purgeCustomerAction('c1'),
       restoreInvoiceAction('i1'),
       purgeInvoiceAction('i1'),
+      restoreMenuAction('m1'),
+      purgeMenuAction('m1'),
+    ]);
+    for (const result of results) expect(result).toEqual(FORBIDDEN);
+  });
+
+  it('blocks ALL menu mutations (menus are manager-only, incl. price)', async () => {
+    const results = await Promise.all([
+      createMenuAction({}),
+      updateMenuAction('m1', {}),
+      deleteMenuAction('m1'),
     ]);
     for (const result of results) expect(result).toEqual(FORBIDDEN);
   });

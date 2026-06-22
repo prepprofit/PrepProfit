@@ -52,6 +52,7 @@ export async function GET(req: Request): Promise<NextResponse> {
 
   let offset = 0;
   let orgs = 0;
+  let purgedMenus = 0;
   let purgedRecipes = 0;
   let purgedIngredients = 0;
   let purgedTransactions = 0;
@@ -72,7 +73,8 @@ export async function GET(req: Request): Promise<NextResponse> {
         // Audit the purge per org (Sprint 3.1), inside the same tx so it commits
         // atomically. Actor is the org-less cron → `system` role, null user id.
         if (
-          purged.recipes +
+          purged.menus +
+            purged.recipes +
             purged.ingredients +
             purged.transactions +
             purged.customers +
@@ -95,6 +97,7 @@ export async function GET(req: Request): Promise<NextResponse> {
         }
         return purged;
       });
+      purgedMenus += result.menus;
       purgedRecipes += result.recipes;
       purgedIngredients += result.ingredients;
       purgedTransactions += result.transactions;
@@ -151,6 +154,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     ok: true,
     cutoff: cutoff.toISOString(),
     orgs,
+    purgedMenus,
     purgedRecipes,
     purgedIngredients,
     purgedTransactions,

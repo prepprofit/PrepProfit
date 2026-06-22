@@ -221,6 +221,7 @@ describe('trash data layer', () => {
 
     const result = await purgeExpired(db, ORG_A, purgeCutoff());
     expect(result).toEqual({
+      menus: 0,
       recipes: 1,
       ingredients: 1,
       transactions: 0,
@@ -244,6 +245,7 @@ describe('trash data layer', () => {
 
     const result = await purgeExpired(db, ORG_A, purgeCutoff());
     expect(result).toEqual({
+      menus: 0,
       recipes: 0,
       ingredients: 0,
       transactions: 0,

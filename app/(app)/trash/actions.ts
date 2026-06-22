@@ -10,9 +10,13 @@ import { purgeIngredient, restoreIngredient } from '@/lib/data/ingredients';
 import {
   countTrashedIngredientsInRecipe,
   lockRecipeReferencedIngredients,
-  purgeRecipe,
   restoreRecipe,
 } from '@/lib/data/recipes';
+import {
+  purgeMenu,
+  purgeRecipeWithMenuGuard,
+  restoreMenu,
+} from '@/lib/data/menus';
 import {
   getTransactionAnyState,
   purgeTransaction,
@@ -37,6 +41,7 @@ function revalidateTrash(): void {
   revalidatePath('/trash');
   revalidatePath('/recipes');
   revalidatePath('/ingredients');
+  revalidatePath('/menus');
   revalidatePath('/dashboard');
 }
 
@@ -114,16 +119,61 @@ export async function purgeRecipeAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   const actor = await auditActor();
-  await withOrg(organizationId, async (tx) => {
-    await purgeRecipe(tx, organizationId, id);
+  // A recipe still referenced by a menu (Sprint 10) is purge-blocked BEFORE any
+  // side effect: the guard checks the menu reference first, so a blocked purge
+  // never nulls a referencing transaction. Remove the menu line (or purge the
+  // menu) first.
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const status = await purgeRecipeWithMenuGuard(tx, organizationId, id);
+    if (status !== 'ok') return status;
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'trash.purge',
       entityType: 'recipe',
       entityId: id,
     });
+    return 'ok' as const;
   });
+  if (outcome === 'in_menu') return { ok: false, code: 'RECIPE_IN_MENU' };
   // It can unlink transactions, so refresh the financial views too.
   revalidateTrashFinance();
+  return { ok: true, data: undefined };
+}
+
+/** Restore a trashed menu — manager-only (Sprint 10). */
+export async function restoreMenuAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const restored = await restoreMenu(tx, organizationId, id);
+    if (restored) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'trash.restore',
+        entityType: 'menu',
+        entityId: id,
+      });
+    }
+    return restored;
+  });
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  revalidateTrash();
+  return { ok: true, data: undefined };
+}
+
+/** Permanently delete a trashed menu — manager-only (Sprint 10). Items cascade. */
+export async function purgeMenuAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  await withOrg(organizationId, async (tx) => {
+    await purgeMenu(tx, organizationId, id);
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'trash.purge',
+      entityType: 'menu',
+      entityId: id,
+    });
+  });
+  revalidateTrash();
   return { ok: true, data: undefined };
 }
 

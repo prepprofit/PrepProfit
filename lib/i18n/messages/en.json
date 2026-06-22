@@ -37,6 +37,8 @@
     "AI_EXTRACTION_FAILED": "We couldn't read a recipe from that photo. Try a clearer, well-lit image.",
     "USAGE_LIMIT_REACHED": "You've used all of this month's photo extractions on your plan. They reset next month, or upgrade for more.",
     "ALLERGEN_CANNOT_DOWNGRADE": "A recipe allergen can only be added or raised, never lowered or removed. Allergens from ingredients can't be suppressed here.",
+    "MENU_RECIPE_INVALID": "One of the menu's recipes is missing or in the trash. Remove or replace that line, then save again.",
+    "RECIPE_IN_MENU": "This recipe is used in a menu, so it can't be deleted forever yet. Remove it from the menu (or delete the menu) first.",
     "SUPPLIER_IN_USE": "This supplier is the default for one or more ingredients, so it can't be archived. Change or remove those ingredient suppliers first.",
     "SUPPLIER_INACTIVE": "That supplier is archived. Reactivate it before assigning it to an ingredient.",
     "PACK_UNIT_MISMATCH": "That pack unit doesn't match the ingredient's measurement type. Use a weight unit for a weight ingredient, a volume unit for a volume one, and so on.",
@@ -67,6 +69,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "recipes": "Recipes",
+    "menus": "Menus",
     "ingredients": "Ingredients",
     "inventory": "Inventory",
     "financials": "Financials",
@@ -115,11 +118,73 @@
       "invoices": "Invoices",
       "customers": "Customers",
       "suppliers": "Suppliers",
-      "purchaseOrders": "Purchase orders"
+      "purchaseOrders": "Purchase orders",
+      "menus": "Menus"
     }
   },
   "theme": {
     "toggle": "Toggle theme"
+  },
+  "menus": {
+    "title": "Menus",
+    "subtitle": "Group recipes into menus and combos, and see their food cost and margin.",
+    "empty": "No menus yet. Create your first menu to combine recipes into a combo.",
+    "saved": "Saved",
+    "itemCount": "{count, plural, =0 {No recipes} one {# recipe} other {# recipes}}",
+    "portions": "{count, plural, one {# portion} other {# portions}}",
+    "unavailableLine": "Unavailable",
+    "actions": {
+      "new": "New menu",
+      "back": "Back",
+      "create": "Create menu",
+      "save": "Save changes",
+      "delete": "Delete menu"
+    },
+    "incomplete": {
+      "badge": "Incomplete",
+      "kitchenBody": "One or more recipes in this menu are unavailable. The composition and allergens may be incomplete.",
+      "managerBody": "One or more recipes are unavailable (in the trash). Food cost and margin are hidden until you remove or restore them."
+    },
+    "kpis": {
+      "price": "Price",
+      "cost": "Cost",
+      "foodCost": "Food cost",
+      "margin": "Margin"
+    },
+    "composition": {
+      "title": "Recipes",
+      "recipe": "Recipe",
+      "quantity": "Portions",
+      "lineCost": "Cost",
+      "empty": "No recipes in this menu yet. Add one below.",
+      "add": "Add",
+      "allAdded": "All recipes added",
+      "select": "Select a recipe…",
+      "remove": "Remove"
+    },
+    "allergens": {
+      "title": "Allergens"
+    },
+    "pricing": {
+      "title": "Pricing",
+      "sellingPrice": "Selling price"
+    },
+    "fields": {
+      "name": "Menu name",
+      "namePlaceholder": "e.g. Lunch combo",
+      "notes": "Notes"
+    },
+    "placeholders": {
+      "notes": "Internal notes about this menu…"
+    },
+    "deleteConfirm": {
+      "title": "Move menu to trash?",
+      "body": "{name} will be moved to the trash. You can restore it within 30 days."
+    },
+    "errors": {
+      "nameRequired": "Give the menu a name.",
+      "noItems": "Add at least one recipe to the menu."
+    }
   },
   "suppliers": {
     "title": "Suppliers",
@@ -560,6 +625,7 @@
     "empty": "Nothing in the trash. Deleted recipes and ingredients will appear here.",
     "sections": {
       "recipes": "Recipes",
+      "menus": "Menus",
       "ingredients": "Ingredients",
       "transactions": "Transactions",
       "invoices": "Invoices",

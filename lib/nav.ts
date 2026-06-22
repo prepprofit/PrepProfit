@@ -9,6 +9,9 @@ export const navGroups = [
     items: [
       { key: 'dashboard', href: '/dashboard' },
       { key: 'recipes', href: '/recipes' },
+      // Menus / combos (Sprint 10) — visible to BOTH roles (kitchen sees an
+      // operational, money-free view); lives in Operations near Recipes.
+      { key: 'menus', href: '/menus' },
       { key: 'ingredients', href: '/ingredients' },
       { key: 'inventory', href: '/inventory' },
     ],

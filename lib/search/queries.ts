@@ -3,6 +3,7 @@ import {
   customers,
   ingredients,
   invoices,
+  menus,
   purchaseOrders,
   recipes,
   suppliers,
@@ -73,6 +74,48 @@ export async function searchRecipes(
     href: `/recipes/${r.id}`,
     primarySim: toNum(r.primarySim),
     secondarySim: toNum(r.secondarySim),
+    exact: r.exact === true,
+    prefix: r.prefix === true,
+    substring: r.substring === true,
+  }));
+}
+
+export async function searchMenus(
+  ctx: SearchContext,
+): Promise<SearchCandidate[]> {
+  const { tx, organizationId, query, limit } = ctx;
+  const like = `%${escapeLike(query)}%`;
+  const prefixLike = `${escapeLike(query)}%`;
+
+  // Active menus only; match on the name. NO monetary subtitle — menus are
+  // kitchen-accessible (F4), so a search row never carries price/cost.
+  const rows = await tx
+    .select({
+      id: menus.id,
+      name: menus.name,
+      primarySim: sql<number>`similarity(${menus.name}, ${query})`,
+      exact: sql<boolean>`lower(${menus.name}) = lower(${query})`,
+      prefix: sql<boolean>`${menus.name} ILIKE ${prefixLike}`,
+      substring: sql<boolean>`${menus.name} ILIKE ${like}`,
+    })
+    .from(menus)
+    .where(
+      and(
+        eq(menus.organizationId, organizationId),
+        isNull(menus.deletedAt),
+        sql`(${menus.name} % ${query} OR ${menus.name} ILIKE ${like})`,
+      ),
+    )
+    .orderBy(sql`similarity(${menus.name}, ${query}) DESC`)
+    .limit(limit);
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.name,
+    subtitle: null,
+    href: `/menus/${r.id}`,
+    primarySim: toNum(r.primarySim),
+    secondarySim: 0,
     exact: r.exact === true,
     prefix: r.prefix === true,
     substring: r.substring === true,

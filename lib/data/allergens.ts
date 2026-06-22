@@ -255,6 +255,98 @@ export async function loadOrgRecipeAllergens(
   }));
 }
 
+/**
+ * Batch-compute the allergen rollup for a SPECIFIC set of recipe ids (Sprint 10,
+ * menus). Works directly off `recipe_ingredients` keyed by the supplied ids, so a
+ * TRASHED-but-still-referenced recipe contributes its allergens exactly the same as
+ * an active one (a menu line never becomes silently allergen-free). One query for
+ * lines (ingredient join NOT `deleted_at`-filtered, mirroring recipe cost), one for
+ * all tags, one for overrides — then the pure rollup per id. Every requested id is
+ * present in the returned map (a recipe with no lines/overrides → empty rollup).
+ */
+export async function loadRecipeAllergensByIds(
+  db: TenantClient,
+  organizationId: string,
+  recipeIds: string[],
+): Promise<Map<string, RecipeAllergenRollup>> {
+  const map = new Map<string, RecipeAllergenRollup>();
+  if (recipeIds.length === 0) return map;
+
+  const lineRows = await db
+    .select({
+      recipeId: recipeIngredients.recipeId,
+      ingredientId: recipeIngredients.ingredientId,
+      reviewedAt: ingredients.allergensReviewedAt,
+    })
+    .from(recipeIngredients)
+    .innerJoin(
+      ingredients,
+      and(
+        eq(recipeIngredients.ingredientId, ingredients.id),
+        eq(ingredients.organizationId, organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(recipeIngredients.organizationId, organizationId),
+        inArray(recipeIngredients.recipeId, recipeIds),
+      ),
+    );
+
+  const tagsByIngredient = await loadIngredientAllergensByIngredient(
+    db,
+    organizationId,
+    lineRows.map((r) => r.ingredientId),
+  );
+
+  const overrideRows = await db
+    .select({
+      recipeId: recipeAllergenOverrides.recipeId,
+      allergen: recipeAllergenOverrides.allergen,
+      presence: recipeAllergenOverrides.presence,
+    })
+    .from(recipeAllergenOverrides)
+    .where(
+      and(
+        eq(recipeAllergenOverrides.organizationId, organizationId),
+        inArray(recipeAllergenOverrides.recipeId, recipeIds),
+      ),
+    );
+
+  const linesByRecipe = new Map<string, AllergenLine[]>();
+  for (const row of lineRows) {
+    const line: AllergenLine = {
+      reviewed: row.reviewedAt !== null,
+      allergens: tagsByIngredient.get(row.ingredientId) ?? [],
+    };
+    const existing = linesByRecipe.get(row.recipeId);
+    if (existing) existing.push(line);
+    else linesByRecipe.set(row.recipeId, [line]);
+  }
+
+  const overridesByRecipe = new Map<string, AllergenTag[]>();
+  for (const row of overrideRows) {
+    const tag: AllergenTag = {
+      allergen: row.allergen as AllergenSlug,
+      presence: row.presence as Presence,
+    };
+    const existing = overridesByRecipe.get(row.recipeId);
+    if (existing) existing.push(tag);
+    else overridesByRecipe.set(row.recipeId, [tag]);
+  }
+
+  for (const recipeId of recipeIds) {
+    map.set(
+      recipeId,
+      recipeAllergens(
+        linesByRecipe.get(recipeId) ?? [],
+        overridesByRecipe.get(recipeId) ?? [],
+      ),
+    );
+  }
+  return map;
+}
+
 /** Outcome of {@link replaceIngredientAllergens}. */
 export type ReplaceAllergensOutcome =
   | { status: 'done'; before: AllergenTag[]; after: AllergenTag[] }

@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listTrashedRecipes } from '@/lib/data/recipes';
+import { listTrashedMenus } from '@/lib/data/menus';
 import { listTrashedIngredients } from '@/lib/data/ingredients';
 import { listTrashedTransactions } from '@/lib/data/transactions';
 import { listTrashedCustomers } from '@/lib/data/customers';
@@ -21,9 +22,10 @@ export default async function TrashPage() {
   const t = await getTranslations('trash');
   const organizationId = await getOrgId();
 
-  const [recipes, ingredients, transactions, customers, invoices, settings] =
+  const [recipes, menus, ingredients, transactions, customers, invoices, settings] =
     await Promise.all([
       withOrg(organizationId, (tx) => listTrashedRecipes(tx, organizationId)),
+      withOrg(organizationId, (tx) => listTrashedMenus(tx, organizationId)),
       withOrg(organizationId, (tx) => listTrashedIngredients(tx, organizationId)),
       withOrg(organizationId, (tx) => listTrashedTransactions(tx, organizationId)),
       withOrg(organizationId, (tx) => listTrashedCustomers(tx, organizationId)),
@@ -68,6 +70,7 @@ export default async function TrashPage() {
       <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
       <TrashView
         recipes={recipes.map(toItem)}
+        menus={menus.map(toItem)}
         ingredients={ingredients.map(toItem)}
         transactions={transactions.map(toTransactionItem)}
         customers={customers.map(toItem)}

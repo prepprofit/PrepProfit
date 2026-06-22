@@ -391,6 +391,103 @@ export const recipeAllergenOverrides = pgTable(
 );
 
 /**
+ * Menus / combos (Sprint 10, module — menu engineering). A menu groups recipes
+ * sold together at one `selling_price_cents`. It is a LIVE planning/catalogue
+ * artifact, NOT an F3 issued document: its cost is NEVER stored — it derives on
+ * read as the sum of each component recipe's current `costPerPortionCents ×
+ * quantity` (lib/calculations/menu.ts), so it moves when recipe/ingredient costs
+ * move. There is no snapshot.
+ *
+ * `selling_price_cents` is the only persisted money (manager-only + audited);
+ * NULL or 0 means "no price set" → food-cost %, margin and traffic light are
+ * undefined (the UI renders `—`). RULE #1: carries `organization_id`, in
+ * `businessTables` → standard org_isolation RLS. Soft-delete + 30-day Trash, like
+ * recipes. pg_trgm GIN on `name` powers ⌘K. Names are non-unique (like recipes).
+ */
+export const menus = pgTable(
+  'menus',
+  {
+    id: id(),
+    organizationId: orgId(),
+    name: text('name').notNull(),
+    // Optional selling price per menu, integer cents. NULL/0 = no price → KPIs undefined.
+    sellingPriceCents: integer('selling_price_cents'),
+    notes: text('notes'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL` (Trash pattern).
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('menus_org_idx').on(t.organizationId),
+    index('menus_org_name_idx').on(t.organizationId, t.name),
+    // Serves the /trash listing and keeps active-row filtering index-friendly.
+    index('menus_org_deleted_idx').on(t.organizationId, t.deletedAt),
+    // FK target for menu_items' composite (organization_id, menu_id).
+    unique('menus_org_id_key').on(t.organizationId, t.id),
+    // pg_trgm GIN index for typo-tolerant global search (Sprint 2.7 registry).
+    index('menus_name_trgm_idx').using('gin', t.name.op('gin_trgm_ops')),
+    // A price, when set, is non-negative (NULL = unset).
+    check(
+      'menus_selling_price_chk',
+      sql`${t.sellingPriceCents} is null or ${t.sellingPriceCents} >= 0`,
+    ),
+  ],
+);
+
+/**
+ * Menu line items (Sprint 10). Each line places one recipe in a menu at an integer
+ * `quantity` of PORTIONS (1..1000 — e.g. `2 × Fries`). A recipe may appear at most
+ * ONCE per menu (unique below); multiples are expressed via quantity, not duplicate
+ * rows. Raw ingredients and nested menus are out of scope (D1).
+ *
+ * The recipe link is ON DELETE restrict: a recipe referenced by any menu cannot be
+ * PURGED (the manager removes/replaces the line or purges the menu first — surfaced
+ * as `RECIPE_IN_MENU`). A recipe may still be soft-deleted (trashed): the line is
+ * kept and the menu's financial calculation becomes `incomplete` (price/margin KPIs
+ * withheld) — a trashed component never silently becomes a zero-cost line (D5).
+ */
+export const menuItems = pgTable(
+  'menu_items',
+  {
+    id: id(),
+    organizationId: orgId(),
+    menuId: text('menu_id').notNull(),
+    recipeId: text('recipe_id').notNull(),
+    // Portions of this recipe in the menu (1..1000); multiples, not duplicate rows.
+    quantity: integer('quantity').notNull().default(1),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    index('menu_items_org_menu_idx').on(t.organizationId, t.menuId),
+    index('menu_items_org_recipe_idx').on(t.organizationId, t.recipeId),
+    // One row per recipe per menu (multiples go through `quantity`).
+    unique('menu_items_org_menu_recipe_key').on(
+      t.organizationId,
+      t.menuId,
+      t.recipeId,
+    ),
+    check('menu_items_quantity_chk', sql`${t.quantity} between 1 and 1000`),
+    check('menu_items_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    // Composite FK forces the line to share its menu's organization_id; deleting a
+    // menu cascades its lines.
+    foreignKey({
+      columns: [t.organizationId, t.menuId],
+      foreignColumns: [menus.organizationId, menus.id],
+      name: 'menu_items_menu_fk',
+    }).onDelete('cascade'),
+    // Composite FK to the recipe (same-tenant). ON DELETE restrict: a recipe in a
+    // menu is purge-blocked (the menu line must be removed first); a soft-delete
+    // keeps the line and marks the menu incomplete.
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'menu_items_recipe_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
  * Append-only inventory ledger (Sprint F1). Each row is a signed canonical change
  * to an ingredient's stock (positive = in, negative = out).
  * `ingredients.stock_quantity` is the running total, updated in the SAME
@@ -1685,6 +1782,10 @@ export type RecipeAllergenOverride = InferSelectModel<typeof recipeAllergenOverr
 export type NewRecipeAllergenOverride = InferInsertModel<
   typeof recipeAllergenOverrides
 >;
+export type Menu = InferSelectModel<typeof menus>;
+export type NewMenu = InferInsertModel<typeof menus>;
+export type MenuItem = InferSelectModel<typeof menuItems>;
+export type NewMenuItem = InferInsertModel<typeof menuItems>;
 export type OrganizationSettings = InferSelectModel<typeof organizationSettings>;
 export type NewOrganizationSettings = InferInsertModel<typeof organizationSettings>;
 export type MeasurementSystem = OrganizationSettings['measurementSystem'];
@@ -1739,6 +1840,9 @@ export const businessTables = [
   // Allergen tags + recipe overrides (Sprint 9) — standard org_isolation RLS.
   'ingredient_allergens',
   'recipe_allergen_overrides',
+  // Menus / combos + their lines (Sprint 10) — standard org_isolation RLS.
+  'menus',
+  'menu_items',
   'inventory_movements',
   // Ingredient price history (Sprint F2) — standard org_isolation RLS.
   'ingredient_price_history',
