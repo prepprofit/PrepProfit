@@ -511,11 +511,21 @@ export const ingredientPriceHistory = pgTable(
     // (PG can't emit the column-subset form), and this is provenance only — same
     // precedent as inventory_movements.source_id. Indexed for the per-link lookup.
     ingredientSupplierId: text('ingredient_supplier_id'),
+    // Provenance (Sprint 8b): the receipt line that produced this observation, so a
+    // receipt void can find "the pending value that came from this receipt" and
+    // recompute it. Nullable + NO FK (provenance only — same precedent as
+    // `ingredient_supplier_id`). Indexed for the per-receipt-item lookup.
+    sourceReceiptItemId: text('source_receipt_item_id'),
     note: text('note'),
     createdAt: createdAt(),
   },
   (t) => [
     index('ingredient_price_history_org_idx').on(t.organizationId),
+    // Per-receipt-item provenance lookup (void → recompute pending).
+    index('ingredient_price_history_org_receipt_item_idx').on(
+      t.organizationId,
+      t.sourceReceiptItemId,
+    ),
     // History view: newest-first per ingredient.
     index('ingredient_price_history_org_ingredient_idx').on(
       t.organizationId,
@@ -1015,13 +1025,22 @@ export const purchaseOrders = pgTable(
     supplierPhone: text('supplier_phone'),
     supplierAddress: text('supplier_address'),
     supplierTaxId: text('supplier_tax_id'),
-    status: text('status', { enum: ['draft', 'sent', 'cancelled'] })
+    // Lifecycle (Sprint 8a: draft/sent/cancelled; Sprint 8b adds the receiving
+    // states). `received` is terminal for new receipts — the only way back is a void.
+    status: text('status', {
+      enum: ['draft', 'sent', 'partially_received', 'received', 'cancelled'],
+    })
       .notNull()
       .default('draft'),
     // Bare calendar dates 'YYYY-MM-DD'. `order_date` is stamped at send.
     orderDate: date('order_date', { mode: 'string' }),
     expectedDate: date('expected_date', { mode: 'string' }),
     notes: text('notes'),
+    // Sprint 8b receiving. `received_at` is stamped the first time the PO reaches a
+    // `received` state (full delivery or short-close); a void that reopens the PO
+    // clears it. `closed_reason` is set ONLY by an explicit short-close.
+    receivedAt: timestamp('received_at', { withTimezone: true }),
+    closedReason: text('closed_reason'),
     // Frozen totals (integer cents). Computed + stored at draft create/update so the
     // list never shows zero before send; re-frozen at send. v1 has no PO-level tax,
     // so `total_cents == subtotal_cents` (kept separate for forward-compat).
@@ -1047,7 +1066,7 @@ export const purchaseOrders = pgTable(
     check('purchase_orders_number_chk', sql`${t.number} > 0`),
     check(
       'purchase_orders_status_chk',
-      sql`${t.status} in ('draft', 'sent', 'cancelled')`,
+      sql`${t.status} in ('draft', 'sent', 'partially_received', 'received', 'cancelled')`,
     ),
     // Composite FK forces same-org link. ON DELETE restrict: suppliers are archived,
     // never hard-deleted, so this never blocks; the snapshot is the historical truth.
@@ -1080,8 +1099,9 @@ export const purchaseOrderItems = pgTable(
     // Ingredient SNAPSHOT, frozen at send (survives a later ingredient edit/purge).
     ingredientName: text('ingredient_name'),
     dimension: text('dimension', { enum: ['weight', 'volume', 'count'] }),
-    // Canonical amount ordered (g / ml / count).
-    quantity: numeric('quantity', { precision: 12, scale: 3 })
+    // Canonical amount ordered (g / ml / count). Scale 2 to reconcile EXACTLY with
+    // the authoritative F1 ledger + stock (both numeric(12,2)) — Sprint 8b B1.
+    quantity: numeric('quantity', { precision: 12, scale: 2 })
       .notNull()
       .default(sql`0`),
     // Negotiated cost per priced unit (per kg / litre / piece), integer cents.
@@ -1097,6 +1117,13 @@ export const purchaseOrderItems = pgTable(
     index('purchase_order_items_org_ingredient_idx').on(
       t.organizationId,
       t.ingredientId,
+    ),
+    // FK target (Sprint 8b): a receipt line proves its ordered line belongs to the
+    // stated PO via the composite (organization_id, purchase_order_id, id).
+    unique('purchase_order_items_org_po_id_key').on(
+      t.organizationId,
+      t.purchaseOrderId,
+      t.id,
     ),
     check('purchase_order_items_quantity_chk', sql`${t.quantity} > 0`),
     check(
@@ -1194,6 +1221,159 @@ export const emailOutbox = pgTable(
       'email_outbox_document_type_chk',
       sql`${t.documentType} in ('purchase_order')`,
     ),
+  ],
+);
+
+/**
+ * Goods receipts (Sprint 8b). One row per DELIVERY event against a `sent` purchase
+ * order; many receipts per PO model partial deliveries. Posting a receipt books
+ * idempotent IN stock movements (F1) and raises the F2 pending cost; a CORRECTION
+ * never edits a movement — it `void`s the receipt and posts F1 reversals (the row is
+ * retained for history).
+ *
+ * Idempotency is form-level (B6): `client_mutation_id` is generated once on the
+ * client and unique per org; combined with `payload_hash`, re-submitting the SAME id
+ * with the SAME payload returns the existing receipt, a DIFFERENT payload conflicts.
+ * RULE #1: carries `organization_id`, in `businessTables` → org_isolation RLS.
+ */
+export const receipts = pgTable(
+  'receipts',
+  {
+    id: id(),
+    organizationId: orgId(),
+    purchaseOrderId: text('purchase_order_id').notNull(),
+    // The delivery day (bare 'YYYY-MM-DD', no tz — like every other calendar date).
+    receivedDate: date('received_date', { mode: 'string' }).notNull(),
+    notes: text('notes'),
+    // `posted` = live (its movements count toward stock + the received rollup);
+    // `voided` = corrected (reversed by opposite F1 movements, excluded from rollup).
+    status: text('status', { enum: ['posted', 'voided'] })
+      .notNull()
+      .default('posted'),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    actorUserId: text('actor_user_id'),
+    // Form-level idempotency (Sprint 8b D6): the client mints this once per receive
+    // form and resends it on retry; `payload_hash` fingerprints the normalized lines.
+    clientMutationId: text('client_mutation_id').notNull(),
+    payloadHash: text('payload_hash').notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('receipts_org_idx').on(t.organizationId),
+    index('receipts_org_po_idx').on(t.organizationId, t.purchaseOrderId),
+    // FK target for receipt_items' composite (organization_id, receipt_id).
+    unique('receipts_org_id_key').on(t.organizationId, t.id),
+    // Composite FK target so a receipt line proves it belongs to its receipt's PO
+    // (Sprint 8b B5): (organization_id, id, purchase_order_id).
+    unique('receipts_org_id_po_key').on(
+      t.organizationId,
+      t.id,
+      t.purchaseOrderId,
+    ),
+    // Form-level idempotency: one receipt per (org, client_mutation_id).
+    unique('receipts_org_client_mutation_key').on(
+      t.organizationId,
+      t.clientMutationId,
+    ),
+    check('receipts_status_chk', sql`${t.status} in ('posted', 'voided')`),
+    // Composite FK forces same-org link. restrict: a PO with receipts is historical
+    // and never hard-deleted (only drafts delete, and a draft has no receipts).
+    foreignKey({
+      columns: [t.organizationId, t.purchaseOrderId],
+      foreignColumns: [purchaseOrders.organizationId, purchaseOrders.id],
+      name: 'receipts_po_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * Receipt line items (Sprint 8b). Each line records a received quantity (CANONICAL —
+ * g / ml / count, numeric(12,2) to reconcile with the F1 ledger) at a received unit
+ * cost (per priced unit — kg / l / piece). The ingredient name + dimension are
+ * SNAPSHOT-frozen at receipt time. Booking posts an IN movement (F1) keyed by this
+ * row's id; a void posts the opposite reversal.
+ *
+ * Cross-PO / cross-receipt mixing is impossible at the DB layer (B5): the line
+ * carries `purchase_order_id` + `receipt_id` + `purchase_order_item_id`, all NOT
+ * NULL, with composite FKs binding the line's PO to BOTH its receipt and its ordered
+ * line.
+ */
+export const receiptItems = pgTable(
+  'receipt_items',
+  {
+    id: id(),
+    organizationId: orgId(),
+    receiptId: text('receipt_id').notNull(),
+    // Denormalized from the receipt so the binding FKs below can enforce same-PO.
+    purchaseOrderId: text('purchase_order_id').notNull(),
+    purchaseOrderItemId: text('purchase_order_item_id').notNull(),
+    ingredientId: text('ingredient_id').notNull(),
+    // Ingredient SNAPSHOT, frozen at receipt time (survives a later edit/purge).
+    ingredientName: text('ingredient_name').notNull(),
+    dimension: text('dimension', {
+      enum: ['weight', 'volume', 'count'],
+    }).notNull(),
+    // Canonical amount received (g / ml / count).
+    receivedQuantity: numeric('received_quantity', {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+    // Received cost per priced unit (per kg / litre / piece), integer cents.
+    receivedUnitCostCents: integer('received_unit_cost_cents').notNull(),
+    // Frozen line total (integer cents): unit cost × qty ÷ canonicalFactor.
+    lineTotalCents: integer('line_total_cents').notNull().default(0),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    index('receipt_items_org_idx').on(t.organizationId),
+    index('receipt_items_org_receipt_idx').on(t.organizationId, t.receiptId),
+    // Serves the received rollup (D2) AND the purge-block reference check.
+    index('receipt_items_org_po_item_idx').on(
+      t.organizationId,
+      t.purchaseOrderItemId,
+    ),
+    index('receipt_items_org_ingredient_idx').on(
+      t.organizationId,
+      t.ingredientId,
+    ),
+    check('receipt_items_quantity_chk', sql`${t.receivedQuantity} > 0`),
+    check(
+      'receipt_items_unit_cost_chk',
+      sql`${t.receivedUnitCostCents} >= 0`,
+    ),
+    // Bind to the parent receipt (cascade) AND to the same receipt's PO (B5).
+    foreignKey({
+      columns: [t.organizationId, t.receiptId],
+      foreignColumns: [receipts.organizationId, receipts.id],
+      name: 'receipt_items_receipt_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.organizationId, t.receiptId, t.purchaseOrderId],
+      foreignColumns: [
+        receipts.organizationId,
+        receipts.id,
+        receipts.purchaseOrderId,
+      ],
+      name: 'receipt_items_receipt_po_fk',
+    }).onDelete('cascade'),
+    // The ordered line must belong to that PO (B5): (org, po_id, po_item_id).
+    foreignKey({
+      columns: [t.organizationId, t.purchaseOrderId, t.purchaseOrderItemId],
+      foreignColumns: [
+        purchaseOrderItems.organizationId,
+        purchaseOrderItems.purchaseOrderId,
+        purchaseOrderItems.id,
+      ],
+      name: 'receipt_items_po_item_fk',
+    }).onDelete('restrict'),
+    // Same-tenant ingredient link; restrict so a received ingredient is purge-blocked
+    // (F3 Policy B) — the receipt + its IN movement are permanent inventory history.
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'receipt_items_ingredient_fk',
+    }).onDelete('restrict'),
   ],
 );
 
@@ -1530,6 +1710,11 @@ export type NewPurchaseOrderItem = InferInsertModel<typeof purchaseOrderItems>;
 export type EmailOutboxRow = InferSelectModel<typeof emailOutbox>;
 export type NewEmailOutboxRow = InferInsertModel<typeof emailOutbox>;
 export type EmailOutboxStatus = EmailOutboxRow['status'];
+export type Receipt = InferSelectModel<typeof receipts>;
+export type NewReceipt = InferInsertModel<typeof receipts>;
+export type ReceiptStatus = Receipt['status'];
+export type ReceiptItem = InferSelectModel<typeof receiptItems>;
+export type NewReceiptItem = InferInsertModel<typeof receiptItems>;
 export type Employee = InferSelectModel<typeof employees>;
 export type NewEmployee = InferInsertModel<typeof employees>;
 export type Shift = InferSelectModel<typeof shifts>;
@@ -1573,6 +1758,9 @@ export const businessTables = [
   'purchase_orders',
   'purchase_order_items',
   'email_outbox',
+  // Goods receipts + lines (Sprint 8b) — standard org_isolation RLS.
+  'receipts',
+  'receipt_items',
   'employees',
   'shifts',
   // Append-only audit log: org-isolated like the rest, but its RLS is

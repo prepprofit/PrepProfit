@@ -62,9 +62,14 @@ export type DraftDetail = {
 
 type LineState = { ingredientId: string; quantity: string; unitCost: string };
 
-const STATUS_VARIANT: Record<PurchaseOrderStatus, 'neutral' | 'accent'> = {
+const STATUS_VARIANT: Record<
+  PurchaseOrderStatus,
+  'neutral' | 'accent' | 'warning' | 'positive'
+> = {
   draft: 'neutral',
   sent: 'accent',
+  partially_received: 'warning',
+  received: 'positive',
   cancelled: 'neutral',
 };
 

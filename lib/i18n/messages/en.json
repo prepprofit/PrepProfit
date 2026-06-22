@@ -45,7 +45,11 @@
     "SUPPLIER_REQUIRED": "Choose a supplier before sending this purchase order.",
     "PO_EMPTY": "Add at least one line before sending this purchase order.",
     "PO_NUMBER_TAKEN": "That purchase-order number is already in use. Choose a different one.",
-    "PO_LINE_INGREDIENT_MISSING": "One of the lines points at an ingredient that no longer exists. Fix the lines before sending."
+    "PO_LINE_INGREDIENT_MISSING": "One of the lines points at an ingredient that no longer exists. Fix the lines before sending.",
+    "PO_NOT_RECEIVABLE": "This purchase order can no longer receive a delivery. Only sent or partially received orders can be received.",
+    "PO_NOT_CLOSABLE": "Only a partially received purchase order can be closed short.",
+    "PO_CLOSE_REASON_REQUIRED": "Add a reason for closing this purchase order short.",
+    "PO_NOT_CANCELLABLE": "This purchase order has received deliveries and can't be cancelled. Void the receipts first."
   },
   "errors": {
     "boundary": {
@@ -1196,6 +1200,8 @@
     "status": {
       "draft": "Draft",
       "sent": "Sent",
+      "partially_received": "Partially received",
+      "received": "Received",
       "cancelled": "Cancelled"
     },
     "actions": {
@@ -1231,6 +1237,27 @@
         "cancelled": "Email cancelled",
         "none": "No email queued"
       }
+    },
+    "receive": {
+      "title": "Receive delivery",
+      "date": "Delivery date",
+      "ingredient": "Ingredient",
+      "ordered": "Ordered",
+      "received": "Received",
+      "thisDelivery": "This delivery",
+      "unitCost": "Unit cost",
+      "over": "Over",
+      "post": "Post receipt",
+      "noLines": "Enter a received quantity on at least one line.",
+      "overTitle": "Receive more than ordered?",
+      "overBody": "One or more lines receive more than was ordered. This is allowed, but please confirm.",
+      "history": "Deliveries",
+      "void": "Void",
+      "voided": "Voided",
+      "shortClose": "Close short",
+      "shortCloseTitle": "Close this order short?",
+      "shortCloseBody": "Mark the order received with the quantities delivered so far. No more deliveries can be booked unless a receipt is voided.",
+      "reason": "Reason"
     }
   },
   "purchaseOrderDocument": {
@@ -1252,6 +1279,8 @@
     "status": {
       "draft": "Draft",
       "sent": "Sent",
+      "partially_received": "Partially received",
+      "received": "Received",
       "cancelled": "Cancelled"
     },
     "units": {

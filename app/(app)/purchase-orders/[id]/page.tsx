@@ -8,6 +8,10 @@ import {
   getPurchaseOrderWithItems,
   loadPurchaseOrderLiveContext,
 } from '@/lib/data/purchase-orders';
+import {
+  listReceiptsForPurchaseOrder,
+  receivedRollup,
+} from '@/lib/data/receipts';
 import { listOutboxForDocument } from '@/lib/data/email-outbox';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
 import { buildPurchaseOrderDocumentData } from '@/lib/documents/po-data';
@@ -18,7 +22,15 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { NoAccess } from '@/components/app/no-access';
 import { PoCancelButton } from '@/components/app/purchase-orders/po-cancel-button';
+import {
+  ReceivePanel,
+  type ReceiveLine,
+  type ReceiptHistoryItem,
+} from '@/components/app/purchase-orders/receive-panel';
 import type { EmailOutboxStatus } from '@/lib/db/schema';
+import type { Dimension } from '@/lib/units';
+
+const UNIT: Record<Dimension, string> = { weight: 'g', volume: 'ml', count: '×' };
 
 // Always render fresh so the detail reflects the latest PO + outbox state.
 export const dynamic = 'force-dynamic';
@@ -51,7 +63,16 @@ export default async function PurchaseOrderDetailPage({
         'purchase_order',
         id,
       );
-      return { detail, settings, live, outbox };
+      const canReceive =
+        detail.order.status === 'sent' ||
+        detail.order.status === 'partially_received';
+      const receiptHistory = canReceive
+        ? await listReceiptsForPurchaseOrder(tx, organizationId, id)
+        : [];
+      const rollup = canReceive
+        ? await receivedRollup(tx, organizationId, id)
+        : new Map<string, number>();
+      return { detail, settings, live, outbox, receiptHistory, rollup };
     }),
     getTranslations('purchaseOrderDocument'),
     getTranslations('purchaseOrders.detail'),
@@ -70,6 +91,30 @@ export default async function PurchaseOrderDetailPage({
   // The most recent outbox row drives the status chip.
   const latestOutbox = loaded.outbox[0];
   const outboxKey: EmailOutboxStatus | 'none' = latestOutbox?.status ?? 'none';
+
+  const orderStatus = loaded.detail.order.status;
+  const canReceive =
+    orderStatus === 'sent' || orderStatus === 'partially_received';
+  const receiveLines: ReceiveLine[] = canReceive
+    ? loaded.detail.items.map((item) => ({
+        poItemId: item.id,
+        ingredientName: item.ingredientName ?? '',
+        unitLabel: item.dimension ? UNIT[item.dimension] : '',
+        orderedQuantity: Number(item.quantity),
+        receivedQuantity: loaded.rollup.get(item.id) ?? 0,
+        defaultUnitCostCents: item.unitCostCents,
+      }))
+    : [];
+  const receiptHistory: ReceiptHistoryItem[] = loaded.receiptHistory.map((r) => ({
+    id: r.receipt.id,
+    receivedDate: r.receipt.receivedDate,
+    status: r.receipt.status,
+    lines: r.items.map((it) => ({
+      ingredientName: it.ingredientName,
+      receivedQuantity: Number(it.receivedQuantity),
+      unitLabel: it.dimension ? UNIT[it.dimension] : '',
+    })),
+  }));
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -181,6 +226,15 @@ export default async function PurchaseOrderDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {canReceive && (
+        <ReceivePanel
+          poId={id}
+          status={orderStatus as 'sent' | 'partially_received'}
+          lines={receiveLines}
+          receipts={receiptHistory}
+        />
+      )}
     </div>
   );
 }

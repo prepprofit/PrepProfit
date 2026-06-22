@@ -1,13 +1,13 @@
 # Expansion Plan — Kitchen-Operations Parity (v2.2, post third review)
 
-> **Status:** REVISED to **v2.2**. The dev **approved the §5 void-by-soft-delete
-> divergence** and is "one short review from approval"; the remaining F1 issue (a
-> real transactional bug — returning `{ok:false}` does NOT roll back `withOrg`) is
-> now fixed, plus the void retention contract and two F6 adjustments.
-> **Date:** 2026-06-21. **Supersedes:** v2.1 of this file.
-> **Authorization sought:** sign-off on **§4 (Foundation) only**, delivered **in
-> parts F1…F6 with a review at the end of each part**. No migration/code until the
-> dev signs §4. Confirmed fact: `runInOrg` (`lib/db/tenant.ts`) wraps
+> **Status:** plan body is **v2.2** (2026-06-21). **Build progress (updated
+> 2026-06-22):** **Foundation F1–F6 is COMPLETE and on `main`** (prod migrated
+> through 0023), and module Sprints **9 (Allergens), 7 (Suppliers), and 8a (PO
+> draft/send + outbox)** are **DONE**. See **§8** for the live per-sprint status.
+> **Sprint 8b (PO receiving) is now IMPLEMENTED locally (gate green; prod migration 0027
+awaits diff review). Next = Sprint 10 (Menus).** The sections below are the approved design of
+> record; they are kept as-written for traceability even where the work is now done.
+> Confirmed fact still relied on everywhere: `runInOrg` (`lib/db/tenant.ts`) wraps
 > `database.transaction(...)`, which **commits on normal return and rolls back only
 > on throw** — every "abort" path below therefore THROWS, it never just returns.
 
@@ -465,31 +465,29 @@ move); double-commit guard; injection-safe. Effort **L**.
 
 ---
 
-## 8. Per-sprint status (v2.1)
+## 8. Per-sprint status (updated 2026-06-22)
 
 | Sprint | Module | Status | Gate before start |
 |---|---|---|---|
-| **F1** | Ledger provenance/idempotency/reversal | **✅ AUTHORIZED 2026-06-21** | implement (local migration); diff review before F2 |
-| F2–F6 | Rest of Foundation | ⏳ not authorized | individual review after F1 diff |
-| 9 | Allergens (operational) | 🟢 after F | add-only overrides; no legal claim |
-| 7 | Suppliers | 🟢 after F | F2 + F6 done |
-| 8a | PO draft/send + outbox | 🟡 | outbox worker confirmed |
-| 8b | PO receiving | 🟡 | F1 done |
-| 10 | Menus | 🟢 after F4 | — |
+| **F1–F6** | Operational Foundation (full) | **✅ DONE — merged to `main`** | — (prod migrated through 0023) |
+| 9 | Allergens (operational) | **✅ DONE** (`07d7d28`) | — |
+| 7 | Suppliers | **✅ DONE** (`6773d3f`) | — |
+| 8a | PO draft/send + outbox | **✅ DONE** (`0585cf5`) | — |
+| 8b | PO receiving | **✅ IMPLEMENTED locally** (gate green; awaiting diff review for prod migration 0027) | F1 done ✅ |
+| 10 | Menus | 🟢 after F4 ✅ | — |
 | 11a | Production planning | 🟡 | planned_qty=portions confirmed |
-| 11b | Production consume | 🟡 | F1 + deterministic lock |
+| 11b | Production consume | 🟡 | F1 done ✅ + deterministic lock |
 | 11c | Kitchen tasks (reduced) | 🟢 | reduction in PLANO |
-| 12a | Sales (daily close) | 🟡 | F5 + accountant sign-off (§7) |
+| 12a | Sales (daily close) | 🟡 | F5 done ✅ + accountant sign-off (§7) |
 | 12b | Sales import | 🟡 | dedup + financial-only |
 | 12c | Inventory depth | 🟡 | balance invariant accepted |
 
-**Bottom line:** **F1 is AUTHORIZED for implementation (2026-06-21)** with two
-mandatory criteria (post-conflict payload revalidation; client-stable manual mutation
-id, action-level test) and delivery conditions (local migration only; real-PG
-same-key/different-payload test; full-rollback + duplicate-reversal + append-only-RLS
-tests; green gate; **full diff review before F2**). **F2–F6 remain unauthorized** —
-each gets its own review. §7 external sign-offs gate only their named sprints, never
-Foundation.
+**Bottom line:** **Foundation (F1–F6) is COMPLETE and on `main`** (prod migrated
+through 0023). Sprints **9 (Allergens), 7 (Suppliers), and 8a (PO draft/send + email
+outbox)** are also **DONE**. **Next = Sprint 8b (PO receiving)**, which the completed
+F1 idempotent ledger unblocks. Remaining work: 8b → 10 → 11a → 11b → 11c → 12a →
+12b → 12c. §7 external sign-offs still gate only their named sprints (accountant →
+12a; food-safety/legal → only an allergen compliance *claim*, not the shipped feature).
 
 ---
 

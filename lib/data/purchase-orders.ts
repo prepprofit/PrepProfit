@@ -3,6 +3,7 @@ import {
   ingredients,
   purchaseOrderItems,
   purchaseOrders,
+  receipts,
   suppliers,
 } from '@/lib/db/schema';
 import type {
@@ -603,13 +604,18 @@ export async function sendPurchaseOrder(
 
 export type CancelOutcome =
   | { status: 'ok'; order: PurchaseOrder; cancelNoticeEnqueued: boolean }
-  | { status: 'not_found' };
+  | { status: 'not_found' }
+  | { status: 'has_receipts' };
 
 /**
  * Cancels a draft or sent PO. Idempotent: cancelling an already-cancelled PO is a
  * no-op `ok`. When a SENT PO is cancelled, any un-sent outbox row is cancelled so
  * the worker skips it; if the send email already left (`provider_message_id` set),
- * a cancellation notice is enqueued instead. Must run inside `withOrg`.
+ * a cancellation notice is enqueued instead.
+ *
+ * Sprint 8b D5: a PO with ANY `posted` receipt cannot be cancelled (stock is booked)
+ * — it returns `has_receipts`. Voiding every receipt recomputes the PO back to `sent`,
+ * at which point cancel is allowed again. Must run inside `withOrg`.
  */
 export async function cancelPurchaseOrder(
   db: TenantClient,
@@ -639,6 +645,23 @@ export async function cancelPurchaseOrder(
       ? { status: 'ok', order, cancelNoticeEnqueued: false }
       : { status: 'not_found' };
   }
+
+  // D5: refuse to cancel while any posted receipt exists (stock is booked). The
+  // receiving states (partially_received/received) imply a posted receipt, and a
+  // `sent` PO whose receipts were all voided has none — so this check, not the status
+  // alone, is the gate.
+  const [postedReceipt] = await db
+    .select({ id: receipts.id })
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        eq(receipts.purchaseOrderId, id),
+        eq(receipts.status, 'posted'),
+      ),
+    )
+    .limit(1);
+  if (postedReceipt) return { status: 'has_receipts' };
 
   const wasSent = locked.status === 'sent';
 

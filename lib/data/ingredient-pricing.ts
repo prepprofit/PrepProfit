@@ -1,5 +1,10 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
-import { ingredients, ingredientPriceHistory } from '@/lib/db/schema';
+import { and, desc, eq, isNull, notExists } from 'drizzle-orm';
+import {
+  ingredients,
+  ingredientPriceHistory,
+  receiptItems,
+  receipts,
+} from '@/lib/db/schema';
 import type { Ingredient } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { lockActiveIngredientRow } from '@/lib/data/ingredients';
@@ -82,6 +87,126 @@ export async function recordPriceObservation(
     .returning();
   if (!row) return { ok: false, reason: 'not_found' };
   return { ok: true, ingredient: row, derivedPriceCents };
+}
+
+export type RecordDerivedPriceObservationInput = {
+  ingredientId: string;
+  /** Already-derived cost per priced unit (per kg / litre / piece), integer cents. */
+  derivedPriceCents: number;
+  /** The receipt line that produced this observation (Sprint 8b provenance). */
+  sourceReceiptItemId: string;
+  actorUserId?: string | null;
+  note?: string | null;
+};
+
+/**
+ * Record a `source='order'` price observation from an ALREADY-derived per-unit cost
+ * (the negotiated cost on a receipt line), WITHOUT changing the approved cost
+ * (Sprint 8b D3). Pack columns are NULL on purpose — the received cost may not
+ * reconcile with the supplier link's old pack, so we never copy it. Appends a history
+ * row tagged with the `receipt_item` provenance and raises `pending_price_cents`.
+ * Never mutates `price_cents`. Must run inside a `withOrg` transaction.
+ */
+export async function recordDerivedPriceObservation(
+  db: TenantClient,
+  organizationId: string,
+  input: RecordDerivedPriceObservationInput,
+): Promise<RecordPriceObservationResult> {
+  const current = await lockActiveIngredientRow(db, organizationId, input.ingredientId);
+  if (!current) return { ok: false, reason: 'not_found' };
+
+  await db.insert(ingredientPriceHistory).values({
+    organizationId,
+    ingredientId: input.ingredientId,
+    source: 'order',
+    packSize: null,
+    packUnit: null,
+    packPriceCents: null,
+    derivedPriceCents: input.derivedPriceCents,
+    accepted: false,
+    actorUserId: input.actorUserId ?? null,
+    sourceReceiptItemId: input.sourceReceiptItemId,
+    note: input.note ?? null,
+  });
+
+  const [row] = await db
+    .update(ingredients)
+    .set({ pendingPriceCents: input.derivedPriceCents })
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, input.ingredientId),
+        isNull(ingredients.deletedAt),
+      ),
+    )
+    .returning();
+  if (!row) return { ok: false, reason: 'not_found' };
+  return { ok: true, ingredient: row, derivedPriceCents: input.derivedPriceCents };
+}
+
+/**
+ * Recompute `pending_price_cents` after a receipt is voided (Sprint 8b B3). The
+ * pending value tracks the latest UNACCEPTED observation; once a receipt is voided,
+ * its observations are no longer valid, so pending falls back to the latest remaining
+ * unaccepted observation that did NOT come from a voided receipt (or NULL if none).
+ *
+ * An already-ACCEPTED cost is never reverted: acceptance clears pending to NULL and
+ * lives in `price_cents`, which this function never touches. Idempotent; locks the
+ * ingredient FOR UPDATE so it serializes with observe/accept. No-op if the ingredient
+ * is gone (it may have been trashed) — voiding stock is handled separately.
+ */
+export async function recomputePendingAfterVoid(
+  db: TenantClient,
+  organizationId: string,
+  ingredientId: string,
+): Promise<void> {
+  const current = await lockActiveIngredientRow(db, organizationId, ingredientId);
+  if (!current) return;
+
+  // The latest unaccepted observation whose source receipt (if any) is NOT voided.
+  const [latest] = await db
+    .select({ derivedPriceCents: ingredientPriceHistory.derivedPriceCents })
+    .from(ingredientPriceHistory)
+    .where(
+      and(
+        eq(ingredientPriceHistory.organizationId, organizationId),
+        eq(ingredientPriceHistory.ingredientId, ingredientId),
+        eq(ingredientPriceHistory.accepted, false),
+        // Exclude observations from a voided receipt line.
+        notExists(
+          db
+            .select({ one: receiptItems.id })
+            .from(receiptItems)
+            .innerJoin(
+              receipts,
+              and(
+                eq(receipts.organizationId, receiptItems.organizationId),
+                eq(receipts.id, receiptItems.receiptId),
+              ),
+            )
+            .where(
+              and(
+                eq(receiptItems.organizationId, organizationId),
+                eq(receiptItems.id, ingredientPriceHistory.sourceReceiptItemId),
+                eq(receipts.status, 'voided'),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(desc(ingredientPriceHistory.createdAt))
+    .limit(1);
+
+  await db
+    .update(ingredients)
+    .set({ pendingPriceCents: latest ? latest.derivedPriceCents : null })
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, ingredientId),
+        isNull(ingredients.deletedAt),
+      ),
+    );
 }
 
 export type AcceptPendingCostResult =

@@ -114,6 +114,16 @@ tests land in Sprint 7/8** and the first reference check.
 > purge-block"). A dedicated `archived_at` column was judged unnecessary: the trash
 > "kept" state already realises "archive, never hard-delete".
 
+> **Sprint 8b — Policy-B extended to receiving.** Two changes harden the rule: (1) the
+> PO purge-block widened from `status IN ('sent','cancelled')` to **`status <> 'draft'`**,
+> so the new receiving states (`partially_received`/`received`) also pin their
+> ingredients; (2) a **second `NOT EXISTS` arm over `receipt_items`** keeps any
+> ingredient that appears on a goods receipt — the receipt and its F1 IN movement are
+> permanent inventory history, so the ingredient is retained indefinitely (and a draft
+> reference still purges after the link is nulled). Proven by the extended trash purge
+> tests and `tests/receipts.test.ts`. Receipts themselves are never trashed; a
+> correction is a `void` (status flip + F1 reversal), keeping the row for history.
+
 > **Invoices/customers are NOT a precedent for Policy B.** They are a precedent for
 > Policy A (snapshot) only. When a customer is purged, `purgeCustomer`
 > (`lib/data/customers.ts`) **nulls `invoices.customer_id` and keeps the frozen

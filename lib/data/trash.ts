@@ -5,6 +5,7 @@ import {
   invoices,
   purchaseOrderItems,
   purchaseOrders,
+  receiptItems,
   recipeIngredients,
   recipes,
   transactions,
@@ -71,10 +72,12 @@ export async function purgeExpired(
     )
     .returning({ id: recipes.id });
 
-  // An ingredient referenced by a NON-DRAFT purchase order (sent/cancelled) is a
-  // historical document master — F3 Policy B: it is KEPT, never hard-purged. A
-  // DRAFT-only reference may be purged after the draft link is nulled (no history at
-  // stake). Both checks are expressed as correlated NOT EXISTS so the ingredient
+  // An ingredient referenced by a NON-DRAFT purchase order (anything past `draft`:
+  // sent / partially_received / received / cancelled) is a historical document master
+  // — F3 Policy B: it is KEPT, never hard-purged. A DRAFT-only reference may be purged
+  // after the draft link is nulled (no history at stake). An ingredient on any goods
+  // RECEIPT line is likewise kept (Sprint 8b): the receipt + its IN movement are
+  // permanent inventory history. All checks are correlated NOT EXISTS so the ingredient
   // delete skips a kept ingredient instead of hitting the restrict FK.
   const recipePin = notExists(
     db
@@ -102,7 +105,18 @@ export async function purgeExpired(
         and(
           eq(purchaseOrderItems.organizationId, organizationId),
           eq(purchaseOrderItems.ingredientId, ingredients.id),
-          sql`${purchaseOrders.status} in ('sent', 'cancelled')`,
+          sql`${purchaseOrders.status} <> 'draft'`,
+        ),
+      ),
+  );
+  const receiptPin = notExists(
+    db
+      .select({ one: sql`1` })
+      .from(receiptItems)
+      .where(
+        and(
+          eq(receiptItems.organizationId, organizationId),
+          eq(receiptItems.ingredientId, ingredients.id),
         ),
       ),
   );
@@ -129,6 +143,7 @@ export async function purgeExpired(
                 lte(ingredients.deletedAt, cutoff),
                 recipePin,
                 nonDraftPoPin,
+                receiptPin,
               ),
             ),
         ),
@@ -136,8 +151,9 @@ export async function purgeExpired(
     );
 
   // Then expired ingredients, skipping any still referenced by a (trashed) recipe
-  // line or a non-draft PO — that recipe purges on its own expiry; a non-draft PO
-  // keeps the ingredient indefinitely (F3). The NOT EXISTS avoids the restrict FK.
+  // line, a non-draft PO, or a goods receipt — that recipe purges on its own expiry;
+  // a non-draft PO / receipt keeps the ingredient indefinitely (F3). The NOT EXISTS
+  // avoids the restrict FK.
   const purgedIngredients = await db
     .delete(ingredients)
     .where(
@@ -147,6 +163,7 @@ export async function purgeExpired(
         lte(ingredients.deletedAt, cutoff),
         recipePin,
         nonDraftPoPin,
+        receiptPin,
       ),
     )
     .returning({ id: ingredients.id });

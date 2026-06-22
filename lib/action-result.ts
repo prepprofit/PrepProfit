@@ -70,6 +70,16 @@ export type ActionErrorCode =
   // A PO line points at a missing/trashed ingredient at send time (Sprint 8a) — the
   // link was nulled or the ingredient was trashed; fix the line before sending.
   | 'PO_LINE_INGREDIENT_MISSING'
+  // Tried to receive against a PO that is not sent/partially_received (Sprint 8b) —
+  // a draft/cancelled/received PO cannot take a new delivery (received is terminal).
+  | 'PO_NOT_RECEIVABLE'
+  // Tried to short-close a PO that is not partially_received (Sprint 8b).
+  | 'PO_NOT_CLOSABLE'
+  // Short-close requires an explicit reason (Sprint 8b D4).
+  | 'PO_CLOSE_REASON_REQUIRED'
+  // Tried to cancel a PO that still has a posted receipt (Sprint 8b D5) — void the
+  // receipts first; once all are voided the PO returns to `sent` and can be cancelled.
+  | 'PO_NOT_CANCELLABLE'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

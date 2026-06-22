@@ -143,6 +143,7 @@ export async function cancelPurchaseOrderAction(id: string): Promise<ActionResul
   });
 
   if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
+  if (outcome === 'has_receipts') return { ok: false, code: 'PO_NOT_CANCELLABLE' };
   revalidatePurchaseOrders(id);
   return { ok: true, data: undefined };
 }

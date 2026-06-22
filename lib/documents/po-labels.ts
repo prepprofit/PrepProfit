@@ -27,6 +27,8 @@ export function buildPurchaseOrderLabels(
     status: {
       draft: t('status.draft'),
       sent: t('status.sent'),
+      partially_received: t('status.partially_received'),
+      received: t('status.received'),
       cancelled: t('status.cancelled'),
     },
     units: {

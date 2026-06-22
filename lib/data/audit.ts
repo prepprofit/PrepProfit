@@ -77,6 +77,12 @@ export type AuditAction =
   | 'purchaseOrder.send'
   | 'purchaseOrder.cancel'
   | 'purchaseOrder.delete'
+  // Receiving (Sprint 8b, manager-only). `.receive` = a posted goods receipt;
+  // `.receiptVoid` = a correction (reversal); `.close` = short-close. metadata =
+  // ids/counts/status only — NEVER supplier contact details or per-person money.
+  | 'purchaseOrder.receive'
+  | 'purchaseOrder.receiptVoid'
+  | 'purchaseOrder.close'
   | 'export.purchaseOrderPdf'
   // Org settings
   | 'settings.update'
