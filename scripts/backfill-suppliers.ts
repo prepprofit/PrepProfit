@@ -1,4 +1,4 @@
-import { clerkClient } from '@clerk/nextjs/server';
+import { createClerkClient } from '@clerk/backend';
 import { withOrg } from '../lib/db';
 import {
   backfillSuppliersForOrg,
@@ -53,7 +53,13 @@ async function main() {
     accumulate(await withOrg(single, (tx) => backfillSuppliersForOrg(tx, single)));
   } else {
     console.log('▶ Backfilling suppliers for every Clerk org...');
-    const client = await clerkClient();
+    const secretKey = process.env.CLERK_SECRET_KEY;
+    if (!secretKey) {
+      throw new Error(
+        'CLERK_SECRET_KEY is not set — needed to enumerate orgs (or pass BACKFILL_ORG=org_xxx).',
+      );
+    }
+    const client = createClerkClient({ secretKey });
     let offset = 0;
     for (;;) {
       const { data, totalCount } = await client.organizations.getOrganizationList({
