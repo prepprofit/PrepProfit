@@ -3,6 +3,7 @@ import {
   searchCustomers,
   searchIngredients,
   searchInvoices,
+  searchPurchaseOrders,
   searchRecipes,
   searchSuppliers,
   searchTransactions,
@@ -58,6 +59,13 @@ export const SEARCH_REGISTRY: readonly SearchDescriptor[] = [
     // Suppliers are procurement/financial data — manager-only (Sprint 7, F4).
     canAccess: canAccessFinancials,
     search: searchSuppliers,
+  },
+  {
+    type: 'purchaseOrder',
+    labelKey: 'purchaseOrders',
+    // Purchase orders are procurement/financial data — manager-only (Sprint 8a, F4).
+    canAccess: canAccessFinancials,
+    search: searchPurchaseOrders,
   },
 ];
 

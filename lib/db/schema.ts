@@ -983,6 +983,221 @@ export const invoiceItems = pgTable(
 );
 
 /**
+ * Purchase orders (Sprint 8a, module — procurement). The first transactional
+ * DOCUMENT built on the Foundation: a manager drafts an order to a supplier, then
+ * SENDS it. Lifecycle: draft → sent / cancelled (cancel-only — a sent PO is
+ * immutable; to change one you cancel + re-draft).
+ *
+ * Numbering (F6): `number` is allocated at DRAFT CREATION via `allocatePoNumber`
+ * (lib/data/po-counters.ts) in the create tx — gap-TOLERANT and editable, unique
+ * per org. Snapshot-on-send (F3 Policy A, the `invoices` precedent): at draft→sent
+ * the live supplier is FROZEN into the `supplier_*` columns under a row lock, so the
+ * historical order never changes when the supplier is later edited/archived.
+ * `currency_code` is frozen at create so a later org-currency change can't rewrite a
+ * historical PO. RULE #1: carries `organization_id`, in `businessTables`.
+ */
+export const purchaseOrders = pgTable(
+  'purchase_orders',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // Editable, gap-tolerant per-org PO number (F6). Allocated at create.
+    number: integer('number').notNull(),
+    // Frozen ISO-4217 code (from org settings) so totals keep their historical meaning.
+    currencyCode: text('currency_code').notNull(),
+    // Live link to the supplier; nulled is impossible here (restrict FK) — suppliers
+    // are archived, never hard-deleted, so the link always resolves. Nullable so a
+    // brand-new draft can exist before a supplier is chosen.
+    supplierId: text('supplier_id'),
+    // Supplier SNAPSHOT, captured at send — survives a later supplier edit/archive.
+    supplierName: text('supplier_name'),
+    supplierEmail: text('supplier_email'),
+    supplierPhone: text('supplier_phone'),
+    supplierAddress: text('supplier_address'),
+    supplierTaxId: text('supplier_tax_id'),
+    status: text('status', { enum: ['draft', 'sent', 'cancelled'] })
+      .notNull()
+      .default('draft'),
+    // Bare calendar dates 'YYYY-MM-DD'. `order_date` is stamped at send.
+    orderDate: date('order_date', { mode: 'string' }),
+    expectedDate: date('expected_date', { mode: 'string' }),
+    notes: text('notes'),
+    // Frozen totals (integer cents). Computed + stored at draft create/update so the
+    // list never shows zero before send; re-frozen at send. v1 has no PO-level tax,
+    // so `total_cents == subtotal_cents` (kept separate for forward-compat).
+    subtotalCents: integer('subtotal_cents').notNull().default(0),
+    totalCents: integer('total_cents').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('purchase_orders_org_idx').on(t.organizationId),
+    index('purchase_orders_org_status_idx').on(t.organizationId, t.status),
+    // FK target for purchase_order_items' composite (organization_id, purchase_order_id).
+    unique('purchase_orders_org_id_key').on(t.organizationId, t.id),
+    // Editable but unique per org (F6 consumer contract): gaps allowed, collisions not.
+    unique('purchase_orders_org_number_key').on(t.organizationId, t.number),
+    // pg_trgm GIN indexes for ⌘K (find by supplier name; number is searched as text).
+    index('purchase_orders_supplier_name_trgm_idx').using(
+      'gin',
+      t.supplierName.op('gin_trgm_ops'),
+    ),
+    // Canonical PO number is a positive integer (F6); the unique above + this CHECK
+    // are the DB backstop for the editable column.
+    check('purchase_orders_number_chk', sql`${t.number} > 0`),
+    check(
+      'purchase_orders_status_chk',
+      sql`${t.status} in ('draft', 'sent', 'cancelled')`,
+    ),
+    // Composite FK forces same-org link. ON DELETE restrict: suppliers are archived,
+    // never hard-deleted, so this never blocks; the snapshot is the historical truth.
+    foreignKey({
+      columns: [t.organizationId, t.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+      name: 'purchase_orders_supplier_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * Purchase-order line items (Sprint 8a). Each line orders an ingredient at a
+ * NEGOTIATED `unit_cost_cents` (cost per priced unit — per kg / litre / piece;
+ * defaulted from the supplier link, then editable) for a `quantity` in CANONICAL
+ * units (g / ml / count). The line total uses the recipeCost convention
+ * (`unit_cost_cents × quantity ÷ canonicalFactor`). At send, the ingredient name +
+ * dimension are FROZEN (the negotiated `unit_cost_cents` is KEPT, never overwritten
+ * by the ingredient's current approved cost).
+ */
+export const purchaseOrderItems = pgTable(
+  'purchase_order_items',
+  {
+    id: id(),
+    organizationId: orgId(),
+    purchaseOrderId: text('purchase_order_id').notNull(),
+    // Live link to the ingredient; nulled by the purge-block path only for DRAFT
+    // references (a sent/cancelled PO blocks the ingredient purge — F3 Policy B).
+    ingredientId: text('ingredient_id'),
+    // Ingredient SNAPSHOT, frozen at send (survives a later ingredient edit/purge).
+    ingredientName: text('ingredient_name'),
+    dimension: text('dimension', { enum: ['weight', 'volume', 'count'] }),
+    // Canonical amount ordered (g / ml / count).
+    quantity: numeric('quantity', { precision: 12, scale: 3 })
+      .notNull()
+      .default(sql`0`),
+    // Negotiated cost per priced unit (per kg / litre / piece), integer cents.
+    unitCostCents: integer('unit_cost_cents').notNull().default(0),
+    // Frozen line total (integer cents): computed at draft, re-frozen at send.
+    lineTotalCents: integer('line_total_cents').notNull().default(0),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    index('purchase_order_items_org_idx').on(t.organizationId),
+    index('purchase_order_items_po_idx').on(t.purchaseOrderId),
+    // Serves the purge-block reference check ("is this ingredient on any PO line?").
+    index('purchase_order_items_org_ingredient_idx').on(
+      t.organizationId,
+      t.ingredientId,
+    ),
+    check('purchase_order_items_quantity_chk', sql`${t.quantity} > 0`),
+    check(
+      'purchase_order_items_unit_cost_chk',
+      sql`${t.unitCostCents} >= 0`,
+    ),
+    // Composite FK forces the line to share its PO's organization_id; removing a PO
+    // cascades its lines.
+    foreignKey({
+      columns: [t.organizationId, t.purchaseOrderId],
+      foreignColumns: [purchaseOrders.organizationId, purchaseOrders.id],
+      name: 'purchase_order_items_po_fk',
+    }).onDelete('cascade'),
+    // Composite FK to the ingredient (same-tenant). ON DELETE restrict: a non-draft
+    // PO blocks the ingredient purge (F3 Policy B); a draft-only reference is nulled
+    // first (a multi-column SET NULL would also null organization_id). NULL rows skip.
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'purchase_order_items_ingredient_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * Outbound email queue (Sprint 8a). A lease-based work queue so document emails
+ * (PO send/cancel notices) are delivered RELIABLY out-of-band: the send action
+ * commits the document + enqueues ONE row here in the same tx, and the cron worker
+ * (app/api/cron/process-email-outbox) delivers it with backoff. Semantics are
+ * AT-LEAST-ONCE with provider-side dedup (the `dedup_key` is passed to Resend as an
+ * idempotency key), NOT exactly-once.
+ *
+ * Crash safety: a worker CLAIMS rows with `FOR UPDATE SKIP LOCKED`, stamping a
+ * `lease_until` + `claim_token`; a crashed `sending` row whose lease expired is
+ * re-claimable. A row that already has `provider_message_id` is NEVER re-sent.
+ * RULE #1: carries `organization_id`, in `businessTables` → org_isolation RLS.
+ */
+export const emailOutbox = pgTable(
+  'email_outbox',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // Polymorphic document reference (no FK — kept generic for future doc types).
+    documentType: text('document_type').notNull(),
+    documentId: text('document_id').notNull(),
+    toEmail: text('to_email').notNull(),
+    subject: text('subject'),
+    status: text('status', {
+      enum: ['pending', 'sending', 'sent', 'failed', 'cancelled'],
+    })
+      .notNull()
+      .default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    maxAttempts: integer('max_attempts').notNull().default(5),
+    lastError: text('last_error'),
+    // Set ONLY after the provider accepts — its presence means "never send again".
+    providerMessageId: text('provider_message_id'),
+    // Idempotent enqueue key (e.g. 'purchase_order:<id>:send'); also the provider
+    // idempotency key. Unique per org.
+    dedupKey: text('dedup_key').notNull(),
+    // Earliest time the row may be claimed. NOT NULL DEFAULT now() so a freshly
+    // enqueued row is immediately due (a NULL would never satisfy `<= now()`).
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    // Claim lease: while `status='sending'`, the row is owned until `lease_until`;
+    // after that a worker may reclaim it (crash recovery). `claim_token` guards the
+    // result write so a stale worker can't mark a row another worker re-claimed.
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    claimToken: text('claim_token'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('email_outbox_org_idx').on(t.organizationId),
+    // Idempotent enqueue: one row per (org, dedup_key).
+    unique('email_outbox_org_dedup_key').on(t.organizationId, t.dedupKey),
+    // The claim scan: due, unsent rows. Partial so sent/failed rows are skipped.
+    index('email_outbox_claim_idx')
+      .on(t.status, t.nextAttemptAt)
+      .where(sql`${t.providerMessageId} is null`),
+    // Per-document lookup for the UI status chip.
+    index('email_outbox_org_document_idx').on(
+      t.organizationId,
+      t.documentType,
+      t.documentId,
+    ),
+    check(
+      'email_outbox_status_chk',
+      sql`${t.status} in ('pending', 'sending', 'sent', 'failed', 'cancelled')`,
+    ),
+    check('email_outbox_attempts_chk', sql`${t.attempts} >= 0`),
+    check('email_outbox_max_attempts_chk', sql`${t.maxAttempts} > 0`),
+    check(
+      'email_outbox_document_type_chk',
+      sql`${t.documentType} in ('purchase_order')`,
+    ),
+  ],
+);
+
+/**
  * Employees (Sprint 3, module 5). PII — manager-only access (RBAC), and NOT in
  * the shared 30-day trash: "removing" an employee archives it (`active = false`);
  * a separate manager-only hard-delete cascades the shift history. `hourly_rate`
@@ -1307,6 +1522,14 @@ export type InvoiceStatus = Invoice['status'];
 export type InvoiceItem = InferSelectModel<typeof invoiceItems>;
 export type NewInvoiceItem = InferInsertModel<typeof invoiceItems>;
 export type PoCounter = InferSelectModel<typeof poCounters>;
+export type PurchaseOrder = InferSelectModel<typeof purchaseOrders>;
+export type NewPurchaseOrder = InferInsertModel<typeof purchaseOrders>;
+export type PurchaseOrderStatus = PurchaseOrder['status'];
+export type PurchaseOrderItem = InferSelectModel<typeof purchaseOrderItems>;
+export type NewPurchaseOrderItem = InferInsertModel<typeof purchaseOrderItems>;
+export type EmailOutboxRow = InferSelectModel<typeof emailOutbox>;
+export type NewEmailOutboxRow = InferInsertModel<typeof emailOutbox>;
+export type EmailOutboxStatus = EmailOutboxRow['status'];
 export type Employee = InferSelectModel<typeof employees>;
 export type NewEmployee = InferInsertModel<typeof employees>;
 export type Shift = InferSelectModel<typeof shifts>;
@@ -1345,6 +1568,11 @@ export const businessTables = [
   'po_counters',
   'invoices',
   'invoice_items',
+  // Purchase orders + lines + the email outbox (Sprint 8a) — standard
+  // org_isolation RLS (the outbox is org data, NOT append-only).
+  'purchase_orders',
+  'purchase_order_items',
+  'email_outbox',
   'employees',
   'shifts',
   // Append-only audit log: org-isolated like the rest, but its RLS is

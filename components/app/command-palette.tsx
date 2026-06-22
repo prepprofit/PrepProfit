@@ -7,6 +7,7 @@ import {
   Building2,
   Carrot,
   ChefHat,
+  ClipboardList,
   FileText,
   LayoutGrid,
   Loader2,
@@ -50,6 +51,7 @@ const GROUP_ICON: Record<
   invoice: FileText,
   customer: Building2,
   supplier: Truck,
+  purchaseOrder: ClipboardList,
 };
 
 const EMPTY: GroupedSearchResults = { groups: [] };
@@ -153,6 +155,7 @@ export function CommandPalette({
     invoice: t('groups.invoices'),
     customer: t('groups.customers'),
     supplier: t('groups.suppliers'),
+    purchaseOrder: t('groups.purchaseOrders'),
   };
   const groupHeading = (type: SearchEntityType): string => GROUP_LABEL[type];
 

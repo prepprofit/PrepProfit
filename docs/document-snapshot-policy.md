@@ -97,8 +97,22 @@ how it is referenced:
 **Not implemented in F3.** There are no non-draft document tables yet, and Scope A
 adds no `archived_at`, so this rule can be neither implemented nor tested now. It is
 written down here as the contract; the **first real implementation + the proving
-tests land in Sprint 7/8, together with the `archived_at` column** and the first
-reference check.
+tests land in Sprint 7/8** and the first reference check.
+
+> **Sprint 8a — first Policy-B implementation (purchase orders).** A purchase order
+> is the first non-draft document. The rule is now enforced for ingredients
+> referenced by a `sent`/`cancelled` PO, **expressed through the existing trash
+> "kept" state rather than a new `archived_at` column**: `purgeExpired`
+> (`lib/data/trash.ts`) skips an expired-trashed ingredient that is still referenced
+> by a non-draft PO line (a correlated `NOT EXISTS`, the same shape as the
+> active-recipe-line pin), so that ingredient is retained indefinitely while the PO
+> exists. A **draft-only** reference is purged after nulling the draft's line link
+> (Policy B's "purge after the draft link is nulled"). Suppliers never reach this
+> path — they are archived (`active = false`), never hard-deleted, so the PO's
+> `restrict` supplier FK never blocks and the frozen `supplier_*` snapshot is the
+> historical truth (Policy A). Proven by `tests/purchase-orders.test.ts` ("F3
+> purge-block"). A dedicated `archived_at` column was judged unnecessary: the trash
+> "kept" state already realises "archive, never hard-delete".
 
 > **Invoices/customers are NOT a precedent for Policy B.** They are a precedent for
 > Policy A (snapshot) only. When a customer is purged, `purgeCustomer`

@@ -58,6 +58,18 @@ export type ActionErrorCode =
   // A pack unit's dimension does not match the ingredient's (Sprint 7), e.g. kg on a
   // volume ingredient; also covers blocking a dimension change while packs exist.
   | 'PACK_UNIT_MISMATCH'
+  // A purchase order that is not a draft was edited / deleted / re-sent (Sprint 8a) —
+  // a sent/cancelled PO is immutable (cancel-only). Re-sending also returns this.
+  | 'PO_NOT_DRAFT'
+  // Tried to send a PO with no (active) linked supplier to snapshot (Sprint 8a).
+  | 'SUPPLIER_REQUIRED'
+  // Tried to send a PO with no line items (Sprint 8a).
+  | 'PO_EMPTY'
+  // A manual PO number edit collided with an existing number for the org (Sprint 8a).
+  | 'PO_NUMBER_TAKEN'
+  // A PO line points at a missing/trashed ingredient at send time (Sprint 8a) — the
+  // link was nulled or the ingredient was trashed; fix the line before sending.
+  | 'PO_LINE_INGREDIENT_MISSING'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

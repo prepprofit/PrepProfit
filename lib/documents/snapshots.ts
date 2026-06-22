@@ -1,4 +1,4 @@
-import type { Ingredient, Recipe } from '@/lib/db/schema';
+import type { Ingredient, Recipe, Supplier } from '@/lib/db/schema';
 import type { Dimension } from '@/lib/units';
 
 /**
@@ -17,8 +17,8 @@ import type { Dimension } from '@/lib/units';
  * Each helper takes a narrow `Pick`, not the whole row, so a caller can snapshot a
  * partially-loaded master and so the contract is explicit about which fields freeze.
  *
- * NOTE: `supplierSnapshot` is intentionally NOT here — the `suppliers` table does
- * not exist until Sprint 7, so it lands there alongside the supplier/PO schema.
+ * `supplierSnapshot` (Sprint 8a) freezes a supplier onto a purchase order at send,
+ * the same way `ingredientLineSnapshot` freezes an ingredient onto a document line.
  */
 
 export type IngredientLineSnapshot = {
@@ -44,6 +44,32 @@ export function ingredientLineSnapshot(
     ingredientName: ing.name,
     unitCostCents: ing.priceCents,
     dimension: ing.dimension,
+  };
+}
+
+export type SupplierSnapshot = {
+  supplierName: string;
+  supplierEmail: string | null;
+  supplierPhone: string | null;
+  supplierAddress: string | null;
+  supplierTaxId: string | null;
+};
+
+/**
+ * Freezes a supplier into a purchase-order snapshot (Sprint 8a). Pure: the send
+ * transaction loads the live supplier under a row lock and passes the picked
+ * fields — a snapshot is NEVER built from client input. The frozen contact details
+ * make the historical PO truthful even after the supplier is edited or archived.
+ */
+export function supplierSnapshot(
+  supplier: Pick<Supplier, 'name' | 'email' | 'phone' | 'address' | 'taxId'>,
+): SupplierSnapshot {
+  return {
+    supplierName: supplier.name,
+    supplierEmail: supplier.email,
+    supplierPhone: supplier.phone,
+    supplierAddress: supplier.address,
+    supplierTaxId: supplier.taxId,
   };
 }
 

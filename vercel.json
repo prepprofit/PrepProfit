@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/purge-trash",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/process-email-outbox",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -23,6 +23,8 @@ export const navGroups = [
       // Suppliers (Sprint 7) — manager-only procurement data; lives in the
       // finance group so the kitchen-role sidebar hides it (server enforces too).
       { key: 'suppliers', href: '/suppliers' },
+      // Purchase orders (Sprint 8a) — manager-only procurement documents.
+      { key: 'purchaseOrders', href: '/purchase-orders' },
     ],
   },
   {

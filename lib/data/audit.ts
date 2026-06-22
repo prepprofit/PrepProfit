@@ -69,6 +69,15 @@ export type AuditAction =
   // recipe count only, never costs.
   | 'export.allergenMatrixPdf'
   | 'export.allergenMatrixXlsx'
+  // Purchase orders (Sprint 8a, manager-only). `.create/.update/.cancel/.delete` =
+  // draft lifecycle; `.send` = draft→sent (supplier snapshot frozen + email enqueued).
+  // metadata = ids/counts/status/number only — NEVER supplier contact details.
+  | 'purchaseOrder.create'
+  | 'purchaseOrder.update'
+  | 'purchaseOrder.send'
+  | 'purchaseOrder.cancel'
+  | 'purchaseOrder.delete'
+  | 'export.purchaseOrderPdf'
   // Org settings
   | 'settings.update'
   // Sensitive exports / generated documents

@@ -3,6 +3,8 @@ import {
   customers,
   ingredients,
   invoices,
+  purchaseOrderItems,
+  purchaseOrders,
   recipeIngredients,
   recipes,
   transactions,
@@ -69,9 +71,73 @@ export async function purgeExpired(
     )
     .returning({ id: recipes.id });
 
-  // Then expired ingredients, skipping any still referenced by a (trashed)
-  // recipe line — that recipe will purge on its own expiry, freeing it later.
-  // The NOT EXISTS avoids the restrict FK violation instead of catching it.
+  // An ingredient referenced by a NON-DRAFT purchase order (sent/cancelled) is a
+  // historical document master — F3 Policy B: it is KEPT, never hard-purged. A
+  // DRAFT-only reference may be purged after the draft link is nulled (no history at
+  // stake). Both checks are expressed as correlated NOT EXISTS so the ingredient
+  // delete skips a kept ingredient instead of hitting the restrict FK.
+  const recipePin = notExists(
+    db
+      .select({ one: sql`1` })
+      .from(recipeIngredients)
+      .where(
+        and(
+          eq(recipeIngredients.organizationId, organizationId),
+          eq(recipeIngredients.ingredientId, ingredients.id),
+        ),
+      ),
+  );
+  const nonDraftPoPin = notExists(
+    db
+      .select({ one: sql`1` })
+      .from(purchaseOrderItems)
+      .innerJoin(
+        purchaseOrders,
+        and(
+          eq(purchaseOrders.organizationId, organizationId),
+          eq(purchaseOrders.id, purchaseOrderItems.purchaseOrderId),
+        ),
+      )
+      .where(
+        and(
+          eq(purchaseOrderItems.organizationId, organizationId),
+          eq(purchaseOrderItems.ingredientId, ingredients.id),
+          sql`${purchaseOrders.status} in ('sent', 'cancelled')`,
+        ),
+      ),
+  );
+
+  // Null the DRAFT purchase-order line links pointing at an ingredient that is about
+  // to be purged (matching the exact delete set), so the `restrict` FK does not block
+  // the delete. A draft that loses a line ref is acceptable — no document history.
+  await db
+    .update(purchaseOrderItems)
+    .set({ ingredientId: null })
+    .where(
+      and(
+        eq(purchaseOrderItems.organizationId, organizationId),
+        isNotNull(purchaseOrderItems.ingredientId),
+        inArray(
+          purchaseOrderItems.ingredientId,
+          db
+            .select({ id: ingredients.id })
+            .from(ingredients)
+            .where(
+              and(
+                eq(ingredients.organizationId, organizationId),
+                isNotNull(ingredients.deletedAt),
+                lte(ingredients.deletedAt, cutoff),
+                recipePin,
+                nonDraftPoPin,
+              ),
+            ),
+        ),
+      ),
+    );
+
+  // Then expired ingredients, skipping any still referenced by a (trashed) recipe
+  // line or a non-draft PO — that recipe purges on its own expiry; a non-draft PO
+  // keeps the ingredient indefinitely (F3). The NOT EXISTS avoids the restrict FK.
   const purgedIngredients = await db
     .delete(ingredients)
     .where(
@@ -79,17 +145,8 @@ export async function purgeExpired(
         eq(ingredients.organizationId, organizationId),
         isNotNull(ingredients.deletedAt),
         lte(ingredients.deletedAt, cutoff),
-        notExists(
-          db
-            .select({ one: sql`1` })
-            .from(recipeIngredients)
-            .where(
-              and(
-                eq(recipeIngredients.organizationId, organizationId),
-                eq(recipeIngredients.ingredientId, ingredients.id),
-              ),
-            ),
-        ),
+        recipePin,
+        nonDraftPoPin,
       ),
     )
     .returning({ id: ingredients.id });

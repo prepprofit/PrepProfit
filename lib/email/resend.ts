@@ -26,6 +26,13 @@ export type SendEmailInput = {
   subject: string;
   html: string;
   attachments: EmailAttachment[];
+  /**
+   * Provider-side idempotency key (Sprint 8a outbox). When set, Resend dedups
+   * retries of the same send, so a worker crash AFTER the provider accepted but
+   * BEFORE we recorded the message id does not double-send. Optional — direct
+   * document emails (Sprint 3.5C) omit it.
+   */
+  idempotencyKey?: string;
 };
 
 export type SendEmailResult = {
@@ -48,17 +55,20 @@ export function getEmailSender(): EmailSender {
       const { apiKey, from, replyTo } = emailEnv();
       const resend = new Resend(apiKey);
 
-      const { data, error } = await resend.emails.send({
-        from,
-        ...(replyTo ? { replyTo } : {}),
-        to: input.to,
-        subject: input.subject,
-        html: input.html,
-        attachments: input.attachments.map((a) => ({
-          filename: a.filename,
-          content: a.content,
-        })),
-      });
+      const { data, error } = await resend.emails.send(
+        {
+          from,
+          ...(replyTo ? { replyTo } : {}),
+          to: input.to,
+          subject: input.subject,
+          html: input.html,
+          attachments: input.attachments.map((a) => ({
+            filename: a.filename,
+            content: a.content,
+          })),
+        },
+        input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined,
+      );
 
       if (error || !data) {
         // Surface a key-free message; the caller logs it and returns EMAIL_FAILED.

@@ -3,6 +3,7 @@ import {
   customers,
   ingredients,
   invoices,
+  purchaseOrders,
   recipes,
   suppliers,
   transactions,
@@ -265,6 +266,57 @@ export async function searchCustomers(
     prefix: r.prefix === true,
     substring: r.substring === true,
   }));
+}
+
+export async function searchPurchaseOrders(
+  ctx: SearchContext,
+): Promise<SearchCandidate[]> {
+  const { tx, organizationId, query, limit } = ctx;
+  const like = `%${escapeLike(query)}%`;
+  const prefixLike = `${escapeLike(query)}%`;
+
+  // Match on the PO number (as text) OR the frozen supplier-name snapshot. Drafts
+  // have a NULL supplier_name snapshot, so they surface only by number. No
+  // soft-delete on POs (status drives lifecycle), so every PO is searchable.
+  const rows = await tx
+    .select({
+      id: purchaseOrders.id,
+      number: purchaseOrders.number,
+      supplierName: purchaseOrders.supplierName,
+      status: purchaseOrders.status,
+      totalCents: purchaseOrders.totalCents,
+      primarySim: sql<number>`similarity(coalesce(${purchaseOrders.supplierName}, ''), ${query})`,
+      exact: sql<boolean>`lower(${purchaseOrders.number}::text) = lower(${query}) OR lower(coalesce(${purchaseOrders.supplierName}, '')) = lower(${query})`,
+      prefix: sql<boolean>`${purchaseOrders.number}::text ILIKE ${prefixLike} OR coalesce(${purchaseOrders.supplierName}, '') ILIKE ${prefixLike}`,
+      substring: sql<boolean>`${purchaseOrders.number}::text ILIKE ${like} OR coalesce(${purchaseOrders.supplierName}, '') ILIKE ${like}`,
+    })
+    .from(purchaseOrders)
+    .where(
+      and(
+        eq(purchaseOrders.organizationId, organizationId),
+        sql`(${purchaseOrders.supplierName} % ${query} OR ${purchaseOrders.supplierName} ILIKE ${like} OR ${purchaseOrders.number}::text ILIKE ${like})`,
+      ),
+    )
+    .orderBy(
+      sql`similarity(coalesce(${purchaseOrders.supplierName}, ''), ${query}) DESC`,
+    )
+    .limit(limit);
+
+  return rows.map((r) => {
+    const number = `PO-${String(r.number).padStart(4, '0')}`;
+    const amount = formatMoney(r.totalCents, ctx.currency);
+    return {
+      id: r.id,
+      title: number,
+      subtitle: r.supplierName ?? amount,
+      href: `/purchase-orders?highlight=${r.id}`,
+      primarySim: toNum(r.primarySim),
+      secondarySim: 0,
+      exact: r.exact === true,
+      prefix: r.prefix === true,
+      substring: r.substring === true,
+    };
+  });
 }
 
 export async function searchSuppliers(

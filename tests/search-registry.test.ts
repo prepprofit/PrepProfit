@@ -19,7 +19,7 @@ describe('accessibleDescriptors (search RBAC)', () => {
     expect(types).toEqual(['recipe', 'ingredient']);
   });
 
-  it('includes transactions, invoices, customers and suppliers for a manager', () => {
+  it('includes transactions, invoices, customers, suppliers and purchase orders for a manager', () => {
     const types = accessibleDescriptors('manager').map((d) => d.type);
     expect(types).toEqual([
       'recipe',
@@ -28,6 +28,7 @@ describe('accessibleDescriptors (search RBAC)', () => {
       'invoice',
       'customer',
       'supplier',
+      'purchaseOrder',
     ]);
   });
 

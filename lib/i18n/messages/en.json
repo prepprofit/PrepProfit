@@ -40,7 +40,12 @@
     "SUPPLIER_IN_USE": "This supplier is the default for one or more ingredients, so it can't be archived. Change or remove those ingredient suppliers first.",
     "SUPPLIER_INACTIVE": "That supplier is archived. Reactivate it before assigning it to an ingredient.",
     "PACK_UNIT_MISMATCH": "That pack unit doesn't match the ingredient's measurement type. Use a weight unit for a weight ingredient, a volume unit for a volume one, and so on.",
-    "UNEXPECTED": "Something went wrong on our end. Please try again."
+    "UNEXPECTED": "Something went wrong on our end. Please try again.",
+    "PO_NOT_DRAFT": "This purchase order has already been sent or cancelled, so it can no longer be edited. Cancel it and create a new one instead.",
+    "SUPPLIER_REQUIRED": "Choose a supplier before sending this purchase order.",
+    "PO_EMPTY": "Add at least one line before sending this purchase order.",
+    "PO_NUMBER_TAKEN": "That purchase-order number is already in use. Choose a different one.",
+    "PO_LINE_INGREDIENT_MISSING": "One of the lines points at an ingredient that no longer exists. Fix the lines before sending."
   },
   "errors": {
     "boundary": {
@@ -70,7 +75,8 @@
     "trash": "Trash",
     "billing": "Plans & billing",
     "import": "Import",
-    "onboarding": "Get started"
+    "onboarding": "Get started",
+    "purchaseOrders": "Purchase orders"
   },
   "navGroups": {
     "operations": "Operations",
@@ -104,7 +110,8 @@
       "transactions": "Transactions",
       "invoices": "Invoices",
       "customers": "Customers",
-      "suppliers": "Suppliers"
+      "suppliers": "Suppliers",
+      "purchaseOrders": "Purchase orders"
     }
   },
   "theme": {
@@ -614,10 +621,22 @@
     "viewAll": "View all",
     "noRecentTransactions": "No transactions yet.",
     "charts": {
-      "sales": { "title": "Sales by day", "subtitle": "Last 7 days" },
-      "margin": { "title": "Margin trend", "subtitle": "Last 6 months" },
-      "costs": { "title": "Cost breakdown", "subtitle": "By category" },
-      "cashflow": { "title": "Cash flow", "subtitle": "Income vs expenses" }
+      "sales": {
+        "title": "Sales by day",
+        "subtitle": "Last 7 days"
+      },
+      "margin": {
+        "title": "Margin trend",
+        "subtitle": "Last 6 months"
+      },
+      "costs": {
+        "title": "Cost breakdown",
+        "subtitle": "By category"
+      },
+      "cashflow": {
+        "title": "Cash flow",
+        "subtitle": "Income vs expenses"
+      }
     }
   },
   "finance": {
@@ -1139,5 +1158,112 @@
   "selectOrg": {
     "title": "Choose or create an organization",
     "description": "Your data is isolated per organization."
+  },
+  "purchaseOrders": {
+    "subtitle": "Draft orders to your suppliers, then send them a PDF.",
+    "empty": "No purchase orders yet. Create your first draft to order from a supplier.",
+    "noSuppliers": "Add a supplier first, then you can create purchase orders.",
+    "noIngredients": "Add some ingredients first, then you can add order lines.",
+    "builder": {
+      "title": "New purchase order",
+      "editTitle": "Edit draft",
+      "supplier": "Supplier",
+      "selectSupplier": "Select a supplier",
+      "expectedDate": "Expected date",
+      "notes": "Notes",
+      "notesPlaceholder": "Delivery instructions, references…",
+      "lines": "Lines",
+      "ingredient": "Ingredient",
+      "selectIngredient": "Select an ingredient",
+      "quantity": "Quantity",
+      "unitCost": "Unit cost",
+      "lineTotal": "Total",
+      "addLine": "Add line",
+      "removeLine": "Remove line",
+      "subtotal": "Subtotal",
+      "total": "Total",
+      "saveDraft": "Save draft",
+      "saveChanges": "Save changes",
+      "cancelEdit": "Cancel edit",
+      "lineIncomplete": "Add at least one line with an ingredient and a quantity."
+    },
+    "list": {
+      "title": "Purchase orders",
+      "noNumber": "Draft",
+      "noSupplier": "No supplier",
+      "empty": "No purchase orders yet."
+    },
+    "status": {
+      "draft": "Draft",
+      "sent": "Sent",
+      "cancelled": "Cancelled"
+    },
+    "actions": {
+      "new": "New purchase order",
+      "edit": "Edit",
+      "send": "Send",
+      "sendTitle": "Send purchase order?",
+      "sendBody": "This freezes the supplier and line details and queues a PDF email to the supplier (if they have an email address). A sent order can no longer be edited.",
+      "cancel": "Cancel order",
+      "cancelTitle": "Cancel purchase order?",
+      "cancelBody": "The order is marked cancelled. If a send email has not gone out yet it is stopped; if it already left, the supplier is sent a cancellation notice.",
+      "delete": "Delete",
+      "deleteTitle": "Delete draft?",
+      "deleteBody": "This permanently deletes the draft purchase order. This cannot be undone.",
+      "view": "View",
+      "downloadPdf": "Download PDF",
+      "print": "Print"
+    },
+    "detail": {
+      "back": "All purchase orders",
+      "supplier": "Supplier",
+      "orderDate": "Order date",
+      "expectedDate": "Expected date",
+      "total": "Total",
+      "downloadPdf": "Download PDF",
+      "print": "Print",
+      "outboxLabel": "Email",
+      "outbox": {
+        "pending": "Email queued",
+        "sending": "Email sending",
+        "sent": "Email sent",
+        "failed": "Email failed",
+        "cancelled": "Email cancelled",
+        "none": "No email queued"
+      }
+    }
+  },
+  "purchaseOrderDocument": {
+    "title": "PURCHASE ORDER",
+    "from": "From",
+    "supplierTo": "To",
+    "poNo": "No.",
+    "orderDate": "Order date",
+    "expectedDate": "Expected",
+    "taxId": "Tax ID",
+    "phone": "Phone",
+    "ingredient": "Ingredient",
+    "quantity": "Qty",
+    "unitCost": "Unit cost",
+    "lineTotal": "Total",
+    "subtotal": "Subtotal",
+    "total": "Total",
+    "notes": "Notes",
+    "status": {
+      "draft": "Draft",
+      "sent": "Sent",
+      "cancelled": "Cancelled"
+    },
+    "units": {
+      "weight": "g",
+      "volume": "ml",
+      "count": "×"
+    }
+  },
+  "purchaseOrderEmail": {
+    "subject": "Purchase order {number}",
+    "body": "Please find attached purchase order {number} from {seller}. The order details are in the attached PDF.",
+    "cancelSubject": "Purchase order {number} cancelled",
+    "cancelBody": "Purchase order {number} has been cancelled. Please disregard the earlier order."
   }
 }

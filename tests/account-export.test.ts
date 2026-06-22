@@ -118,8 +118,13 @@ describe('buildOrgDataExport', () => {
     expect(names.sort()).toEqual(['Butter A', 'Sugar A']);
     expect(names).not.toContain('Flour B');
     expect(bundle.organizationId).toBe(ORG_A);
-    expect(bundle.schemaVersion).toBe(6);
+    expect(bundle.schemaVersion).toBe(7);
     expect(countExportRows(bundle)).toBeGreaterThanOrEqual(2);
+
+    // Sprint 8a: the purchase-order + outbox tables are part of the bundle.
+    expect(bundle.data).toHaveProperty('purchaseOrders');
+    expect(bundle.data).toHaveProperty('purchaseOrderItems');
+    expect(bundle.data).toHaveProperty('emailOutbox');
 
     // Sprint 9: the allergen tables are part of the bundle (empty arrays are fine).
     expect(bundle.data).toHaveProperty('ingredientAllergens');

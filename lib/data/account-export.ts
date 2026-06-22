@@ -19,6 +19,9 @@ import {
   poCounters,
   invoices,
   invoiceItems,
+  purchaseOrders,
+  purchaseOrderItems,
+  emailOutbox,
   employees,
   shifts,
   auditLog,
@@ -49,7 +52,8 @@ import {
 // `ingredients` rows now carry allergens_reviewed_at/_by (flow through `select()`).
 // v6 (Sprint 7): added `suppliers` + `ingredientSuppliers`; `ingredientPriceHistory`
 // rows now carry `ingredient_supplier_id` (flows through `select()`).
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 6;
+// v7 (Sprint 8a): added `purchaseOrders` + `purchaseOrderItems` + `emailOutbox`.
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 7;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -83,6 +87,9 @@ export async function buildOrgDataExport(
     ['poCounters', poCounters],
     ['invoices', invoices],
     ['invoiceItems', invoiceItems],
+    ['purchaseOrders', purchaseOrders],
+    ['purchaseOrderItems', purchaseOrderItems],
+    ['emailOutbox', emailOutbox],
     ['employees', employees],
     ['shifts', shifts],
     ['auditLog', auditLog],

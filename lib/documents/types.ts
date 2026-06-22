@@ -223,6 +223,72 @@ export type PayrollDocumentLabels = {
 };
 
 /* -------------------------------------------------------------------------- */
+/* Sprint 8a — purchase order document                                        */
+/* -------------------------------------------------------------------------- */
+
+import type { PurchaseOrderStatus } from '@/lib/db/schema';
+
+/** The supplier a PO is addressed to (snapshot when sent, else the live link). */
+export type SupplierBlock = {
+  name: string | null;
+  taxId: string | null;
+  address: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+/** One purchase-order line, with its canonical quantity + negotiated cost. */
+export type PurchaseOrderDocumentLine = {
+  name: string;
+  dimension: 'weight' | 'volume' | 'count';
+  /** Canonical amount ordered (g / ml / pieces). */
+  quantity: number;
+  /** Negotiated cost per priced unit (per kg / litre / piece), integer cents. */
+  unitCostCents: number;
+  lineTotalCents: number;
+};
+
+/** Purchase-order document view-model (Sprint 8a). No DB/I/O coupling. */
+export type PurchaseOrderDocumentData = {
+  seller: SellerIdentity;
+  supplier: SupplierBlock;
+  /** Presentation number, e.g. 'PO-0001'. */
+  number: string;
+  status: PurchaseOrderStatus;
+  /** True while a draft — the PDF/print render live data and a DRAFT watermark. */
+  isDraft: boolean;
+  /** Bare 'YYYY-MM-DD' strings (or null). */
+  orderDate: string | null;
+  expectedDate: string | null;
+  notes: string | null;
+  currency: string;
+  lines: PurchaseOrderDocumentLine[];
+  subtotalCents: number;
+  totalCents: number;
+};
+
+export type PurchaseOrderDocumentLabels = {
+  title: string;
+  from: string;
+  supplierTo: string;
+  poNo: string;
+  orderDate: string;
+  expectedDate: string;
+  taxId: string;
+  phone: string;
+  ingredient: string;
+  quantity: string;
+  unitCost: string;
+  lineTotal: string;
+  subtotal: string;
+  total: string;
+  notes: string;
+  status: Record<PurchaseOrderStatus, string>;
+  /** Unit suffix by dimension (e.g. g / ml / ×). */
+  units: Record<'weight' | 'volume' | 'count', string>;
+};
+
+/* -------------------------------------------------------------------------- */
 /* Sprint 9 — kitchen allergen matrix (OPERATIONAL, money-free)               */
 /* -------------------------------------------------------------------------- */
 

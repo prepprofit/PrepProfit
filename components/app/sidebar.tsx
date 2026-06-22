@@ -17,6 +17,7 @@ import {
   Users,
   FileText,
   Truck,
+  ClipboardList,
   Settings,
   CreditCard,
   Upload,
@@ -40,6 +41,7 @@ const icons: Record<NavKey, LucideIcon> = {
   payroll: Users,
   invoices: FileText,
   suppliers: Truck,
+  purchaseOrders: ClipboardList,
 };
 
 /**
