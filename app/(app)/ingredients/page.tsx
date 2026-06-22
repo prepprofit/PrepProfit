@@ -6,6 +6,11 @@ import {
   loadIngredientAllergensByIngredient,
   type AllergenTag,
 } from '@/lib/data/allergens';
+import { listSuppliersWithCounts } from '@/lib/data/suppliers';
+import {
+  loadDefaultLinksByIngredient,
+  type DefaultSupplierSummary,
+} from '@/lib/data/ingredient-suppliers';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { IngredientGrid } from '@/components/app/ingredients/ingredient-grid';
 
@@ -47,6 +52,25 @@ export default async function IngredientsPage({
     initialReviewed[row.id] = row.allergensReviewedAt !== null;
   }
 
+  // Suppliers (Sprint 7) are MANAGER-ONLY: only managers (who see costs) get the
+  // active supplier list for the picker + the per-ingredient default link to
+  // prefill the editor. Kitchen sees the supplier NAME read-only (it rides on the
+  // ingredient row's `supplier` column), but no packs/prices and no editor.
+  let supplierNames: string[] = [];
+  const initialSupplierLinks: Record<string, DefaultSupplierSummary> = {};
+  if (canSeeCosts) {
+    const [suppliers, links] = await withOrg(organizationId, async (tx) => [
+      await listSuppliersWithCounts(tx, organizationId),
+      await loadDefaultLinksByIngredient(
+        tx,
+        organizationId,
+        ingredientRows.map((r) => r.id),
+      ),
+    ]);
+    supplierNames = suppliers.map((s) => s.name);
+    for (const [id, link] of links) initialSupplierLinks[id] = link;
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
@@ -57,6 +81,8 @@ export default async function IngredientsPage({
         highlightId={typeof highlight === 'string' ? highlight : undefined}
         initialAllergens={initialAllergens}
         initialReviewed={initialReviewed}
+        supplierNames={supplierNames}
+        initialSupplierLinks={initialSupplierLinks}
       />
     </div>
   );

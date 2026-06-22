@@ -17,7 +17,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "seed": "tsx scripts/seed.ts",
     "seed:org": "tsx scripts/seed-org.ts",
-    "seed:demo": "tsx scripts/seed-demo.ts"
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "backfill:suppliers": "tsx scripts/backfill-suppliers.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.7",

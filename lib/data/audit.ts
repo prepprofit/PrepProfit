@@ -45,6 +45,17 @@ export type AuditAction =
   // an ingredient, not a person), never names or notes.
   | 'ingredient.priceUpdate'
   | 'ingredient.priceAccept'
+  // Suppliers (Sprint 7). `supplier.create/.update/.archive/.restore` = supplier
+  // entity lifecycle (manager-only). `ingredient.supplierSet` = a default supplier
+  // link was set/updated on an ingredient; `ingredient.supplierClear` = the default
+  // link was removed. metadata = ids + non-PII pack descriptors (size/unit/cents)
+  // only — NEVER supplier contact details (email/phone/address/tax id).
+  | 'supplier.create'
+  | 'supplier.update'
+  | 'supplier.archive'
+  | 'supplier.restore'
+  | 'ingredient.supplierSet'
+  | 'ingredient.supplierClear'
   // Allergens (Sprint 9). `allergen.ingredientReview` = an ingredient's allergen
   // tags were replaced + the review stamped (kitchen OR manager — metadata carries
   // the before/after presence SETS as slugs, plus the reviewer is `actor_user_id`).

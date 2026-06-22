@@ -12,6 +12,7 @@ import {
   Loader2,
   Receipt,
   Search,
+  Truck,
   X,
 } from 'lucide-react';
 import {
@@ -48,6 +49,7 @@ const GROUP_ICON: Record<
   transaction: Receipt,
   invoice: FileText,
   customer: Building2,
+  supplier: Truck,
 };
 
 const EMPTY: GroupedSearchResults = { groups: [] };
@@ -150,6 +152,7 @@ export function CommandPalette({
     transaction: t('groups.transactions'),
     invoice: t('groups.invoices'),
     customer: t('groups.customers'),
+    supplier: t('groups.suppliers'),
   };
   const groupHeading = (type: SearchEntityType): string => GROUP_LABEL[type];
 
@@ -173,6 +176,11 @@ export function CommandPalette({
             type: 'customer' as const,
             label: t('groups.customers'),
             Icon: Building2,
+          },
+          {
+            type: 'supplier' as const,
+            label: t('groups.suppliers'),
+            Icon: Truck,
           },
         ]
       : []),

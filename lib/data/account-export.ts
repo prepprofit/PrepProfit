@@ -10,6 +10,8 @@ import {
   recipeAllergenOverrides,
   inventoryMovements,
   ingredientPriceHistory,
+  suppliers,
+  ingredientSuppliers,
   transactionCategories,
   transactions,
   customers,
@@ -45,7 +47,9 @@ import {
 // v4 (Sprint F6): added `poCounters`.
 // v5 (Sprint 9): added `ingredientAllergens` + `recipeAllergenOverrides`; the
 // `ingredients` rows now carry allergens_reviewed_at/_by (flow through `select()`).
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 5;
+// v6 (Sprint 7): added `suppliers` + `ingredientSuppliers`; `ingredientPriceHistory`
+// rows now carry `ingredient_supplier_id` (flows through `select()`).
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 6;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -70,6 +74,8 @@ export async function buildOrgDataExport(
     ['recipeAllergenOverrides', recipeAllergenOverrides],
     ['inventoryMovements', inventoryMovements],
     ['ingredientPriceHistory', ingredientPriceHistory],
+    ['suppliers', suppliers],
+    ['ingredientSuppliers', ingredientSuppliers],
     ['transactionCategories', transactionCategories],
     ['transactions', transactions],
     ['customers', customers],

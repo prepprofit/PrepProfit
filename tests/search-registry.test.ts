@@ -15,10 +15,11 @@ describe('accessibleDescriptors (search RBAC)', () => {
     expect(types).not.toContain('transaction');
     expect(types).not.toContain('invoice');
     expect(types).not.toContain('customer');
+    expect(types).not.toContain('supplier');
     expect(types).toEqual(['recipe', 'ingredient']);
   });
 
-  it('includes transactions, invoices and customers for a manager', () => {
+  it('includes transactions, invoices, customers and suppliers for a manager', () => {
     const types = accessibleDescriptors('manager').map((d) => d.type);
     expect(types).toEqual([
       'recipe',
@@ -26,6 +27,7 @@ describe('accessibleDescriptors (search RBAC)', () => {
       'transaction',
       'invoice',
       'customer',
+      'supplier',
     ]);
   });
 

@@ -25,6 +25,8 @@ export type RecordPriceObservationInput = {
   /** Price of the whole pack, integer cents. */
   packPriceCents: number;
   actorUserId?: string | null;
+  /** The supplier link/quote that produced this observation (Sprint 7 provenance). */
+  ingredientSupplierId?: string | null;
   note?: string | null;
 };
 
@@ -63,6 +65,7 @@ export async function recordPriceObservation(
     derivedPriceCents,
     accepted: false,
     actorUserId: input.actorUserId ?? null,
+    ingredientSupplierId: input.ingredientSupplierId ?? null,
     note: input.note ?? null,
   });
 

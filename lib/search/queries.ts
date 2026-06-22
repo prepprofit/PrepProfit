@@ -4,6 +4,7 @@ import {
   ingredients,
   invoices,
   recipes,
+  suppliers,
   transactions,
 } from '@/lib/db/schema';
 import { formatMoney } from '@/lib/format/money';
@@ -258,6 +259,52 @@ export async function searchCustomers(
     title: r.name,
     subtitle: r.email ?? r.taxId,
     href: `/invoices`,
+    primarySim: toNum(r.primarySim),
+    secondarySim: toNum(r.secondarySim),
+    exact: r.exact === true,
+    prefix: r.prefix === true,
+    substring: r.substring === true,
+  }));
+}
+
+export async function searchSuppliers(
+  ctx: SearchContext,
+): Promise<SearchCandidate[]> {
+  const { tx, organizationId, query, limit } = ctx;
+  const like = `%${escapeLike(query)}%`;
+  const prefixLike = `${escapeLike(query)}%`;
+
+  // Suppliers have no soft-delete (archive flag): both active and archived match,
+  // so a manager can still find an archived supplier to reactivate.
+  const rows = await tx
+    .select({
+      id: suppliers.id,
+      name: suppliers.name,
+      email: suppliers.email,
+      active: suppliers.active,
+      primarySim: sql<number>`similarity(${suppliers.name}, ${query})`,
+      secondarySim: sql<number>`similarity(coalesce(${suppliers.email}, ''), ${query})`,
+      exact: sql<boolean>`lower(${suppliers.name}) = lower(${query})`,
+      prefix: sql<boolean>`${suppliers.name} ILIKE ${prefixLike}`,
+      substring: sql<boolean>`${suppliers.name} ILIKE ${like}`,
+    })
+    .from(suppliers)
+    .where(
+      and(
+        eq(suppliers.organizationId, organizationId),
+        sql`(${suppliers.name} % ${query} OR ${suppliers.name} ILIKE ${like} OR coalesce(${suppliers.email}, '') % ${query})`,
+      ),
+    )
+    .orderBy(
+      sql`GREATEST(similarity(${suppliers.name}, ${query}), similarity(coalesce(${suppliers.email}, ''), ${query})) DESC`,
+    )
+    .limit(limit);
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.name,
+    subtitle: r.email,
+    href: `/suppliers?highlight=${r.id}`,
     primarySim: toNum(r.primarySim),
     secondarySim: toNum(r.secondarySim),
     exact: r.exact === true,

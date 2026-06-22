@@ -37,6 +37,9 @@
     "AI_EXTRACTION_FAILED": "We couldn't read a recipe from that photo. Try a clearer, well-lit image.",
     "USAGE_LIMIT_REACHED": "You've used all of this month's photo extractions on your plan. They reset next month, or upgrade for more.",
     "ALLERGEN_CANNOT_DOWNGRADE": "A recipe allergen can only be added or raised, never lowered or removed. Allergens from ingredients can't be suppressed here.",
+    "SUPPLIER_IN_USE": "This supplier is the default for one or more ingredients, so it can't be archived. Change or remove those ingredient suppliers first.",
+    "SUPPLIER_INACTIVE": "That supplier is archived. Reactivate it before assigning it to an ingredient.",
+    "PACK_UNIT_MISMATCH": "That pack unit doesn't match the ingredient's measurement type. Use a weight unit for a weight ingredient, a volume unit for a volume one, and so on.",
     "UNEXPECTED": "Something went wrong on our end. Please try again."
   },
   "errors": {
@@ -62,6 +65,7 @@
     "breakEven": "Break-even",
     "payroll": "Payroll",
     "invoices": "Invoices",
+    "suppliers": "Suppliers",
     "settings": "Settings",
     "trash": "Trash",
     "billing": "Plans & billing",
@@ -99,11 +103,79 @@
       "ingredients": "Ingredients",
       "transactions": "Transactions",
       "invoices": "Invoices",
-      "customers": "Customers"
+      "customers": "Customers",
+      "suppliers": "Suppliers"
     }
   },
   "theme": {
     "toggle": "Toggle theme"
+  },
+  "suppliers": {
+    "title": "Suppliers",
+    "subtitle": "Your suppliers and the packs you buy ingredients in.",
+    "empty": "No suppliers yet. Add your first supplier to start linking ingredients.",
+    "showArchived": "Show archived",
+    "hideArchived": "Hide archived",
+    "activeBadge": "Active",
+    "archivedBadge": "Archived",
+    "ingredientCount": "{count, plural, =0 {No ingredients} one {# ingredient} other {# ingredients}}",
+    "columns": {
+      "name": "Name",
+      "contact": "Contact",
+      "ingredients": "Ingredients",
+      "status": "Status"
+    },
+    "form": {
+      "newTitle": "New supplier",
+      "editTitle": "Edit supplier",
+      "name": "Name",
+      "namePlaceholder": "e.g. ACME Foods",
+      "email": "Email",
+      "phone": "Phone",
+      "address": "Address",
+      "taxId": "Tax ID",
+      "notes": "Notes",
+      "create": "Add supplier",
+      "save": "Save changes",
+      "cancel": "Cancel"
+    },
+    "actions": {
+      "new": "New supplier",
+      "edit": "Edit",
+      "archive": "Archive",
+      "reactivate": "Reactivate",
+      "view": "View"
+    },
+    "archiveConfirm": {
+      "title": "Archive supplier?",
+      "body": "Archived suppliers are hidden from pickers but kept for history. You can reactivate them anytime.",
+      "confirm": "Archive"
+    },
+    "detail": {
+      "back": "All suppliers",
+      "contactHeading": "Contact details",
+      "ingredientsHeading": "Ingredients supplied",
+      "noIngredients": "No ingredients use this supplier yet.",
+      "noContact": "No contact details on file.",
+      "notesHeading": "Notes",
+      "pack": "Pack",
+      "noPack": "No pack set"
+    },
+    "ingredientEditor": {
+      "heading": "Supplier",
+      "supplierName": "Supplier",
+      "supplierPlaceholder": "Type or pick a supplier",
+      "packSize": "Pack size",
+      "packUnit": "Unit",
+      "packPrice": "Pack price",
+      "save": "Save",
+      "cancel": "Cancel",
+      "clear": "Remove supplier",
+      "none": "Set supplier",
+      "pendingBadge": "Pending cost",
+      "pendingHint": "A new cost of {amount} was derived from this pack. Accept it to update the ingredient's price.",
+      "accept": "Accept cost"
+    }
   },
   "common": {
     "comingSoon": "Coming soon",

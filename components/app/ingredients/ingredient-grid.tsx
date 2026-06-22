@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
-import { Check, Plus, ShieldAlert, Trash2 } from 'lucide-react';
+import { Check, Plus, ShieldAlert, Trash2, Truck } from 'lucide-react';
 import {
   type ColumnDef,
   flexRender,
@@ -26,7 +26,9 @@ import {
   updateIngredientAction,
 } from '@/app/(app)/ingredients/actions';
 import { IngredientAllergenDialog } from '@/components/app/ingredients/ingredient-allergen-dialog';
+import { IngredientSupplierDialog } from '@/components/app/ingredients/ingredient-supplier-dialog';
 import type { AllergenTag } from '@/lib/data/allergens';
+import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
 
 type Dimension = Ingredient['dimension'];
 
@@ -43,7 +45,6 @@ type Draft = {
   name: string;
   dimension: Dimension;
   priceText: string;
-  supplier: string;
 };
 
 /** The price reference unit per dimension (prices are stored per kg / litre / piece). */
@@ -58,20 +59,18 @@ function draftFromRow(row: IngredientRow): Draft {
     name: row.name,
     dimension: row.dimension,
     priceText: row.priceCents != null ? centsToAmountInput(row.priceCents) : '',
-    supplier: row.supplier ?? '',
   };
 }
 
 function emptyDraft(): Draft {
-  return { name: '', dimension: 'weight', priceText: '', supplier: '' };
+  return { name: '', dimension: 'weight', priceText: '' };
 }
 
-/** Operational fields only — what a kitchen edit sends (no price). */
+/** Operational fields only — what a kitchen edit sends (no price, no supplier). */
 function operationalInput(draft: Draft) {
   return {
     name: draft.name.trim(),
     dimension: draft.dimension,
-    supplier: draft.supplier.trim() === '' ? null : draft.supplier.trim(),
   };
 }
 
@@ -103,6 +102,13 @@ type GridMeta = {
   needsPricingLabel: string;
   allergensLabel: string;
   allergensUnreviewedLabel: string;
+  // Suppliers (Sprint 7, manager-only).
+  canManageSuppliers: boolean;
+  onEditSupplier: (id: string) => void;
+  supplierName: (id: string) => string | null;
+  supplierLabel: string;
+  noSupplierLabel: string;
+  pendingCostLabel: string;
 };
 
 export function IngredientGrid({
@@ -112,6 +118,8 @@ export function IngredientGrid({
   highlightId,
   initialAllergens,
   initialReviewed,
+  supplierNames = [],
+  initialSupplierLinks = {},
 }: {
   initialIngredients: IngredientRow[];
   /** Manager only: render + edit the Price column. Kitchen rows carry no price. */
@@ -123,12 +131,17 @@ export function IngredientGrid({
   initialAllergens: Record<string, AllergenTag[]>;
   /** Which ingredient ids have had their allergens reviewed (reviewed_at set). */
   initialReviewed: Record<string, boolean>;
+  /** Active supplier names for the picker datalist (manager-only, Sprint 7). */
+  supplierNames?: string[];
+  /** Default supplier link per ingredient id, to prefill the editor (manager-only). */
+  initialSupplierLinks?: Record<string, DefaultSupplierSummary>;
 }) {
   const t = useTranslations('ingredients');
   const flashId = useRowHighlight(highlightId, 'ingredient-row-');
   const tDim = useTranslations('dimensions');
   const tCommon = useTranslations('common');
   const tAllergens = useTranslations('allergens');
+  const tSuppliers = useTranslations('suppliers.ingredientEditor');
   const actionError = useActionError();
   const [rows, setRows] = React.useState<IngredientRow[]>(initialIngredients);
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>(() =>
@@ -146,9 +159,16 @@ export function IngredientGrid({
   const [reviewed, setReviewed] =
     React.useState<Record<string, boolean>>(initialReviewed);
   const [allergenEditId, setAllergenEditId] = React.useState<string | null>(null);
+  // Suppliers (Sprint 7, manager-only): the default link per ingredient + which
+  // row's supplier editor is open.
+  const [supplierLinks, setSupplierLinks] = React.useState<
+    Record<string, DefaultSupplierSummary | null>
+  >(() => ({ ...initialSupplierLinks }));
+  const [supplierEditId, setSupplierEditId] = React.useState<string | null>(null);
 
   const confirmTarget = rows.find((r) => r.id === confirmId) ?? null;
   const allergenTarget = rows.find((r) => r.id === allergenEditId) ?? null;
+  const supplierTarget = rows.find((r) => r.id === supplierEditId) ?? null;
 
   // Briefly flag a row as "saved" after a successful auto-save, so the silent
   // blur-commit gives the user visible feedback.
@@ -191,11 +211,11 @@ export function IngredientGrid({
         setDrafts((prev) => ({ ...prev, [id]: draftFromRow(row) }));
         return;
       }
-      // Skip the round-trip when nothing actually changed.
+      // Skip the round-trip when nothing actually changed. (Supplier is edited
+      // through the supplier dialog, not this inline row — Sprint 7.)
       const unchanged =
         op.name === row.name &&
         op.dimension === row.dimension &&
-        (op.supplier ?? null) === (row.supplier ?? null) &&
         (!canSeeCosts || priceCents === (row.priceCents ?? 0));
       if (unchanged) {
         setDrafts((prev) => ({ ...prev, [id]: draftFromRow(row) }));
@@ -219,9 +239,14 @@ export function IngredientGrid({
 
   const requestDelete = React.useCallback((id: string) => setConfirmId(id), []);
   const editAllergens = React.useCallback((id: string) => setAllergenEditId(id), []);
+  const editSupplier = React.useCallback((id: string) => setSupplierEditId(id), []);
   const unreviewedAllergens = React.useCallback(
     (id: string) => reviewed[id] !== true,
     [reviewed],
+  );
+  const supplierName = React.useCallback(
+    (id: string) => rows.find((r) => r.id === id)?.supplier ?? null,
+    [rows],
   );
 
   const confirmDelete = React.useCallback(() => {
@@ -361,20 +386,41 @@ export function IngredientGrid({
         header: t('columns.supplier'),
         cell: ({ row, table }) => {
           const meta = table.options.meta as GridMeta;
-          const draft = meta.drafts[row.original.id];
-          if (!draft) return null;
+          const name = meta.supplierName(row.original.id);
+          const hasPending =
+            meta.canManageSuppliers && row.original.pendingPriceCents != null;
+          // Suppliers are MANAGER-ONLY (Sprint 7): a manager edits the default
+          // supplier + pack via the dialog; kitchen sees the name read-only.
+          if (!meta.canManageSuppliers) {
+            return (
+              <span className="text-sm text-muted-foreground">
+                {name ?? '—'}
+              </span>
+            );
+          }
           return (
-            <Input
-              aria-label={t('columns.supplier')}
-              placeholder={t('placeholders.supplier')}
-              value={draft.supplier}
-              disabled={meta.pending}
-              onChange={(e) =>
-                meta.onField(row.original.id, { supplier: e.target.value })
-              }
-              onKeyDown={commitOnEnter}
-              onBlur={() => meta.onCommit(row.original.id)}
-            />
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={meta.pending}
+                onClick={() => meta.onEditSupplier(row.original.id)}
+              >
+                <Truck className="size-4" />
+                <span className="max-w-[10rem] truncate">
+                  {name ?? meta.noSupplierLabel}
+                </span>
+              </Button>
+              {hasPending && (
+                <span
+                  className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                  title={meta.pendingCostLabel}
+                >
+                  {meta.pendingCostLabel}
+                </span>
+              )}
+            </div>
           );
         },
       },
@@ -454,6 +500,12 @@ export function IngredientGrid({
       needsPricingLabel: t('needsPricing'),
       allergensLabel: tAllergens('editor.open'),
       allergensUnreviewedLabel: tAllergens('editor.unreviewed'),
+      canManageSuppliers: canSeeCosts,
+      onEditSupplier: editSupplier,
+      supplierName,
+      supplierLabel: t('columns.supplier'),
+      noSupplierLabel: tSuppliers('none'),
+      pendingCostLabel: tSuppliers('pendingBadge'),
     } satisfies GridMeta,
   });
 
@@ -474,8 +526,8 @@ export function IngredientGrid({
           className={cn(
             'grid grid-cols-1 gap-2 sm:items-center',
             canSeeCosts
-              ? 'sm:grid-cols-[1fr_auto_auto_1fr_auto]'
-              : 'sm:grid-cols-[1fr_auto_1fr_auto]',
+              ? 'sm:grid-cols-[1fr_auto_auto_auto]'
+              : 'sm:grid-cols-[1fr_auto_auto]',
           )}
         >
           <Input
@@ -523,18 +575,6 @@ export function IngredientGrid({
               </span>
             </div>
           )}
-          <Input
-            aria-label={t('columns.supplier')}
-            placeholder={t('placeholders.supplier')}
-            value={newDraft.supplier}
-            disabled={pending}
-            onChange={(e) =>
-              setNewDraft((d) => ({ ...d, supplier: e.target.value }))
-            }
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onCreate();
-            }}
-          />
           <Button type="button" onClick={onCreate} disabled={pending}>
             <Plus className="size-4" />
             {t('actions.add')}
@@ -615,6 +655,52 @@ export function IngredientGrid({
             setAllergens((prev) => ({ ...prev, [id]: tags }));
             // Saving (even an empty set) marks the ingredient reviewed.
             setReviewed((prev) => ({ ...prev, [id]: true }));
+          }}
+        />
+      )}
+
+      {canSeeCosts && supplierTarget && (
+        <IngredientSupplierDialog
+          open={supplierEditId !== null}
+          ingredientId={supplierTarget.id}
+          ingredientName={supplierTarget.name}
+          dimension={supplierTarget.dimension}
+          currency={currency}
+          supplierNames={supplierNames}
+          initialLink={supplierLinks[supplierTarget.id] ?? null}
+          pendingPriceCents={supplierTarget.pendingPriceCents ?? null}
+          onClose={() => setSupplierEditId(null)}
+          onSaved={(summary) => {
+            const id = supplierTarget.id;
+            setSupplierLinks((prev) => ({ ...prev, [id]: summary }));
+            setRows((prev) =>
+              prev.map((r) =>
+                r.id === id ? { ...r, supplier: summary.supplierName } : r,
+              ),
+            );
+          }}
+          onCleared={() => {
+            const id = supplierTarget.id;
+            setSupplierLinks((prev) => ({ ...prev, [id]: null }));
+            setRows((prev) =>
+              prev.map((r) => (r.id === id ? { ...r, supplier: null } : r)),
+            );
+          }}
+          onAccepted={(priceCents) => {
+            const id = supplierTarget.id;
+            setRows((prev) =>
+              prev.map((r) =>
+                r.id === id
+                  ? { ...r, priceCents, pendingPriceCents: null }
+                  : r,
+              ),
+            );
+            setDrafts((prev) => {
+              const row = rows.find((r) => r.id === id);
+              return row
+                ? { ...prev, [id]: draftFromRow({ ...row, priceCents }) }
+                : prev;
+            });
           }}
         />
       )}

@@ -4,7 +4,13 @@ import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import { runInOrg } from '@/lib/db/tenant';
 import type { TenantDb } from '@/lib/db/tenant';
-import { importJobs, ingredients, transactions } from '@/lib/db/schema';
+import {
+  importJobs,
+  ingredients,
+  ingredientSuppliers,
+  suppliers,
+  transactions,
+} from '@/lib/db/schema';
 import {
   createImportJob,
   lockImportJob,
@@ -22,6 +28,7 @@ import { parseIngredients, parseTransactions } from '@/lib/import/parse';
 
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
+const ORG_C = 'org_c';
 
 let client: PGlite;
 let db: TenantDb;
@@ -163,5 +170,47 @@ describe('apply services insert into the active org only', () => {
       .from(transactions)
       .where(eq(transactions.organizationId, ORG_B));
     expect(txnRows.some((t) => t.amountCents === 9900)).toBe(true);
+  });
+});
+
+describe('ingredient import supplier dual-write (Sprint 7, §12.12)', () => {
+  it('creates a supplier + default link + legacy mirror, mapped by name', async () => {
+    // Two records share one supplier (different spellings → one normalized key).
+    const records = [
+      { name: 'Imp Flour', dimension: 'weight' as const, priceCents: 0, needsPricing: true, supplier: 'ACME Foods' },
+      { name: 'Imp Sugar', dimension: 'weight' as const, priceCents: 0, needsPricing: true, supplier: 'acme foods' },
+      { name: 'Imp Salt', dimension: 'weight' as const, priceCents: 0, needsPricing: true, supplier: null },
+    ];
+
+    const created = await runInOrg(db, ORG_C, (tx) =>
+      applyIngredientRecords(tx, ORG_C, records),
+    );
+    expect(created).toBe(3);
+
+    // Exactly one supplier for the shared (normalized) name.
+    const supplierRows = await runInOrg(db, ORG_C, (tx) =>
+      tx.select().from(suppliers).where(eq(suppliers.organizationId, ORG_C)),
+    );
+    expect(supplierRows).toHaveLength(1);
+    const supplierId = supplierRows[0]!.id;
+
+    // The two supplier-bearing ingredients each get a default link + legacy mirror;
+    // the null-supplier one gets neither.
+    const ingRows = await runInOrg(db, ORG_C, (tx) =>
+      tx.select().from(ingredients).where(eq(ingredients.organizationId, ORG_C)),
+    );
+    const flour = ingRows.find((r) => r.name === 'Imp Flour');
+    const salt = ingRows.find((r) => r.name === 'Imp Salt');
+    expect(flour?.supplier).toBe(supplierRows[0]!.name);
+    expect(salt?.supplier).toBeNull();
+
+    const links = await runInOrg(db, ORG_C, (tx) =>
+      tx
+        .select()
+        .from(ingredientSuppliers)
+        .where(eq(ingredientSuppliers.organizationId, ORG_C)),
+    );
+    expect(links).toHaveLength(2);
+    expect(links.every((l) => l.supplierId === supplierId && l.isDefault)).toBe(true);
   });
 });

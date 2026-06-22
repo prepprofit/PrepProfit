@@ -1,6 +1,16 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { ingredients, recipes, transactions } from '@/lib/db/schema';
+import {
+  ingredients,
+  ingredientSuppliers,
+  recipes,
+  transactions,
+} from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
+import { normalizeSupplierName } from '@/lib/suppliers/normalize';
+import {
+  findOrCreateSupplierByName,
+  reactivateSupplier,
+} from '@/lib/data/suppliers';
 import {
   ensureCategoriesSeeded,
   listCategories,
@@ -436,25 +446,82 @@ export function buildResolvedChoices(
   return { ok: true, choices, linkIds };
 }
 
-/** Bulk-insert ingredient records in the caller's transaction. Returns the count. */
+/**
+ * Insert ingredient records in the caller's transaction (Sprint 4.5; Sprint 7
+ * supplier dual-write). For each record with a non-blank `supplier` cell, the
+ * supplier becomes a real record + a DEFAULT `ingredient_suppliers` link, and the
+ * legacy `ingredients.supplier` column mirrors the supplier's CANONICAL name — all
+ * in this ONE transaction (transition contract §5/§6, §12.12).
+ *
+ * Suppliers are resolved by their NORMALIZED name (find-or-create, atomic), never
+ * by `RETURNING` order: a `normalizedName → supplierId` map is built first, then
+ * each ingredient is inserted and linked by explicit id. An archived supplier whose
+ * name reappears in an import is reactivated (the import implies it is current).
+ * Returns the number of ingredients created.
+ */
 export async function applyIngredientRecords(
   db: TenantClient,
   organizationId: string,
   records: ImportIngredientRecord[],
 ): Promise<number> {
   if (records.length === 0) return 0;
-  await db.insert(ingredients).values(
-    records.map((r) => ({
-      organizationId,
-      name: r.name,
-      dimension: r.dimension,
-      priceCents: r.priceCents,
-      // Persist the "needs pricing" flag (Sprint 4.6 column): a blank/zero price
-      // imports as 0 cents and is flagged for pricing, so cost stays honest.
-      needsPricing: r.needsPricing,
-      supplier: r.supplier,
-    })),
-  );
+
+  // 1. Resolve every distinct supplier name once → id + canonical display name.
+  const supplierByNorm = new Map<string, { id: string; name: string }>();
+  for (const r of records) {
+    if (!r.supplier) continue;
+    const norm = normalizeSupplierName(r.supplier);
+    if (norm === '' || supplierByNorm.has(norm)) continue;
+    const found = await findOrCreateSupplierByName(db, organizationId, r.supplier);
+    if (found.status === 'invalid_name') continue;
+    let supplier = found.supplier;
+    if (found.status === 'inactive') {
+      const reactivated = await reactivateSupplier(db, organizationId, supplier.id);
+      if (reactivated) supplier = reactivated;
+    }
+    supplierByNorm.set(norm, { id: supplier.id, name: supplier.name });
+  }
+
+  // 2. Insert each ingredient, then (if it had a supplier) its default link.
+  for (const r of records) {
+    const resolved = r.supplier
+      ? supplierByNorm.get(normalizeSupplierName(r.supplier))
+      : undefined;
+    const [ing] = await db
+      .insert(ingredients)
+      .values({
+        organizationId,
+        name: r.name,
+        dimension: r.dimension,
+        priceCents: r.priceCents,
+        // Persist the "needs pricing" flag (Sprint 4.6 column): a blank/zero price
+        // imports as 0 cents and is flagged for pricing, so cost stays honest.
+        needsPricing: r.needsPricing,
+        // Legacy mirror = the supplier's canonical name (or the raw cell if it had
+        // no resolvable supplier).
+        supplier: resolved ? resolved.name : r.supplier,
+      })
+      .returning({ id: ingredients.id });
+    if (!ing) throw new Error('Failed to create ingredient during import.');
+
+    if (resolved) {
+      await db
+        .insert(ingredientSuppliers)
+        .values({
+          organizationId,
+          ingredientId: ing.id,
+          supplierId: resolved.id,
+          isDefault: true,
+        })
+        .onConflictDoNothing({
+          target: [
+            ingredientSuppliers.organizationId,
+            ingredientSuppliers.ingredientId,
+            ingredientSuppliers.supplierId,
+          ],
+        });
+    }
+  }
   return records.length;
 }
 

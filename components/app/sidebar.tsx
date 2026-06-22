@@ -16,6 +16,7 @@ import {
   Calculator,
   Users,
   FileText,
+  Truck,
   Settings,
   CreditCard,
   Upload,
@@ -38,6 +39,7 @@ const icons: Record<NavKey, LucideIcon> = {
   breakEven: Calculator,
   payroll: Users,
   invoices: FileText,
+  suppliers: Truck,
 };
 
 /**

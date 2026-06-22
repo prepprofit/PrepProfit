@@ -16,7 +16,8 @@ export type SearchEntityType =
   | 'ingredient'
   | 'transaction'
   | 'invoice'
-  | 'customer';
+  | 'customer'
+  | 'supplier';
 
 /**
  * One matched row as a descriptor's query returns it: ready-to-display fields

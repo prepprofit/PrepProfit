@@ -49,6 +49,15 @@ export type ActionErrorCode =
   // A recipe allergen override tried to lower/remove a presence — overrides may only
   // ADD or ESCALATE (Sprint 9). The derived allergens are never suppressible.
   | 'ALLERGEN_CANNOT_DOWNGRADE'
+  // A supplier still in use (the default for ≥1 ingredient) was archived (Sprint 7) —
+  // replace/remove the default link first.
+  | 'SUPPLIER_IN_USE'
+  // Tried to attach an ARCHIVED supplier to an ingredient (Sprint 7) — reactivate it
+  // first (find-or-create never silently revives an archived supplier).
+  | 'SUPPLIER_INACTIVE'
+  // A pack unit's dimension does not match the ingredient's (Sprint 7), e.g. kg on a
+  // volume ingredient; also covers blocking a dimension change while packs exist.
+  | 'PACK_UNIT_MISMATCH'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

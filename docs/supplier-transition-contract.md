@@ -42,3 +42,26 @@ inline — a second implementation would silently diverge.
    `ingredients.supplier` text on **all linked ingredients** during the window.
 8. **Drop legacy later.** `ingredients.supplier` is dropped only in a later sprint,
    after the dual-write window proves the linked model is the single source of truth.
+
+## Sprint 7 status — obligations fulfilled
+
+Sprint 7 shipped the `suppliers` + `ingredient_suppliers` tables (migration 0025),
+the dual-write code, and the idempotent backfill. Every rule above is now honoured:
+
+1. ✅ `suppliers.normalized_name` column + `unique (organization_id, normalized_name)`,
+   written by `normalizeSupplierName` at write time.
+2. ✅ Empty key rejected in `createSupplier` / `findOrCreateSupplierByName`
+   (`lib/data/suppliers.ts`).
+3. ✅ Deterministic display name on collision — `pickSupplierDisplayName`
+   (`lib/suppliers/display-name.ts`), used by the backfill.
+4. ✅ Idempotent backfill — `lib/data/supplier-backfill.ts` +
+   `scripts/backfill-suppliers.ts` (`npm run backfill:suppliers`), Clerk-org fan-out
+   inside `withOrg` (RLS-safe). Run **once per environment** after migration 0025.
+5. ✅ Dual-write covers every writer: the ingredient editor
+   (`setIngredientSupplierAction`), CSV import (`applyIngredientRecords`), the backfill,
+   and supplier rename (`updateSupplier`). The legacy free-text path is closed at the
+   server contract (`supplier` removed from the ingredient Zod schemas).
+6. ✅ The legacy `ingredients.supplier` mirrors only the `is_default` link's supplier.
+7. ✅ Renaming the default supplier propagates into `ingredients.supplier` on all
+   linked ingredients (`propagateDefaultSupplierName`).
+8. ⏳ Dropping `ingredients.supplier` is still deferred to a later sprint.

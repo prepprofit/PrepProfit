@@ -4,6 +4,7 @@ import {
   searchIngredients,
   searchInvoices,
   searchRecipes,
+  searchSuppliers,
   searchTransactions,
 } from './queries';
 import type { SearchDescriptor } from './types';
@@ -50,6 +51,13 @@ export const SEARCH_REGISTRY: readonly SearchDescriptor[] = [
     // Customers exist only for billing — manager-only.
     canAccess: canAccessFinancials,
     search: searchCustomers,
+  },
+  {
+    type: 'supplier',
+    labelKey: 'suppliers',
+    // Suppliers are procurement/financial data — manager-only (Sprint 7, F4).
+    canAccess: canAccessFinancials,
+    search: searchSuppliers,
   },
 ];
 

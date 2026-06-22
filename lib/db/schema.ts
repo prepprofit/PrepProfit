@@ -505,6 +505,12 @@ export const ingredientPriceHistory = pgTable(
     accepted: boolean('accepted').notNull().default(false),
     // Clerk user who recorded it (NULL for system / import).
     actorUserId: text('actor_user_id'),
+    // Provenance (Sprint 7): which ingredient_suppliers link/quote produced this
+    // observation, so the price trail can name the supplier. Nullable + NO FK: a
+    // multi-column composite SET-NULL would also null the NOT NULL organization_id
+    // (PG can't emit the column-subset form), and this is provenance only — same
+    // precedent as inventory_movements.source_id. Indexed for the per-link lookup.
+    ingredientSupplierId: text('ingredient_supplier_id'),
     note: text('note'),
     createdAt: createdAt(),
   },
@@ -516,12 +522,147 @@ export const ingredientPriceHistory = pgTable(
       t.ingredientId,
       t.createdAt,
     ),
+    // Per-link provenance lookup (which quotes came from a given supplier link).
+    index('ingredient_price_history_org_supplier_idx').on(
+      t.organizationId,
+      t.ingredientSupplierId,
+    ),
     // Same-tenant link; history dies with the ingredient on full purge (F3).
     foreignKey({
       columns: [t.organizationId, t.ingredientId],
       foreignColumns: [ingredients.organizationId, ingredients.id],
       name: 'ingredient_price_history_ingredient_fk',
     }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Suppliers (Sprint 7, module 11). A real, MANAGER-ONLY entity that replaces the
+ * free-text `ingredients.supplier` column during a dual-write transition window
+ * (docs/supplier-transition-contract.md). Archive, not Trash: `active = false`
+ * deactivates a supplier (like `employees`) — there is no shared 30-day trash and
+ * no `deleted_at`.
+ *
+ * `normalized_name` is the F6 dedup key (lib/suppliers/normalize.ts), written by
+ * the app at write time (SQL never re-derives it) and made unique per org so two
+ * spellings of one supplier can't coexist. RULE #1: carries `organization_id`, in
+ * `businessTables` → standard org_isolation RLS. pg_trgm GIN on `name` powers ⌘K
+ * (mirrors `customers`). Contact fields are PII-adjacent and never logged/audited.
+ */
+export const suppliers = pgTable(
+  'suppliers',
+  {
+    id: id(),
+    organizationId: orgId(),
+    name: text('name').notNull(),
+    // F6 dedup key — lower/trim/whitespace-collapsed, written by the app layer.
+    normalizedName: text('normalized_name').notNull(),
+    email: text('email'),
+    phone: text('phone'),
+    address: text('address'),
+    taxId: text('tax_id'),
+    notes: text('notes'),
+    // Archive flag: false = deactivated (kept for history/links), true = active.
+    active: boolean('active').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('suppliers_org_idx').on(t.organizationId),
+    index('suppliers_org_active_idx').on(t.organizationId, t.active),
+    // F6 dedup key: one supplier per normalized name per org (write-path conflict
+    // target for the atomic find-or-create).
+    unique('suppliers_org_normalized_name_key').on(
+      t.organizationId,
+      t.normalizedName,
+    ),
+    // FK target for ingredient_suppliers' composite (organization_id, supplier_id).
+    unique('suppliers_org_id_key').on(t.organizationId, t.id),
+    // pg_trgm GIN index for typo-tolerant global search (Sprint 2.7 registry).
+    index('suppliers_name_trgm_idx').using('gin', t.name.op('gin_trgm_ops')),
+  ],
+);
+
+/**
+ * Ingredient ⇄ supplier link (Sprint 7). Carries the purchase PACK an ingredient
+ * is bought in from a supplier (size + unit + pack price), from which the per-unit
+ * cost is derived (lib/calculations/purchasePrice.ts). The schema supports MANY
+ * suppliers per ingredient, but v1 exposes only ONE default per ingredient
+ * (`is_default`); the multi-supplier UI is Sprint 8.
+ *
+ * Setting/updating the DEFAULT link's pack price raises `ingredients.pending_price_
+ * cents` (a quote observation) for a manager to accept — `price_cents` is never
+ * mutated silently (Sprint F2). RULE #1: carries `organization_id`, in
+ * `businessTables` → org_isolation RLS.
+ */
+export const ingredientSuppliers = pgTable(
+  'ingredient_suppliers',
+  {
+    id: id(),
+    organizationId: orgId(),
+    ingredientId: text('ingredient_id').notNull(),
+    supplierId: text('supplier_id').notNull(),
+    // The purchase pack: size in `pack_unit` (e.g. 5 + 'kg'), price of the whole
+    // pack in integer cents. All nullable — a link can exist before a price is known.
+    packSize: numeric('pack_size', { precision: 12, scale: 2 }),
+    packUnit: text('pack_unit'),
+    packPriceCents: integer('pack_price_cents'),
+    // Exactly one default link per ingredient (partial unique below). The default's
+    // supplier name mirrors into the legacy `ingredients.supplier` column.
+    isDefault: boolean('is_default').notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('ingredient_suppliers_org_idx').on(t.organizationId),
+    index('ingredient_suppliers_org_ingredient_idx').on(
+      t.organizationId,
+      t.ingredientId,
+    ),
+    index('ingredient_suppliers_org_supplier_idx').on(
+      t.organizationId,
+      t.supplierId,
+    ),
+    // One link per (ingredient, supplier) pair.
+    unique('ingredient_suppliers_org_ingredient_supplier_key').on(
+      t.organizationId,
+      t.ingredientId,
+      t.supplierId,
+    ),
+    // FK target for ingredient_price_history provenance (org, id).
+    unique('ingredient_suppliers_org_id_key').on(t.organizationId, t.id),
+    // At most ONE default link per ingredient. Partial so the many non-default
+    // rows don't collide.
+    uniqueIndex('ingredient_suppliers_org_ingredient_default_key')
+      .on(t.organizationId, t.ingredientId)
+      .where(sql`${t.isDefault}`),
+    // Pack integrity (§12.8): positive size, non-negative price, and a price only
+    // when both size and unit are present (otherwise the per-unit cost is undefined).
+    check(
+      'ingredient_suppliers_pack_size_chk',
+      sql`${t.packSize} is null or ${t.packSize} > 0`,
+    ),
+    check(
+      'ingredient_suppliers_pack_price_chk',
+      sql`${t.packPriceCents} is null or ${t.packPriceCents} >= 0`,
+    ),
+    check(
+      'ingredient_suppliers_price_requires_pack_chk',
+      sql`${t.packPriceCents} is null or (${t.packSize} is not null and ${t.packUnit} is not null)`,
+    ),
+    // Composite FKs force same-org links. ingredient → cascade (links die with the
+    // ingredient on purge); supplier → restrict (a supplier in use can't be deleted —
+    // suppliers are archived, never hard-deleted, so this never blocks in practice).
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'ingredient_suppliers_ingredient_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.organizationId, t.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+      name: 'ingredient_suppliers_supplier_fk',
+    }).onDelete('restrict'),
   ],
 );
 
@@ -1133,6 +1274,10 @@ export type InventoryMovement = InferSelectModel<typeof inventoryMovements>;
 export type NewInventoryMovement = InferInsertModel<typeof inventoryMovements>;
 export type IngredientPriceHistory = InferSelectModel<typeof ingredientPriceHistory>;
 export type NewIngredientPriceHistory = InferInsertModel<typeof ingredientPriceHistory>;
+export type Supplier = InferSelectModel<typeof suppliers>;
+export type NewSupplier = InferInsertModel<typeof suppliers>;
+export type IngredientSupplier = InferSelectModel<typeof ingredientSuppliers>;
+export type NewIngredientSupplier = InferInsertModel<typeof ingredientSuppliers>;
 export type Recipe = InferSelectModel<typeof recipes>;
 export type NewRecipe = InferInsertModel<typeof recipes>;
 export type RecipeFolder = InferSelectModel<typeof recipeFolders>;
@@ -1189,6 +1334,9 @@ export const businessTables = [
   'inventory_movements',
   // Ingredient price history (Sprint F2) — standard org_isolation RLS.
   'ingredient_price_history',
+  // Suppliers + ingredient links (Sprint 7) — standard org_isolation RLS.
+  'suppliers',
+  'ingredient_suppliers',
   'transaction_categories',
   'transactions',
   'customers',

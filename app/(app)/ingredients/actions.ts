@@ -15,11 +15,17 @@ import {
   acceptPendingCost,
   appendManualPriceHistory,
 } from '@/lib/data/ingredient-pricing';
+import {
+  clearDefaultSupplier,
+  hasIncompatiblePacks,
+  setDefaultSupplier,
+} from '@/lib/data/ingredient-suppliers';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
   ingredientSchema,
   kitchenIngredientSchema,
 } from '@/lib/validation/ingredients';
+import { ingredientSupplierSchema } from '@/lib/validation/suppliers';
 import type { ActionResult } from '@/lib/action-result';
 import type { Ingredient } from '@/lib/db/schema';
 
@@ -63,7 +69,6 @@ export async function createIngredientAction(
       createIngredient(tx, organizationId, {
         name: parsed.data.name,
         dimension: parsed.data.dimension,
-        supplier: parsed.data.supplier ?? null,
         priceCents: 0,
         needsPricing: true,
       }),
@@ -121,11 +126,19 @@ export async function updateIngredientAction(
       if (parsed.data.dimension !== current.dimension && current.priceCents > 0) {
         return 'forbidden' as const;
       }
+      // Block a dimension change while a supplier pack would become unit-incompatible
+      // (e.g. a kg pack on a now-volume ingredient) — §12.9.
+      if (
+        parsed.data.dimension !== current.dimension &&
+        (await hasIncompatiblePacks(tx, organizationId, id, parsed.data.dimension))
+      ) {
+        return 'pack_mismatch' as const;
+      }
       const row = await updateIngredient(tx, organizationId, id, {
         name: parsed.data.name,
         dimension: parsed.data.dimension,
-        supplier: parsed.data.supplier ?? null,
-        // Preserve all financial state verbatim.
+        // Preserve all financial state verbatim. `supplier` is owned by the link
+        // flow (Sprint 7) — never set from this payload, so the mirror is preserved.
         priceCents: current.priceCents,
         needsPricing: current.needsPricing,
         pendingPriceCents: current.pendingPriceCents,
@@ -134,6 +147,7 @@ export async function updateIngredientAction(
     });
     if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
     if (outcome === 'forbidden') return { ok: false, code: 'FORBIDDEN' };
+    if (outcome === 'pack_mismatch') return { ok: false, code: 'PACK_UNIT_MISMATCH' };
     revalidateIngredientConsumers();
     return { ok: true, data: toKitchenIngredient(outcome) };
   }
@@ -145,6 +159,15 @@ export async function updateIngredientAction(
     // Lock the row (serializes a manual edit against accept/observe — F2).
     const current = await lockActiveIngredientRow(tx, organizationId, id);
     if (!current) return 'not_found' as const;
+
+    // Block a dimension change while a supplier pack would become unit-incompatible
+    // (e.g. a kg pack on a now-volume ingredient) — §12.9.
+    if (
+      parsed.data.dimension !== current.dimension &&
+      (await hasIncompatiblePacks(tx, organizationId, id, parsed.data.dimension))
+    ) {
+      return 'pack_mismatch' as const;
+    }
 
     const priceChanged = parsed.data.priceCents !== current.priceCents;
 
@@ -179,6 +202,7 @@ export async function updateIngredientAction(
   });
 
   if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
+  if (outcome === 'pack_mismatch') return { ok: false, code: 'PACK_UNIT_MISMATCH' };
   revalidateIngredientConsumers();
   return { ok: true, data: outcome };
 }
@@ -237,5 +261,82 @@ export async function deleteIngredientAction(
   }
   revalidateIngredientConsumers();
   revalidatePath('/trash');
+  return { ok: true, data: undefined };
+}
+
+/**
+ * Set (or update) the DEFAULT supplier on an ingredient (Sprint 7). MANAGER-ONLY —
+ * returns FORBIDDEN before any data access (suppliers + pricing are financial,
+ * F4). The dual-write transaction (find-or-create supplier, upsert the link, mirror
+ * the legacy column, raise a pending observed cost when the pack price changed) and
+ * the audit event run in one `withOrg` tx. Audit metadata is ids + non-PII pack
+ * descriptors only — never supplier contact details.
+ */
+export async function setIngredientSupplierAction(
+  ingredientId: string,
+  input: unknown,
+): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+
+  const parsed = ingredientSupplierSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const result = await setDefaultSupplier(tx, organizationId, ingredientId, parsed.data);
+    if (result.status !== 'ok') return result.status;
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'ingredient.supplierSet',
+      entityType: 'ingredient',
+      entityId: ingredientId,
+      metadata: {
+        supplierId: result.supplier.id,
+        packSize: parsed.data.packSize ?? null,
+        packUnit: parsed.data.packUnit ?? null,
+        packPriceCents: parsed.data.packPriceCents ?? null,
+        pendingRaised: result.pendingRaised,
+      },
+    });
+    return 'ok' as const;
+  });
+
+  if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
+  if (outcome === 'supplier_inactive') return { ok: false, code: 'SUPPLIER_INACTIVE' };
+  if (outcome === 'invalid_name') return { ok: false, code: 'INVALID_INPUT' };
+  if (outcome === 'pack_unit_mismatch') {
+    return { ok: false, code: 'PACK_UNIT_MISMATCH' };
+  }
+  revalidateIngredientConsumers();
+  revalidatePath('/suppliers');
+  return { ok: true, data: undefined };
+}
+
+/**
+ * Remove the ingredient's DEFAULT supplier link and clear the legacy mirror
+ * (Sprint 7). MANAGER-ONLY — FORBIDDEN before data. Audited.
+ */
+export async function clearIngredientSupplierAction(
+  ingredientId: string,
+): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  const cleared = await withOrg(organizationId, async (tx) => {
+    const removed = await clearDefaultSupplier(tx, organizationId, ingredientId);
+    if (removed) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'ingredient.supplierClear',
+        entityType: 'ingredient',
+        entityId: ingredientId,
+      });
+    }
+    return removed;
+  });
+
+  if (!cleared) return { ok: false, code: 'NOT_FOUND' };
+  revalidateIngredientConsumers();
+  revalidatePath('/suppliers');
   return { ok: true, data: undefined };
 }

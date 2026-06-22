@@ -118,12 +118,16 @@ describe('buildOrgDataExport', () => {
     expect(names.sort()).toEqual(['Butter A', 'Sugar A']);
     expect(names).not.toContain('Flour B');
     expect(bundle.organizationId).toBe(ORG_A);
-    expect(bundle.schemaVersion).toBe(5);
+    expect(bundle.schemaVersion).toBe(6);
     expect(countExportRows(bundle)).toBeGreaterThanOrEqual(2);
 
     // Sprint 9: the allergen tables are part of the bundle (empty arrays are fine).
     expect(bundle.data).toHaveProperty('ingredientAllergens');
     expect(bundle.data).toHaveProperty('recipeAllergenOverrides');
+
+    // Sprint 7: the supplier tables are part of the bundle.
+    expect(bundle.data).toHaveProperty('suppliers');
+    expect(bundle.data).toHaveProperty('ingredientSuppliers');
 
     // F5 columns flow through the `select()` bundle automatically.
     const settings = bundle.data.organizationSettings as Record<string, unknown>[];
@@ -169,6 +173,30 @@ describe('buildOrgDataExport', () => {
 
     const b = await runInOrg(db, ORG_B, (tx) => buildOrgDataExport(tx, ORG_B));
     expect((b.data.ingredientAllergens as unknown[]).length).toBe(0);
+  });
+
+  it('includes a real supplier row, never another tenant (Sprint 7)', async () => {
+    const { createSupplier } = await import('@/lib/data/suppliers');
+    await runInOrg(db, ORG_A, (tx) =>
+      createSupplier(tx, ORG_A, {
+        name: 'ACME Foods',
+        email: null,
+        phone: null,
+        address: null,
+        taxId: null,
+        notes: null,
+      }),
+    );
+
+    const a = await runInOrg(db, ORG_A, (tx) => buildOrgDataExport(tx, ORG_A));
+    const aRows = a.data.suppliers as { organizationId: string; name: string }[];
+    expect(aRows.some((r) => r.name === 'ACME Foods')).toBe(true);
+    expect(aRows.every((r) => r.organizationId === ORG_A)).toBe(true);
+
+    const b = await runInOrg(db, ORG_B, (tx) => buildOrgDataExport(tx, ORG_B));
+    expect(
+      (b.data.suppliers as { name: string }[]).some((r) => r.name === 'ACME Foods'),
+    ).toBe(false);
   });
 
   it("org B's export never sees org A's data", async () => {
