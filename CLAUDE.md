@@ -101,13 +101,24 @@ Planned additions must land only in their sprint:
 9. AI photo recipe extraction: reviewed recipe drafts from images, planned in Sprint 4.7.
 10. Kitchen operations tasks: planned post-MVP unless prioritized by beta feedback.
 
-## Subscription plans - target mapping for Sprint 4
+## Subscription plans - live mapping
 
-- Starter: 1 user, up to 50 recipes, modules 1-3.
-- Pro: 5 users, unlimited recipes, modules 1-4 plus invoices and limited AI extraction.
-- Business: unlimited users and all modules, including payroll, advanced document/report workflows, and higher AI usage limits.
+Numeric caps live in `PLAN_LIMITS` / `AI_EXTRACTION_MONTHLY_LIMIT` (`lib/entitlements.ts`);
+Clerk features gate the paid modules. AI photo extraction is the product differentiator,
+so it is UNIVERSAL (every tier, free included) and metered ONLY by a per-org monthly
+quota — it is deliberately NOT a Clerk feature flag.
 
-Until Sprint 4 lands, do not pretend plan gating exists. Build explicit server-side entitlement helpers during Sprint 4.
+- Free (Starter): 1 user, up to 10 recipes, all operational modules (recipes,
+  ingredients, menus, suppliers, inventory, productions, sales, tasks, allergens, POs),
+  and AI extraction at 10/month.
+- Pro (€29/mo): 5 users, unlimited recipes, everything in Free plus invoices and
+  break-even, AI extraction at 100/month.
+- Business (€79/mo): unlimited users, everything in Pro plus payroll and advanced
+  document/report workflows, AI extraction at 500/month.
+
+Entitlements are enforced server-side (`requireFeature` / `assertPlanLimit`), fail-closed
+to Starter. UI hiding is never enough. The committed Clerk catalogue is `clerk/billing.json`
+(dev currency is USD placeholder; the €29/€79 prices are set in Clerk prod with EUR).
 
 ## Workflow
 

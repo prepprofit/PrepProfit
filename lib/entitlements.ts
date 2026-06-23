@@ -14,9 +14,12 @@ import type { ActionErrorCode } from '@/lib/action-result';
  * Plan/feature slugs are configured in Clerk → Billing (Organization Plans tab):
  *   - Org plans: `pro`, `business`. Starter = the baseline (no plan check).
  *   - Feature slugs: invoices, break_even (Pro+), payroll, advanced_documents
- *     (Business), ai_extraction (reserved for Sprint 4.7).
+ *     (Business).
  * Numeric caps (recipes, seats) are NOT Clerk features — they live in
- * `PLAN_LIMITS` and are enforced in the app layer.
+ * `PLAN_LIMITS` and are enforced in the app layer. AI photo extraction is UNIVERSAL
+ * (every tier, including the free Starter): it is the product differentiator, so it
+ * is not gated by a Clerk feature at all — access is metered purely by the monthly
+ * quota in `AI_EXTRACTION_MONTHLY_LIMIT` below.
  */
 
 export type PlanTier = 'starter' | 'pro' | 'business';
@@ -25,12 +28,11 @@ export type Feature =
   | 'invoices'
   | 'break_even'
   | 'payroll'
-  | 'advanced_documents'
-  | 'ai_extraction';
+  | 'advanced_documents';
 
 /** Numeric limits per tier. `Infinity` = unlimited. */
 export const PLAN_LIMITS = {
-  starter: { recipes: 50, seats: 1 },
+  starter: { recipes: 10, seats: 1 },
   pro: { recipes: Infinity, seats: 5 },
   business: { recipes: Infinity, seats: Infinity },
 } as const satisfies Record<PlanTier, { recipes: number; seats: number }>;
@@ -38,15 +40,17 @@ export const PLAN_LIMITS = {
 export type PlanLimitKind = keyof (typeof PLAN_LIMITS)[PlanTier];
 
 /**
- * Monthly AI photo-extraction allowance per tier (Sprint 4.7, D4/Q2). App-enforced
- * (counted in `ai_extraction_attempts`), NOT a Clerk feature — the `ai_extraction`
- * FEATURE flag (Pro/Business) gates access; this map caps usage within it. Starter
- * has no access, hence 0. Tunable here without a deploy of the gating logic.
+ * Monthly AI photo-extraction allowance per tier. App-enforced (counted in
+ * `ai_extraction_attempts`), NOT a Clerk feature: AI is available on EVERY tier
+ * (the free differentiator), so this quota — not a feature flag — is the only thing
+ * that meters it. Starter gets a real allowance (10/mo); paid tiers get more.
+ * Counted per-ORGANIZATION per calendar month. Tunable here without a deploy of the
+ * gating logic.
  */
 export const AI_EXTRACTION_MONTHLY_LIMIT = {
-  starter: 0,
-  pro: 50,
-  business: 300,
+  starter: 10,
+  pro: 100,
+  business: 500,
 } as const satisfies Record<PlanTier, number>;
 
 /* -------------------------------------------------------------------------- */

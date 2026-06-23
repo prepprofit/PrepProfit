@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOrgId, getUserId, getUserRole, isManager } from '@/lib/auth';
-import { canUseFeature, aiExtractionMonthlyLimit } from '@/lib/entitlements';
+import { aiExtractionMonthlyLimit } from '@/lib/entitlements';
 import { getDb, withOrg } from '@/lib/db';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { logError } from '@/lib/observability';
@@ -36,9 +36,10 @@ export const dynamic = 'force-dynamic';
  * upload → a staged `recipe_photo` job the user must review and confirm (CLAUDE.md:
  * AI output is untrusted, staged, human-confirmed — never an automatic write).
  *
- * Canonical order, ALL before the image is read: RBAC (manager-only, 403) →
- * entitlement (`ai_extraction`, 402) → rate limit (`aiExtraction`, 429) → image
- * validation (415/413/400) → monthly usage cap (402). Then: a `pending` attempt is
+ * Canonical order, ALL before the image is read: RBAC (manager-only, 403) → rate
+ * limit (`aiExtraction`, 429) → image validation (415/413/400) → monthly usage cap
+ * (402, the only entitlement check — AI is universal, metered by quota). Then: a
+ * `pending` attempt is
  * written, the provider is called OUTSIDE any DB transaction (so a slow network call
  * never holds a tx open), the result is validated + mapped, and on success a job is
  * staged + the attempt flipped to `succeeded` + `ai.extract` audited — all org-scoped
@@ -51,9 +52,6 @@ function fail(code: ActionErrorCode, status: number): NextResponse {
 
 export async function POST(req: Request): Promise<NextResponse> {
   if (!(await isManager())) return fail('FORBIDDEN', 403);
-
-  // Paid feature (Pro/Business), fail-closed, before any data access or image read.
-  if (!(await canUseFeature('ai_extraction'))) return fail('UPGRADE_REQUIRED', 402);
 
   const organizationId = await getOrgId();
   const userId = await getUserId();
