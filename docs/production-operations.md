@@ -38,7 +38,8 @@ add a feature var to `serverEnvSchema`. Secrets are never logged.
 - Apply to prod: `DATABASE_URL=<prod-pooled> npm run db:migrate` (idempotently re-applies RLS).
 - **Verify after deploy**: confirm `drizzle.__drizzle_migrations` max `created_at` matches the
   newest migration, and spot-check the new columns/tables + that RLS is `enabled + forced`.
-- Current head: **0019** (`organization_settings` deletion-request columns, Sprint 5e).
+- Current head: **0033** (migrated + verified in prod 2026-06-24). RLS is `enabled + forced`
+  on every business table at this head.
 
 ## Scheduled jobs
 
@@ -76,7 +77,7 @@ add a feature var to `serverEnvSchema`. Secrets are never logged.
 ## Pre-launch checklist
 
 - [ ] All Production env vars set; a fresh deploy is green.
-- [ ] Migrations applied + verified (head 0019); RLS enabled + forced on every business table.
+- [ ] Migrations applied + verified (head 0033); RLS enabled + forced on every business table.
 - [ ] Cron schedule live; manual hit returns 200.
 - [ ] Clerk webhook endpoint live + secret set; a test event is accepted.
 - [ ] Sentry receiving events (trigger a throw in a non-prod env to confirm).
