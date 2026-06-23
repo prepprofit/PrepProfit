@@ -18,6 +18,7 @@ vi.mock('@clerk/nextjs/server', () => ({
 
 import {
   PLAN_LIMITS,
+  AI_EXTRACTION_MONTHLY_LIMIT,
   isWithinLimit,
   getPlanTier,
   canUseFeature,
@@ -43,9 +44,9 @@ afterEach(() => {
 
 describe('isWithinLimit (pure)', () => {
   it('enforces the Starter recipe cap at the boundary', () => {
-    expect(isWithinLimit('starter', 'recipes', 49)).toBe(true);
-    expect(isWithinLimit('starter', 'recipes', 50)).toBe(false);
-    expect(isWithinLimit('starter', 'recipes', 51)).toBe(false);
+    expect(isWithinLimit('starter', 'recipes', 9)).toBe(true);
+    expect(isWithinLimit('starter', 'recipes', 10)).toBe(false);
+    expect(isWithinLimit('starter', 'recipes', 11)).toBe(false);
   });
 
   it('treats Pro/Business as unlimited recipes', () => {
@@ -59,6 +60,19 @@ describe('isWithinLimit (pure)', () => {
     expect(PLAN_LIMITS.starter.seats).toBe(1);
     expect(PLAN_LIMITS.pro.seats).toBe(5);
     expect(PLAN_LIMITS.business.seats).toBe(Infinity);
+  });
+
+  it('caps free recipes at 10', () => {
+    expect(PLAN_LIMITS.starter.recipes).toBe(10);
+  });
+});
+
+describe('AI_EXTRACTION_MONTHLY_LIMIT (universal feature, quota-metered)', () => {
+  it('gives every tier — including free Starter — a real monthly allowance', () => {
+    // AI is the differentiator: free is NOT zero (it used to be), it is metered.
+    expect(AI_EXTRACTION_MONTHLY_LIMIT.starter).toBe(10);
+    expect(AI_EXTRACTION_MONTHLY_LIMIT.pro).toBe(100);
+    expect(AI_EXTRACTION_MONTHLY_LIMIT.business).toBe(500);
   });
 });
 
@@ -120,7 +134,7 @@ describe('comped orgs (COMPED_ORG_IDS allowlist)', () => {
     process.env.COMPED_ORG_IDS = `org_other, ${OPERATOR} `; // spaces/extra ids tolerated
     setAuth(() => false, OPERATOR); // Clerk says: no plan, no feature
     expect(await getPlanTier()).toBe('business');
-    expect(await canUseFeature('ai_extraction')).toBe(true);
+    expect(await canUseFeature('invoices')).toBe(true);
     expect(await canUseFeature('payroll')).toBe(true);
     const cap = await assertPlanLimit('recipes', 99_999);
     expect(cap).toEqual({ allowed: true, limit: Infinity, tier: 'business' });
@@ -130,26 +144,26 @@ describe('comped orgs (COMPED_ORG_IDS allowlist)', () => {
     process.env.COMPED_ORG_IDS = OPERATOR;
     setAuth(() => false, 'org_customer');
     expect(await getPlanTier()).toBe('starter');
-    expect(await canUseFeature('ai_extraction')).toBe(false);
+    expect(await canUseFeature('invoices')).toBe(false);
   });
 
   it('is inert when COMPED_ORG_IDS is unset (default: customer gating untouched)', async () => {
     setAuth(() => false, OPERATOR);
     expect(await getPlanTier()).toBe('starter');
-    expect(await canUseFeature('ai_extraction')).toBe(false);
+    expect(await canUseFeature('invoices')).toBe(false);
   });
 });
 
 describe('assertPlanLimit', () => {
-  it('blocks a Starter org at its 50th recipe', async () => {
+  it('blocks a Starter org at its 10th recipe', async () => {
     setHas(() => false); // starter
-    const r = await assertPlanLimit('recipes', 50);
-    expect(r).toEqual({ allowed: false, limit: 50, tier: 'starter' });
+    const r = await assertPlanLimit('recipes', 10);
+    expect(r).toEqual({ allowed: false, limit: 10, tier: 'starter' });
   });
 
   it('allows a Starter org under the cap', async () => {
     setHas(() => false);
-    const r = await assertPlanLimit('recipes', 49);
+    const r = await assertPlanLimit('recipes', 9);
     expect(r.allowed).toBe(true);
   });
 

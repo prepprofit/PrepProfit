@@ -44,7 +44,6 @@ const h = vi.hoisted(() => ({
   orgId: 'org_a',
   userId: 'user_1',
   role: 'manager' as 'manager' | 'kitchen',
-  feature: true,
   monthlyLimit: 50,
   throws: false,
   result: {
@@ -63,7 +62,6 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 vi.mock('@/lib/entitlements', () => ({
-  canUseFeature: vi.fn(async () => h.feature),
   aiExtractionMonthlyLimit: vi.fn(async () => ({ limit: h.monthlyLimit, tier: 'pro' })),
 }));
 
@@ -128,7 +126,6 @@ beforeEach(() => {
   h.orgId = ORG_A;
   h.userId = 'user_1';
   h.role = 'manager';
-  h.feature = true;
   h.monthlyLimit = 50;
   h.throws = false;
   h.result = {
@@ -144,13 +141,6 @@ describe('POST /api/recipes/import/photo — gates (before the image is read)', 
     h.manager = false;
     const res = await POST(request(jpegBytes()));
     expect(res.status).toBe(403);
-  });
-
-  it('returns 402 when the plan lacks ai_extraction', async () => {
-    h.feature = false;
-    const res = await POST(request(jpegBytes()));
-    expect(res.status).toBe(402);
-    expect((await res.json()).code).toBe('UPGRADE_REQUIRED');
   });
 
   it('returns 429 once the aiExtraction rate limit is exceeded', async () => {
