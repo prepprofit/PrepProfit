@@ -15,6 +15,7 @@ export type SearchEntityType =
   | 'recipe'
   | 'menu'
   | 'production'
+  | 'taskList'
   | 'ingredient'
   | 'transaction'
   | 'invoice'

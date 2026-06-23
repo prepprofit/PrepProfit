@@ -2,6 +2,7 @@ import { and, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { ingredients, recipeIngredients, recipes } from '@/lib/db/schema';
 import type { Ingredient, NewIngredient } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
+import { nullTaskIngredientLinks } from '@/lib/data/tasks';
 
 /**
  * Access to `ingredients` is ALWAYS scoped by `organizationId` (application
@@ -269,6 +270,12 @@ export async function purgeIngredient(
   organizationId: string,
   id: string,
 ): Promise<void> {
+  // Null any reorder-task link pointing at this ingredient (→ plain text) before the
+  // delete, so the `tasks_source_ingredient_fk` restrict FK never blocks (Sprint 6
+  // L4). If another restrict FK (a trashed recipe line) still blocks, the whole tx
+  // rolls back and this unlink is undone with it.
+  await nullTaskIngredientLinks(db, organizationId, [id]);
+
   await db
     .delete(ingredients)
     .where(

@@ -846,6 +846,175 @@ export const productionConsumptions = pgTable(
 );
 
 /**
+ * Kitchen task lists (Sprint 6, module — kitchen operations). A named, optionally
+ * dated container ("Saturday prep", "Opening", "Closing") for operational tasks. It
+ * is OPERATIONAL + money-free end-to-end — no cost/price column, no entitlement
+ * gate. A list is the recoverable Trash unit (soft-delete + 30-day Trash, like
+ * recipes/menus); purging a trashed list cascades its tasks.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard org_isolation
+ * RLS. pg_trgm GIN on `name` powers ⌘K (money-free, both roles). `scheduled_for` is
+ * a bare calendar date (no time, no tz) that drives the Today/Upcoming/No-date
+ * grouping on /tasks (Sprint 6 D5).
+ */
+export const taskLists = pgTable(
+  'task_lists',
+  {
+    id: id(),
+    organizationId: orgId(),
+    name: text('name').notNull(),
+    notes: text('notes'),
+    // Bare calendar date ('YYYY-MM-DD', no time, no tz). NULL = no date.
+    scheduledFor: date('scheduled_for', { mode: 'string' }),
+    // Manual ordering of the list rail. Lower sorts first.
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL` (Trash pattern).
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('task_lists_org_idx').on(t.organizationId),
+    // Serves the /trash listing and keeps active-row filtering index-friendly.
+    index('task_lists_org_deleted_idx').on(t.organizationId, t.deletedAt),
+    // Serves the Today/Upcoming grouping order on /tasks.
+    index('task_lists_org_scheduled_idx').on(t.organizationId, t.scheduledFor),
+    // FK target for tasks' composite (organization_id, task_list_id).
+    unique('task_lists_org_id_key').on(t.organizationId, t.id),
+    // pg_trgm GIN index for typo-tolerant global search (Sprint 2.7 registry).
+    index('task_lists_name_trgm_idx').using('gin', t.name.op('gin_trgm_ops')),
+    // Trimmed name 1..200; notes (when present) ≤1000.
+    check(
+      'task_lists_name_chk',
+      sql`char_length(btrim(${t.name})) between 1 and 200`,
+    ),
+    check(
+      'task_lists_notes_chk',
+      sql`${t.notes} is null or char_length(${t.notes}) <= 1000`,
+    ),
+    check('task_lists_sort_order_chk', sql`${t.sortOrder} >= 0`),
+  ],
+);
+
+/**
+ * Tasks within a list (Sprint 6). A title, optional notes/station, an optional
+ * assignee + due date, and an open/done status with completion provenance. A task
+ * always belongs to exactly one list (composite cascade FK). Money-free.
+ *
+ * A task may be ANCHORED to real data (the differentiator over a generic to-do):
+ *   - `source_kind = 'prep'` → links a recipe (`source_recipe_id`);
+ *   - `source_kind = 'reorder'` → links a low-stock ingredient (`source_ingredient_id`);
+ *   - `source_kind = 'manual'` → no link (plain text).
+ * Both links are NULLABLE composite FKs `ON DELETE restrict` — a purge of the
+ * referenced recipe/ingredient NULLs the matching column FIRST (the task survives as
+ * plain text), exactly the `transactions.recipe_id` precedent (lib/data/trash.ts).
+ *
+ * Individual task rows are HARD-deleted from an active list (not trashed) — the
+ * recoverable Trash unit is the list. RULE #1: in `businessTables` → org_isolation
+ * RLS. `assignee_user_id` is a Clerk org-member id with NO DB FK (Clerk is the
+ * source of truth; the action validates membership before writing).
+ */
+export const tasks = pgTable(
+  'tasks',
+  {
+    id: id(),
+    organizationId: orgId(),
+    taskListId: text('task_list_id').notNull(),
+    title: text('title').notNull(),
+    notes: text('notes'),
+    // Free-text station tag (e.g. "grill", "pastry"); ≤60 chars. NULL = none.
+    station: text('station'),
+    status: text('status', { enum: ['open', 'done'] }).notNull().default('open'),
+    // Clerk org-member id (D2); no DB FK — Clerk owns identity. NULL = unassigned.
+    assigneeUserId: text('assignee_user_id'),
+    // Bare calendar date ('YYYY-MM-DD', no time, no tz). NULL = no due date.
+    dueOn: date('due_on', { mode: 'string' }),
+    // Completion provenance — both set iff `done` (CHECK below), cleared on reopen.
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    completedBy: text('completed_by'),
+    // Data anchor discriminator: manual = no link, prep = recipe, reorder = ingredient.
+    sourceKind: text('source_kind', {
+      enum: ['manual', 'prep', 'reorder'],
+    })
+      .notNull()
+      .default('manual'),
+    sourceRecipeId: text('source_recipe_id'),
+    sourceIngredientId: text('source_ingredient_id'),
+    // Manual ordering within the list. Lower sorts first.
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('tasks_org_task_list_idx').on(t.organizationId, t.taskListId),
+    index('tasks_org_assignee_idx').on(t.organizationId, t.assigneeUserId),
+    index('tasks_org_source_recipe_idx').on(t.organizationId, t.sourceRecipeId),
+    index('tasks_org_source_ingredient_idx').on(
+      t.organizationId,
+      t.sourceIngredientId,
+    ),
+    // Trimmed title 1..200; notes ≤1000; station ≤60.
+    check(
+      'tasks_title_chk',
+      sql`char_length(btrim(${t.title})) between 1 and 200`,
+    ),
+    check(
+      'tasks_notes_chk',
+      sql`${t.notes} is null or char_length(${t.notes}) <= 1000`,
+    ),
+    check(
+      'tasks_station_chk',
+      sql`${t.station} is null or char_length(${t.station}) <= 60`,
+    ),
+    check('tasks_status_chk', sql.raw("status IN ('open', 'done')")),
+    check('tasks_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    // completed_at / completed_by present iff status = 'done'.
+    check(
+      'tasks_completed_at_chk',
+      sql`(${t.completedAt} is not null) = (${t.status} = 'done')`,
+    ),
+    check(
+      'tasks_completed_by_chk',
+      sql`(${t.completedBy} is not null) = (${t.status} = 'done')`,
+    ),
+    // The source discriminator is consistent with which link is set:
+    //   manual  ⇔ both NULL; prep ⇔ recipe only; reorder ⇔ ingredient only.
+    check(
+      'tasks_source_kind_chk',
+      sql.raw("source_kind IN ('manual', 'prep', 'reorder')"),
+    ),
+    check(
+      'tasks_source_shape_chk',
+      sql`(
+        (${t.sourceKind} = 'manual' and ${t.sourceRecipeId} is null and ${t.sourceIngredientId} is null)
+        or (${t.sourceKind} = 'prep' and ${t.sourceRecipeId} is not null and ${t.sourceIngredientId} is null)
+        or (${t.sourceKind} = 'reorder' and ${t.sourceRecipeId} is null and ${t.sourceIngredientId} is not null)
+      )`,
+    ),
+    // Composite FK forces the task to share its list's organization_id; deleting a
+    // list cascades its tasks (the list is the Trash unit).
+    foreignKey({
+      columns: [t.organizationId, t.taskListId],
+      foreignColumns: [taskLists.organizationId, taskLists.id],
+      name: 'tasks_task_list_fk',
+    }).onDelete('cascade'),
+    // Composite FKs to the data anchors (same-tenant). ON DELETE restrict: the purge
+    // paths NULL the matching link FIRST (no orphan, no blocked purge). NULL rows
+    // skip the FK (MATCH SIMPLE).
+    foreignKey({
+      columns: [t.organizationId, t.sourceRecipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'tasks_source_recipe_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.organizationId, t.sourceIngredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'tasks_source_ingredient_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
  * Ingredient price history (Sprint F2). An append log of observed/derived costs
  * per ingredient: a manual per-unit price entry, or a purchase PACK price seen on
  * a quote/receipt converted to the approved per-unit cost
@@ -2119,6 +2288,12 @@ export type NewImportJob = InferInsertModel<typeof importJobs>;
 export type AiExtractionAttempt = InferSelectModel<typeof aiExtractionAttempts>;
 export type NewAiExtractionAttempt = InferInsertModel<typeof aiExtractionAttempts>;
 export type RateLimitRow = InferSelectModel<typeof rateLimits>;
+export type TaskList = InferSelectModel<typeof taskLists>;
+export type NewTaskList = InferInsertModel<typeof taskLists>;
+export type Task = InferSelectModel<typeof tasks>;
+export type NewTask = InferInsertModel<typeof tasks>;
+export type TaskStatus = Task['status'];
+export type TaskSourceKind = Task['sourceKind'];
 
 /** All business tables, for applying RLS in bulk. */
 export const businessTables = [
@@ -2174,6 +2349,10 @@ export const businessTables = [
   // AI extraction attempts (Sprint 4.7) — observability + usage metering, standard
   // org_isolation RLS.
   'ai_extraction_attempts',
+  // Kitchen task lists + their tasks (Sprint 6) — standard org_isolation RLS.
+  // Money-free operational data.
+  'task_lists',
+  'tasks',
   // NOTE: `rate_limits` is intentionally ABSENT — it is infra, not tenant data,
   // and must work without an org context (see its table comment + lib/db/rls.ts).
 ] as const;

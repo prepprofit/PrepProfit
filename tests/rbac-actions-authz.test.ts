@@ -34,7 +34,20 @@ import {
   purgeInvoiceAction,
   restoreMenuAction,
   purgeMenuAction,
+  restoreTaskListAction,
+  purgeTaskListAction,
 } from '@/app/(app)/trash/actions';
+import {
+  createTaskListAction,
+  updateTaskListAction,
+  deleteTaskListAction,
+  duplicateTaskListAction,
+  resetTaskListAction,
+  reorderTaskListsAction,
+  assignTaskAction,
+  deleteTaskAction,
+  createReorderTaskFromIngredientAction,
+} from '@/app/(app)/tasks/actions';
 import {
   createMenuAction,
   updateMenuAction,
@@ -80,6 +93,26 @@ describe('manager-only actions reject kitchen before touching data', () => {
       purgeInvoiceAction('i1'),
       restoreMenuAction('m1'),
       purgeMenuAction('m1'),
+      restoreTaskListAction('tl1'),
+      purgeTaskListAction('tl1'),
+    ]);
+    for (const result of results) expect(result).toEqual(FORBIDDEN);
+  });
+
+  it('blocks manager-only task actions (kitchen refused before data)', async () => {
+    // List lifecycle, assignment, task hard-delete and reorder-from-ingredient are
+    // manager-only (L2/D1). getOrgId is mocked to throw, so FORBIDDEN proves each
+    // guard short-circuits before any data access.
+    const results = await Promise.all([
+      createTaskListAction({ name: 'x' }),
+      updateTaskListAction('tl1', { expectedUpdatedAt: '2026-01-01T00:00:00.000Z', name: 'x' }),
+      deleteTaskListAction('tl1', { expectedUpdatedAt: '2026-01-01T00:00:00.000Z' }),
+      duplicateTaskListAction('tl1', 'copy'),
+      resetTaskListAction('tl1', { expectedUpdatedAt: '2026-01-01T00:00:00.000Z' }),
+      reorderTaskListsAction({ orderedIds: ['tl1'] }),
+      assignTaskAction('t1', { expectedUpdatedAt: '2026-01-01T00:00:00.000Z', assigneeUserId: 'u1' }),
+      deleteTaskAction('t1', { expectedUpdatedAt: '2026-01-01T00:00:00.000Z' }),
+      createReorderTaskFromIngredientAction({ listId: 'tl1', ingredientId: 'i1' }),
     ]);
     for (const result of results) expect(result).toEqual(FORBIDDEN);
   });

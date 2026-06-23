@@ -80,6 +80,59 @@ export async function getFirstName(): Promise<string | null> {
   }
 }
 
+/** A Clerk org member, for the task-assignee picker (display only — never stored). */
+export type OrgMember = { userId: string; name: string };
+
+/**
+ * Active members of the current org, for the manager-only task-assignee picker
+ * (Sprint 6 D2). Names are resolved for DISPLAY only and never persisted — the data
+ * layer stores just the Clerk user id. Org seats are small (≤ a handful), so a single
+ * page covers every member. Returns [] if there is no active org or the lookup fails
+ * (the picker degrades gracefully; assignment still validates membership server-side).
+ */
+export async function listOrgMembers(): Promise<OrgMember[]> {
+  const { orgId } = await auth();
+  if (!orgId) return [];
+  try {
+    const client = await clerkClient();
+    const { data } = await client.organizations.getOrganizationMembershipList({
+      organizationId: orgId,
+      limit: 100,
+    });
+    return data
+      .map((m) => {
+        const u = m.publicUserData;
+        if (!u?.userId) return null;
+        const name =
+          [u.firstName, u.lastName].filter(Boolean).join(' ').trim() ||
+          u.identifier ||
+          u.userId;
+        return { userId: u.userId, name };
+      })
+      .filter((m): m is OrgMember => m !== null);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Whether `userId` is an ACTIVE member of the current org (Sprint 6 D2). Used by
+ * `assignTaskAction` to validate an assignee BEFORE the mutation. Distinguishes a
+ * definite non-member (returns false → `TASK_ASSIGNEE_INVALID`) from a transient
+ * Clerk/API failure (THROWS → the action surfaces `unexpected`, never silently
+ * accepts/rejects). The org id comes from the server (RULE #1).
+ */
+export async function isActiveOrgMember(userId: string): Promise<boolean> {
+  const { orgId } = await auth();
+  if (!orgId) return false;
+  const client = await clerkClient();
+  const { data } = await client.organizations.getOrganizationMembershipList({
+    organizationId: orgId,
+    limit: 100,
+  });
+  return data.some((m) => m.publicUserData?.userId === userId);
+}
+
 /**
  * Pure role predicate — financial modules (income/expenses, dashboards,
  * break-even) are manager-only; kitchen staff are blocked from both the routes

@@ -14,6 +14,7 @@ import {
   purgeMenuAction,
   purgeProductionAction,
   purgeRecipeAction,
+  purgeTaskListAction,
   purgeTransactionAction,
   restoreCustomerAction,
   restoreIngredientAction,
@@ -21,6 +22,7 @@ import {
   restoreMenuAction,
   restoreProductionAction,
   restoreRecipeAction,
+  restoreTaskListAction,
   restoreTransactionAction,
 } from '@/app/(app)/trash/actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
@@ -31,6 +33,7 @@ type Kind =
   | 'recipe'
   | 'menu'
   | 'production'
+  | 'taskList'
   | 'ingredient'
   | 'transaction'
   | 'customer'
@@ -43,6 +46,7 @@ const RESTORE_ACTION: Record<Kind, (id: string) => Promise<ActionResult>> = {
   recipe: restoreRecipeAction,
   menu: restoreMenuAction,
   production: restoreProductionAction,
+  taskList: restoreTaskListAction,
   ingredient: restoreIngredientAction,
   transaction: restoreTransactionAction,
   customer: restoreCustomerAction,
@@ -52,6 +56,7 @@ const PURGE_ACTION: Record<Kind, (id: string) => Promise<ActionResult>> = {
   recipe: purgeRecipeAction,
   menu: purgeMenuAction,
   production: purgeProductionAction,
+  taskList: purgeTaskListAction,
   ingredient: purgeIngredientAction,
   transaction: purgeTransactionAction,
   customer: purgeCustomerAction,
@@ -62,6 +67,7 @@ export function TrashView({
   recipes,
   menus = [],
   productions = [],
+  taskLists = [],
   ingredients,
   transactions = [],
   customers = [],
@@ -70,6 +76,7 @@ export function TrashView({
   recipes: TrashItem[];
   menus?: TrashItem[];
   productions?: TrashItem[];
+  taskLists?: TrashItem[];
   ingredients: TrashItem[];
   transactions?: TrashItem[];
   customers?: TrashItem[];
@@ -90,6 +97,7 @@ export function TrashView({
     recipes.length === 0 &&
     menus.length === 0 &&
     productions.length === 0 &&
+    taskLists.length === 0 &&
     ingredients.length === 0 &&
     transactions.length === 0 &&
     customers.length === 0 &&
@@ -164,6 +172,17 @@ export function TrashView({
         pending={pending}
         onRestore={restore}
         onPurge={(item) => setPurgeTarget({ kind: 'production', item })}
+        labelFor={(n) => (n === 0 ? t('expiresToday') : t('daysLeft', { days: n }))}
+        restoreLabel={t('restore')}
+        deleteLabel={t('deleteForever')}
+      />
+      <Section
+        title={t('sections.taskLists')}
+        items={taskLists}
+        kind="taskList"
+        pending={pending}
+        onRestore={restore}
+        onPurge={(item) => setPurgeTarget({ kind: 'taskList', item })}
         labelFor={(n) => (n === 0 ? t('expiresToday') : t('daysLeft', { days: n }))}
         restoreLabel={t('restore')}
         deleteLabel={t('deleteForever')}

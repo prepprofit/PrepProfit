@@ -11,6 +11,7 @@ import { loadRecipeAllergenRollup } from '@/lib/data/allergens';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { RecipeEditor } from '@/components/app/recipes/recipe-editor';
 import { RecipeAllergenPanel } from '@/components/app/recipes/recipe-allergen-panel';
+import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 
 export default async function RecipeEditorPage({
   params,
@@ -57,6 +58,11 @@ export default async function RecipeEditorPage({
       />
       {/* Allergens are OPERATIONAL — shown to kitchen and managers alike (money-free). */}
       <RecipeAllergenPanel recipeId={id} initialRollup={allergenRollup} />
+      {/* Prep-task affordance (Sprint 6 D7) — money-free, both roles; appends a prep
+          task anchored to this recipe to a chosen task list. */}
+      <div className="flex justify-end">
+        <AddToTaskListMenu kind="prep" sourceId={id} />
+      </div>
     </div>
   );
 }

@@ -105,6 +105,19 @@ export type ActionErrorCode =
   | 'PO_NOT_RECEIVABLE'
   // Tried to short-close a PO that is not partially_received (Sprint 8b).
   | 'PO_NOT_CLOSABLE'
+  // A task list was edited from a stale version (Sprint 6 optimistic concurrency) —
+  // another edit committed first; reload and retry. No write/audit happened.
+  | 'TASK_LIST_STALE'
+  // A task was edited from a stale version (Sprint 6 optimistic concurrency).
+  | 'TASK_STALE'
+  // Tried to add/edit/reorder a task inside a TRASHED list (Sprint 6) — restore the
+  // list first; a trashed list is read-only.
+  | 'TASK_LIST_NOT_EDITABLE'
+  // A task list reached its per-list task cap (Sprint 6) — split the list.
+  | 'TASK_LIST_FULL'
+  // Tried to assign a task to someone who is not an active member of the current org
+  // (Sprint 6 D2) — pick a current org member.
+  | 'TASK_ASSIGNEE_INVALID'
   // Short-close requires an explicit reason (Sprint 8b D4).
   | 'PO_CLOSE_REASON_REQUIRED'
   // Tried to cancel a PO that still has a posted receipt (Sprint 8b D5) — void the

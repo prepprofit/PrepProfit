@@ -13,6 +13,8 @@ import {
   receiptItems,
   recipeIngredients,
   recipes,
+  taskLists,
+  tasks,
   transactions,
 } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
@@ -28,6 +30,7 @@ import type { TenantClient } from '@/lib/db/tenant';
 export type PurgeResult = {
   menus: number;
   productions: number;
+  taskLists: number;
   recipes: number;
   ingredients: number;
   transactions: number;
@@ -65,6 +68,21 @@ export async function purgeExpired(
       ),
     )
     .returning({ id: productions.id });
+
+  // Expired task lists (Sprint 6): deleting a list cascades its tasks (composite FK),
+  // releasing any recipe/ingredient those tasks pinned via the restrict source FKs —
+  // so a recipe/ingredient whose only reference was a task in a now-purged list
+  // becomes purgeable below.
+  const purgedTaskLists = await db
+    .delete(taskLists)
+    .where(
+      and(
+        eq(taskLists.organizationId, organizationId),
+        isNotNull(taskLists.deletedAt),
+        lte(taskLists.deletedAt, cutoff),
+      ),
+    )
+    .returning({ id: taskLists.id });
 
   // A recipe still referenced by ANY surviving menu_item OR production_item (an
   // active or not-yet-expired menu/production) is KEPT — the restrict FKs would
@@ -113,6 +131,24 @@ export async function purgeExpired(
         isNotNull(transactions.recipeId),
         inArray(
           transactions.recipeId,
+          db.select({ id: recipes.id }).from(recipes).where(purgeableRecipeWhere),
+        ),
+      ),
+    );
+
+  // Null any prep-task link pointing at a recipe about to be purged (→ plain text,
+  // source_kind 'manual') — the `tasks_source_recipe_fk` is `ON DELETE restrict`, so
+  // it would otherwise block the recipe delete (Sprint 6 L4). Same candidate set as
+  // the transaction unlink, so a pinned recipe never loses its task links.
+  await db
+    .update(tasks)
+    .set({ sourceKind: 'manual', sourceRecipeId: null })
+    .where(
+      and(
+        eq(tasks.organizationId, organizationId),
+        isNotNull(tasks.sourceRecipeId),
+        inArray(
+          tasks.sourceRecipeId,
           db.select({ id: recipes.id }).from(recipes).where(purgeableRecipeWhere),
         ),
       ),
@@ -222,6 +258,37 @@ export async function purgeExpired(
       ),
     );
 
+  // Null any reorder-task link pointing at an ingredient about to be purged (→ plain
+  // text) — the `tasks_source_ingredient_fk` is `ON DELETE restrict` (Sprint 6 L4).
+  // Same candidate set as the ingredient delete below, so a kept ingredient never
+  // loses its task links.
+  await db
+    .update(tasks)
+    .set({ sourceKind: 'manual', sourceIngredientId: null })
+    .where(
+      and(
+        eq(tasks.organizationId, organizationId),
+        isNotNull(tasks.sourceIngredientId),
+        inArray(
+          tasks.sourceIngredientId,
+          db
+            .select({ id: ingredients.id })
+            .from(ingredients)
+            .where(
+              and(
+                eq(ingredients.organizationId, organizationId),
+                isNotNull(ingredients.deletedAt),
+                lte(ingredients.deletedAt, cutoff),
+                recipePin,
+                nonDraftPoPin,
+                receiptPin,
+                productionMovementPin,
+              ),
+            ),
+        ),
+      ),
+    );
+
   // Then expired ingredients, skipping any still referenced by a (trashed) recipe
   // line, a non-draft PO, or a goods receipt — that recipe purges on its own expiry;
   // a non-draft PO / receipt keeps the ingredient indefinitely (F3). The NOT EXISTS
@@ -310,6 +377,7 @@ export async function purgeExpired(
   return {
     menus: purgedMenus.length,
     productions: purgedProductions.length,
+    taskLists: purgedTaskLists.length,
     recipes: purgedRecipes.length,
     ingredients: purgedIngredients.length,
     transactions: purgedTransactions.length,

@@ -4,6 +4,7 @@ import { withOrg } from '@/lib/db';
 import { listTrashedRecipes } from '@/lib/data/recipes';
 import { listTrashedMenus } from '@/lib/data/menus';
 import { listTrashedProductions } from '@/lib/data/productions';
+import { listTrashedTaskLists } from '@/lib/data/tasks';
 import { listTrashedIngredients } from '@/lib/data/ingredients';
 import { listTrashedTransactions } from '@/lib/data/transactions';
 import { listTrashedCustomers } from '@/lib/data/customers';
@@ -27,6 +28,7 @@ export default async function TrashPage() {
     recipes,
     menus,
     productions,
+    taskLists,
     ingredients,
     transactions,
     customers,
@@ -36,6 +38,7 @@ export default async function TrashPage() {
     withOrg(organizationId, (tx) => listTrashedRecipes(tx, organizationId)),
     withOrg(organizationId, (tx) => listTrashedMenus(tx, organizationId)),
     withOrg(organizationId, (tx) => listTrashedProductions(tx, organizationId)),
+    withOrg(organizationId, (tx) => listTrashedTaskLists(tx, organizationId)),
     withOrg(organizationId, (tx) => listTrashedIngredients(tx, organizationId)),
     withOrg(organizationId, (tx) => listTrashedTransactions(tx, organizationId)),
     withOrg(organizationId, (tx) => listTrashedCustomers(tx, organizationId)),
@@ -92,6 +95,7 @@ export default async function TrashPage() {
         recipes={recipes.map(toItem)}
         menus={menus.map(toItem)}
         productions={productions.map(toProductionItem)}
+        taskLists={taskLists.map(toItem)}
         ingredients={ingredients.map(toItem)}
         transactions={transactions.map(toTransactionItem)}
         customers={customers.map(toItem)}

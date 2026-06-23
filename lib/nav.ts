@@ -17,6 +17,9 @@ export const navGroups = [
       { key: 'productions', href: '/productions' },
       { key: 'ingredients', href: '/ingredients' },
       { key: 'inventory', href: '/inventory' },
+      // Kitchen task / prep / reorder lists (Sprint 6) — visible to BOTH roles
+      // (operational, money-free). Operations group.
+      { key: 'tasks', href: '/tasks' },
     ],
   },
   {

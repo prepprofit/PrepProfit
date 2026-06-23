@@ -16,8 +16,15 @@ describe('accessibleDescriptors (search RBAC)', () => {
     expect(types).not.toContain('invoice');
     expect(types).not.toContain('customer');
     expect(types).not.toContain('supplier');
-    // Menus + productions are operational (money-free for kitchen, F4) → searchable.
-    expect(types).toEqual(['recipe', 'menu', 'production', 'ingredient']);
+    // Menus, productions + task lists are operational (money-free for kitchen, F4)
+    // → searchable.
+    expect(types).toEqual([
+      'recipe',
+      'menu',
+      'production',
+      'taskList',
+      'ingredient',
+    ]);
   });
 
   it('includes transactions, invoices, customers, suppliers and purchase orders for a manager', () => {
@@ -26,6 +33,7 @@ describe('accessibleDescriptors (search RBAC)', () => {
       'recipe',
       'menu',
       'production',
+      'taskList',
       'ingredient',
       'transaction',
       'invoice',

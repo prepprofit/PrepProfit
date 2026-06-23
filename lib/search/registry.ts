@@ -8,6 +8,7 @@ import {
   searchPurchaseOrders,
   searchRecipes,
   searchSuppliers,
+  searchTaskLists,
   searchTransactions,
 } from './queries';
 import type { SearchDescriptor } from './types';
@@ -40,6 +41,13 @@ export const SEARCH_REGISTRY: readonly SearchDescriptor[] = [
     // Productions are operational (kitchen plans them, money-free) — both roles search.
     canAccess: () => true,
     search: searchProductions,
+  },
+  {
+    type: 'taskList',
+    labelKey: 'taskLists',
+    // Kitchen task lists are operational + money-free — both roles search.
+    canAccess: () => true,
+    search: searchTaskLists,
   },
   {
     type: 'ingredient',

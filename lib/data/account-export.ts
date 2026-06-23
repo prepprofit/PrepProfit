@@ -36,6 +36,8 @@ import {
   subscriptions,
   importJobs,
   aiExtractionAttempts,
+  taskLists,
+  tasks,
 } from '@/lib/db/schema';
 
 /**
@@ -68,7 +70,8 @@ import {
 // v11 (Sprint 11b): added `productionRecipeSnapshots` + `productionConsumptions`;
 // `productions` rows now carry completed_at/voided_at/cost_total_cents/stock_moved
 // (flow through `select()`).
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 11;
+// v12 (Sprint 6): added `taskLists` + `tasks` (kitchen task lists, money-free).
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 12;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -119,6 +122,8 @@ export async function buildOrgDataExport(
     ['subscriptions', subscriptions],
     ['importJobs', importJobs],
     ['aiExtractionAttempts', aiExtractionAttempts],
+    ['taskLists', taskLists],
+    ['tasks', tasks],
   ] as const;
 
   const data: Record<string, unknown[]> = {};

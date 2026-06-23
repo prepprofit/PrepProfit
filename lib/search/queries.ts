@@ -8,6 +8,7 @@ import {
   purchaseOrders,
   recipes,
   suppliers,
+  taskLists,
   transactions,
 } from '@/lib/db/schema';
 import { formatMoney } from '@/lib/format/money';
@@ -168,6 +169,55 @@ export async function searchProductions(
     prefix: r.prefix === true,
     substring: r.substring === true,
   }));
+}
+
+export async function searchTaskLists(
+  ctx: SearchContext,
+): Promise<SearchCandidate[]> {
+  const { tx, organizationId, query, limit } = ctx;
+  const like = `%${escapeLike(query)}%`;
+  const prefixLike = `${escapeLike(query)}%`;
+
+  // Active lists only; match on the name. MONEY-FREE — kitchen-accessible, so a search
+  // row never carries cost. Subtitle = scheduled date + progress count (no task text).
+  const rows = await tx
+    .select({
+      id: taskLists.id,
+      name: taskLists.name,
+      scheduledFor: taskLists.scheduledFor,
+      total: sql<number>`(select count(*) from tasks t where t.organization_id = ${organizationId} and t.task_list_id = ${taskLists.id})`,
+      done: sql<number>`(select count(*) from tasks t where t.organization_id = ${organizationId} and t.task_list_id = ${taskLists.id} and t.status = 'done')`,
+      primarySim: sql<number>`similarity(${taskLists.name}, ${query})`,
+      exact: sql<boolean>`lower(${taskLists.name}) = lower(${query})`,
+      prefix: sql<boolean>`${taskLists.name} ILIKE ${prefixLike}`,
+      substring: sql<boolean>`${taskLists.name} ILIKE ${like}`,
+    })
+    .from(taskLists)
+    .where(
+      and(
+        eq(taskLists.organizationId, organizationId),
+        isNull(taskLists.deletedAt),
+        sql`(${taskLists.name} % ${query} OR ${taskLists.name} ILIKE ${like})`,
+      ),
+    )
+    .orderBy(sql`similarity(${taskLists.name}, ${query}) DESC`)
+    .limit(limit);
+
+  return rows.map((r) => {
+    const progress = `${toNum(r.done)}/${toNum(r.total)}`;
+    const subtitle = r.scheduledFor ? `${r.scheduledFor} · ${progress}` : progress;
+    return {
+      id: r.id,
+      title: r.name,
+      subtitle,
+      href: `/tasks/${r.id}`,
+      primarySim: toNum(r.primarySim),
+      secondarySim: 0,
+      exact: r.exact === true,
+      prefix: r.prefix === true,
+      substring: r.substring === true,
+    };
+  });
 }
 
 export async function searchIngredients(

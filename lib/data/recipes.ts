@@ -7,6 +7,7 @@ import {
 } from '@/lib/db/schema';
 import type { Ingredient, Recipe, NewRecipe } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
+import { nullTaskRecipeLinks } from '@/lib/data/tasks';
 
 /**
  * Access to `recipes` is ALWAYS scoped by `organizationId`. See lib/data/ingredients.ts.
@@ -473,6 +474,12 @@ export async function purgeRecipe(
         eq(transactions.recipeId, id),
       ),
     );
+
+  // Null any prep-task link pointing at this recipe (→ plain text) before the delete,
+  // so the `tasks_source_recipe_fk` restrict FK never blocks (Sprint 6 L4). Reached
+  // only after the menu/production guards pass (purgeRecipeWithGuards), so a blocked
+  // purge never nulls a task link.
+  await nullTaskRecipeLinks(db, organizationId, [id]);
 
   await db
     .delete(recipes)

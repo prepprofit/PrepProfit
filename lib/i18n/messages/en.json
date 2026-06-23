@@ -59,7 +59,12 @@
     "PO_NOT_RECEIVABLE": "This purchase order can no longer receive a delivery. Only sent or partially received orders can be received.",
     "PO_NOT_CLOSABLE": "Only a partially received purchase order can be closed short.",
     "PO_CLOSE_REASON_REQUIRED": "Add a reason for closing this purchase order short.",
-    "PO_NOT_CANCELLABLE": "This purchase order has received deliveries and can't be cancelled. Void the receipts first."
+    "PO_NOT_CANCELLABLE": "This purchase order has received deliveries and can't be cancelled. Void the receipts first.",
+    "TASK_LIST_STALE": "Someone else changed this list while you were editing. Reload and try again.",
+    "TASK_STALE": "Someone else changed this task while you were editing. Reload and try again.",
+    "TASK_LIST_NOT_EDITABLE": "This list is in the trash and can't be edited. Restore it first.",
+    "TASK_LIST_FULL": "This list has reached its task limit. Split it into more lists.",
+    "TASK_ASSIGNEE_INVALID": "That person isn't a member of this organization. Pick a current team member."
   },
   "errors": {
     "boundary": {
@@ -81,6 +86,7 @@
     "productions": "Production",
     "ingredients": "Ingredients",
     "inventory": "Inventory",
+    "tasks": "Tasks",
     "financials": "Financials",
     "transactions": "Transactions",
     "breakEven": "Break-even",
@@ -129,7 +135,8 @@
       "suppliers": "Suppliers",
       "purchaseOrders": "Purchase orders",
       "menus": "Menus",
-      "productions": "Production"
+      "productions": "Production",
+      "taskLists": "Task lists"
     }
   },
   "theme": {
@@ -736,6 +743,7 @@
       "recipes": "Recipes",
       "menus": "Menus",
       "productions": "Production plans",
+      "taskLists": "Task lists",
       "ingredients": "Ingredients",
       "transactions": "Transactions",
       "invoices": "Invoices",
@@ -748,6 +756,68 @@
     "purgeConfirm": {
       "title": "Delete permanently?",
       "body": "{name} will be permanently deleted. This cannot be undone."
+    }
+  },
+  "tasks": {
+    "title": "Tasks",
+    "subtitle": "Shared prep, reorder and checklist lists for your kitchen.",
+    "empty": "No task lists yet. Create your first list to organize prep and checklists.",
+    "new": "New list",
+    "create": "Create list",
+    "back": "Back to tasks",
+    "groups": {
+      "today": "Today",
+      "upcoming": "Upcoming",
+      "noDate": "No date"
+    },
+    "progress": "{done}/{total} done",
+    "listName": "List name",
+    "listNamePlaceholder": "e.g. Saturday prep",
+    "date": "Date",
+    "notesPlaceholder": "Optional notes",
+    "rename": "Rename",
+    "edit": "Edit",
+    "save": "Save",
+    "duplicate": "Duplicate",
+    "duplicateSuffix": "(copy)",
+    "reset": "Reset",
+    "resetConfirm": {
+      "title": "Reset this list?",
+      "body": "Every task in “{name}” will be marked open again. The tasks stay, so the checklist can be re-run."
+    },
+    "deleteList": "Delete list",
+    "deleteListConfirm": {
+      "title": "Delete this list?",
+      "body": "“{name}” will be moved to the trash for 30 days. Its tasks go with it."
+    },
+    "addTask": "Add task",
+    "taskTitle": "Task",
+    "taskTitlePlaceholder": "What needs doing?",
+    "station": "Station",
+    "stationPlaceholder": "e.g. grill",
+    "dueOn": "Due",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "markDone": "Mark done",
+    "markOpen": "Mark open",
+    "deleteTask": "Delete task",
+    "deleteTaskConfirm": {
+      "title": "Delete this task?",
+      "body": "“{name}” will be permanently removed from this list."
+    },
+    "assignee": "Assignee",
+    "unassigned": "Unassigned",
+    "source": {
+      "prep": "Prep",
+      "reorder": "Reorder"
+    },
+    "integration": {
+      "addPrepTask": "Add prep task",
+      "createReorderTask": "Create reorder task",
+      "chooseList": "Choose a list",
+      "noLists": "No task lists yet — create one in Tasks first.",
+      "added": "Added to list",
+      "add": "Add"
     }
   },
   "dashboard": {

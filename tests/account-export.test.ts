@@ -118,7 +118,7 @@ describe('buildOrgDataExport', () => {
     expect(names.sort()).toEqual(['Butter A', 'Sugar A']);
     expect(names).not.toContain('Flour B');
     expect(bundle.organizationId).toBe(ORG_A);
-    expect(bundle.schemaVersion).toBe(11);
+    expect(bundle.schemaVersion).toBe(12);
     expect(countExportRows(bundle)).toBeGreaterThanOrEqual(2);
 
     // Sprint 10: the menu tables are part of the bundle (empty arrays are fine).

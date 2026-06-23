@@ -19,6 +19,7 @@ import {
   purgeProduction,
   restoreProduction,
 } from '@/lib/data/productions';
+import { purgeTaskList, restoreTaskList } from '@/lib/data/tasks';
 import {
   getTransactionAnyState,
   purgeTransaction,
@@ -45,6 +46,7 @@ function revalidateTrash(): void {
   revalidatePath('/ingredients');
   revalidatePath('/menus');
   revalidatePath('/productions');
+  revalidatePath('/tasks');
   revalidatePath('/dashboard');
 }
 
@@ -212,6 +214,44 @@ export async function purgeProductionAction(id: string): Promise<ActionResult> {
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'trash.purge',
       entityType: 'production',
+      entityId: id,
+    });
+  });
+  revalidateTrash();
+  return { ok: true, data: undefined };
+}
+
+/** Restore a trashed task list — manager-only (Sprint 6). Keeps its tasks. */
+export async function restoreTaskListAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const restored = await restoreTaskList(tx, organizationId, id);
+    if (restored) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'trash.restore',
+        entityType: 'taskList',
+        entityId: id,
+      });
+    }
+    return restored;
+  });
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  revalidateTrash();
+  return { ok: true, data: undefined };
+}
+
+/** Permanently delete a trashed task list — manager-only (Sprint 6). Tasks cascade. */
+export async function purgeTaskListAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  await withOrg(organizationId, async (tx) => {
+    await purgeTaskList(tx, organizationId, id);
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'trash.purge',
+      entityType: 'taskList',
       entityId: id,
     });
   });

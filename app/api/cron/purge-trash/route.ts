@@ -54,6 +54,7 @@ export async function GET(req: Request): Promise<NextResponse> {
   let orgs = 0;
   let purgedMenus = 0;
   let purgedProductions = 0;
+  let purgedTaskLists = 0;
   let purgedRecipes = 0;
   let purgedIngredients = 0;
   let purgedTransactions = 0;
@@ -76,6 +77,7 @@ export async function GET(req: Request): Promise<NextResponse> {
         if (
           purged.menus +
             purged.productions +
+            purged.taskLists +
             purged.recipes +
             purged.ingredients +
             purged.transactions +
@@ -101,6 +103,7 @@ export async function GET(req: Request): Promise<NextResponse> {
       });
       purgedMenus += result.menus;
       purgedProductions += result.productions;
+      purgedTaskLists += result.taskLists;
       purgedRecipes += result.recipes;
       purgedIngredients += result.ingredients;
       purgedTransactions += result.transactions;
@@ -159,6 +162,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     orgs,
     purgedMenus,
     purgedProductions,
+    purgedTaskLists,
     purgedRecipes,
     purgedIngredients,
     purgedTransactions,

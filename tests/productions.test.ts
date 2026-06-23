@@ -442,7 +442,7 @@ describe('productions data layer', () => {
     if (created.status !== 'ok') throw new Error('create failed');
 
     const bundle = await buildOrgDataExport(db, ORG_A);
-    expect(bundle.schemaVersion).toBe(11);
+    expect(bundle.schemaVersion).toBe(12);
     expect(bundle.data.productions).toHaveLength(1);
     expect(bundle.data.productionItems).toHaveLength(1);
 

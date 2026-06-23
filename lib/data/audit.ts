@@ -106,6 +106,24 @@ export type AuditAction =
   | 'purchaseOrder.receiptVoid'
   | 'purchaseOrder.close'
   | 'export.purchaseOrderPdf'
+  // Kitchen task lists + tasks (Sprint 6, kitchen OR manager — see RBAC asymmetry).
+  // `taskList.create/.update/.delete/.reset/.duplicate/.reorder` = list lifecycle
+  // (restore/purge use the generic `trash.*`); `task.create/.update/.delete` = task
+  // CRUD; `task.complete/.reopen` = status toggle (no-op toggles don't audit);
+  // `task.assign` = assignee set/cleared. metadata = ids/counts/status/sourceKind and
+  // whether-assigned only — NEVER task titles, notes, station, or assignee names.
+  | 'taskList.create'
+  | 'taskList.update'
+  | 'taskList.delete'
+  | 'taskList.reset'
+  | 'taskList.duplicate'
+  | 'taskList.reorder'
+  | 'task.create'
+  | 'task.update'
+  | 'task.delete'
+  | 'task.complete'
+  | 'task.reopen'
+  | 'task.assign'
   // Org settings
   | 'settings.update'
   // Sensitive exports / generated documents
