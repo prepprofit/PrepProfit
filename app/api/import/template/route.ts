@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getOrgId, getUserId, isManager } from '@/lib/auth';
 import { getDb } from '@/lib/db';
 import { enforceRateLimit } from '@/lib/rate-limit';
+import { canUseFeature } from '@/lib/entitlements';
 import { importParamsSchema } from '@/lib/validation/import';
 import {
   buildCsvTemplate,
@@ -48,6 +49,13 @@ export async function GET(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
   }
   const { entity, format } = parsed.data;
+
+  // Sales import is gated by the `invoices` feature (matching `/sales`), even though
+  // the template is static — manager + entitlement before the template response.
+  if (entity === 'sales' && !(await canUseFeature('invoices'))) {
+    return NextResponse.json({ error: 'Upgrade required' }, { status: 402 });
+  }
+
   const filename = templateFilename(entity, format);
 
   if (format === 'csv') {

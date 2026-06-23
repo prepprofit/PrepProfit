@@ -8,11 +8,16 @@ import {
   RECIPE_COLUMNS,
   RECIPE_REQUIRED_COLUMNS,
   RECIPE_LIMITS,
+  SALES_COLUMNS,
+  SALES_REQUIRED_COLUMNS,
+  SALES_LIMITS,
   IMPORT_LIMITS,
   MAX_IMPORT_ROWS,
 } from '@/lib/validation/import';
 import { type Dimension, dimensionOf, toCanonical } from '@/lib/units';
 import { parseUnitToken } from '@/lib/units/token';
+import { percentToBps } from '@/lib/calculations/tax';
+import { NUMERIC_12_2_MAX } from '@/lib/calculations/production';
 import { normalizeIngredientName } from './resolveIngredient';
 import { parseCsv } from './csv';
 import { parseXlsx } from './xlsx';
@@ -20,6 +25,7 @@ import type {
   ImportFormat,
   ImportIngredientRecord,
   ImportRowIssue,
+  ImportSaleItemKind,
 } from './types';
 
 /**
@@ -455,6 +461,171 @@ export function parseTransactions(
         : { type, categoryName, occurredOn: dateRaw, amountCents, note };
 
     rows.push({ line, draft, issues });
+  }
+
+  if (dataRows === 0) return { ok: false, error: 'NO_DATA_ROWS' };
+  return { ok: true, rows };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sales (Sprint 12b)                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A parsed sale-item line (pre-resolution). Captures the RAW date string (the group
+ * key for daily closes — may be invalid) plus the structural fields. `itemKind` is
+ * null when the cell is missing/unknown. `taxRateBps` is null when the row left
+ * `tax_rate_percent` blank, meaning "use the org default" (applied in the data-layer
+ * planner — the parser has no org access). A row carrying any hard issue still
+ * produces a draft so its close can be tainted; cleanliness = `issues.length === 0`.
+ */
+export type DraftSaleImportRow = {
+  /** Raw trimmed `date` cell — the daily-close grouping key (possibly invalid/empty). */
+  saleDate: string;
+  itemKind: ImportSaleItemKind | null;
+  /** Raw item name (display + frozen item_name source). */
+  itemName: string;
+  /** Lower/trim/collapsed key used for exact catalogue resolution. */
+  normalizedItemName: string;
+  quantity: number;
+  /** Canonical stock per sold unit (ingredient lines only); null otherwise. */
+  ingredientQtyCanonical: number | null;
+  unitNetCents: number;
+  /** Per-line tax rate in bps, or null to inherit the org default at planning. */
+  taxRateBps: number | null;
+};
+
+/** Normalized comparison key for a sale item name (shared with the data-layer resolver). */
+export const normalizeSaleItemName = (s: string): string =>
+  s.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** Coerce a raw cell to the sale item-kind union, or null when invalid. */
+function asSaleItemKind(raw: string): ImportSaleItemKind | null {
+  const v = normalize(raw);
+  return v === 'recipe' || v === 'menu' || v === 'ingredient' ? v : null;
+}
+
+/** Parse a positive decimal (comma tolerated) capped at NUMERIC_12_2_MAX. Not money. */
+function parseCanonicalQtyCell(
+  raw: string,
+): { value: number } | { error: 'INVALID_NUMBER' } {
+  const trimmed = raw.trim();
+  if (!/\d/.test(trimmed) || /[A-Za-z]/.test(trimmed)) return { error: 'INVALID_NUMBER' };
+  const value = Number(trimmed.replace(',', '.'));
+  if (!Number.isFinite(value) || value <= 0 || value > NUMERIC_12_2_MAX) {
+    return { error: 'INVALID_NUMBER' };
+  }
+  return { value };
+}
+
+/**
+ * Pure, deterministic parsing of a sales matrix into draft sale lines (Sprint 12b).
+ * LONG format — one row per sale-item line, later grouped into daily closes by the
+ * data-layer planner (the parser does NOT group, resolve item ids, dedup dates, or
+ * touch org data). Structural validation only: date/kind/name/quantity/money/tax%/
+ * canonical-qty shape + length + row cap. A row that carries a hard issue STILL
+ * yields a draft (with its raw date) so the planner can mark the whole close invalid.
+ */
+export function parseSalesRows(matrix: string[][]): ParseResult<DraftSaleImportRow> {
+  const planned = planHeader(matrix, SALES_COLUMNS, SALES_REQUIRED_COLUMNS);
+  if (!planned.ok) return planned;
+  const { plan } = planned;
+
+  const rows: ParsedRow<DraftSaleImportRow>[] = [];
+  let dataRows = 0;
+
+  for (let i = plan.headerRowIndex + 1; i < matrix.length; i++) {
+    const raw = matrix[i]!;
+    if (isBlankRow(raw)) continue;
+    dataRows += 1;
+    if (dataRows > MAX_IMPORT_ROWS) return { ok: false, error: 'TOO_MANY_ROWS' };
+
+    const line = i + 1;
+    const issues: ImportRowIssue[] = [];
+    const add = (column: string, code: ImportRowIssue['code']) =>
+      issues.push({ line, column, code });
+
+    // Date (the close grouping key — kept raw even when invalid).
+    const saleDate = cell(raw, plan, 'date');
+    if (saleDate === '') add('date', 'MISSING_REQUIRED');
+    else if (!dateStringSchema.safeParse(saleDate).success) add('date', 'INVALID_DATE');
+
+    // Item kind.
+    const kindRaw = cell(raw, plan, 'item_kind');
+    const itemKind = asSaleItemKind(kindRaw);
+    if (kindRaw === '') add('item_kind', 'MISSING_REQUIRED');
+    else if (!itemKind) add('item_kind', 'INVALID_TYPE');
+
+    // Item name.
+    const itemName = cell(raw, plan, 'item_name');
+    if (itemName === '') add('item_name', 'MISSING_REQUIRED');
+    else if (itemName.length > SALES_LIMITS.itemName) add('item_name', 'TOO_LONG');
+
+    // Quantity — positive integer.
+    const qtyRaw = cell(raw, plan, 'quantity');
+    let quantity = 0;
+    if (qtyRaw === '') add('quantity', 'MISSING_REQUIRED');
+    else if (!/^\d+$/.test(qtyRaw)) add('quantity', 'INVALID_NUMBER');
+    else {
+      const n = Number(qtyRaw);
+      if (!Number.isInteger(n) || n < 1 || n > 100000) add('quantity', 'INVALID_NUMBER');
+      else quantity = n;
+    }
+
+    // Unit net price — integer cents, 0 allowed.
+    const priceRaw = cell(raw, plan, 'unit_net_price');
+    let unitNetCents = 0;
+    if (priceRaw === '') add('unit_net_price', 'MISSING_REQUIRED');
+    else {
+      const parsed = parseAmountCell(priceRaw);
+      if ('error' in parsed) add('unit_net_price', 'INVALID_NUMBER');
+      else if (parsed.cents < 0) add('unit_net_price', 'NEGATIVE_AMOUNT');
+      else if (parsed.cents > 1_000_000_000) add('unit_net_price', 'INVALID_NUMBER');
+      else unitNetCents = parsed.cents;
+    }
+
+    // Tax rate percent — optional; blank ⇒ null (org default applied at planning).
+    const taxRaw = cell(raw, plan, 'tax_rate_percent');
+    let taxRateBps: number | null = null;
+    if (taxRaw !== '') {
+      const numeric = !/[A-Za-z]/.test(taxRaw) && /\d/.test(taxRaw);
+      const value = Number(taxRaw.replace(',', '.'));
+      if (!numeric || !Number.isFinite(value) || value < 0 || value > 100) {
+        add('tax_rate_percent', 'INVALID_NUMBER');
+      } else {
+        taxRateBps = percentToBps(value);
+      }
+    }
+
+    // Ingredient canonical quantity — required iff ingredient line, blank otherwise.
+    const qtyCanonRaw = cell(raw, plan, 'ingredient_qty_canonical');
+    let ingredientQtyCanonical: number | null = null;
+    if (itemKind === 'ingredient') {
+      if (qtyCanonRaw === '') add('ingredient_qty_canonical', 'MISSING_REQUIRED');
+      else {
+        const parsed = parseCanonicalQtyCell(qtyCanonRaw);
+        if ('error' in parsed) add('ingredient_qty_canonical', 'INVALID_NUMBER');
+        else ingredientQtyCanonical = parsed.value;
+      }
+    } else if (qtyCanonRaw !== '') {
+      // A recipe/menu line must NOT carry a per-unit stock quantity.
+      add('ingredient_qty_canonical', 'INVALID_NUMBER');
+    }
+
+    rows.push({
+      line,
+      draft: {
+        saleDate,
+        itemKind,
+        itemName,
+        normalizedItemName: normalizeSaleItemName(itemName),
+        quantity,
+        ingredientQtyCanonical,
+        unitNetCents,
+        taxRateBps,
+      },
+      issues,
+    });
   }
 
   if (dataRows === 0) return { ok: false, error: 'NO_DATA_ROWS' };

@@ -2,8 +2,10 @@ import { z } from 'zod';
 import { dateStringSchema } from '@/lib/validation/transactions';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
 import { TRANSACTION_TYPES } from '@/lib/validation/transactions';
-import { FILE_IMPORT_ENTITIES, IMPORT_FORMATS } from '@/lib/import/types';
+import { FILE_IMPORT_ENTITIES, IMPORT_FORMATS, IMPORT_ISSUE_CODES } from '@/lib/import/types';
 import { MAX_SUGGESTIONS } from '@/lib/import/resolveIngredient';
+import { NUMERIC_12_2_MAX } from '@/lib/calculations/production';
+import { MAX_TAX_RATE_BPS, saleTotals } from '@/lib/calculations/tax';
 
 /**
  * Server-side validation contracts for deterministic imports (Sprint 4.5).
@@ -202,3 +204,161 @@ export const importRecipePayloadSchema = z.object({
 
 export type ImportRecipeRecordInput = z.infer<typeof importRecipeRecordSchema>;
 export type ImportRecipePayloadInput = z.infer<typeof importRecipePayloadSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* Sales import (Sprint 12b)                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** Postgres `integer` (int4) ceiling — the sale money columns are integer cents. */
+const INT4_MAX = 2_147_483_647;
+
+/**
+ * Sales file contract — LONG format, one row per sale-item line, grouped into daily
+ * closes by the `date` column (D1). `item_kind` is recipe | menu | ingredient.
+ * `ingredient_qty_canonical` is REQUIRED for an ingredient line and BLANK otherwise.
+ * `tax_rate_percent` is optional (blank → the org default rate, applied at preview).
+ */
+export const SALES_COLUMNS = [
+  'date',
+  'item_kind',
+  'item_name',
+  'quantity',
+  'unit_net_price',
+  'tax_rate_percent',
+  'ingredient_qty_canonical',
+] as const;
+export const SALES_REQUIRED_COLUMNS = [
+  'date',
+  'item_kind',
+  'item_name',
+  'quantity',
+  'unit_net_price',
+] as const;
+
+/** Sales-specific caps (mirror the 12a sale validation). */
+export const SALES_LIMITS = {
+  itemName: 120,
+  /** Max lines a single imported close may carry (matches `linesSchema` in sales.ts). */
+  maxLinesPerClose: 200,
+} as const;
+
+/** The kinds an imported sale line can sell. */
+export const IMPORT_SALE_ITEM_KINDS = ['recipe', 'menu', 'ingredient'] as const;
+
+/** A stored sale-item line (confirm-time re-validation; the stored JSON is never trusted). */
+export const importSaleLineSchema = z.object({
+  sourceLine: z.number().int().min(1),
+  itemKind: z.enum(IMPORT_SALE_ITEM_KINDS).nullable(),
+  itemName: z.string().min(1).max(SALES_LIMITS.itemName),
+  normalizedItemName: z.string().min(1).max(SALES_LIMITS.itemName),
+  itemRecipeId: z.string().min(1).nullable(),
+  itemMenuId: z.string().min(1).nullable(),
+  itemIngredientId: z.string().min(1).nullable(),
+  quantity: z.number().int().min(1).max(100000),
+  ingredientQtyCanonical: z.number().positive().max(NUMERIC_12_2_MAX).nullable(),
+  unitNetCents: z.number().int().min(0).max(1_000_000_000),
+  taxRateBps: z.number().int().min(0).max(MAX_TAX_RATE_BPS),
+  netCents: z.number().int().min(0).max(INT4_MAX),
+  taxCents: z.number().int().min(0).max(INT4_MAX),
+  grossCents: z.number().int().min(0).max(INT4_MAX),
+});
+
+/**
+ * A stored close. The `importable` arm carries the strict invariant the apply path
+ * relies on: every line resolves to exactly ONE active same-kind id, and an
+ * ingredient line carries its per-unit canonical quantity. `skipped`/`invalid`
+ * closes are not applied, so their lines may be unresolved (all ids null).
+ */
+export const importSaleCloseSchema = z
+  .object({
+    saleDate: dateStringSchema,
+    lines: z.array(importSaleLineSchema).min(1).max(SALES_LIMITS.maxLinesPerClose),
+    netCents: z.number().int().min(0).max(INT4_MAX),
+    taxCents: z.number().int().min(0).max(INT4_MAX),
+    grossCents: z.number().int().min(0).max(INT4_MAX),
+    status: z.enum(['importable', 'skipped', 'invalid']),
+    issues: z
+      .array(
+        z.object({
+          line: z.number().int(),
+          column: z.string().max(120),
+          code: z.enum(IMPORT_ISSUE_CODES),
+        }),
+      )
+      .max(10_000),
+    stockMode: z.enum(['moves_stock', 'financial_only']),
+  })
+  .superRefine((close, ctx) => {
+    if (close.status !== 'importable') return;
+    close.lines.forEach((line, i) => {
+      // An importable line must have resolved to a concrete kind + single id.
+      if (line.itemKind === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Importable line is missing its item kind.',
+          path: ['lines', i, 'itemKind'],
+        });
+        return;
+      }
+      const refs = {
+        recipe: line.itemRecipeId,
+        menu: line.itemMenuId,
+        ingredient: line.itemIngredientId,
+      } as const;
+      for (const [kind, value] of Object.entries(refs)) {
+        const shouldBeSet = kind === line.itemKind;
+        if (shouldBeSet && value === null) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Importable line is missing its ${kind} reference.`,
+            path: ['lines', i],
+          });
+        }
+        if (!shouldBeSet && value !== null) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Importable line has an unexpected ${kind} reference.`,
+            path: ['lines', i],
+          });
+        }
+      }
+      const hasQty = line.ingredientQtyCanonical != null;
+      if (line.itemKind === 'ingredient' && !hasQty) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'An ingredient line needs a per-unit stock quantity.',
+          path: ['lines', i, 'ingredientQtyCanonical'],
+        });
+      }
+      if (line.itemKind !== 'ingredient' && hasQty) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Only ingredient lines carry a per-unit stock quantity.',
+          path: ['lines', i, 'ingredientQtyCanonical'],
+        });
+      }
+    });
+    // Re-derive the close totals from the raw line fields and reject an overflow.
+    const totals = saleTotals(
+      close.lines.map((l) => ({ netCents: l.quantity * l.unitNetCents, bps: l.taxRateBps })),
+    );
+    if (
+      totals.netCents > INT4_MAX ||
+      totals.taxCents > INT4_MAX ||
+      totals.grossCents > INT4_MAX
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Close total exceeds the maximum supported amount.',
+        path: ['lines'],
+      });
+    }
+  });
+
+/** The full stored payload for a sales job (closes), re-validated at confirm. */
+export const importSalesPayloadSchema = z.object({
+  closes: z.array(importSaleCloseSchema).max(MAX_IMPORT_ROWS),
+});
+
+export type ImportSaleLineInput = z.infer<typeof importSaleLineSchema>;
+export type ImportSalesPayloadInput = z.infer<typeof importSalesPayloadSchema>;

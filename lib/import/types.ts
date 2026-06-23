@@ -22,6 +22,10 @@ export const IMPORT_ENTITIES = [
   'transactions',
   'recipes',
   'recipe_photo',
+  // Sprint 12b: staged daily-close sales. A `sales` job stages an
+  // `ImportSalesPayload` (closes grouped by date) and confirms through the 12a
+  // primitives (createSale → postSale), never writing income/movements directly.
+  'sales',
 ] as const;
 export type ImportEntity = (typeof IMPORT_ENTITIES)[number];
 
@@ -33,7 +37,7 @@ export const RECIPE_IMPORT_ENTITIES: readonly ImportEntity[] = ['recipes', 'reci
  * and go through the generic preview→confirm upload. `recipe_photo` is NOT here: it
  * is staged only by the AI extract action, never the file/template routes.
  */
-export const FILE_IMPORT_ENTITIES = ['ingredients', 'transactions', 'recipes'] as const;
+export const FILE_IMPORT_ENTITIES = ['ingredients', 'transactions', 'recipes', 'sales'] as const;
 export type FileImportEntity = (typeof FILE_IMPORT_ENTITIES)[number];
 
 /** Physical dimension of a quantity — mirrors lib/units `Dimension`. */
@@ -88,6 +92,14 @@ export const IMPORT_ISSUE_CODES = [
   // Soft: a new ingredient imported without a price → created at 0 cents and
   // flagged as needing pricing (CLAUDE.md).
   'NEEDS_PRICING',
+  // Sales import (Sprint 12b). HARD: a sale line's item name resolves to NO active
+  // same-kind catalogue item (no exact match) — the import never creates catalogue
+  // items, so the whole close is invalid until the name is fixed.
+  'UNKNOWN_ITEM',
+  // Sales import (Sprint 12b). HARD: a sale line's item name matches MORE THAN ONE
+  // active same-kind item (duplicate display names) — v1 links only on a single
+  // exact match, so the close is invalid until the catalogue is disambiguated.
+  'AMBIGUOUS_ITEM',
 ] as const;
 export type ImportIssueCode = (typeof IMPORT_ISSUE_CODES)[number];
 
@@ -192,8 +204,74 @@ export type ImportRecipePayload = {
 /** The importable records stored in a job, narrowed by the job's `entity`. */
 export type ImportRecord = ImportIngredientRecord | ImportTransactionRecord;
 
+/* -------------------------------------------------------------------------- */
+/* Sales import (Sprint 12b)                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** The kind of catalogue item a sale line sells (mirrors `saleItems.itemKind`). */
+export type ImportSaleItemKind = 'recipe' | 'menu' | 'ingredient';
+
+/**
+ * One normalized sale-item line within an imported close. The `item*Id` fields are
+ * resolved exact-only against the org's ACTIVE catalogue at preview (D5): exactly
+ * one of them is set when the name links, all null when it does not (the line then
+ * carries an `UNKNOWN_ITEM` / `AMBIGUOUS_ITEM` issue and its close is invalid). All
+ * money is integer cents; per-line tax is rounded then summed (tax.ts).
+ */
+export type ImportSaleLine = {
+  /** 1-based spreadsheet line the row came from. */
+  sourceLine: number;
+  /** The sold item's kind, or null when the source cell was missing/unknown (a hard issue). */
+  itemKind: ImportSaleItemKind | null;
+  /** Raw item name from the file (display + frozen `item_name` source). */
+  itemName: string;
+  /** Lower/trim/collapsed key used for exact resolution. */
+  normalizedItemName: string;
+  itemRecipeId: string | null;
+  itemMenuId: string | null;
+  itemIngredientId: string | null;
+  /** Integer units sold (≥ 1). */
+  quantity: number;
+  /** Canonical stock consumed per sold unit — set iff `itemKind === 'ingredient'`. */
+  ingredientQtyCanonical: number | null;
+  /** Exclusive net price per sold unit, integer cents. */
+  unitNetCents: number;
+  /** Per-line tax rate in basis points (0..10000). */
+  taxRateBps: number;
+  netCents: number;
+  taxCents: number;
+  grossCents: number;
+};
+
+/**
+ * One imported daily close: all the lines sharing a `saleDate`, with rolled-up
+ * totals and a disposition. `importable` closes are created+posted at confirm;
+ * `skipped` closes already have a non-void sale for that date (D2); `invalid`
+ * closes have ≥1 line carrying a hard issue. `stockMode` is the F5 decision at the
+ * close date (financial-only before `stock_control_start_date`, else moves stock).
+ */
+export type ImportSaleClose = {
+  saleDate: string;
+  lines: ImportSaleLine[];
+  netCents: number;
+  taxCents: number;
+  grossCents: number;
+  status: 'importable' | 'skipped' | 'invalid';
+  issues: ImportRowIssue[];
+  stockMode: 'moves_stock' | 'financial_only';
+};
+
+/** The full stored payload for a `sales` job — closes grouped by date. */
+export type ImportSalesPayload = {
+  closes: ImportSaleClose[];
+};
+
 /**
  * The shape of a job's `normalized_rows`, narrowed by `entity`: a flat record
- * array for ingredients/transactions, or the recipe payload for recipes.
+ * array for ingredients/transactions, the recipe payload for recipes, or the sales
+ * payload (closes) for sales.
  */
-export type ImportNormalizedRows = ImportRecord[] | ImportRecipePayload;
+export type ImportNormalizedRows =
+  | ImportRecord[]
+  | ImportRecipePayload
+  | ImportSalesPayload;

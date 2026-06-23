@@ -4,6 +4,7 @@ import {
   INGREDIENT_COLUMNS,
   TRANSACTION_COLUMNS,
   RECIPE_COLUMNS,
+  SALES_COLUMNS,
 } from '@/lib/validation/import';
 import type { FileImportEntity, FileImportFormat } from './types';
 
@@ -19,6 +20,7 @@ const COLUMNS: Record<FileImportEntity, readonly string[]> = {
   ingredients: INGREDIENT_COLUMNS,
   transactions: TRANSACTION_COLUMNS,
   recipes: RECIPE_COLUMNS,
+  sales: SALES_COLUMNS,
 };
 
 /** Illustrative example rows (cells aligned to each entity's column order). */
@@ -48,6 +50,15 @@ const EXAMPLES: Record<FileImportEntity, string[][]> = {
     ['Tomato Sauce', '4', '100', 'Tomato', '800', 'g'],
     ['Tomato Sauce', '', '', 'Olive oil', '30', 'ml'],
     ['Tomato Sauce', '', '', 'Eggs', '2', 'count'],
+  ],
+  // Long format: one row per sale-item line, grouped into a daily close by the date.
+  // unit_net_price is the EXCLUSIVE net price per sold unit; tax_rate_percent is
+  // optional (blank uses the org default). ingredient_qty_canonical is required only
+  // for an ingredient line (canonical stock per sold unit), blank for recipe/menu.
+  sales: [
+    ['2026-06-01', 'recipe', 'Sourdough Bread', '12', '4.50', '23', ''],
+    ['2026-06-01', 'menu', 'Lunch Combo', '8', '12.00', '23', ''],
+    ['2026-06-01', 'ingredient', 'Bottled Water', '20', '1.50', '23', '500'],
   ],
 };
 

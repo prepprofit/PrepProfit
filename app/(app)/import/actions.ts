@@ -52,6 +52,7 @@ import {
   type FileImportFormat,
   type ImportRecord,
   type ImportRecipePayload,
+  type ImportSaleClose,
   type ImportRowIssue,
 } from '@/lib/import/types';
 import type { ActionErrorCode } from '@/lib/action-result';
@@ -79,10 +80,12 @@ export type ImportPreview = {
   filename: string | null;
   counts: { total: number; importable: number; skipped: number; invalid: number };
   issues: ImportRowIssue[];
-  /** Flat sample records for ingredients/transactions (empty for recipes). */
+  /** Flat sample records for ingredients/transactions (empty for recipes/sales). */
   sample: ImportRecord[];
   /** Recipe-only staged payload (records + per-name resolutions) for the UI. */
   recipePayload?: ImportRecipePayload;
+  /** Sales-only close-oriented preview (Sprint 12b): closes + financial-only count. */
+  salesPreview?: { closes: ImportSaleClose[]; financialOnly: number };
 };
 
 export type ImportActionState =

@@ -23,12 +23,17 @@ import type {
   FileImportFormat,
   ImportIngredientRecord,
   ImportTransactionRecord,
+  ImportSaleClose,
 } from '@/lib/import/types';
 import {
   previewImportAction,
   confirmImportAction,
   type ImportActionState,
 } from './actions';
+import {
+  previewSalesImportAction,
+  confirmSalesImportAction,
+} from './sales-actions';
 import {
   RecipeResolutionPanel,
   RecipeGrid,
@@ -139,12 +144,14 @@ function ImportFlow({
 }) {
   const t = useTranslations('import');
   const actionError = useActionError();
+  // Sales is the only plan-gated file entity, with dedicated close-oriented actions.
+  const isSales = entity === 'sales';
   const [previewState, previewAction, previewing] = useActionState(
-    previewImportAction,
+    isSales ? previewSalesImportAction : previewImportAction,
     null as ImportActionState | null,
   );
   const [confirmState, confirmAction, confirming] = useActionState(
-    confirmImportAction,
+    isSales ? confirmSalesImportAction : confirmImportAction,
     null as ImportActionState | null,
   );
 
@@ -162,7 +169,9 @@ function ImportFlow({
             <CheckCircle2 className="size-5" />
             {committed.alreadyCommitted
               ? t('alreadyCommitted')
-              : t('committed', { count: committed.created })}
+              : entity === 'sales'
+                ? t('sales.committed', { count: committed.created })
+                : t('committed', { count: committed.created })}
           </p>
           <Button variant="outline" onClick={onStartOver}>
             {t('startOver')}
@@ -264,16 +273,52 @@ function PreviewResult({
         <CardDescription>{t('summary.file', { name: preview.filename ?? '' })}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        {/* Counts. */}
+        {/* Counts. Sales counts are BY CLOSE (a grouped daily close), not by row. */}
         <div className="flex flex-wrap gap-2 text-sm">
-          <Stat tone="good" label={t('summary.importable', { count: counts.importable })} />
+          <Stat
+            tone="good"
+            label={
+              entity === 'sales'
+                ? t('sales.summary.importable', { count: counts.importable })
+                : t('summary.importable', { count: counts.importable })
+            }
+          />
+          {entity === 'sales' && preview.salesPreview && preview.salesPreview.financialOnly > 0 && (
+            <Stat
+              tone="muted"
+              label={t('sales.summary.financialOnly', {
+                count: preview.salesPreview.financialOnly,
+              })}
+            />
+          )}
           {counts.skipped > 0 && (
-            <Stat tone="muted" label={t('summary.skipped', { count: counts.skipped })} />
+            <Stat
+              tone="muted"
+              label={
+                entity === 'sales'
+                  ? t('sales.summary.skipped', { count: counts.skipped })
+                  : t('summary.skipped', { count: counts.skipped })
+              }
+            />
           )}
           {counts.invalid > 0 && (
-            <Stat tone="bad" label={t('summary.invalid', { count: counts.invalid })} />
+            <Stat
+              tone="bad"
+              label={
+                entity === 'sales'
+                  ? t('sales.summary.invalid', { count: counts.invalid })
+                  : t('summary.invalid', { count: counts.invalid })
+              }
+            />
           )}
-          <Stat tone="muted" label={t('summary.total', { count: counts.total })} />
+          <Stat
+            tone="muted"
+            label={
+              entity === 'sales'
+                ? t('sales.summary.total', { count: counts.total })
+                : t('summary.total', { count: counts.total })
+            }
+          />
         </div>
 
         {/* Issues. */}
@@ -300,6 +345,11 @@ function PreviewResult({
               </p>
             )}
           </div>
+        )}
+
+        {/* Sales: close-oriented preview grouped by date. */}
+        {entity === 'sales' && preview.salesPreview && (
+          <SalesPreviewPanel closes={preview.salesPreview.closes} currency={currency} />
         )}
 
         {/* Recipe resolution panel + recipe grid. */}
@@ -358,11 +408,15 @@ function PreviewResult({
               <Button type="submit" disabled={confirming}>
                 {confirming
                   ? t('confirming')
-                  : t('confirm', { count: counts.importable })}
+                  : entity === 'sales'
+                    ? t('sales.confirm', { count: counts.importable })
+                    : t('confirm', { count: counts.importable })}
               </Button>
             </form>
           ) : (
-            <p className="text-sm text-muted-foreground">{t('nothingToImport')}</p>
+            <p className="text-sm text-muted-foreground">
+              {entity === 'sales' ? t('sales.nothingToImport') : t('nothingToImport')}
+            </p>
           )}
           <Button variant="ghost" onClick={onStartOver} disabled={confirming}>
             {t('startOver')}
@@ -370,6 +424,75 @@ function PreviewResult({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Sales preview (Sprint 12b): the import grouped into daily closes, not a flat row
+ * grid. Each close shows its date, line count, gross, stock mode and disposition.
+ * A double-count caution mirrors the v1 limitation (sales revenue imported here is
+ * NOT reconciled against any bank/transaction import).
+ */
+function SalesPreviewPanel({
+  closes,
+  currency,
+}: {
+  closes: ImportSaleClose[];
+  currency: string;
+}) {
+  const t = useTranslations('import.sales');
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium text-foreground">{t('closes.title')}</p>
+      <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+        <span>{t('doubleCountWarning')}</span>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-sm">
+          <thead className="border-b border-border bg-surface-2/50">
+            <tr>
+              <HeadCell>{t('closes.date')}</HeadCell>
+              <HeadCell>{t('closes.lines')}</HeadCell>
+              <HeadCell>{t('closes.gross')}</HeadCell>
+              <HeadCell>{t('closes.stockMode')}</HeadCell>
+              <HeadCell>{t('closes.status')}</HeadCell>
+            </tr>
+          </thead>
+          <tbody>
+            {closes.map((close, i) => (
+              <tr key={`${close.saleDate}-${i}`} className="border-b border-border last:border-0">
+                <td className="px-3 py-2 tabular-nums text-foreground">
+                  {close.saleDate || '—'}
+                </td>
+                <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                  {close.lines.length}
+                </td>
+                <td className="px-3 py-2 tabular-nums text-foreground">
+                  {formatMoney(close.grossCents, currency)}
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">
+                  {t(`stockMode.${close.stockMode}`)}
+                </td>
+                <td className="px-3 py-2">
+                  <span
+                    className={
+                      close.status === 'importable'
+                        ? 'text-emerald-600'
+                        : close.status === 'invalid'
+                          ? 'text-destructive'
+                          : 'text-muted-foreground'
+                    }
+                  >
+                    {t(`status.${close.status}`)}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
