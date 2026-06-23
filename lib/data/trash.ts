@@ -2,6 +2,7 @@ import { and, eq, inArray, isNotNull, lte, notExists, sql } from 'drizzle-orm';
 import {
   customers,
   ingredients,
+  inventoryMovements,
   invoices,
   menuItems,
   menus,
@@ -173,6 +174,23 @@ export async function purgeExpired(
         ),
       ),
   );
+  // An ingredient consumed by a completed (stock-moving) production has permanent
+  // ledger history (a `production`-sourced OUT movement). It is KEPT, never purged
+  // (Sprint 11b D6) — the movement's restrict FK from production_consumptions would
+  // otherwise block the cascade. Financial-only completions post no movement and so
+  // do not pin the ingredient.
+  const productionMovementPin = notExists(
+    db
+      .select({ one: sql`1` })
+      .from(inventoryMovements)
+      .where(
+        and(
+          eq(inventoryMovements.organizationId, organizationId),
+          eq(inventoryMovements.ingredientId, ingredients.id),
+          eq(inventoryMovements.sourceType, 'production'),
+        ),
+      ),
+  );
 
   // Null the DRAFT purchase-order line links pointing at an ingredient that is about
   // to be purged (matching the exact delete set), so the `restrict` FK does not block
@@ -197,6 +215,7 @@ export async function purgeExpired(
                 recipePin,
                 nonDraftPoPin,
                 receiptPin,
+                productionMovementPin,
               ),
             ),
         ),
@@ -217,6 +236,7 @@ export async function purgeExpired(
         recipePin,
         nonDraftPoPin,
         receiptPin,
+        productionMovementPin,
       ),
     )
     .returning({ id: ingredients.id });

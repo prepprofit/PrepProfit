@@ -81,6 +81,12 @@ export type AuditAction =
   | 'production.plan'
   | 'production.reopen'
   | 'production.delete'
+  // Production completion (Sprint 11b, kitchen OR manager completes; manager-only
+  // void). `.complete` metadata = item count, total planned portions, distinct
+  // ingredient count, stockMoved, movement count; `.void` metadata = reversal count.
+  // NEVER any cost value.
+  | 'production.complete'
+  | 'production.void'
   // Kitchen-visible allergen matrix document (Sprint 9) — money-free; metadata is
   // recipe count only, never costs.
   | 'export.allergenMatrixPdf'

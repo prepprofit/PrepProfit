@@ -67,6 +67,15 @@ export type ActionErrorCode =
   // A production was edited from a stale version (Sprint 11a optimistic concurrency) —
   // another edit committed first; reload and retry. No write/audit happened.
   | 'PRODUCTION_STALE'
+  // Tried to complete a production that is not `planned` (Sprint 11b) — only a planned
+  // run can be completed (drafts must be planned first; terminal runs are immutable).
+  | 'PRODUCTION_NOT_COMPLETABLE'
+  // Tried to void a production that is not `completed` (Sprint 11b) — only a completed
+  // run can be voided (a voided run is terminal; reproduce via a new production).
+  | 'PRODUCTION_NOT_VOIDABLE'
+  // Tried to trash a completed/voided production (Sprint 11b) — terminal runs are
+  // permanent history and never enter Trash.
+  | 'PRODUCTION_NOT_DELETABLE'
   // A recipe still referenced by a production was manually purged (Sprint 11a, D4) —
   // remove the production line (or purge the production) first.
   | 'RECIPE_IN_PRODUCTION'

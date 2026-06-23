@@ -118,7 +118,7 @@ describe('buildOrgDataExport', () => {
     expect(names.sort()).toEqual(['Butter A', 'Sugar A']);
     expect(names).not.toContain('Flour B');
     expect(bundle.organizationId).toBe(ORG_A);
-    expect(bundle.schemaVersion).toBe(10);
+    expect(bundle.schemaVersion).toBe(11);
     expect(countExportRows(bundle)).toBeGreaterThanOrEqual(2);
 
     // Sprint 10: the menu tables are part of the bundle (empty arrays are fine).
@@ -133,6 +133,10 @@ describe('buildOrgDataExport', () => {
     // Sprint 8b: the goods-receipt tables are part of the bundle.
     expect(bundle.data).toHaveProperty('receipts');
     expect(bundle.data).toHaveProperty('receiptItems');
+
+    // Sprint 11b: the production snapshot tables are part of the bundle.
+    expect(bundle.data).toHaveProperty('productionRecipeSnapshots');
+    expect(bundle.data).toHaveProperty('productionConsumptions');
 
     // Sprint 9: the allergen tables are part of the bundle (empty arrays are fine).
     expect(bundle.data).toHaveProperty('ingredientAllergens');

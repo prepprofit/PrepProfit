@@ -211,6 +211,13 @@
       "when": 1782194394650,
       "tag": "0029_unique_unus",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1782198548358,
+      "tag": "0030_cooing_shriek",
+      "breakpoints": true
     }
   ]
 }

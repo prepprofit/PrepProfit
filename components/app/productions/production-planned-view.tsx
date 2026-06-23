@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
+  completeProductionAction,
   deleteProductionAction,
   reopenProductionAction,
 } from '@/app/(app)/productions/actions';
@@ -29,6 +30,7 @@ export function ProductionPlannedView({
   plannedFor,
   notes,
   lines,
+  canComplete,
 }: {
   productionId: string;
   expectedUpdatedAt: string;
@@ -36,6 +38,8 @@ export function ProductionPlannedView({
   plannedFor: string | null;
   notes: string | null;
   lines: ProductionLineBase[];
+  /** True when the live explosion is complete + a date is set (Sprint 11b). */
+  canComplete: boolean;
 }) {
   const t = useTranslations('productions');
   const tCommon = useTranslations('common');
@@ -44,6 +48,7 @@ export function ProductionPlannedView({
 
   const [error, setError] = React.useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [completeOpen, setCompleteOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
   const onReopen = () => {
@@ -54,6 +59,20 @@ export function ProductionPlannedView({
       });
       if (result.ok) router.refresh();
       else setError(actionError(result.code));
+    });
+  };
+
+  const confirmComplete = () => {
+    setError(null);
+    startTransition(async () => {
+      const result = await completeProductionAction(productionId, {
+        expectedUpdatedAt,
+      });
+      if (result.ok) router.refresh();
+      else {
+        setError(actionError(result.code));
+        setCompleteOpen(false);
+      }
     });
   };
 
@@ -84,7 +103,19 @@ export function ProductionPlannedView({
         <h1 className="font-display text-xl font-semibold text-foreground">{label}</h1>
         <Badge variant="accent">{t('status.planned')}</Badge>
         <div className="ml-auto flex items-center gap-2">
-          <Button type="button" onClick={onReopen} disabled={pending}>
+          <Button
+            type="button"
+            onClick={() => setCompleteOpen(true)}
+            disabled={pending || !canComplete}
+          >
+            {t('actions.complete')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onReopen}
+            disabled={pending}
+          >
             {t('actions.reopen')}
           </Button>
           <Button
@@ -170,6 +201,17 @@ export function ProductionPlannedView({
         pending={pending}
         onConfirm={confirmDelete}
         onCancel={() => setConfirmOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={completeOpen}
+        title={t('completeConfirm.title')}
+        description={t('completeConfirm.body', { name: label })}
+        confirmLabel={t('actions.complete')}
+        cancelLabel={tCommon('cancel')}
+        pending={pending}
+        onConfirm={confirmComplete}
+        onCancel={() => setCompleteOpen(false)}
       />
     </div>
   );

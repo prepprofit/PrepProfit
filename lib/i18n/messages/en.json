@@ -43,6 +43,9 @@
     "PRODUCTION_NOT_EDITABLE": "This production is planned and read-only. Reopen it to draft before editing.",
     "PRODUCTION_INCOMPLETE": "This production isn't ready to plan yet. Set a planned date and make sure every recipe is available.",
     "PRODUCTION_STALE": "Someone else changed this production while you were editing. Reload and try again.",
+    "PRODUCTION_NOT_COMPLETABLE": "Only a planned production can be completed. Plan it first, or it has already been completed.",
+    "PRODUCTION_NOT_VOIDABLE": "Only a completed production can be voided.",
+    "PRODUCTION_NOT_DELETABLE": "A completed or voided production is permanent history and can't be moved to the trash.",
     "RECIPE_IN_PRODUCTION": "This recipe is used in a production, so it can't be deleted forever yet. Remove it from the production (or delete the production) first.",
     "SUPPLIER_IN_USE": "This supplier is the default for one or more ingredients, so it can't be archived. Change or remove those ingredient suppliers first.",
     "SUPPLIER_INACTIVE": "That supplier is archived. Reactivate it before assigning it to an ingredient.",
@@ -204,7 +207,9 @@
     "unavailableLine": "Unavailable",
     "status": {
       "draft": "Draft",
-      "planned": "Planned"
+      "planned": "Planned",
+      "completed": "Completed",
+      "voided": "Voided"
     },
     "actions": {
       "new": "New production",
@@ -213,7 +218,29 @@
       "save": "Save changes",
       "delete": "Move to trash",
       "plan": "Mark as planned",
-      "reopen": "Reopen to draft"
+      "reopen": "Reopen to draft",
+      "complete": "Complete production",
+      "void": "Void production"
+    },
+    "completedView": {
+      "completedTitle": "This production is completed",
+      "completedBody": "It's permanent history. Ingredient stock was consumed through the ledger; void it to reverse.",
+      "voidedTitle": "This production was voided",
+      "voidedBody": "The stock it consumed has been returned. This record is kept for history and can't be changed.",
+      "completedAt": "Completed {time}",
+      "voidedAt": "Voided {time}",
+      "stockMoved": "Stock consumed from inventory",
+      "stockNotMoved": "Financial-only — no stock was moved (dated before stock control started)",
+      "consumedTitle": "Ingredients consumed",
+      "consumedEmpty": "This production consumed no tracked ingredients."
+    },
+    "completeConfirm": {
+      "title": "Complete this production?",
+      "body": "{name} will consume its ingredients from stock and freeze its cost. This can only be undone by voiding it."
+    },
+    "voidConfirm": {
+      "title": "Void this production?",
+      "body": "{name} will be reversed — the stock it consumed is returned. The record is kept for history."
     },
     "incomplete": {
       "badge": "Incomplete",

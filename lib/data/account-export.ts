@@ -12,6 +12,8 @@ import {
   menuItems,
   productions,
   productionItems,
+  productionRecipeSnapshots,
+  productionConsumptions,
   inventoryMovements,
   ingredientPriceHistory,
   suppliers,
@@ -63,7 +65,10 @@ import {
 // now carry `source_receipt_item_id` (flows through `select()`).
 // v9 (Sprint 10): added `menus` + `menuItems`.
 // v10 (Sprint 11a): added `productions` + `productionItems`.
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 10;
+// v11 (Sprint 11b): added `productionRecipeSnapshots` + `productionConsumptions`;
+// `productions` rows now carry completed_at/voided_at/cost_total_cents/stock_moved
+// (flow through `select()`).
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 11;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -90,6 +95,8 @@ export async function buildOrgDataExport(
     ['menuItems', menuItems],
     ['productions', productions],
     ['productionItems', productionItems],
+    ['productionRecipeSnapshots', productionRecipeSnapshots],
+    ['productionConsumptions', productionConsumptions],
     ['inventoryMovements', inventoryMovements],
     ['ingredientPriceHistory', ingredientPriceHistory],
     ['suppliers', suppliers],

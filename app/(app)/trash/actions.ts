@@ -15,6 +15,7 @@ import {
 import { purgeMenu, restoreMenu } from '@/lib/data/menus';
 import { purgeRecipeWithGuards } from '@/lib/data/recipe-purge';
 import {
+  countProductionMovementsForIngredient,
   purgeProduction,
   restoreProduction,
 } from '@/lib/data/productions';
@@ -222,14 +223,26 @@ export async function purgeIngredientAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   const actor = await auditActor();
+  let outcome: 'ok' | 'in_use';
   try {
-    await withOrg(organizationId, async (tx) => {
+    outcome = await withOrg(organizationId, async (tx) => {
+      // An ingredient consumed by a completed (stock-moving) production has permanent
+      // ledger history and is purge-blocked (Sprint 11b D6) BEFORE any delete — the
+      // production_consumptions → movement restrict FK would otherwise raise an
+      // ambiguous violation. Surfaced as INGREDIENT_IN_USE.
+      const productionMovements = await countProductionMovementsForIngredient(
+        tx,
+        organizationId,
+        id,
+      );
+      if (productionMovements > 0) return 'in_use' as const;
       await purgeIngredient(tx, organizationId, id);
       await writeAuditEvent(tx, organizationId, actor, {
         action: 'trash.purge',
         entityType: 'ingredient',
         entityId: id,
       });
+      return 'ok' as const;
     });
   } catch (err) {
     // restrict FK: still referenced by a trashed recipe's line.
@@ -238,6 +251,7 @@ export async function purgeIngredientAction(id: string): Promise<ActionResult> {
     }
     return unexpected('purgeIngredientAction', err, organizationId);
   }
+  if (outcome === 'in_use') return { ok: false, code: 'INGREDIENT_IN_USE' };
   revalidateTrash();
   return { ok: true, data: undefined };
 }

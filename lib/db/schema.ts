@@ -512,12 +512,26 @@ export const productions = pgTable(
     // Optional free-text label (trimmed, max 200 at the action boundary). Not unique.
     reference: text('reference'),
     notes: text('notes'),
-    status: text('status', { enum: ['draft', 'planned'] })
+    status: text('status', {
+      enum: ['draft', 'planned', 'completed', 'voided'],
+    })
       .notNull()
       .default('draft'),
     // Bare calendar date ('YYYY-MM-DD', no time, no tz). NULL while an incomplete
     // draft; the `plan` transition requires it.
     plannedFor: date('planned_for', { mode: 'string' }),
+    // Completion lifecycle (Sprint 11b). `completed_at` is stamped on
+    // planned → completed (also retained through a later void); `voided_at` only on
+    // completed → voided. `cost_total_cents` is the FROZEN total cost at completion
+    // (manager-only on read — the kitchen DTO never selects it); `stock_moved`
+    // freezes the F5 stock-control decision (true = OUT movements were posted, false
+    // = financial-only completion dated before the org's stock_control_start_date).
+    // All gated by the CHECKs below so an unreachable status/timestamp/cost combo
+    // can never exist (11a D8 promised the invariants land with the snapshots).
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    costTotalCents: integer('cost_total_cents'),
+    stockMoved: boolean('stock_moved').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL` (Trash pattern).
@@ -541,11 +555,37 @@ export const productions = pgTable(
       t.reference.op('gin_trgm_ops'),
     ),
     index('productions_notes_trgm_idx').using('gin', t.notes.op('gin_trgm_ops')),
-    // 11a only knows two statuses; 11b widens this CHECK in the same migration that
-    // adds snapshots + posting invariants. Do NOT pre-create unreachable states.
+    // 11b widens the lifecycle to the full DAG and locks every posting invariant in
+    // the SAME migration that adds the snapshot tables, so no unreachable
+    // status/timestamp/cost combination ever exists.
     check(
       'productions_status_chk',
-      sql.raw("status IN ('draft', 'planned')"),
+      sql.raw("status IN ('draft', 'planned', 'completed', 'voided')"),
+    ),
+    // completed_at present iff terminal (completed/voided); voided_at present iff voided.
+    check(
+      'productions_completed_at_chk',
+      sql.raw("(completed_at IS NOT NULL) = (status IN ('completed', 'voided'))"),
+    ),
+    check(
+      'productions_voided_at_chk',
+      sql.raw("(voided_at IS NOT NULL) = (status = 'voided')"),
+    ),
+    // Frozen cost present iff terminal, and non-negative when present.
+    check(
+      'productions_cost_total_chk',
+      sql.raw(
+        "(cost_total_cents IS NOT NULL) = (status IN ('completed', 'voided'))",
+      ),
+    ),
+    check(
+      'productions_cost_total_nonneg_chk',
+      sql.raw('cost_total_cents IS NULL OR cost_total_cents >= 0'),
+    ),
+    // stock_moved can only be true once terminal (a draft/planned never posted stock).
+    check(
+      'productions_stock_moved_chk',
+      sql.raw("stock_moved = false OR status IN ('completed', 'voided')"),
     ),
   ],
 );
@@ -688,6 +728,120 @@ export const inventoryMovements = pgTable(
       foreignColumns: [t.organizationId, t.id],
       name: 'inventory_movements_reversal_of_fk',
     }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Frozen per-recipe-line cost snapshot of a COMPLETED production (Sprint 11b). One
+ * immutable row per production line, written once inside the completing transaction
+ * from the live `recipeCost`/`componentCost` at that moment — never updated again, so
+ * a later recipe rename/retrash/price change can NEVER move a completed document.
+ *
+ * `recipe_name` is the historical render source; `recipe_id` is provenance only (NO FK
+ * to live `recipes`). The cost columns are MANAGER-ONLY on read — the kitchen
+ * completed-DTO projection omits them by key absence (F4). RULE #1: carries
+ * `organization_id`, in `businessTables` → standard org_isolation RLS. Immutability is
+ * enforced by the data layer never UPDATE-ing these rows, NOT by an append-only policy.
+ */
+export const productionRecipeSnapshots = pgTable(
+  'production_recipe_snapshots',
+  {
+    id: id(),
+    organizationId: orgId(),
+    productionId: text('production_id').notNull(),
+    // Provenance (no live FK) + frozen render name.
+    recipeId: text('recipe_id').notNull(),
+    recipeName: text('recipe_name').notNull(),
+    // Portions completed for this recipe line (same domain as production_items).
+    plannedQty: integer('planned_qty').notNull(),
+    // Frozen money (manager-only on read): per-portion cost + line total at completion.
+    costPerPortionCents: integer('cost_per_portion_cents').notNull(),
+    lineCostCents: integer('line_cost_cents').notNull(),
+  },
+  (t) => [
+    index('production_recipe_snapshots_org_production_idx').on(
+      t.organizationId,
+      t.productionId,
+    ),
+    check(
+      'production_recipe_snapshots_planned_qty_chk',
+      sql`${t.plannedQty} between 1 and 100000`,
+    ),
+    check(
+      'production_recipe_snapshots_cost_chk',
+      sql`${t.costPerPortionCents} >= 0 and ${t.lineCostCents} >= 0`,
+    ),
+    // Same-org line; cascades when the production is purged (drafts/planned only).
+    foreignKey({
+      columns: [t.organizationId, t.productionId],
+      foreignColumns: [productions.organizationId, productions.id],
+      name: 'production_recipe_snapshots_production_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Frozen per-ingredient consumption snapshot of a COMPLETED production (Sprint 11b).
+ * One immutable row per consumed ingredient — the aggregated requirement at
+ * completion. `qty_canonical` is the kitchen-visible mise-en-place readout;
+ * `movement_id` links the F1 OUT movement posted for this ingredient (NULL for a
+ * financial-only completion dated before stock control, D4).
+ *
+ * `ingredient_name`/`dimension` are the historical render source; `ingredient_id` is
+ * provenance only (NO FK to live `ingredients`). A ledger-posting completion pins the
+ * live ingredient through the D6 purge guard; a financial-only snapshot stays readable
+ * even if the ingredient is later purged. RULE #1: in `businessTables` → org_isolation
+ * RLS. Immutability is enforced by the data layer, not an append-only policy.
+ */
+export const productionConsumptions = pgTable(
+  'production_consumptions',
+  {
+    id: id(),
+    organizationId: orgId(),
+    productionId: text('production_id').notNull(),
+    // Provenance (no live FK) + frozen render fields.
+    ingredientId: text('ingredient_id').notNull(),
+    ingredientName: text('ingredient_name').notNull(),
+    dimension: text('dimension', {
+      enum: ['weight', 'volume', 'count'],
+    }).notNull(),
+    // Frozen canonical requirement (g / ml / count) — kitchen-visible.
+    qtyCanonical: numeric('qty_canonical', { precision: 12, scale: 2 }).notNull(),
+    // The F1 OUT movement posted for this ingredient; NULL when stock_moved=false (D4).
+    movementId: text('movement_id'),
+  },
+  (t) => [
+    index('production_consumptions_org_production_idx').on(
+      t.organizationId,
+      t.productionId,
+    ),
+    // One consumption row per ingredient per production (aggregated, D5).
+    unique('production_consumptions_org_production_ingredient_key').on(
+      t.organizationId,
+      t.productionId,
+      t.ingredientId,
+    ),
+    // One consumption row owns at most one posted OUT movement. Partial so the many
+    // financial-only (movement_id NULL) rows don't collide.
+    uniqueIndex('production_consumptions_org_movement_key')
+      .on(t.organizationId, t.movementId)
+      .where(sql`${t.movementId} is not null`),
+    check('production_consumptions_qty_chk', sql`${t.qtyCanonical} > 0`),
+    // Same-org line; cascades when the production is purged (drafts/planned only).
+    foreignKey({
+      columns: [t.organizationId, t.productionId],
+      foreignColumns: [productions.organizationId, productions.id],
+      name: 'production_consumptions_production_fk',
+    }).onDelete('cascade'),
+    // Nullable composite FK to the posted movement (same-org). ON DELETE restrict so a
+    // posted OUT movement can't vanish while a completed snapshot points at it; the D6
+    // purge guard keeps the ingredient (and thus its movements) from being purged.
+    // NULL movement_id rows skip the FK (MATCH SIMPLE) — financial-only completions.
+    foreignKey({
+      columns: [t.organizationId, t.movementId],
+      foreignColumns: [inventoryMovements.organizationId, inventoryMovements.id],
+      name: 'production_consumptions_movement_fk',
+    }).onDelete('restrict'),
   ],
 );
 
@@ -1912,6 +2066,16 @@ export type NewProduction = InferInsertModel<typeof productions>;
 export type ProductionStatus = Production['status'];
 export type ProductionItem = InferSelectModel<typeof productionItems>;
 export type NewProductionItem = InferInsertModel<typeof productionItems>;
+export type ProductionRecipeSnapshot = InferSelectModel<
+  typeof productionRecipeSnapshots
+>;
+export type NewProductionRecipeSnapshot = InferInsertModel<
+  typeof productionRecipeSnapshots
+>;
+export type ProductionConsumption = InferSelectModel<typeof productionConsumptions>;
+export type NewProductionConsumption = InferInsertModel<
+  typeof productionConsumptions
+>;
 export type OrganizationSettings = InferSelectModel<typeof organizationSettings>;
 export type NewOrganizationSettings = InferInsertModel<typeof organizationSettings>;
 export type MeasurementSystem = OrganizationSettings['measurementSystem'];
@@ -1972,6 +2136,10 @@ export const businessTables = [
   // Production plans + their lines (Sprint 11a) — standard org_isolation RLS.
   'productions',
   'production_items',
+  // Frozen completion snapshots (Sprint 11b) — standard org_isolation RLS. NOT
+  // append-only: immutability is enforced by the data layer, not by RLS.
+  'production_recipe_snapshots',
+  'production_consumptions',
   'inventory_movements',
   // Ingredient price history (Sprint F2) — standard org_isolation RLS.
   'ingredient_price_history',

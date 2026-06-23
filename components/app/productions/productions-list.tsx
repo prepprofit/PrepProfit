@@ -7,9 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
-const STATUS_VARIANT: Record<ProductionStatus, 'neutral' | 'accent'> = {
+const STATUS_VARIANT: Record<
+  ProductionStatus,
+  'neutral' | 'accent' | 'positive'
+> = {
   draft: 'neutral',
   planned: 'accent',
+  completed: 'positive',
+  voided: 'neutral',
 };
 
 export type ListProduction = {
