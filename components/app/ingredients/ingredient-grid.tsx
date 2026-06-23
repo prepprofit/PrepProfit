@@ -11,6 +11,7 @@ import {
 } from '@tanstack/react-table';
 import type { Ingredient } from '@/lib/db/schema';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
+import { isLowStock } from '@/lib/calculations/inventory';
 import { centsToAmountInput, parseMoneyToCents } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -27,6 +28,7 @@ import {
 } from '@/app/(app)/ingredients/actions';
 import { IngredientAllergenDialog } from '@/components/app/ingredients/ingredient-allergen-dialog';
 import { IngredientSupplierDialog } from '@/components/app/ingredients/ingredient-supplier-dialog';
+import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 import type { AllergenTag } from '@/lib/data/allergens';
 import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
 
@@ -96,6 +98,12 @@ type GridMeta = {
   onEditAllergens: (id: string) => void;
   /** True when the ingredient's allergens have NOT been reviewed yet. */
   unreviewedAllergens: (id: string) => boolean;
+  /**
+   * Manager-only (Sprint 6 D7): true when a "reorder from ingredient" task may be
+   * offered for this row — i.e. the viewer sees costs AND the row is at/below its
+   * low-stock threshold. The reorder task itself is money-free.
+   */
+  canReorder: (id: string) => boolean;
   dimensionLabel: (d: Dimension) => string;
   deleteLabel: string;
   savedLabel: string;
@@ -247,6 +255,21 @@ export function IngredientGrid({
   const supplierName = React.useCallback(
     (id: string) => rows.find((r) => r.id === id)?.supplier ?? null,
     [rows],
+  );
+  const canReorder = React.useCallback(
+    (id: string) => {
+      // Reorder is manager-only (the action returns FORBIDDEN otherwise), so we
+      // never render a dead button for kitchen. Scope it to genuinely low-stock
+      // rows — the semantics of a reorder task.
+      if (!canSeeCosts) return false;
+      const row = rows.find((r) => r.id === id);
+      if (!row) return false;
+      return isLowStock(
+        Number(row.stockQuantity),
+        row.lowStockThreshold != null ? Number(row.lowStockThreshold) : null,
+      );
+    },
+    [rows, canSeeCosts],
   );
 
   const confirmDelete = React.useCallback(() => {
@@ -431,6 +454,9 @@ export function IngredientGrid({
           const meta = table.options.meta as GridMeta;
           return (
             <div className="flex items-center justify-end gap-1">
+              {meta.canReorder(row.original.id) && (
+                <AddToTaskListMenu kind="reorder" sourceId={row.original.id} />
+              )}
               {meta.savedId === row.original.id && (
                 <span
                   className="inline-flex items-center gap-1 text-xs text-brand-700 dark:text-brand-300"
@@ -494,6 +520,7 @@ export function IngredientGrid({
       onDelete: requestDelete,
       onEditAllergens: editAllergens,
       unreviewedAllergens,
+      canReorder,
       dimensionLabel,
       deleteLabel: t('actions.delete'),
       savedLabel: t('saved'),
