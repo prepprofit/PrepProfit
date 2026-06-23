@@ -39,6 +39,11 @@
     "ALLERGEN_CANNOT_DOWNGRADE": "A recipe allergen can only be added or raised, never lowered or removed. Allergens from ingredients can't be suppressed here.",
     "MENU_RECIPE_INVALID": "One of the menu's recipes is missing or in the trash. Remove or replace that line, then save again.",
     "RECIPE_IN_MENU": "This recipe is used in a menu, so it can't be deleted forever yet. Remove it from the menu (or delete the menu) first.",
+    "PRODUCTION_RECIPE_INVALID": "One of the production's recipes is missing or in the trash. Remove or replace that line, then save again.",
+    "PRODUCTION_NOT_EDITABLE": "This production is planned and read-only. Reopen it to draft before editing.",
+    "PRODUCTION_INCOMPLETE": "This production isn't ready to plan yet. Set a planned date and make sure every recipe is available.",
+    "PRODUCTION_STALE": "Someone else changed this production while you were editing. Reload and try again.",
+    "RECIPE_IN_PRODUCTION": "This recipe is used in a production, so it can't be deleted forever yet. Remove it from the production (or delete the production) first.",
     "SUPPLIER_IN_USE": "This supplier is the default for one or more ingredients, so it can't be archived. Change or remove those ingredient suppliers first.",
     "SUPPLIER_INACTIVE": "That supplier is archived. Reactivate it before assigning it to an ingredient.",
     "PACK_UNIT_MISMATCH": "That pack unit doesn't match the ingredient's measurement type. Use a weight unit for a weight ingredient, a volume unit for a volume one, and so on.",
@@ -70,6 +75,7 @@
     "dashboard": "Dashboard",
     "recipes": "Recipes",
     "menus": "Menus",
+    "productions": "Production",
     "ingredients": "Ingredients",
     "inventory": "Inventory",
     "financials": "Financials",
@@ -119,7 +125,8 @@
       "customers": "Customers",
       "suppliers": "Suppliers",
       "purchaseOrders": "Purchase orders",
-      "menus": "Menus"
+      "menus": "Menus",
+      "productions": "Production"
     }
   },
   "theme": {
@@ -184,6 +191,81 @@
     "errors": {
       "nameRequired": "Give the menu a name.",
       "noItems": "Add at least one recipe to the menu."
+    }
+  },
+  "productions": {
+    "title": "Production",
+    "subtitle": "Plan a batch of recipes and see the ingredients you'll need against what's on hand.",
+    "empty": "No production plans yet. Create one to work out your mise-en-place.",
+    "fallbackLabel": "Production",
+    "saved": "Saved",
+    "itemCount": "{count, plural, =0 {No recipes} one {# recipe} other {# recipes}}",
+    "portions": "{count, plural, one {# portion} other {# portions}}",
+    "unavailableLine": "Unavailable",
+    "status": {
+      "draft": "Draft",
+      "planned": "Planned"
+    },
+    "actions": {
+      "new": "New production",
+      "back": "Back",
+      "create": "Create production",
+      "save": "Save changes",
+      "delete": "Move to trash",
+      "plan": "Mark as planned",
+      "reopen": "Reopen to draft"
+    },
+    "incomplete": {
+      "badge": "Incomplete",
+      "kitchenBody": "One or more recipes in this production are unavailable (in the trash). The ingredient list is a partial preview and isn't ready to plan.",
+      "managerBody": "One or more recipes are unavailable (in the trash). The ingredient list and cost are incomplete until you remove or restore them.",
+      "preview": "Partial preview — not a final list",
+      "overflow": "The requirement is too large to calculate. Lower the planned portions."
+    },
+    "plannedView": {
+      "title": "This production is planned",
+      "body": "It's read-only. Reopen it to draft to change recipes, portions or the date."
+    },
+    "composition": {
+      "title": "Recipes",
+      "recipe": "Recipe",
+      "quantity": "Portions",
+      "empty": "No recipes in this production yet. Add one below.",
+      "add": "Add",
+      "allAdded": "All recipes added",
+      "select": "Select a recipe…",
+      "remove": "Remove"
+    },
+    "requirements": {
+      "title": "Ingredients needed",
+      "ingredient": "Ingredient",
+      "needed": "Needed",
+      "onHand": "On hand",
+      "shortfall": "Shortfall",
+      "empty": "Add recipes and portions to see the ingredients you'll need.",
+      "calculatedAt": "Calculated {time}",
+      "notReserved": "On-hand stock is a live snapshot — it isn't reserved, and may change as you reload."
+    },
+    "cost": {
+      "title": "Estimated cost",
+      "label": "Production cost",
+      "unavailable": "—"
+    },
+    "fields": {
+      "reference": "Reference",
+      "referencePlaceholder": "e.g. Saturday prep",
+      "plannedFor": "Planned date",
+      "notes": "Notes"
+    },
+    "placeholders": {
+      "notes": "Internal notes about this production…"
+    },
+    "deleteConfirm": {
+      "title": "Move production to trash?",
+      "body": "{name} will be moved to the trash. You can restore it within 30 days."
+    },
+    "errors": {
+      "noItems": "Add at least one recipe to the production."
     }
   },
   "suppliers": {
@@ -626,6 +708,7 @@
     "sections": {
       "recipes": "Recipes",
       "menus": "Menus",
+      "productions": "Production plans",
       "ingredients": "Ingredients",
       "transactions": "Transactions",
       "invoices": "Invoices",

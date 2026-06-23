@@ -5,6 +5,8 @@ import {
   invoices,
   menuItems,
   menus,
+  productionItems,
+  productions,
   purchaseOrderItems,
   purchaseOrders,
   receiptItems,
@@ -24,6 +26,7 @@ import type { TenantClient } from '@/lib/db/tenant';
  */
 export type PurgeResult = {
   menus: number;
+  productions: number;
   recipes: number;
   ingredients: number;
   transactions: number;
@@ -36,9 +39,10 @@ export async function purgeExpired(
   organizationId: string,
   cutoff: Date,
 ): Promise<PurgeResult> {
-  // Menus first (Sprint 10): deleting an expired menu cascades its menu_items
-  // (composite FK), releasing any recipe those lines pinned via the restrict FK —
-  // so a recipe whose ONLY menu reference just expired becomes purgeable below.
+  // Menus + productions first (Sprint 10 / 11a): deleting an expired menu or
+  // production cascades its line items (composite FKs), releasing any recipe those
+  // lines pinned via the restrict FK — so a recipe whose ONLY menu/production
+  // reference just expired becomes purgeable below.
   const purgedMenus = await db
     .delete(menus)
     .where(
@@ -50,9 +54,20 @@ export async function purgeExpired(
     )
     .returning({ id: menus.id });
 
-  // A recipe still referenced by ANY surviving menu_item (an active or not-yet-
-  // expired menu) is KEPT — the `menu_items_recipe_fk` restrict would otherwise
-  // block its delete (Sprint 10, D5). This pin defines the purgeable-recipe
+  const purgedProductions = await db
+    .delete(productions)
+    .where(
+      and(
+        eq(productions.organizationId, organizationId),
+        isNotNull(productions.deletedAt),
+        lte(productions.deletedAt, cutoff),
+      ),
+    )
+    .returning({ id: productions.id });
+
+  // A recipe still referenced by ANY surviving menu_item OR production_item (an
+  // active or not-yet-expired menu/production) is KEPT — the restrict FKs would
+  // otherwise block its delete (D4/D5). Both pins define the purgeable-recipe
   // candidate set, used IDENTICALLY for the transaction unlink and the delete, so a
   // pinned recipe never loses its transaction links as a side effect.
   const menuPin = notExists(
@@ -66,11 +81,23 @@ export async function purgeExpired(
         ),
       ),
   );
+  const productionPin = notExists(
+    db
+      .select({ one: sql`1` })
+      .from(productionItems)
+      .where(
+        and(
+          eq(productionItems.organizationId, organizationId),
+          eq(productionItems.recipeId, recipes.id),
+        ),
+      ),
+  );
   const purgeableRecipeWhere = and(
     eq(recipes.organizationId, organizationId),
     isNotNull(recipes.deletedAt),
     lte(recipes.deletedAt, cutoff),
     menuPin,
+    productionPin,
   );
 
   // Unlink any transaction pointing at a recipe about to be purged — the
@@ -262,6 +289,7 @@ export async function purgeExpired(
 
   return {
     menus: purgedMenus.length,
+    productions: purgedProductions.length,
     recipes: purgedRecipes.length,
     ingredients: purgedIngredients.length,
     transactions: purgedTransactions.length,

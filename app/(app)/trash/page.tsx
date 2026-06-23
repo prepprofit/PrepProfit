@@ -3,6 +3,7 @@ import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listTrashedRecipes } from '@/lib/data/recipes';
 import { listTrashedMenus } from '@/lib/data/menus';
+import { listTrashedProductions } from '@/lib/data/productions';
 import { listTrashedIngredients } from '@/lib/data/ingredients';
 import { listTrashedTransactions } from '@/lib/data/transactions';
 import { listTrashedCustomers } from '@/lib/data/customers';
@@ -22,16 +23,25 @@ export default async function TrashPage() {
   const t = await getTranslations('trash');
   const organizationId = await getOrgId();
 
-  const [recipes, menus, ingredients, transactions, customers, invoices, settings] =
-    await Promise.all([
-      withOrg(organizationId, (tx) => listTrashedRecipes(tx, organizationId)),
-      withOrg(organizationId, (tx) => listTrashedMenus(tx, organizationId)),
-      withOrg(organizationId, (tx) => listTrashedIngredients(tx, organizationId)),
-      withOrg(organizationId, (tx) => listTrashedTransactions(tx, organizationId)),
-      withOrg(organizationId, (tx) => listTrashedCustomers(tx, organizationId)),
-      withOrg(organizationId, (tx) => listTrashedInvoices(tx, organizationId)),
-      getOrgSettings(),
-    ]);
+  const [
+    recipes,
+    menus,
+    productions,
+    ingredients,
+    transactions,
+    customers,
+    invoices,
+    settings,
+  ] = await Promise.all([
+    withOrg(organizationId, (tx) => listTrashedRecipes(tx, organizationId)),
+    withOrg(organizationId, (tx) => listTrashedMenus(tx, organizationId)),
+    withOrg(organizationId, (tx) => listTrashedProductions(tx, organizationId)),
+    withOrg(organizationId, (tx) => listTrashedIngredients(tx, organizationId)),
+    withOrg(organizationId, (tx) => listTrashedTransactions(tx, organizationId)),
+    withOrg(organizationId, (tx) => listTrashedCustomers(tx, organizationId)),
+    withOrg(organizationId, (tx) => listTrashedInvoices(tx, organizationId)),
+    getOrgSettings(),
+  ]);
 
   // Compute "days left" on the server so the client gets a plain, lean shape.
   const now = new Date();
@@ -48,6 +58,16 @@ export default async function TrashPage() {
   }) => ({
     id: r.id,
     name: `${formatMoney(r.amountCents, settings.currency)} · ${r.occurredOn}`,
+    daysLeft: r.deletedAt ? daysLeft(r.deletedAt, now) : 0,
+  });
+  const toProductionItem = (r: {
+    id: string;
+    reference: string | null;
+    plannedFor: string | null;
+    deletedAt: Date | null;
+  }) => ({
+    id: r.id,
+    name: r.reference ?? r.plannedFor ?? t('sections.productions'),
     daysLeft: r.deletedAt ? daysLeft(r.deletedAt, now) : 0,
   });
   const toInvoiceItem = (r: {
@@ -71,6 +91,7 @@ export default async function TrashPage() {
       <TrashView
         recipes={recipes.map(toItem)}
         menus={menus.map(toItem)}
+        productions={productions.map(toProductionItem)}
         ingredients={ingredients.map(toItem)}
         transactions={transactions.map(toTransactionItem)}
         customers={customers.map(toItem)}

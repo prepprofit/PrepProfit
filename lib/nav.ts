@@ -12,6 +12,9 @@ export const navGroups = [
       // Menus / combos (Sprint 10) — visible to BOTH roles (kitchen sees an
       // operational, money-free view); lives in Operations near Recipes.
       { key: 'menus', href: '/menus' },
+      // Production planning (Sprint 11a) — visible to BOTH roles (kitchen plans a
+      // money-free batch; manager also sees cost). Operations group.
+      { key: 'productions', href: '/productions' },
       { key: 'ingredients', href: '/ingredients' },
       { key: 'inventory', href: '/inventory' },
     ],

@@ -488,6 +488,127 @@ export const menuItems = pgTable(
 );
 
 /**
+ * Production plans (Sprint 11a, module — production planning). A production is a
+ * batch plan: `recipes × planned portions`. From it the app DERIVES on read the
+ * aggregated canonical ingredient requirement (mise-en-place), the on-hand
+ * shortfall, and — for managers only — the estimated production cost. NOTHING is
+ * stored: no requirement, no cost, no inventory movement. 11a is PLANNING, not
+ * posting (completion + frozen snapshots + F1 OUT movements are Sprint 11b).
+ *
+ * Lifecycle (11a): draft ⇄ planned (both PRE-POST operational states), plus
+ * soft-delete + 30-day Trash. `status` is CHECK-constrained to `draft|planned`
+ * here; 11b widens it to add `completed|voided`. `planned_for` is a bare calendar
+ * date (no tz); it is REQUIRED by the transactional `plan` transition, not by a row
+ * CHECK, so an incomplete draft can still be saved. RULE #1: carries
+ * `organization_id`, in `businessTables` → standard org_isolation RLS. pg_trgm GIN
+ * on `reference` AND `notes` powers ⌘K (D9 searches both). `reference` is optional,
+ * NON-UNIQUE free text — never a counter.
+ */
+export const productions = pgTable(
+  'productions',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // Optional free-text label (trimmed, max 200 at the action boundary). Not unique.
+    reference: text('reference'),
+    notes: text('notes'),
+    status: text('status', { enum: ['draft', 'planned'] })
+      .notNull()
+      .default('draft'),
+    // Bare calendar date ('YYYY-MM-DD', no time, no tz). NULL while an incomplete
+    // draft; the `plan` transition requires it.
+    plannedFor: date('planned_for', { mode: 'string' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL` (Trash pattern).
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('productions_org_idx').on(t.organizationId),
+    // Serves the /trash listing and keeps active-row filtering index-friendly.
+    index('productions_org_deleted_idx').on(t.organizationId, t.deletedAt),
+    // Serves the list view (status + planned date ordering/filtering).
+    index('productions_org_status_planned_idx').on(
+      t.organizationId,
+      t.status,
+      t.plannedFor,
+    ),
+    // FK target for production_items' composite (organization_id, production_id).
+    unique('productions_org_id_key').on(t.organizationId, t.id),
+    // pg_trgm GIN indexes for typo-tolerant global search (D9 matches both columns).
+    index('productions_reference_trgm_idx').using(
+      'gin',
+      t.reference.op('gin_trgm_ops'),
+    ),
+    index('productions_notes_trgm_idx').using('gin', t.notes.op('gin_trgm_ops')),
+    // 11a only knows two statuses; 11b widens this CHECK in the same migration that
+    // adds snapshots + posting invariants. Do NOT pre-create unreachable states.
+    check(
+      'productions_status_chk',
+      sql.raw("status IN ('draft', 'planned')"),
+    ),
+  ],
+);
+
+/**
+ * Production line items (Sprint 11a). Each line places one recipe in a production at
+ * an integer `planned_qty` of PORTIONS (1..100000). A recipe may appear at most ONCE
+ * per production (unique below) — D2. Raw ingredients, menus and nested recipes are
+ * out of scope (D1).
+ *
+ * The recipe link is ON DELETE restrict: ANY surviving production_item blocks a
+ * recipe PURGE (`RECIPE_IN_PRODUCTION`), regardless of the production's status or
+ * Trash state — a deliberate catalogue-integrity rule (D4). A recipe may still be
+ * soft-deleted (trashed): the line is kept and the explosion becomes INCOMPLETE — a
+ * trashed component never silently becomes a zero requirement/cost (D5).
+ */
+export const productionItems = pgTable(
+  'production_items',
+  {
+    id: id(),
+    organizationId: orgId(),
+    productionId: text('production_id').notNull(),
+    recipeId: text('recipe_id').notNull(),
+    // Portions of this recipe planned (1..100000).
+    plannedQty: integer('planned_qty').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    index('production_items_org_production_idx').on(
+      t.organizationId,
+      t.productionId,
+    ),
+    index('production_items_org_recipe_idx').on(t.organizationId, t.recipeId),
+    // One row per recipe per production (multiples go through `planned_qty`).
+    unique('production_items_org_production_recipe_key').on(
+      t.organizationId,
+      t.productionId,
+      t.recipeId,
+    ),
+    check(
+      'production_items_planned_qty_chk',
+      sql`${t.plannedQty} between 1 and 100000`,
+    ),
+    check('production_items_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    // Composite FK forces the line to share its production's organization_id;
+    // deleting a production cascades its lines.
+    foreignKey({
+      columns: [t.organizationId, t.productionId],
+      foreignColumns: [productions.organizationId, productions.id],
+      name: 'production_items_production_fk',
+    }).onDelete('cascade'),
+    // Composite FK to the recipe (same-tenant). ON DELETE restrict: a recipe in any
+    // production is purge-blocked (D4); a soft-delete keeps the line and marks the
+    // explosion incomplete.
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'production_items_recipe_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
  * Append-only inventory ledger (Sprint F1). Each row is a signed canonical change
  * to an ingredient's stock (positive = in, negative = out).
  * `ingredients.stock_quantity` is the running total, updated in the SAME
@@ -1786,6 +1907,11 @@ export type Menu = InferSelectModel<typeof menus>;
 export type NewMenu = InferInsertModel<typeof menus>;
 export type MenuItem = InferSelectModel<typeof menuItems>;
 export type NewMenuItem = InferInsertModel<typeof menuItems>;
+export type Production = InferSelectModel<typeof productions>;
+export type NewProduction = InferInsertModel<typeof productions>;
+export type ProductionStatus = Production['status'];
+export type ProductionItem = InferSelectModel<typeof productionItems>;
+export type NewProductionItem = InferInsertModel<typeof productionItems>;
 export type OrganizationSettings = InferSelectModel<typeof organizationSettings>;
 export type NewOrganizationSettings = InferInsertModel<typeof organizationSettings>;
 export type MeasurementSystem = OrganizationSettings['measurementSystem'];
@@ -1843,6 +1969,9 @@ export const businessTables = [
   // Menus / combos + their lines (Sprint 10) — standard org_isolation RLS.
   'menus',
   'menu_items',
+  // Production plans + their lines (Sprint 11a) — standard org_isolation RLS.
+  'productions',
+  'production_items',
   'inventory_movements',
   // Ingredient price history (Sprint F2) — standard org_isolation RLS.
   'ingredient_price_history',

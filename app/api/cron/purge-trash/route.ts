@@ -53,6 +53,7 @@ export async function GET(req: Request): Promise<NextResponse> {
   let offset = 0;
   let orgs = 0;
   let purgedMenus = 0;
+  let purgedProductions = 0;
   let purgedRecipes = 0;
   let purgedIngredients = 0;
   let purgedTransactions = 0;
@@ -74,6 +75,7 @@ export async function GET(req: Request): Promise<NextResponse> {
         // atomically. Actor is the org-less cron → `system` role, null user id.
         if (
           purged.menus +
+            purged.productions +
             purged.recipes +
             purged.ingredients +
             purged.transactions +
@@ -98,6 +100,7 @@ export async function GET(req: Request): Promise<NextResponse> {
         return purged;
       });
       purgedMenus += result.menus;
+      purgedProductions += result.productions;
       purgedRecipes += result.recipes;
       purgedIngredients += result.ingredients;
       purgedTransactions += result.transactions;
@@ -155,6 +158,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     cutoff: cutoff.toISOString(),
     orgs,
     purgedMenus,
+    purgedProductions,
     purgedRecipes,
     purgedIngredients,
     purgedTransactions,

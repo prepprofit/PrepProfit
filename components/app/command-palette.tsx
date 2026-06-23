@@ -9,6 +9,7 @@ import {
   Carrot,
   ChefHat,
   ClipboardList,
+  CookingPot,
   FileText,
   LayoutGrid,
   Loader2,
@@ -48,6 +49,7 @@ const GROUP_ICON: Record<
 > = {
   recipe: ChefHat,
   menu: BookOpen,
+  production: CookingPot,
   ingredient: Carrot,
   transaction: Receipt,
   invoice: FileText,
@@ -153,6 +155,7 @@ export function CommandPalette({
   const GROUP_LABEL: Record<SearchEntityType, string> = {
     recipe: t('groups.recipes'),
     menu: t('groups.menus'),
+    production: t('groups.productions'),
     ingredient: t('groups.ingredients'),
     transaction: t('groups.transactions'),
     invoice: t('groups.invoices'),

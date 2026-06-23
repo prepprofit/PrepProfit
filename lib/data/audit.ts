@@ -72,6 +72,15 @@ export type AuditAction =
   | 'menu.create'
   | 'menu.update'
   | 'menu.delete'
+  // Production plans (Sprint 11a, kitchen OR manager). `.create/.update/.plan/.reopen/
+  // .delete` = the pre-post lifecycle (restore/purge use the generic `trash.*`).
+  // metadata = ids, item count, total planned portions, status transition and changed
+  // field names only — NEVER cost, price or any ingredient financial field.
+  | 'production.create'
+  | 'production.update'
+  | 'production.plan'
+  | 'production.reopen'
+  | 'production.delete'
   // Kitchen-visible allergen matrix document (Sprint 9) — money-free; metadata is
   // recipe count only, never costs.
   | 'export.allergenMatrixPdf'

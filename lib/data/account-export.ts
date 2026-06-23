@@ -10,6 +10,8 @@ import {
   recipeAllergenOverrides,
   menus,
   menuItems,
+  productions,
+  productionItems,
   inventoryMovements,
   ingredientPriceHistory,
   suppliers,
@@ -60,7 +62,8 @@ import {
 // v8 (Sprint 8b): added `receipts` + `receiptItems`; `ingredientPriceHistory` rows
 // now carry `source_receipt_item_id` (flows through `select()`).
 // v9 (Sprint 10): added `menus` + `menuItems`.
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 9;
+// v10 (Sprint 11a): added `productions` + `productionItems`.
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 10;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -85,6 +88,8 @@ export async function buildOrgDataExport(
     ['recipeAllergenOverrides', recipeAllergenOverrides],
     ['menus', menus],
     ['menuItems', menuItems],
+    ['productions', productions],
+    ['productionItems', productionItems],
     ['inventoryMovements', inventoryMovements],
     ['ingredientPriceHistory', ingredientPriceHistory],
     ['suppliers', suppliers],

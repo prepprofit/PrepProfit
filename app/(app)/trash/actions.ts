@@ -12,11 +12,12 @@ import {
   lockRecipeReferencedIngredients,
   restoreRecipe,
 } from '@/lib/data/recipes';
+import { purgeMenu, restoreMenu } from '@/lib/data/menus';
+import { purgeRecipeWithGuards } from '@/lib/data/recipe-purge';
 import {
-  purgeMenu,
-  purgeRecipeWithMenuGuard,
-  restoreMenu,
-} from '@/lib/data/menus';
+  purgeProduction,
+  restoreProduction,
+} from '@/lib/data/productions';
 import {
   getTransactionAnyState,
   purgeTransaction,
@@ -42,6 +43,7 @@ function revalidateTrash(): void {
   revalidatePath('/recipes');
   revalidatePath('/ingredients');
   revalidatePath('/menus');
+  revalidatePath('/productions');
   revalidatePath('/dashboard');
 }
 
@@ -124,7 +126,7 @@ export async function purgeRecipeAction(id: string): Promise<ActionResult> {
   // never nulls a referencing transaction. Remove the menu line (or purge the
   // menu) first.
   const outcome = await withOrg(organizationId, async (tx) => {
-    const status = await purgeRecipeWithMenuGuard(tx, organizationId, id);
+    const status = await purgeRecipeWithGuards(tx, organizationId, id);
     if (status !== 'ok') return status;
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'trash.purge',
@@ -134,6 +136,7 @@ export async function purgeRecipeAction(id: string): Promise<ActionResult> {
     return 'ok' as const;
   });
   if (outcome === 'in_menu') return { ok: false, code: 'RECIPE_IN_MENU' };
+  if (outcome === 'in_production') return { ok: false, code: 'RECIPE_IN_PRODUCTION' };
   // It can unlink transactions, so refresh the financial views too.
   revalidateTrashFinance();
   return { ok: true, data: undefined };
@@ -170,6 +173,44 @@ export async function purgeMenuAction(id: string): Promise<ActionResult> {
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'trash.purge',
       entityType: 'menu',
+      entityId: id,
+    });
+  });
+  revalidateTrash();
+  return { ok: true, data: undefined };
+}
+
+/** Restore a trashed production — manager-only (Sprint 11a). Keeps its prior status. */
+export async function restoreProductionAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  const row = await withOrg(organizationId, async (tx) => {
+    const restored = await restoreProduction(tx, organizationId, id);
+    if (restored) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'trash.restore',
+        entityType: 'production',
+        entityId: id,
+      });
+    }
+    return restored;
+  });
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  revalidateTrash();
+  return { ok: true, data: undefined };
+}
+
+/** Permanently delete a trashed production — manager-only (Sprint 11a). Items cascade. */
+export async function purgeProductionAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  await withOrg(organizationId, async (tx) => {
+    await purgeProduction(tx, organizationId, id);
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'trash.purge',
+      entityType: 'production',
       entityId: id,
     });
   });

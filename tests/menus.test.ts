@@ -24,11 +24,11 @@ import {
   listManagerMenus,
   listTrashedMenus,
   purgeMenu,
-  purgeRecipeWithMenuGuard,
   restoreMenu,
   softDeleteMenu,
   updateMenu,
 } from '@/lib/data/menus';
+import { purgeRecipeWithGuards } from '@/lib/data/recipe-purge';
 import { purgeExpired } from '@/lib/data/trash';
 import { purgeCutoff, TRASH_RETENTION_DAYS } from '@/lib/trash';
 
@@ -231,7 +231,7 @@ describe('menus data layer', () => {
       .returning();
 
     expect(await countMenusUsingRecipe(db, ORG_A, aId)).toBe(1);
-    const blocked = await purgeRecipeWithMenuGuard(db, ORG_A, aId);
+    const blocked = await purgeRecipeWithGuards(db, ORG_A, aId);
     expect(blocked).toBe('in_menu');
 
     // The transaction still points at the recipe — no side effect on a blocked purge.
@@ -244,7 +244,7 @@ describe('menus data layer', () => {
     // After the menu is purged, the recipe purge succeeds (and nulls the txn link).
     await softDeleteMenu(db, ORG_A, created.menu.id);
     await purgeMenu(db, ORG_A, created.menu.id);
-    expect(await purgeRecipeWithMenuGuard(db, ORG_A, aId)).toBe('ok');
+    expect(await purgeRecipeWithGuards(db, ORG_A, aId)).toBe('ok');
     const [unlinked] = await db
       .select({ recipeId: transactionsTable.recipeId })
       .from(transactionsTable)

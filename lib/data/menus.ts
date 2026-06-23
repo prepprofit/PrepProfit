@@ -22,7 +22,7 @@ import {
   type MenuCostLine,
 } from '@/lib/calculations/menu';
 import { loadRecipeAllergensByIds } from '@/lib/data/allergens';
-import { listRecipesWithLines, purgeRecipe } from '@/lib/data/recipes';
+import { listRecipesWithLines } from '@/lib/data/recipes';
 
 /**
  * Menus / combos data layer (Sprint 10). Every function is org-scoped (RULE #1)
@@ -794,22 +794,4 @@ export async function countMenusUsingRecipe(
       ),
     );
   return rows[0]?.value ?? 0;
-}
-
-/**
- * Manual recipe purge with the menu guard (Sprint 10). Checks the menu reference
- * FIRST: if any menu line references the recipe it returns `in_menu` with ZERO side
- * effects (in particular it does NOT null referencing transactions). Otherwise it
- * delegates to {@link purgeRecipe}. Runs in the caller's `withOrg` transaction.
- */
-export async function purgeRecipeWithMenuGuard(
-  db: TenantClient,
-  organizationId: string,
-  id: string,
-): Promise<'ok' | 'in_menu'> {
-  if ((await countMenusUsingRecipe(db, organizationId, id)) > 0) {
-    return 'in_menu';
-  }
-  await purgeRecipe(db, organizationId, id);
-  return 'ok';
 }

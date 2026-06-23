@@ -5,6 +5,7 @@ import {
 } from '@/lib/allergens/catalog';
 import { maxPresence } from '@/lib/calculations/allergens';
 import type { RecipeAllergenRollup } from '@/lib/calculations/allergens';
+import { componentCost } from '@/lib/calculations/componentCost';
 
 /**
  * Menu / combo aggregation (Sprint 10). Pure functions, no I/O — mirror
@@ -42,39 +43,27 @@ export type MenuCostResult =
  * unavailable line (or a non-finite/negative/overflowing total) yields an
  * incomplete result. An empty line set is defensively incomplete (a saved menu
  * always has ≥ 1 item; an empty input is never a valid "free" menu).
+ *
+ * Backwards-compatible adapter over the shared {@link componentCost} (Sprint 11a,
+ * D10) — Menus and Production must agree on complete-or-null + safe-integer
+ * behaviour. The only difference is naming: `recipeId`/`unavailableRecipeIds`.
  */
 export function menuCost(lines: MenuCostLine[]): MenuCostResult {
-  const unavailable: string[] = [];
-  for (const line of lines) {
-    if (
-      line.costPerPortionCents === null ||
-      !Number.isFinite(line.costPerPortionCents) ||
-      !Number.isInteger(line.quantity) ||
-      line.quantity < 1
-    ) {
-      unavailable.push(line.recipeId);
-    }
+  const result = componentCost(
+    lines.map((line) => ({
+      id: line.recipeId,
+      costPerPortionCents: line.costPerPortionCents,
+      quantity: line.quantity,
+    })),
+  );
+  if (result.complete) {
+    return { complete: true, costCents: result.costCents, unavailableRecipeIds: [] };
   }
-
-  if (lines.length === 0 || unavailable.length > 0) {
-    return { complete: false, costCents: null, unavailableRecipeIds: unavailable };
-  }
-
-  let total = 0;
-  for (const line of lines) {
-    // costPerPortionCents is non-null here (no unavailable lines).
-    total += (line.costPerPortionCents as number) * line.quantity;
-  }
-
-  if (!Number.isSafeInteger(total) || total < 0) {
-    return {
-      complete: false,
-      costCents: null,
-      unavailableRecipeIds: [],
-    };
-  }
-
-  return { complete: true, costCents: total, unavailableRecipeIds: [] };
+  return {
+    complete: false,
+    costCents: null,
+    unavailableRecipeIds: result.unavailableIds,
+  };
 }
 
 /**

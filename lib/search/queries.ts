@@ -4,6 +4,7 @@ import {
   ingredients,
   invoices,
   menus,
+  productions,
   purchaseOrders,
   recipes,
   suppliers,
@@ -116,6 +117,53 @@ export async function searchMenus(
     href: `/menus/${r.id}`,
     primarySim: toNum(r.primarySim),
     secondarySim: 0,
+    exact: r.exact === true,
+    prefix: r.prefix === true,
+    substring: r.substring === true,
+  }));
+}
+
+export async function searchProductions(
+  ctx: SearchContext,
+): Promise<SearchCandidate[]> {
+  const { tx, organizationId, query, limit } = ctx;
+  const like = `%${escapeLike(query)}%`;
+  const prefixLike = `${escapeLike(query)}%`;
+
+  // Active productions only; match on reference OR notes (D9). NO monetary subtitle —
+  // productions are kitchen-accessible (F4), so a search row never carries cost.
+  const rows = await tx
+    .select({
+      id: productions.id,
+      reference: productions.reference,
+      notes: productions.notes,
+      plannedFor: productions.plannedFor,
+      primarySim: sql<number>`similarity(coalesce(${productions.reference}, ''), ${query})`,
+      secondarySim: sql<number>`similarity(coalesce(${productions.notes}, ''), ${query})`,
+      exact: sql<boolean>`lower(coalesce(${productions.reference}, '')) = lower(${query})`,
+      prefix: sql<boolean>`coalesce(${productions.reference}, '') ILIKE ${prefixLike}`,
+      substring: sql<boolean>`coalesce(${productions.reference}, '') ILIKE ${like}`,
+    })
+    .from(productions)
+    .where(
+      and(
+        eq(productions.organizationId, organizationId),
+        isNull(productions.deletedAt),
+        sql`(${productions.reference} % ${query} OR ${productions.reference} ILIKE ${like} OR coalesce(${productions.notes}, '') % ${query})`,
+      ),
+    )
+    .orderBy(
+      sql`GREATEST(similarity(coalesce(${productions.reference}, ''), ${query}), similarity(coalesce(${productions.notes}, ''), ${query})) DESC`,
+    )
+    .limit(limit);
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.reference ?? (r.notes ? makeSnippet(r.notes, query) : (r.plannedFor ?? '')),
+    subtitle: r.plannedFor,
+    href: `/productions/${r.id}`,
+    primarySim: toNum(r.primarySim),
+    secondarySim: toNum(r.secondarySim),
     exact: r.exact === true,
     prefix: r.prefix === true,
     substring: r.substring === true,

@@ -14,6 +14,7 @@ import type { TenantTx } from '@/lib/db/tenant';
 export type SearchEntityType =
   | 'recipe'
   | 'menu'
+  | 'production'
   | 'ingredient'
   | 'transaction'
   | 'invoice'

@@ -55,6 +55,21 @@ export type ActionErrorCode =
   // A recipe still referenced by a menu was manually purged (Sprint 10) — remove the
   // menu line (or purge the menu) first; the purge does nothing until then.
   | 'RECIPE_IN_MENU'
+  // A production line referenced a recipe that is missing/trashed/cross-org at save
+  // time (Sprint 11a) — fix the line (remove/replace/restore the recipe) before saving.
+  | 'PRODUCTION_RECIPE_INVALID'
+  // Tried to edit a production that is not a draft (Sprint 11a) — a planned plan is
+  // read-only; explicitly reopen it to draft first.
+  | 'PRODUCTION_NOT_EDITABLE'
+  // Tried to plan a draft that is not ready (Sprint 11a) — it needs a planned date and
+  // a complete explosion (all recipes active, finite in-domain math).
+  | 'PRODUCTION_INCOMPLETE'
+  // A production was edited from a stale version (Sprint 11a optimistic concurrency) —
+  // another edit committed first; reload and retry. No write/audit happened.
+  | 'PRODUCTION_STALE'
+  // A recipe still referenced by a production was manually purged (Sprint 11a, D4) —
+  // remove the production line (or purge the production) first.
+  | 'RECIPE_IN_PRODUCTION'
   // A supplier still in use (the default for ≥1 ingredient) was archived (Sprint 7) —
   // replace/remove the default link first.
   | 'SUPPLIER_IN_USE'

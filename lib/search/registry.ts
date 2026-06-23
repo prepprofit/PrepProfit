@@ -4,6 +4,7 @@ import {
   searchIngredients,
   searchInvoices,
   searchMenus,
+  searchProductions,
   searchPurchaseOrders,
   searchRecipes,
   searchSuppliers,
@@ -32,6 +33,13 @@ export const SEARCH_REGISTRY: readonly SearchDescriptor[] = [
     // Menus are operational (kitchen sees a money-free view) — both roles search.
     canAccess: () => true,
     search: searchMenus,
+  },
+  {
+    type: 'production',
+    labelKey: 'productions',
+    // Productions are operational (kitchen plans them, money-free) — both roles search.
+    canAccess: () => true,
+    search: searchProductions,
   },
   {
     type: 'ingredient',
