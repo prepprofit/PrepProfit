@@ -135,6 +135,14 @@ export type AuditAction =
   | 'sale.delete'
   | 'sale.post'
   | 'sale.void'
+  // Inventory depth — storage areas + transfers + counts (Sprint 12c). Area CRUD is
+  // manager-only; transfers + count commits are kitchen OR manager. metadata = ids /
+  // areaFrom / areaTo / line + movement counts only — NEVER quantities, NEVER value.
+  | 'inventory.areaCreate'
+  | 'inventory.areaRename'
+  | 'inventory.areaDelete'
+  | 'inventory.transfer'
+  | 'inventory.countCommit'
   // Org settings
   | 'settings.update'
   // Sensitive exports / generated documents

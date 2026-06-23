@@ -7,6 +7,7 @@ import { getEmailSender } from '@/lib/email/resend';
 import { sendWelcomeEmail } from '@/lib/email/notifications';
 import { writeAuditEvent, type AuditActor } from '@/lib/data/audit';
 import { ensureOrgSettingsRow } from '@/lib/data/org-settings';
+import { ensureDefaultArea } from '@/lib/data/storage-areas';
 import { ensureCategoriesSeeded } from '@/lib/data/transaction-categories';
 import {
   resolveCurrentPeriodEnd,
@@ -123,6 +124,9 @@ export async function POST(req: NextRequest): Promise<Response> {
       await withOrg(orgId, async (tx) => {
         await ensureCategoriesSeeded(tx, orgId);
         await ensureOrgSettingsRow(tx, orgId);
+        // Seed the immutable "Main" default storage area (Sprint 12c) so the org always
+        // has a concrete default to show + transfer into.
+        await ensureDefaultArea(tx, orgId);
         await writeAuditEvent(tx, orgId, actor, {
           action: 'organization.create',
           entityType: 'organization',

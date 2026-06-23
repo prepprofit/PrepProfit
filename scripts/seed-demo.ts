@@ -8,6 +8,7 @@ import {
   transactions,
 } from '../lib/db';
 import { recordMovement } from '../lib/data/inventory';
+import { ensureDefaultArea } from '../lib/data/storage-areas';
 import {
   ensureCategoriesSeeded,
   listCategories,
@@ -229,6 +230,10 @@ async function main() {
     await tx.delete(recipes).where(eq(recipes.organizationId, ORG));
     await tx.delete(ingredients).where(eq(ingredients.organizationId, ORG));
     await tx.delete(recipeFolders).where(eq(recipeFolders.organizationId, ORG));
+
+    // Storage areas (Sprint 12c): ensure the immutable "Main" default exists so the
+    // inventory area filter + transfers/counts have a concrete default to work with.
+    await ensureDefaultArea(tx, ORG);
 
     // Folders
     const folderRows = await tx

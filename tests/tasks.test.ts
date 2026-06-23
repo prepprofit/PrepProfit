@@ -373,7 +373,7 @@ describe('tasks data layer (Sprint 6)', () => {
     expect(seenByB).toHaveLength(0);
 
     const bundle = await runInOrg(db, ORG_A, (tx) => buildOrgDataExport(tx, ORG_A));
-    expect(bundle.schemaVersion).toBe(13);
+    expect(bundle.schemaVersion).toBe(14);
     expect((bundle.data.taskLists as unknown[]).length).toBe(1);
     expect((bundle.data.tasks as unknown[]).length).toBe(1);
   });

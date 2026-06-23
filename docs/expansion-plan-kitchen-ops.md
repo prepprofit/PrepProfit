@@ -480,14 +480,15 @@ move); double-commit guard; injection-safe. Effort **L**.
 | 11c | Kitchen tasks (reduced) | 🟢 | reduction in PLANO |
 | 12a | Sales (daily close) | 🟡 | F5 done ✅ + accountant sign-off (§7) |
 | 12b | Sales import | 🟡 | dedup + financial-only |
-| 12c | Inventory depth | 🟡 | balance invariant accepted |
+| 12c | Inventory depth | **✅ IMPLEMENTED locally** (gate green; migration 0033 local-only, awaiting diff review for prod) | balance invariant accepted |
 
-**Bottom line:** **Foundation (F1–F6) is COMPLETE and on `main`** (prod migrated
-through 0023). Sprints **9 (Allergens), 7 (Suppliers), and 8a (PO draft/send + email
-outbox)** are also **DONE**. **Next = Sprint 8b (PO receiving)**, which the completed
-F1 idempotent ledger unblocks. Remaining work: 8b → 10 → 11a → 11b → 11c → 12a →
-12b → 12c. §7 external sign-offs still gate only their named sprints (accountant →
-12a; food-safety/legal → only an allergen compliance *claim*, not the shipped feature).
+**Bottom line:** **Foundation (F1–F6) is COMPLETE and on `main`**, and **every module
+(7, 8a, 8b, 9, 10, 11a–11c, 12a, 12b, 12c) is now implemented** — 12c (inventory depth:
+storage areas + transfers + physical counts) was the **final** kitchen-operations slice.
+The full gate (lint + typecheck + test + build) is green; migration **0033** is applied
+**locally only**, awaiting the SQL/`_journal.json` diff review before any prod migration.
+§7 external sign-offs still gate only their named sprints (accountant → 12a;
+food-safety/legal → only an allergen compliance *claim*, not the shipped feature).
 
 ---
 

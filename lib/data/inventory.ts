@@ -45,6 +45,13 @@ export type RecordMovementInput = {
   idempotencyKey: string;
   /** Set ONLY when `source.type === 'reversal'`: the movement being undone. */
   reversalOf?: string | null;
+  /**
+   * Physical location this movement lands in (Sprint 12c). `null`/omitted = the legacy
+   * default bucket (which the immutable default area also owns), so every existing
+   * caller (sales/production/seed/manual) stays NULL and keeps reconciling. Part of the
+   * IMMUTABLE idempotency payload — a same-key/different-area row is a real conflict.
+   */
+  storageAreaId?: string | null;
 };
 
 export type RecordMovementReason =
@@ -95,7 +102,12 @@ function sameCore(row: InventoryMovement, input: RecordMovementInput): boolean {
   );
 }
 
-/** Whether the FULL immutable payload matches (used after ON CONFLICT — step 5). */
+/**
+ * Whether the FULL immutable payload matches. Used by BOTH the dedup pre-check
+ * (step 2) and the post-conflict revalidation (step 5) — `storage_area_id` is part of
+ * the immutable payload (Sprint 12c), so a same-key/different-area row is a real
+ * `idempotency_conflict`, never silently treated as `deduped`.
+ */
 function sameFullPayload(
   row: InventoryMovement,
   input: RecordMovementInput,
@@ -103,7 +115,8 @@ function sameFullPayload(
   return (
     sameCore(row, input) &&
     (row.sourceLineId ?? null) === (input.source.lineId ?? null) &&
-    (row.reversalOf ?? null) === (input.reversalOf ?? null)
+    (row.reversalOf ?? null) === (input.reversalOf ?? null) &&
+    (row.storageAreaId ?? null) === (input.storageAreaId ?? null)
   );
 }
 
@@ -159,7 +172,7 @@ export async function recordMovement(
     )
     .limit(1);
   if (existing) {
-    return sameCore(existing, input)
+    return sameFullPayload(existing, input)
       ? { ok: true, ingredient: current, deduped: true }
       : { ok: false, reason: 'idempotency_conflict' };
   }
@@ -182,6 +195,7 @@ export async function recordMovement(
       sourceLineId: input.source.lineId ?? null,
       reversalOf: input.reversalOf ?? null,
       idempotencyKey: input.idempotencyKey,
+      storageAreaId: input.storageAreaId ?? null,
     })
     .onConflictDoNothing({
       target: [

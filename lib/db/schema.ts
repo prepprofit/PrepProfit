@@ -649,6 +649,56 @@ export const productionItems = pgTable(
 );
 
 /**
+ * Storage areas (Sprint 12c) — named physical locations (walk-in, dry store, bar…)
+ * so stock can be seen *where* it sits, not just as an org total. An area is OPERATIONAL
+ * config (no money column); the per-area balance is derived from `inventory_movements`
+ * filtered by `storage_area_id` (the default area also owns the legacy NULL bucket).
+ *
+ * One row per org is the IMMUTABLE default ("Main", `is_default=true`): it owns every
+ * legacy `storage_area_id IS NULL` movement, so it can be RENAMED but never replaced in
+ * v1 (replacing it would reassign the NULL bucket without a ledger movement, review #7).
+ * RULE #1: carries `organization_id`, in `businessTables` → standard org_isolation RLS.
+ * Soft-delete (`deleted_at`) guarded by the data layer (not default, zero balance, no
+ * draft count); committed counts may keep referencing a soft-deleted area for history.
+ */
+export const storageAreas = pgTable(
+  'storage_areas',
+  {
+    id: id(),
+    organizationId: orgId(),
+    name: text('name').notNull(),
+    // Exactly one immutable default per org (partial unique below). Owns the NULL bucket.
+    isDefault: boolean('is_default').notNull().default(false),
+    // Manual ordering in the area list. Lower sorts first.
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL`.
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('storage_areas_org_idx').on(t.organizationId),
+    index('storage_areas_org_sort_idx').on(t.organizationId, t.sortOrder),
+    // FK target for the composite (organization_id, storage_area_id) references on
+    // inventory_movements + stock_counts.
+    unique('storage_areas_org_id_key').on(t.organizationId, t.id),
+    // One active area name per org (case-insensitive; trashed names free up).
+    uniqueIndex('storage_areas_org_name_active_key')
+      .on(t.organizationId, sql`lower(${t.name})`)
+      .where(sql`${t.deletedAt} is null`),
+    // At most one active default area per org.
+    uniqueIndex('storage_areas_org_default_key')
+      .on(t.organizationId)
+      .where(sql`${t.isDefault} and ${t.deletedAt} is null`),
+    check(
+      'storage_areas_name_chk',
+      sql`char_length(btrim(${t.name})) between 1 and 80`,
+    ),
+    check('storage_areas_sort_order_chk', sql`${t.sortOrder} >= 0`),
+  ],
+);
+
+/**
  * Append-only inventory ledger (Sprint F1). Each row is a signed canonical change
  * to an ingredient's stock (positive = in, negative = out).
  * `ingredients.stock_quantity` is the running total, updated in the SAME
@@ -686,12 +736,22 @@ export const inventoryMovements = pgTable(
     reversalOf: text('reversal_of'),
     // Deterministic, caller-built dedup key, unique per org. NOT NULL.
     idempotencyKey: text('idempotency_key').notNull(),
+    // Physical location this movement landed in (Sprint 12c). NULL = the legacy
+    // default bucket, which the immutable default area also owns (so sales/production
+    // keep posting NULL and still reconcile). Part of the F1 immutable payload.
+    storageAreaId: text('storage_area_id'),
     createdAt: createdAt(),
   },
   (t) => [
     index('inventory_movements_org_idx').on(t.organizationId),
     index('inventory_movements_org_ingredient_idx').on(
       t.organizationId,
+      t.ingredientId,
+    ),
+    // Per-area balance query: SUM(delta) GROUP BY ingredient filtered by area (Sprint 12c).
+    index('inventory_movements_org_area_ingredient_idx').on(
+      t.organizationId,
+      t.storageAreaId,
       t.ingredientId,
     ),
     // Traceability: "every movement from order/production/sale X" (F1).
@@ -727,6 +787,110 @@ export const inventoryMovements = pgTable(
       columns: [t.organizationId, t.reversalOf],
       foreignColumns: [t.organizationId, t.id],
       name: 'inventory_movements_reversal_of_fk',
+    }).onDelete('cascade'),
+    // Same-org area link (Sprint 12c). ON DELETE restrict: an area with movements
+    // cannot be hard-deleted (the data layer soft-deletes instead). NULL rows skip
+    // the FK (MATCH SIMPLE) — legacy/default-bucket movements.
+    foreignKey({
+      columns: [t.organizationId, t.storageAreaId],
+      foreignColumns: [storageAreas.organizationId, storageAreas.id],
+      name: 'inventory_movements_storage_area_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * Physical counts (Sprint 12c). A count records what is actually on the shelf in one
+ * storage area, then COMMITS the difference vs the live ledger as F1 `adjustment`
+ * movements — so the authoritative ledger matches reality without ever editing a
+ * movement. Lifecycle: `draft` (editable line entries) → `committed` (posts the
+ * adjustments, immutable thereafter; a correction is a NEW count, no void in v1).
+ *
+ * MONEY-FREE (kitchen + manager may start/commit). `storage_area_id` NULL is accepted
+ * as the default-area alias (the UI writes the concrete default id). Committed counts
+ * are permanent history (like production_consumptions). RULE #1: carries
+ * `organization_id`, in `businessTables` → standard org_isolation RLS.
+ */
+export const stockCounts = pgTable(
+  'stock_counts',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // The counted area; NULL accepted as the default-area alias (recommended UI writes defaultId).
+    storageAreaId: text('storage_area_id'),
+    status: text('status', { enum: ['draft', 'committed'] })
+      .notNull()
+      .default('draft'),
+    note: text('note'),
+    // Actor user id who started the count (provenance only).
+    createdBy: text('created_by'),
+    committedAt: timestamp('committed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('stock_counts_org_idx').on(t.organizationId),
+    index('stock_counts_org_status_idx').on(t.organizationId, t.status),
+    index('stock_counts_org_area_idx').on(t.organizationId, t.storageAreaId),
+    // FK target for stock_count_items' composite (organization_id, stock_count_id).
+    unique('stock_counts_org_id_key').on(t.organizationId, t.id),
+    check('stock_counts_status_chk', sql.raw("status IN ('draft', 'committed')")),
+    // committed_at present iff committed.
+    check(
+      'stock_counts_committed_at_chk',
+      sql`(${t.committedAt} is not null) = (${t.status} = 'committed')`,
+    ),
+    // Same-org area (NULL skips the FK = default alias). ON DELETE restrict: a draft
+    // count pins its area from hard delete; the data layer soft-deletes areas anyway.
+    foreignKey({
+      columns: [t.organizationId, t.storageAreaId],
+      foreignColumns: [storageAreas.organizationId, storageAreas.id],
+      name: 'stock_counts_storage_area_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * Physical-count line items (Sprint 12c). One row per counted ingredient in a count.
+ * `counted_canonical` is what the counter entered (≥ 0); `system_canonical` is the live
+ * per-area balance snapshot taken AT COMMIT under lock (NULL while draft); `movement_id`
+ * is the provenance id of the F1 `adjustment` posted for the non-zero delta (NULL when
+ * the delta was zero, or while draft).
+ *
+ * `ingredient_id` is provenance only — NO live FK to `ingredients` (mirrors
+ * production_consumptions): an ingredient purge cascades its movements, while count
+ * items remain as historical records. RULE #1: in `businessTables` → org_isolation RLS.
+ */
+export const stockCountItems = pgTable(
+  'stock_count_items',
+  {
+    id: id(),
+    organizationId: orgId(),
+    stockCountId: text('stock_count_id').notNull(),
+    // Provenance only (no live FK) — mirrors production_consumptions.
+    ingredientId: text('ingredient_id').notNull(),
+    countedCanonical: numeric('counted_canonical', { precision: 12, scale: 2 }).notNull(),
+    systemCanonical: numeric('system_canonical', { precision: 12, scale: 2 }),
+    // The F1 adjustment posted for this line; NULL when delta was 0 (or still draft).
+    movementId: text('movement_id'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('stock_count_items_org_count_idx').on(t.organizationId, t.stockCountId),
+    index('stock_count_items_org_movement_idx').on(t.organizationId, t.movementId),
+    // One row per ingredient per count.
+    unique('stock_count_items_org_count_ingredient_key').on(
+      t.organizationId,
+      t.stockCountId,
+      t.ingredientId,
+    ),
+    check('stock_count_items_counted_chk', sql`${t.countedCanonical} >= 0`),
+    // Same-org line; cascades when the count is deleted (drafts hard-delete).
+    foreignKey({
+      columns: [t.organizationId, t.stockCountId],
+      foreignColumns: [stockCounts.organizationId, stockCounts.id],
+      name: 'stock_count_items_count_fk',
     }).onDelete('cascade'),
   ],
 );
@@ -2407,6 +2571,13 @@ export type Ingredient = InferSelectModel<typeof ingredients>;
 export type NewIngredient = InferInsertModel<typeof ingredients>;
 export type InventoryMovement = InferSelectModel<typeof inventoryMovements>;
 export type NewInventoryMovement = InferInsertModel<typeof inventoryMovements>;
+export type StorageArea = InferSelectModel<typeof storageAreas>;
+export type NewStorageArea = InferInsertModel<typeof storageAreas>;
+export type StockCount = InferSelectModel<typeof stockCounts>;
+export type NewStockCount = InferInsertModel<typeof stockCounts>;
+export type StockCountStatus = StockCount['status'];
+export type StockCountItem = InferSelectModel<typeof stockCountItems>;
+export type NewStockCountItem = InferInsertModel<typeof stockCountItems>;
 export type IngredientPriceHistory = InferSelectModel<typeof ingredientPriceHistory>;
 export type NewIngredientPriceHistory = InferInsertModel<typeof ingredientPriceHistory>;
 export type Supplier = InferSelectModel<typeof suppliers>;
@@ -2520,6 +2691,11 @@ export const businessTables = [
   // append-only: immutability is enforced by the data layer, not by RLS.
   'production_recipe_snapshots',
   'production_consumptions',
+  // Storage areas + physical counts (Sprint 12c) — standard org_isolation RLS.
+  // `inventory_movements` stays append-only; areas/counts are editable config/history.
+  'storage_areas',
+  'stock_counts',
+  'stock_count_items',
   'inventory_movements',
   // Ingredient price history (Sprint F2) — standard org_isolation RLS.
   'ingredient_price_history',

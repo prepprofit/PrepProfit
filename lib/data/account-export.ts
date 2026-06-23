@@ -40,6 +40,9 @@ import {
   tasks,
   sales,
   saleItems,
+  storageAreas,
+  stockCounts,
+  stockCountItems,
 } from '@/lib/db/schema';
 
 /**
@@ -74,7 +77,9 @@ import {
 // (flow through `select()`).
 // v12 (Sprint 6): added `taskLists` + `tasks` (kitchen task lists, money-free).
 // v13 (Sprint 12a): added `sales` + `saleItems` (daily-close sales).
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 13;
+// v14 (Sprint 12c): added `storageAreas` + `stockCounts` + `stockCountItems`;
+// `inventoryMovements` rows now carry `storage_area_id` (flows through `select()`).
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 14;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -129,6 +134,9 @@ export async function buildOrgDataExport(
     ['tasks', tasks],
     ['sales', sales],
     ['saleItems', saleItems],
+    ['storageAreas', storageAreas],
+    ['stockCounts', stockCounts],
+    ['stockCountItems', stockCountItems],
   ] as const;
 
   const data: Record<string, unknown[]> = {};

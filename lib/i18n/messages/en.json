@@ -72,7 +72,12 @@
     "SALES_TAX_RATE_REQUIRED": "Set your VAT rate in Settings before posting a sale.",
     "RECIPE_IN_SALE": "This recipe is used on a sale, so it can't be deleted forever. The sale keeps it as history.",
     "MENU_IN_SALE": "This menu is used on a sale, so it can't be deleted forever. The sale keeps it as history.",
-    "INGREDIENT_IN_SALE": "This ingredient was sold or consumed by a sale, so it can't be deleted forever. The sale keeps it as history."
+    "INGREDIENT_IN_SALE": "This ingredient was sold or consumed by a sale, so it can't be deleted forever. The sale keeps it as history.",
+    "INVENTORY_AREA_STALE": "Someone else changed this storage area while you were editing. Reload and try again.",
+    "STOCK_COUNT_STALE": "Someone else changed this count while you were editing. Reload and try again.",
+    "DEFAULT_AREA_LOCKED": "The default area can be renamed but not deleted — it holds your existing stock.",
+    "AREA_NOT_EMPTY": "This area still holds stock. Transfer or count it to zero before deleting the area.",
+    "AREA_HAS_DRAFT_COUNT": "This area has a draft count. Commit or discard the count before deleting the area."
   },
   "errors": {
     "boundary": {
@@ -656,6 +661,60 @@
     "setThreshold": "Set",
     "errors": {
       "quantity": "Enter a quantity greater than zero."
+    },
+    "defaultAreaName": "Main",
+    "areaFilter": {
+      "label": "Area",
+      "all": "All areas"
+    },
+    "columns2": {
+      "value": "Stock value"
+    },
+    "areas": {
+      "title": "Storage areas",
+      "subtitle": "Name the places stock lives — walk-in, dry store, bar.",
+      "manage": "Manage areas",
+      "empty": "No areas yet besides the default.",
+      "namePlaceholder": "Area name",
+      "add": "Add area",
+      "rename": "Rename",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "defaultBadge": "Default",
+      "deleteConfirm": "Delete this area? Its stock must already be zero."
+    },
+    "transfer": {
+      "title": "Transfer stock",
+      "open": "Transfer",
+      "ingredient": "Ingredient",
+      "from": "From area",
+      "to": "To area",
+      "quantity": "Quantity",
+      "submit": "Transfer",
+      "sameArea": "Pick two different areas.",
+      "success": "Stock transferred.",
+      "selectIngredient": "Select an ingredient"
+    },
+    "counts": {
+      "title": "Physical counts",
+      "open": "New count",
+      "subtitle": "Count what's on the shelf; we post the difference.",
+      "area": "Area",
+      "start": "Start count",
+      "empty": "No counts yet.",
+      "draft": "Draft",
+      "committed": "Committed",
+      "counted": "Counted",
+      "system": "System",
+      "difference": "Difference",
+      "save": "Save count",
+      "commit": "Commit count",
+      "discard": "Discard",
+      "commitConfirm": "Commit this count? It will adjust stock to match and can't be edited after.",
+      "committedAt": "Committed",
+      "noLines": "Add at least one counted ingredient.",
+      "success": "Count committed."
     }
   },
   "settings": {

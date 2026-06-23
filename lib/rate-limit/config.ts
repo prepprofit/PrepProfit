@@ -42,6 +42,9 @@ export const RATE_LIMITS = {
   // cron auth header (the worker is org-less at entry). Generous ceiling — only
   // abusive retries should trip it; legitimate Vercel Cron fires on a schedule.
   outboxWorker: { limit: 5, windowMs: MINUTE },
+  // Inventory depth mutations (Sprint 12c) — area CRUD, transfers, count commits. Per
+  // org+user; interactive operational writes, so a brisk cadence is fine.
+  inventory: { limit: 30, windowMs: MINUTE },
   // GDPR account data export (Sprint 5e). TIGHT: reads every business table and
   // serialises the whole org, so it is the heaviest read in the app — a small
   // per-org+user budget is plenty for a legitimate portability request.

@@ -144,6 +144,20 @@ export type ActionErrorCode =
   | 'RECIPE_IN_SALE'
   | 'MENU_IN_SALE'
   | 'INGREDIENT_IN_SALE'
+  // A storage area was edited from a stale version (Sprint 12c optimistic concurrency) —
+  // reload and retry. No write/audit happened.
+  | 'INVENTORY_AREA_STALE'
+  // A draft physical count was edited/committed from a stale version (Sprint 12c).
+  | 'STOCK_COUNT_STALE'
+  // Tried to delete/replace the immutable default storage area (Sprint 12c D2/D8) — the
+  // default owns the legacy NULL bucket; it may be renamed but never removed/replaced.
+  | 'DEFAULT_AREA_LOCKED'
+  // Tried to delete a storage area that still holds stock (Sprint 12c D8) — transfer or
+  // count it to zero first.
+  | 'AREA_NOT_EMPTY'
+  // Tried to delete a storage area referenced by a draft count (Sprint 12c D8) — commit
+  // or discard the draft count first.
+  | 'AREA_HAS_DRAFT_COUNT'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =
