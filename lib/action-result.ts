@@ -123,6 +123,27 @@ export type ActionErrorCode =
   // Tried to cancel a PO that still has a posted receipt (Sprint 8b D5) — void the
   // receipts first; once all are voided the PO returns to `sent` and can be cancelled.
   | 'PO_NOT_CANCELLABLE'
+  // A sale was edited from a stale version (Sprint 12a optimistic concurrency) —
+  // another edit committed first; reload and retry. No write/audit happened.
+  | 'SALE_STALE'
+  // Tried to edit/delete a posted/void sale (Sprint 12a) — only a draft is mutable;
+  // posted/void closes are permanent history.
+  | 'SALE_NOT_EDITABLE'
+  // A non-void daily close already exists for that date (Sprint 12a D3) — void the
+  // old one (retained as history) then create a new draft.
+  | 'SALE_DATE_TAKEN'
+  // A sale line's recipe/menu/ingredient (or a menu's component) is missing/trashed
+  // (Sprint 12a) — fix the line (remove/replace/restore the source) before posting.
+  | 'SALE_INCOMPLETE'
+  // Tried to post a sale with no configured org VAT rate (Sprint 12a D5) — set your
+  // tax rate in Settings first. No silent 0%.
+  | 'SALES_TAX_RATE_REQUIRED'
+  // A recipe/menu/ingredient still referenced by a sale line (or a sale-sourced stock
+  // movement) was manually purged (Sprint 12a) — the purge does nothing until the
+  // sale is removed/voided.
+  | 'RECIPE_IN_SALE'
+  | 'MENU_IN_SALE'
+  | 'INGREDIENT_IN_SALE'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

@@ -7,6 +7,7 @@ import {
   searchProductions,
   searchPurchaseOrders,
   searchRecipes,
+  searchSales,
   searchSuppliers,
   searchTaskLists,
   searchTransactions,
@@ -90,6 +91,13 @@ export const SEARCH_REGISTRY: readonly SearchDescriptor[] = [
     // Purchase orders are procurement/financial data — manager-only (Sprint 8a, F4).
     canAccess: canAccessFinancials,
     search: searchPurchaseOrders,
+  },
+  {
+    type: 'sale',
+    labelKey: 'sales',
+    // Sales are financial — manager-only (Sprint 12a, F4).
+    canAccess: canAccessFinancials,
+    search: searchSales,
   },
 ];
 

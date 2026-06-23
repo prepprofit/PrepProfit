@@ -13,6 +13,7 @@ import {
   receiptItems,
   recipeIngredients,
   recipes,
+  saleItems,
   taskLists,
   tasks,
   transactions,
@@ -47,6 +48,20 @@ export async function purgeExpired(
   // production cascades its line items (composite FKs), releasing any recipe those
   // lines pinned via the restrict FK — so a recipe whose ONLY menu/production
   // reference just expired becomes purgeable below.
+  // A menu referenced by ANY sale line (Sprint 12a) is KEPT — the `sale_items_menu_fk`
+  // restrict FK would otherwise block the delete, and a posted/void sale's line is
+  // permanent history (the sale is never unlinked, unlike a task).
+  const saleMenuPin = notExists(
+    db
+      .select({ one: sql`1` })
+      .from(saleItems)
+      .where(
+        and(
+          eq(saleItems.organizationId, organizationId),
+          eq(saleItems.itemMenuId, menus.id),
+        ),
+      ),
+  );
   const purgedMenus = await db
     .delete(menus)
     .where(
@@ -54,6 +69,7 @@ export async function purgeExpired(
         eq(menus.organizationId, organizationId),
         isNotNull(menus.deletedAt),
         lte(menus.deletedAt, cutoff),
+        saleMenuPin,
       ),
     )
     .returning({ id: menus.id });
@@ -111,12 +127,27 @@ export async function purgeExpired(
         ),
       ),
   );
+  // A recipe referenced by ANY sale line (Sprint 12a) is KEPT — the
+  // `sale_items_recipe_fk` restrict FK blocks the delete and the sale line is
+  // permanent history.
+  const saleRecipePin = notExists(
+    db
+      .select({ one: sql`1` })
+      .from(saleItems)
+      .where(
+        and(
+          eq(saleItems.organizationId, organizationId),
+          eq(saleItems.itemRecipeId, recipes.id),
+        ),
+      ),
+  );
   const purgeableRecipeWhere = and(
     eq(recipes.organizationId, organizationId),
     isNotNull(recipes.deletedAt),
     lte(recipes.deletedAt, cutoff),
     menuPin,
     productionPin,
+    saleRecipePin,
   );
 
   // Unlink any transaction pointing at a recipe about to be purged — the
@@ -227,6 +258,34 @@ export async function purgeExpired(
         ),
       ),
   );
+  // An ingredient sold directly on any sale line (Sprint 12a) is KEPT (restrict FK +
+  // permanent history)...
+  const saleLinePin = notExists(
+    db
+      .select({ one: sql`1` })
+      .from(saleItems)
+      .where(
+        and(
+          eq(saleItems.organizationId, organizationId),
+          eq(saleItems.itemIngredientId, ingredients.id),
+        ),
+      ),
+  );
+  // ...as is one consumed by a posted (stock-moving) sale via a `sale`-sourced OUT
+  // movement (the production-movement-pin rationale). Financial-only sales post no
+  // movement and so do not pin the ingredient.
+  const saleMovementPin = notExists(
+    db
+      .select({ one: sql`1` })
+      .from(inventoryMovements)
+      .where(
+        and(
+          eq(inventoryMovements.organizationId, organizationId),
+          eq(inventoryMovements.ingredientId, ingredients.id),
+          eq(inventoryMovements.sourceType, 'sale'),
+        ),
+      ),
+  );
 
   // Null the DRAFT purchase-order line links pointing at an ingredient that is about
   // to be purged (matching the exact delete set), so the `restrict` FK does not block
@@ -252,6 +311,8 @@ export async function purgeExpired(
                 nonDraftPoPin,
                 receiptPin,
                 productionMovementPin,
+                saleLinePin,
+                saleMovementPin,
               ),
             ),
         ),
@@ -283,6 +344,8 @@ export async function purgeExpired(
                 nonDraftPoPin,
                 receiptPin,
                 productionMovementPin,
+                saleLinePin,
+                saleMovementPin,
               ),
             ),
         ),
@@ -304,6 +367,8 @@ export async function purgeExpired(
         nonDraftPoPin,
         receiptPin,
         productionMovementPin,
+        saleLinePin,
+        saleMovementPin,
       ),
     )
     .returning({ id: ingredients.id });

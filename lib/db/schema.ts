@@ -846,6 +846,205 @@ export const productionConsumptions = pgTable(
 );
 
 /**
+ * Daily-close Sales (Sprint 12a, module — sales). A `sale` is a per-day total of
+ * what was sold: a manager builds a draft of line items (a recipe / menu /
+ * ingredient sold at `units × net unit price`, with tax) then POSTS the close.
+ * Posting projects the sale into ONE protected `income` transaction (the F5
+ * `postSaleTransaction` primitive — gross total, `daily_sales` category) AND, when
+ * the sale date is on/after the org's `stock_control_start_date`, writes idempotent
+ * F1 OUT movements consuming the ingredients behind the sold items. VOIDing a posted
+ * close soft-deletes that income row (F5) and reverses the movements (F1).
+ *
+ * Lifecycle: draft → posted → void (void is terminal; the row is RETAINED as
+ * permanent history). A draft is editable + HARD-deletable (no Trash — nothing
+ * financial is at stake yet, so there is NO `deleted_at`); posted/void are immutable.
+ *
+ * Sales are FINANCIAL → manager-only (F4: kitchen has no access). The money columns
+ * are FROZEN on post (NULL while draft) and computed via lib/calculations/tax.ts
+ * (single exclusive org rate, per-line-then-sum). RULE #1: carries `organization_id`,
+ * in `businessTables` → standard org_isolation RLS.
+ */
+export const sales = pgTable(
+  'sales',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // The close date AND the reference. Bare 'YYYY-MM-DD' (no time, no tz) — the
+    // posted income transaction's `occurred_on` is exactly this.
+    saleDate: date('sale_date', { mode: 'string' }).notNull(),
+    status: text('status', { enum: ['draft', 'posted', 'void'] })
+      .notNull()
+      .default('draft'),
+    // Frozen sale totals (integer cents), set ONLY on post (NULL while draft). The
+    // CHECKs below freeze the presence/sign/sum invariants so an unreachable combo
+    // can never exist; gross = net + tax (no re-round — sum of rounded line figures).
+    netCents: integer('net_cents'),
+    taxCents: integer('tax_cents'),
+    grossCents: integer('gross_cents'),
+    // Lifecycle timestamps: posted_at present once terminal (posted/void); voided_at
+    // present only on void.
+    postedAt: timestamp('posted_at', { withTimezone: true }),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    // Freezes the F5 stock-control decision at post time (true = OUT movements were
+    // posted, false = financial-only close dated before stock_control_start_date).
+    stockMoved: boolean('stock_moved').notNull().default(false),
+    note: text('note'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    // NO deleted_at: drafts are hard-deleted; posted/void are permanent history.
+  },
+  (t) => [
+    index('sales_org_idx').on(t.organizationId),
+    index('sales_org_date_idx').on(t.organizationId, t.saleDate),
+    // Serves the list view (status + date ordering/filtering).
+    index('sales_org_status_date_idx').on(t.organizationId, t.status, t.saleDate),
+    // FK target for sale_items' composite (organization_id, sale_id).
+    unique('sales_org_id_key').on(t.organizationId, t.id),
+    // At most ONE non-void close per date (D3): correcting a day = void the old one
+    // (retained) then create a new draft. A draft + a posted can't coexist for a date.
+    uniqueIndex('sales_org_date_active_key')
+      .on(t.organizationId, t.saleDate)
+      .where(sql`${t.status} <> 'void'`),
+    check('sales_status_chk', sql.raw("status IN ('draft', 'posted', 'void')")),
+    // Money present iff terminal (posted/void); absent while draft.
+    check(
+      'sales_money_presence_chk',
+      sql`(${t.netCents} is not null) = (${t.status} in ('posted', 'void'))
+        and (${t.taxCents} is not null) = (${t.status} in ('posted', 'void'))
+        and (${t.grossCents} is not null) = (${t.status} in ('posted', 'void'))`,
+    ),
+    // Non-negative when present.
+    check(
+      'sales_money_nonneg_chk',
+      sql`${t.netCents} is null
+        or (${t.netCents} >= 0 and ${t.taxCents} >= 0 and ${t.grossCents} >= 0)`,
+    ),
+    // gross = net + tax when present (the rounded per-line figures, summed).
+    check(
+      'sales_money_sum_chk',
+      sql`${t.grossCents} is null or ${t.grossCents} = ${t.netCents} + ${t.taxCents}`,
+    ),
+    // posted_at present iff terminal; voided_at present iff void.
+    check(
+      'sales_posted_at_chk',
+      sql`(${t.postedAt} is not null) = (${t.status} in ('posted', 'void'))`,
+    ),
+    check(
+      'sales_voided_at_chk',
+      sql`(${t.voidedAt} is not null) = (${t.status} = 'void')`,
+    ),
+    // stock_moved can only be true once terminal (a draft never posted stock).
+    check(
+      'sales_stock_moved_chk',
+      sql`${t.stockMoved} = false or ${t.status} in ('posted', 'void')`,
+    ),
+  ],
+);
+
+/**
+ * Sale line items (Sprint 12a). Each line sells exactly ONE catalogue item — a
+ * recipe, a menu, or a raw ingredient — discriminated by `item_kind` with exactly
+ * the one matching nullable composite FK set (CHECK below). `item_name` is a FROZEN
+ * snapshot (re-frozen from the locked source row on post) so a later rename/trash
+ * never rewrites a posted close.
+ *
+ * `quantity` = units sold (integer ≥ 1). For an INGREDIENT line,
+ * `ingredient_qty_canonical` states the canonical stock amount (g/ml/count) consumed
+ * PER sold unit (so direct consumption = quantity × ingredient_qty_canonical) —
+ * required + positive for ingredient lines, NULL for recipe/menu lines (which explode
+ * to ingredients on post). `unit_net_cents`/`tax_rate_bps` are the net price + rate
+ * per sold unit; `net/tax/gross_cents` are the line totals (live preview on a draft,
+ * re-frozen on post). The catalogue FKs are ON DELETE restrict — a sale line pins its
+ * item while it exists (surfaced through the purge guards before any side effect).
+ */
+export const saleItems = pgTable(
+  'sale_items',
+  {
+    id: id(),
+    organizationId: orgId(),
+    saleId: text('sale_id').notNull(),
+    itemKind: text('item_kind', {
+      enum: ['recipe', 'menu', 'ingredient'],
+    }).notNull(),
+    // Exactly the one ref implied by item_kind is set (CHECK below).
+    itemRecipeId: text('item_recipe_id'),
+    itemMenuId: text('item_menu_id'),
+    itemIngredientId: text('item_ingredient_id'),
+    // Frozen render name (re-frozen from the locked source row on post).
+    itemName: text('item_name').notNull(),
+    // Units sold (1..100000).
+    quantity: integer('quantity').notNull(),
+    // Canonical stock consumed per sold unit — required/positive iff ingredient line.
+    ingredientQtyCanonical: numeric('ingredient_qty_canonical', {
+      precision: 12,
+      scale: 2,
+    }),
+    // Net price per sold unit + per-line tax rate (basis points, 0..10000).
+    unitNetCents: integer('unit_net_cents').notNull(),
+    taxRateBps: integer('tax_rate_bps').notNull(),
+    // Line totals: live preview on a draft, re-frozen on post. net = quantity ×
+    // unit_net_cents; gross = net + tax (tax independently rounded, see tax.ts).
+    netCents: integer('net_cents').notNull(),
+    taxCents: integer('tax_cents').notNull(),
+    grossCents: integer('gross_cents').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    index('sale_items_org_sale_idx').on(t.organizationId, t.saleId),
+    index('sale_items_org_recipe_idx').on(t.organizationId, t.itemRecipeId),
+    index('sale_items_org_menu_idx').on(t.organizationId, t.itemMenuId),
+    index('sale_items_org_ingredient_idx').on(t.organizationId, t.itemIngredientId),
+    check('sale_items_item_kind_chk', sql.raw("item_kind IN ('recipe', 'menu', 'ingredient')")),
+    check('sale_items_quantity_chk', sql`${t.quantity} between 1 and 100000`),
+    check('sale_items_unit_net_chk', sql`${t.unitNetCents} >= 0`),
+    check('sale_items_tax_rate_chk', sql`${t.taxRateBps} between 0 and 10000`),
+    check('sale_items_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    // Line money: non-negative, net = quantity × unit_net, gross = net + tax.
+    check(
+      'sale_items_money_chk',
+      sql`${t.netCents} >= 0 and ${t.taxCents} >= 0 and ${t.grossCents} >= 0
+        and ${t.netCents} = ${t.quantity} * ${t.unitNetCents}
+        and ${t.grossCents} = ${t.netCents} + ${t.taxCents}`,
+    ),
+    // Source shape: exactly the one ref implied by item_kind is set, the others NULL;
+    // ingredient_qty_canonical is non-null/positive ONLY for ingredient lines.
+    check(
+      'sale_items_source_shape_chk',
+      sql`(
+        (${t.itemKind} = 'recipe' and ${t.itemRecipeId} is not null and ${t.itemMenuId} is null and ${t.itemIngredientId} is null and ${t.ingredientQtyCanonical} is null)
+        or (${t.itemKind} = 'menu' and ${t.itemMenuId} is not null and ${t.itemRecipeId} is null and ${t.itemIngredientId} is null and ${t.ingredientQtyCanonical} is null)
+        or (${t.itemKind} = 'ingredient' and ${t.itemIngredientId} is not null and ${t.itemRecipeId} is null and ${t.itemMenuId} is null and ${t.ingredientQtyCanonical} is not null and ${t.ingredientQtyCanonical} > 0)
+      )`,
+    ),
+    // Composite FK forces the line to share its sale's organization_id; deleting a
+    // sale cascades its lines.
+    foreignKey({
+      columns: [t.organizationId, t.saleId],
+      foreignColumns: [sales.organizationId, sales.id],
+      name: 'sale_items_sale_fk',
+    }).onDelete('cascade'),
+    // Composite catalogue FKs (same-tenant). ON DELETE restrict: a sale line pins its
+    // recipe/menu/ingredient (the purge guards surface this first). NULL rows skip the
+    // FK (MATCH SIMPLE) — only the one ref matching item_kind is set.
+    foreignKey({
+      columns: [t.organizationId, t.itemRecipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'sale_items_recipe_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.organizationId, t.itemMenuId],
+      foreignColumns: [menus.organizationId, menus.id],
+      name: 'sale_items_menu_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.organizationId, t.itemIngredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'sale_items_ingredient_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
  * Kitchen task lists (Sprint 6, module — kitchen operations). A named, optionally
  * dated container ("Saturday prep", "Opening", "Closing") for operational tasks. It
  * is OPERATIONAL + money-free end-to-end — no cost/price column, no entitlement
@@ -2288,6 +2487,12 @@ export type NewImportJob = InferInsertModel<typeof importJobs>;
 export type AiExtractionAttempt = InferSelectModel<typeof aiExtractionAttempts>;
 export type NewAiExtractionAttempt = InferInsertModel<typeof aiExtractionAttempts>;
 export type RateLimitRow = InferSelectModel<typeof rateLimits>;
+export type Sale = InferSelectModel<typeof sales>;
+export type NewSale = InferInsertModel<typeof sales>;
+export type SaleStatus = Sale['status'];
+export type SaleItem = InferSelectModel<typeof saleItems>;
+export type NewSaleItem = InferInsertModel<typeof saleItems>;
+export type SaleItemKind = SaleItem['itemKind'];
 export type TaskList = InferSelectModel<typeof taskLists>;
 export type NewTaskList = InferInsertModel<typeof taskLists>;
 export type Task = InferSelectModel<typeof tasks>;
@@ -2353,6 +2558,10 @@ export const businessTables = [
   // Money-free operational data.
   'task_lists',
   'tasks',
+  // Daily-close sales + their lines (Sprint 12a) — standard org_isolation RLS.
+  // Financial → manager-only at the app layer; posted/void rows are permanent history.
+  'sales',
+  'sale_items',
   // NOTE: `rate_limits` is intentionally ABSENT — it is infra, not tenant data,
   // and must work without an org context (see its table comment + lib/db/rls.ts).
 ] as const;

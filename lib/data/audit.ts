@@ -124,6 +124,17 @@ export type AuditAction =
   | 'task.complete'
   | 'task.reopen'
   | 'task.assign'
+  // Daily-close sales (Sprint 12a, manager-only). `.create/.update/.delete` = draft
+  // lifecycle; `.post` = draft→posted (single protected income row + idempotent stock
+  // consumption); `.void` = posted→void (income soft-delete + stock reversal).
+  // metadata = ids / line count / ingredient count / stockMoved / movement count /
+  // reversal count / transaction id only — NEVER the gross/net/tax amounts or any
+  // item name.
+  | 'sale.create'
+  | 'sale.update'
+  | 'sale.delete'
+  | 'sale.post'
+  | 'sale.void'
   // Org settings
   | 'settings.update'
   // Sensitive exports / generated documents

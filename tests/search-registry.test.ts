@@ -16,6 +16,7 @@ describe('accessibleDescriptors (search RBAC)', () => {
     expect(types).not.toContain('invoice');
     expect(types).not.toContain('customer');
     expect(types).not.toContain('supplier');
+    expect(types).not.toContain('sale');
     // Menus, productions + task lists are operational (money-free for kitchen, F4)
     // → searchable.
     expect(types).toEqual([
@@ -27,7 +28,7 @@ describe('accessibleDescriptors (search RBAC)', () => {
     ]);
   });
 
-  it('includes transactions, invoices, customers, suppliers and purchase orders for a manager', () => {
+  it('includes transactions, invoices, customers, suppliers, purchase orders and sales for a manager', () => {
     const types = accessibleDescriptors('manager').map((d) => d.type);
     expect(types).toEqual([
       'recipe',
@@ -40,6 +41,7 @@ describe('accessibleDescriptors (search RBAC)', () => {
       'customer',
       'supplier',
       'purchaseOrder',
+      'sale',
     ]);
   });
 

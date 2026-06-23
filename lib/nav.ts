@@ -27,6 +27,9 @@ export const navGroups = [
     items: [
       { key: 'financials', href: '/financials' },
       { key: 'transactions', href: '/transactions' },
+      // Daily-close sales (Sprint 12a) — manager-only financial data; lives in the
+      // finance group so the kitchen-role sidebar hides it (server enforces too).
+      { key: 'sales', href: '/sales' },
       { key: 'breakEven', href: '/break-even' },
       { key: 'invoices', href: '/invoices' },
       // Suppliers (Sprint 7) — manager-only procurement data; lives in the

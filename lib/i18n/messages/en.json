@@ -64,7 +64,15 @@
     "TASK_STALE": "Someone else changed this task while you were editing. Reload and try again.",
     "TASK_LIST_NOT_EDITABLE": "This list is in the trash and can't be edited. Restore it first.",
     "TASK_LIST_FULL": "This list has reached its task limit. Split it into more lists.",
-    "TASK_ASSIGNEE_INVALID": "That person isn't a member of this organization. Pick a current team member."
+    "TASK_ASSIGNEE_INVALID": "That person isn't a member of this organization. Pick a current team member.",
+    "SALE_STALE": "Someone else changed this sale while you were editing. Reload and try again.",
+    "SALE_NOT_EDITABLE": "This sale has been posted or voided and can no longer be edited or deleted.",
+    "SALE_DATE_TAKEN": "There's already a sale for that date. Void the old one first, then create a new draft.",
+    "SALE_INCOMPLETE": "One of the sale's items (or a menu's recipe) is missing or in the trash. Fix that line before posting.",
+    "SALES_TAX_RATE_REQUIRED": "Set your VAT rate in Settings before posting a sale.",
+    "RECIPE_IN_SALE": "This recipe is used on a sale, so it can't be deleted forever. The sale keeps it as history.",
+    "MENU_IN_SALE": "This menu is used on a sale, so it can't be deleted forever. The sale keeps it as history.",
+    "INGREDIENT_IN_SALE": "This ingredient was sold or consumed by a sale, so it can't be deleted forever. The sale keeps it as history."
   },
   "errors": {
     "boundary": {
@@ -89,6 +97,7 @@
     "tasks": "Tasks",
     "financials": "Financials",
     "transactions": "Transactions",
+    "sales": "Sales",
     "breakEven": "Break-even",
     "payroll": "Payroll",
     "invoices": "Invoices",
@@ -136,11 +145,89 @@
       "purchaseOrders": "Purchase orders",
       "menus": "Menus",
       "productions": "Production",
-      "taskLists": "Task lists"
+      "taskLists": "Task lists",
+      "sales": "Sales"
     }
   },
   "theme": {
     "toggle": "Toggle theme"
+  },
+  "sales": {
+    "title": "Sales",
+    "subtitle": "Record each day's sales as a close; posting books the revenue and consumes stock.",
+    "doubleCountWarning": "Sales post revenue automatically — don't also import it from your bank, or you'll count it twice.",
+    "empty": "No sales yet. Create your first daily close to record what you sold.",
+    "saved": "Saved",
+    "lineCount": "{count, plural, =0 {No lines} one {# line} other {# lines}}",
+    "taxRateMissing": "No VAT rate is configured. Set one in Settings before posting this sale.",
+    "unavailableLine": "Unavailable",
+    "linkedTransaction": "Revenue is booked as a protected income transaction.",
+    "linkedNote": "Linked income transaction",
+    "voidedNote": "This sale was voided: its income was reversed and {count, plural, =0 {no stock} one {# ingredient} other {# ingredients}} added back.",
+    "status": {
+      "draft": "Draft",
+      "posted": "Posted",
+      "void": "Voided"
+    },
+    "itemKind": {
+      "recipe": "Recipe",
+      "menu": "Menu",
+      "ingredient": "Ingredient"
+    },
+    "actions": {
+      "new": "New close",
+      "back": "Back",
+      "create": "Create draft",
+      "save": "Save changes",
+      "post": "Post",
+      "delete": "Delete",
+      "void": "Void sale"
+    },
+    "fields": {
+      "saleDate": "Date",
+      "note": "Note"
+    },
+    "placeholders": {
+      "note": "Optional note about this day's sales…"
+    },
+    "lines": {
+      "title": "Lines",
+      "item": "Item",
+      "units": "Units",
+      "unitNet": "Unit net price",
+      "taxRate": "Tax %",
+      "gross": "Gross",
+      "empty": "No lines yet. Add what you sold.",
+      "perUnit": "Stock per unit",
+      "kind": "Type",
+      "add": "Add line",
+      "select": "Select an item…",
+      "noOptions": "Nothing available",
+      "remove": "Remove line"
+    },
+    "totals": {
+      "title": "Totals",
+      "net": "Net",
+      "tax": "Tax",
+      "gross": "Gross",
+      "previewHint": "Totals are a live preview until you post the close."
+    },
+    "consumption": {
+      "title": "Stock consumed",
+      "none": "No stock was consumed.",
+      "financialOnly": "Stock was not posted for this date (financial-only mode)."
+    },
+    "errors": {
+      "noLines": "Add at least one line before saving."
+    },
+    "deleteConfirm": {
+      "title": "Delete this draft?",
+      "body": "The draft sale for {date} will be permanently deleted. This can't be undone."
+    },
+    "voidConfirm": {
+      "title": "Void this sale?",
+      "body": "The income for {date} will be reversed and any consumed stock added back. The sale is kept as history."
+    }
   },
   "menus": {
     "title": "Menus",

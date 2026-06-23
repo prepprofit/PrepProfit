@@ -16,6 +16,7 @@ import {
   Loader2,
   Receipt,
   Search,
+  ShoppingCart,
   Truck,
   X,
 } from 'lucide-react';
@@ -58,6 +59,7 @@ const GROUP_ICON: Record<
   customer: Building2,
   supplier: Truck,
   purchaseOrder: ClipboardList,
+  sale: ShoppingCart,
 };
 
 const EMPTY: GroupedSearchResults = { groups: [] };
@@ -165,6 +167,7 @@ export function CommandPalette({
     customer: t('groups.customers'),
     supplier: t('groups.suppliers'),
     purchaseOrder: t('groups.purchaseOrders'),
+    sale: t('groups.sales'),
   };
   const groupHeading = (type: SearchEntityType): string => GROUP_LABEL[type];
 
@@ -193,6 +196,11 @@ export function CommandPalette({
             type: 'supplier' as const,
             label: t('groups.suppliers'),
             Icon: Truck,
+          },
+          {
+            type: 'sale' as const,
+            label: t('groups.sales'),
+            Icon: ShoppingCart,
           },
         ]
       : []),

@@ -21,7 +21,8 @@ export type SearchEntityType =
   | 'invoice'
   | 'customer'
   | 'supplier'
-  | 'purchaseOrder';
+  | 'purchaseOrder'
+  | 'sale';
 
 /**
  * One matched row as a descriptor's query returns it: ready-to-display fields

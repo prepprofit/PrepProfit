@@ -19,6 +19,10 @@ import {
   purgeProduction,
   restoreProduction,
 } from '@/lib/data/productions';
+import {
+  countSalesUsingIngredient,
+  countSalesUsingMenu,
+} from '@/lib/data/sales';
 import { purgeTaskList, restoreTaskList } from '@/lib/data/tasks';
 import {
   getTransactionAnyState,
@@ -140,6 +144,7 @@ export async function purgeRecipeAction(id: string): Promise<ActionResult> {
   });
   if (outcome === 'in_menu') return { ok: false, code: 'RECIPE_IN_MENU' };
   if (outcome === 'in_production') return { ok: false, code: 'RECIPE_IN_PRODUCTION' };
+  if (outcome === 'in_sale') return { ok: false, code: 'RECIPE_IN_SALE' };
   // It can unlink transactions, so refresh the financial views too.
   revalidateTrashFinance();
   return { ok: true, data: undefined };
@@ -171,14 +176,19 @@ export async function purgeMenuAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   const actor = await auditActor();
-  await withOrg(organizationId, async (tx) => {
+  // A menu referenced by any sale line (Sprint 12a) is purge-blocked BEFORE any side
+  // effect — the `sale_items_menu_fk` restrict FK would otherwise raise a violation.
+  const outcome = await withOrg(organizationId, async (tx) => {
+    if ((await countSalesUsingMenu(tx, organizationId, id)) > 0) return 'in_sale' as const;
     await purgeMenu(tx, organizationId, id);
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'trash.purge',
       entityType: 'menu',
       entityId: id,
     });
+    return 'ok' as const;
   });
+  if (outcome === 'in_sale') return { ok: false, code: 'MENU_IN_SALE' };
   revalidateTrash();
   return { ok: true, data: undefined };
 }
@@ -263,7 +273,7 @@ export async function purgeIngredientAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   const actor = await auditActor();
-  let outcome: 'ok' | 'in_use';
+  let outcome: 'ok' | 'in_use' | 'in_sale';
   try {
     outcome = await withOrg(organizationId, async (tx) => {
       // An ingredient consumed by a completed (stock-moving) production has permanent
@@ -276,6 +286,13 @@ export async function purgeIngredientAction(id: string): Promise<ActionResult> {
         id,
       );
       if (productionMovements > 0) return 'in_use' as const;
+      // An ingredient sold directly on a sale line OR consumed by a posted
+      // (stock-moving) sale is purge-blocked (Sprint 12a) — the sale line is permanent
+      // history (restrict FK) and a sale OUT movement is permanent ledger history (no
+      // restrict backstop, so the app-layer count IS the protection).
+      if ((await countSalesUsingIngredient(tx, organizationId, id)) > 0) {
+        return 'in_sale' as const;
+      }
       await purgeIngredient(tx, organizationId, id);
       await writeAuditEvent(tx, organizationId, actor, {
         action: 'trash.purge',
@@ -292,6 +309,7 @@ export async function purgeIngredientAction(id: string): Promise<ActionResult> {
     return unexpected('purgeIngredientAction', err, organizationId);
   }
   if (outcome === 'in_use') return { ok: false, code: 'INGREDIENT_IN_USE' };
+  if (outcome === 'in_sale') return { ok: false, code: 'INGREDIENT_IN_SALE' };
   revalidateTrash();
   return { ok: true, data: undefined };
 }

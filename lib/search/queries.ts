@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import {
   customers,
   ingredients,
@@ -7,6 +7,7 @@ import {
   productions,
   purchaseOrders,
   recipes,
+  sales,
   suppliers,
   taskLists,
   transactions,
@@ -311,6 +312,57 @@ export async function searchTransactions(
       substring: r.substring === true,
     };
   });
+}
+
+/**
+ * Daily-close sales (Sprint 12a) — MANAGER-ONLY (financial, via the registry RBAC).
+ * No trigram column: a sale's "name" is its date, so match the `sale_date` text + the
+ * status directly (D8). MONEY-FREE subtitle (status + line count, never a total).
+ */
+export async function searchSales(
+  ctx: SearchContext,
+): Promise<SearchCandidate[]> {
+  const { tx, organizationId, query, limit } = ctx;
+  const like = `%${escapeLike(query)}%`;
+  const prefixLike = `${escapeLike(query)}%`;
+
+  const lineCount = sql<number>`(
+    select count(*) from sale_items si
+    where si.organization_id = ${organizationId} and si.sale_id = ${sales.id}
+  )`;
+
+  const rows = await tx
+    .select({
+      id: sales.id,
+      saleDate: sales.saleDate,
+      status: sales.status,
+      lineCount,
+      primarySim: sql<number>`similarity(${sales.saleDate}::text, ${query})`,
+      exact: sql<boolean>`${sales.saleDate}::text = ${query}`,
+      prefix: sql<boolean>`${sales.saleDate}::text ILIKE ${prefixLike}`,
+      substring: sql<boolean>`${sales.saleDate}::text ILIKE ${like}`,
+    })
+    .from(sales)
+    .where(
+      and(
+        eq(sales.organizationId, organizationId),
+        sql`(${sales.saleDate}::text ILIKE ${like} OR ${sales.status} ILIKE ${like})`,
+      ),
+    )
+    .orderBy(desc(sales.saleDate))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.saleDate,
+    subtitle: `${r.status} · ${r.lineCount}`,
+    href: `/sales/${r.id}`,
+    primarySim: toNum(r.primarySim),
+    secondarySim: 0,
+    exact: r.exact === true,
+    prefix: r.prefix === true,
+    substring: r.substring === true,
+  }));
 }
 
 export async function searchInvoices(
