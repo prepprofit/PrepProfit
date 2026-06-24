@@ -37,8 +37,27 @@ export function MarketingHeader({ productName }: { productName: string }) {
           : 'border-b border-transparent',
       )}
     >
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center" aria-label={productName}>
+      {/* Three-zone bar: nav left · logo center · actions right (template layout). */}
+      <div className="mx-auto grid h-16 max-w-7xl grid-cols-[auto_1fr_auto] items-center gap-4 px-4 sm:px-6 lg:grid-cols-3 lg:px-8">
+        {/* Left — primary nav (desktop) */}
+        <nav className="hidden items-center gap-1 lg:flex">
+          {NAV_LINKS.map((link) => (
+            <a
+              key={link.key}
+              href={link.href}
+              className="rounded-full px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {t(link.key)}
+            </a>
+          ))}
+        </nav>
+
+        {/* Center — logo */}
+        <Link
+          href="/"
+          className="flex items-center lg:justify-center"
+          aria-label={productName}
+        >
           <Image
             src="/logo.webp"
             alt={productName}
@@ -57,19 +76,8 @@ export function MarketingHeader({ productName }: { productName: string }) {
           />
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex">
-          {NAV_LINKS.map((link) => (
-            <a
-              key={link.key}
-              href={link.href}
-              className="rounded-full px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {t(link.key)}
-            </a>
-          ))}
-        </nav>
-
-        <div className="flex items-center gap-2">
+        {/* Right — actions */}
+        <div className="flex items-center justify-end gap-2">
           <ThemeToggle />
           <Button asChild variant="ghost" className="hidden sm:inline-flex">
             <Link href="/sign-in">{t('signIn')}</Link>
@@ -82,7 +90,7 @@ export function MarketingHeader({ productName }: { productName: string }) {
             onClick={() => setOpen((v) => !v)}
             aria-label={open ? t('closeMenu') : t('openMenu')}
             aria-expanded={open}
-            className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+            className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full border border-border bg-surface text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
           >
             {open ? <X className="size-4" /> : <Menu className="size-4" />}
           </button>
@@ -91,7 +99,7 @@ export function MarketingHeader({ productName }: { productName: string }) {
 
       {/* Mobile drawer */}
       {open && (
-        <div className="border-t border-border bg-background/95 backdrop-blur-xl md:hidden">
+        <div className="border-t border-border bg-background/95 backdrop-blur-xl lg:hidden">
           <nav className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-4 sm:px-6">
             {NAV_LINKS.map((link) => (
               <a

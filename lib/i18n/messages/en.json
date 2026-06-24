@@ -1618,12 +1618,15 @@
     },
     "preview": {
       "tag": "Sample data",
+      "dashboard": "Margins overview",
       "recipe": "Margherita Pizza",
       "foodCost": "Food cost",
       "margin": "Margin",
       "price": "Menu price",
+      "revenue": "Revenue",
+      "topDishes": "Top dishes by margin",
       "chartTitle": "Profit by month",
-      "months": "Last 6 months"
+      "months": "Last 12 months"
     },
     "audience": {
       "lead": "Costing, financials and operations for",
@@ -1692,14 +1695,47 @@
         "body": "Track sales, inventory and finances, then price and plan with break-even built in."
       }
     },
+    "intro": {
+      "eyebrow": "The platform",
+      "title": "Everything you need to manage and grow your kitchen",
+      "body": "PrepProfit brings recipe costing, financials, inventory and reviewed AI extraction into one place — so you understand your margins and make smarter decisions, all in one secure system.",
+      "b1": "Live margin on every dish",
+      "b2": "One source of truth for costs and sales",
+      "b3": "Roles that keep sensitive numbers manager-only",
+      "panel": {
+        "recipes": "Recipes costed",
+        "margin": "Average margin",
+        "inventory": "Stock items tracked",
+        "isolation": "Data isolation"
+      }
+    },
+    "importExport": {
+      "eyebrow": "Import & export",
+      "title": "Bring in your data and take it anywhere in a few clicks",
+      "body": "Start from the data you already have. Import ingredients, transactions and recipes from CSV or Excel, snap a photo of a recipe card for a costed draft, and export clean PDF and XLSX documents whenever you need them.",
+      "csv": "CSV import",
+      "excel": "Excel import",
+      "photo": "AI photo extraction",
+      "pdf": "PDF export",
+      "xlsx": "XLSX export",
+      "invoices": "Invoice PDFs"
+    },
     "pricing": {
-      "title": "Simple pricing that grows with you",
+      "title": "Affordable & flexible pricing for every kitchen",
       "subtitle": "Start free. Paid plans include a 14-day free trial and no card is required to begin.",
       "perMonth": "/mo",
+      "perYear": "/yr",
       "popular": "Most popular",
+      "toggle": {
+        "monthly": "Monthly",
+        "yearly": "Yearly",
+        "save": "2 months free"
+      },
+      "billedYearly": "billed yearly",
       "free": {
         "name": "Free",
         "price": "€0",
+        "priceYear": "€0",
         "tagline": "For getting your first recipes costed.",
         "cta": "Start for free",
         "f1": "1 user",
@@ -1710,6 +1746,7 @@
       "pro": {
         "name": "Pro",
         "price": "€29",
+        "priceYear": "€290",
         "tagline": "For growing kitchens that price to win.",
         "cta": "Start 14-day trial",
         "f1": "5 users",
@@ -1720,6 +1757,7 @@
       "business": {
         "name": "Business",
         "price": "€79",
+        "priceYear": "€790",
         "tagline": "For multi-site operations and full back office.",
         "cta": "Start 14-day trial",
         "f1": "Unlimited users",
@@ -1777,10 +1815,25 @@
       "action": "Create your account",
       "secondary": "Sign in"
     },
+    "subscribe": {
+      "eyebrow": "Get started",
+      "title": "Know your real margins.",
+      "titleAccent": "Start pricing with confidence.",
+      "subtitle": "Create your account and cost your first recipe in minutes. Free plan available, 14-day trial on paid plans, no card required.",
+      "action": "Create your account",
+      "secondary": "Sign in",
+      "rating": "Loved by owners and chefs"
+    },
     "footer": {
       "tagline": "Financial management built for restaurants, bakeries and food businesses.",
       "productTitle": "Product",
       "accountTitle": "Account",
+      "legalTitle": "Legal",
+      "companyTitle": "Company",
+      "privacy": "Privacy policy",
+      "terms": "Terms of service",
+      "security": "Security",
+      "contact": "Contact",
       "note": "Multi-tenant, role-based and secure by design.",
       "rights": "All rights reserved."
     }

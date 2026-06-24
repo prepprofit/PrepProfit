@@ -59,3 +59,6 @@ Wibox-dashboard-app-main.zip
 .env.prod.tmp
 .vercel-prod.env.tmp
 scripts/test-email.mjs
+
+# clerk configuration (can include secrets)
+/.clerk/

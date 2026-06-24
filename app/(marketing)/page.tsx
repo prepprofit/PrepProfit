@@ -1,28 +1,25 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
 import {
-  Calculator,
-  LineChart,
-  ReceiptText,
-  Sparkles,
-  ShieldCheck,
   ChefHat,
   Croissant,
   CakeSlice,
   Coffee,
   Truck,
   UtensilsCrossed,
-  Check,
-  X,
   ArrowRight,
-  Quote,
+  Star,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { AppPreview } from '@/components/marketing/app-preview';
+import { IntroSection } from '@/components/marketing/intro-section';
+import { FeatureCards } from '@/components/marketing/feature-cards';
+import { ImportExportSection } from '@/components/marketing/import-export-section';
 import { PricingSection } from '@/components/marketing/pricing-section';
+import { TestimonialFeature } from '@/components/marketing/testimonial-feature';
 import { FaqSection } from '@/components/marketing/faq-section';
 import { Reveal } from '@/components/marketing/reveal';
 
@@ -36,7 +33,6 @@ const AUDIENCE = [
 ] as const;
 
 const HOW_STEPS = ['step1', 'step2', 'step3'] as const;
-const TESTIMONIALS = ['a', 'b', 'c'] as const;
 
 export default async function MarketingPage() {
   const t = await getTranslations('marketing');
@@ -49,24 +45,24 @@ export default async function MarketingPage() {
 
       <main className="flex-1">
         {/* ---------------------------------------------------------------- */}
-        {/* Hero — asymmetric split: copy left, real product preview right     */}
+        {/* Hero — centered copy with a full-width product preview below       */}
         {/* ---------------------------------------------------------------- */}
         <section className="relative">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[640px]"
+            className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[680px]"
             style={{
               background:
-                'radial-gradient(55% 55% at 50% -5%, color-mix(in oklab, var(--color-accent-500) 14%, transparent), transparent)',
+                'radial-gradient(60% 60% at 50% -10%, color-mix(in oklab, var(--color-accent-500) 14%, transparent), transparent)',
             }}
           />
-          <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pt-14 pb-20 sm:px-6 md:pt-20 lg:grid-cols-[1.05fr_1fr] lg:gap-8 lg:px-8 lg:pb-28">
-            <Reveal>
+          <div className="mx-auto max-w-7xl px-4 pt-16 sm:px-6 md:pt-24 lg:px-8">
+            <Reveal className="mx-auto flex max-w-3xl flex-col items-center text-center">
               <Badge variant="accent">{t('hero.eyebrow')}</Badge>
-              <h1 className="mt-5 font-display text-4xl font-bold leading-[1.05] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+              <h1 className="mt-6 font-display text-4xl font-bold leading-[1.05] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
                 {t('hero.headline')}
               </h1>
-              <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+              <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
                 {t('hero.subhead')}
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -82,31 +78,31 @@ export default async function MarketingPage() {
               </div>
             </Reveal>
 
-            <Reveal delay={120} className="lg:pl-4">
+            <Reveal
+              delay={140}
+              className="mx-auto mt-16 max-w-5xl pb-20 md:pb-28"
+            >
               <AppPreview />
             </Reveal>
           </div>
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Audience strip (under-hero credibility, honest segments)          */}
+        {/* Segment strip (honest, replaces the template's customer logos)    */}
         {/* ---------------------------------------------------------------- */}
         <section className="border-y border-border bg-surface/50">
           <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <div className="flex flex-col items-center gap-6 lg:flex-row lg:justify-between">
+            <div className="flex flex-col items-center gap-6">
               <p className="text-sm font-medium text-muted-foreground">
                 {t('audience.lead')}
               </p>
-              <ul className="flex flex-wrap items-center justify-center gap-x-7 gap-y-4">
+              <ul className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
                 {AUDIENCE.map(({ key, Icon }) => (
                   <li
                     key={key}
                     className="flex items-center gap-2 text-sm font-medium text-foreground/80"
                   >
-                    <Icon
-                      className="size-4 text-accent-500"
-                      aria-hidden
-                    />
+                    <Icon className="size-4 text-accent-500" aria-hidden />
                     {t(`audience.${key}`)}
                   </li>
                 ))}
@@ -116,146 +112,17 @@ export default async function MarketingPage() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Problem -> Solution (two-column contrast)                         */}
+        {/* "Everything you need" intro                                       */}
         {/* ---------------------------------------------------------------- */}
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
-          <Reveal className="mx-auto max-w-2xl text-center">
-            <h2 className="font-display text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-              {t('problem.title')}
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              {t('problem.subtitle')}
-            </p>
-          </Reveal>
-
-          <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
-            <Reveal>
-              <Card className="h-full bg-surface-2/60 p-7">
-                <h3 className="font-display text-base font-semibold text-foreground">
-                  {t('problem.beforeTitle')}
-                </h3>
-                <ul className="mt-5 flex flex-col gap-4">
-                  {(['a', 'b', 'c', 'd'] as const).map((k) => (
-                    <li
-                      key={k}
-                      className="flex items-start gap-3 text-sm text-muted-foreground"
-                    >
-                      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
-                        <X className="size-3" aria-hidden />
-                      </span>
-                      {t(`problem.before.${k}`)}
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            </Reveal>
-
-            <Reveal delay={100}>
-              <Card className="h-full border-brand-500/30 bg-brand-50/40 p-7 dark:bg-brand-500/5">
-                <h3 className="font-display text-base font-semibold text-foreground">
-                  {t('problem.afterTitle')}
-                </h3>
-                <ul className="mt-5 flex flex-col gap-4">
-                  {(['a', 'b', 'c', 'd'] as const).map((k) => (
-                    <li
-                      key={k}
-                      className="flex items-start gap-3 text-sm text-foreground/90"
-                    >
-                      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-brand-500/15 text-brand-600 dark:text-brand-400">
-                        <Check className="size-3" aria-hidden />
-                      </span>
-                      {t(`problem.after.${k}`)}
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            </Reveal>
-          </div>
-        </section>
+        <IntroSection />
 
         {/* ---------------------------------------------------------------- */}
-        {/* Features — asymmetric bento grid                                  */}
+        {/* Feature cards                                                     */}
         {/* ---------------------------------------------------------------- */}
-        <section
-          id="features"
-          className="mx-auto max-w-7xl scroll-mt-20 px-4 py-20 sm:px-6 md:py-28 lg:px-8"
-        >
-          <Reveal className="mx-auto max-w-2xl text-center">
-            <h2 className="font-display text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-              {t('features.title')}
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              {t('features.subtitle')}
-            </p>
-          </Reveal>
-
-          <div className="mt-14 grid gap-5 md:grid-cols-3">
-            {/* Lead tile — spans two columns with accent treatment */}
-            <Reveal className="md:col-span-2">
-              <Card className="relative h-full overflow-hidden p-8">
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full opacity-60 blur-3xl"
-                  style={{
-                    background:
-                      'radial-gradient(circle, color-mix(in oklab, var(--color-accent-500) 26%, transparent), transparent 70%)',
-                  }}
-                />
-                <div className="mb-4 flex size-11 items-center justify-center rounded-xl bg-accent-500/12 text-accent-600 dark:text-accent-400">
-                  <Calculator className="size-5" aria-hidden />
-                </div>
-                <h3 className="font-display text-xl font-semibold text-foreground">
-                  {t('features.costing.title')}
-                </h3>
-                <p className="mt-3 max-w-lg text-muted-foreground">
-                  {t('features.costing.body')}
-                </p>
-              </Card>
-            </Reveal>
-
-            <Reveal delay={80}>
-              <FeatureTile
-                Icon={LineChart}
-                title={t('features.financials.title')}
-                body={t('features.financials.body')}
-              />
-            </Reveal>
-            <Reveal delay={80}>
-              <FeatureTile
-                Icon={ReceiptText}
-                title={t('features.operations.title')}
-                body={t('features.operations.body')}
-              />
-            </Reveal>
-            <Reveal delay={160}>
-              <FeatureTile
-                Icon={Sparkles}
-                title={t('features.ai.title')}
-                body={t('features.ai.body')}
-              />
-            </Reveal>
-
-            {/* Security tile — spans full width on its row, tinted */}
-            <Reveal delay={160} className="md:col-span-1">
-              <Card className="flex h-full flex-col justify-between bg-surface-2/60 p-7">
-                <div className="mb-4 flex size-11 items-center justify-center rounded-xl bg-brand-500/12 text-brand-600 dark:text-brand-400">
-                  <ShieldCheck className="size-5" aria-hidden />
-                </div>
-                <div>
-                  <h3 className="font-display text-base font-semibold text-foreground">
-                    {t('features.security.title')}
-                  </h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {t('features.security.body')}
-                  </p>
-                </div>
-              </Card>
-            </Reveal>
-          </div>
-        </section>
+        <FeatureCards />
 
         {/* ---------------------------------------------------------------- */}
-        {/* How it works — 3 verb-led steps on a connecting line              */}
+        {/* How it works                                                      */}
         {/* ---------------------------------------------------------------- */}
         <section
           id="how-it-works"
@@ -292,49 +159,19 @@ export default async function MarketingPage() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
+        {/* Import & export (replaces template's integrations)                */}
+        {/* ---------------------------------------------------------------- */}
+        <ImportExportSection />
+
+        {/* ---------------------------------------------------------------- */}
         {/* Pricing                                                          */}
         {/* ---------------------------------------------------------------- */}
         <PricingSection />
 
         {/* ---------------------------------------------------------------- */}
-        {/* Testimonials (placeholder copy — replace with real quotes)        */}
+        {/* Featured testimonial                                             */}
         {/* ---------------------------------------------------------------- */}
-        <section className="border-t border-border bg-surface/40">
-          <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
-            <Reveal className="mx-auto max-w-2xl text-center">
-              <h2 className="font-display text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-                {t('testimonials.title')}
-              </h2>
-              <p className="mt-4 text-lg text-muted-foreground">
-                {t('testimonials.subtitle')}
-              </p>
-            </Reveal>
-
-            <div className="mt-14 grid gap-6 md:grid-cols-3">
-              {TESTIMONIALS.map((key, i) => (
-                <Reveal key={key} delay={i * 90}>
-                  <Card className="flex h-full flex-col p-7">
-                    <Quote
-                      className="size-7 text-accent-500/40"
-                      aria-hidden
-                    />
-                    <blockquote className="mt-4 flex-1 text-[15px] leading-relaxed text-foreground/90">
-                      {t(`testimonials.${key}.quote`)}
-                    </blockquote>
-                    <figcaption className="mt-6 border-t border-border pt-4">
-                      <p className="font-display text-sm font-semibold text-foreground">
-                        {t(`testimonials.${key}.name`)}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {t(`testimonials.${key}.role`)}
-                      </p>
-                    </figcaption>
-                  </Card>
-                </Reveal>
-              ))}
-            </div>
-          </div>
-        </section>
+        <TestimonialFeature which="a" tinted />
 
         {/* ---------------------------------------------------------------- */}
         {/* FAQ                                                              */}
@@ -342,82 +179,114 @@ export default async function MarketingPage() {
         <FaqSection />
 
         {/* ---------------------------------------------------------------- */}
-        {/* Final CTA band                                                   */}
+        {/* Second testimonial                                               */}
         {/* ---------------------------------------------------------------- */}
-        <section className="mx-auto max-w-7xl px-4 pb-24 sm:px-6 lg:px-8">
-          <Reveal>
-            <Card className="relative overflow-hidden border-transparent bg-gradient-to-br from-accent-600 to-accent-700 px-6 py-16 text-center shadow-xl">
+        <TestimonialFeature which="c" tinted />
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Dark CTA band                                                    */}
+        {/* ---------------------------------------------------------------- */}
+        <section className="bg-[#0a0a0b] text-white">
+          <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
+            <Reveal className="relative mx-auto flex max-w-2xl flex-col items-center text-center">
               <div
                 aria-hidden
-                className="pointer-events-none absolute inset-0 opacity-30"
+                className="pointer-events-none absolute -top-24 left-1/2 -z-0 size-72 -translate-x-1/2 rounded-full opacity-40 blur-3xl"
                 style={{
                   background:
-                    'radial-gradient(40% 60% at 50% 0%, rgba(255,255,255,0.5), transparent)',
+                    'radial-gradient(circle, color-mix(in oklab, var(--color-accent-500) 60%, transparent), transparent 70%)',
                 }}
               />
-              <div className="relative mx-auto flex max-w-xl flex-col items-center gap-5">
-                <h2 className="font-display text-3xl font-bold tracking-tight text-white md:text-4xl">
-                  {t('ctaBand.title')}
-                </h2>
-                <p className="text-white/90">{t('ctaBand.subtitle')}</p>
-                <div className="mt-2 flex flex-col gap-3 sm:flex-row">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="bg-white text-accent-700 hover:bg-white/90"
-                  >
-                    <Link href="/sign-up">
-                      {t('ctaBand.action')}
-                      <ArrowRight className="size-4" aria-hidden />
-                    </Link>
-                  </Button>
-                  <Button
-                    asChild
-                    size="lg"
-                    variant="ghost"
-                    className="text-white hover:bg-white/15 hover:text-white"
-                  >
-                    <Link href="/sign-in">{t('ctaBand.secondary')}</Link>
-                  </Button>
-                </div>
+              <span className="relative inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-white/80">
+                {t('subscribe.eyebrow')}
+              </span>
+              <h2 className="relative mt-6 font-display text-3xl font-bold tracking-tight text-white md:text-4xl">
+                {t('subscribe.title')}{' '}
+                <span className="text-accent-400">
+                  {t('subscribe.titleAccent')}
+                </span>
+              </h2>
+              <p className="relative mt-5 text-white/70">
+                {t('subscribe.subtitle')}
+              </p>
+              <div className="relative mt-8 flex flex-col gap-3 sm:flex-row">
+                <Button
+                  asChild
+                  size="lg"
+                  className="bg-white text-accent-700 hover:bg-white/90"
+                >
+                  <Link href="/sign-up">
+                    {t('subscribe.action')}
+                    <ArrowRight className="size-4" aria-hidden />
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  size="lg"
+                  variant="ghost"
+                  className="text-white hover:bg-white/10 hover:text-white"
+                >
+                  <Link href="/sign-in">{t('subscribe.secondary')}</Link>
+                </Button>
               </div>
-            </Card>
-          </Reveal>
+              <div className="relative mt-8 flex items-center gap-2">
+                <span className="flex items-center gap-1" aria-hidden>
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star
+                      key={i}
+                      className="size-4 fill-accent-400 text-accent-400"
+                    />
+                  ))}
+                </span>
+                <span className="text-sm text-white/60">
+                  {t('subscribe.rating')}
+                </span>
+              </div>
+            </Reveal>
+          </div>
         </section>
       </main>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Footer                                                             */}
+      {/* Footer (dark, like the template)                                   */}
       {/* ------------------------------------------------------------------ */}
-      <footer className="border-t border-border bg-surface/40">
-        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-          <div className="grid gap-10 md:grid-cols-[1.5fr_1fr_1fr]">
+      <footer className="bg-[#0a0a0b] text-white">
+        <div className="mx-auto max-w-7xl border-t border-white/10 px-4 py-14 sm:px-6 lg:px-8">
+          <div className="grid gap-10 md:grid-cols-[1.6fr_1fr_1fr_1fr]">
             <div className="max-w-sm">
-              <p className="font-display text-lg font-semibold text-foreground">
-                {productName}
-              </p>
-              <p className="mt-3 text-sm text-muted-foreground">
-                {t('footer.tagline')}
-              </p>
+              <Image
+                src="/logo-white.webp"
+                alt={productName}
+                width={512}
+                height={113}
+                className="h-8 w-auto"
+              />
+              <p className="mt-4 text-sm text-white/60">{t('footer.tagline')}</p>
+              <a
+                href="mailto:info@prepprofit.com"
+                className="mt-4 inline-block text-sm text-white/80 hover:text-white"
+              >
+                info@prepprofit.com
+              </a>
             </div>
 
             <div>
-              <p className="font-display text-sm font-semibold text-foreground">
+              <p className="font-display text-sm font-semibold text-white">
                 {t('footer.productTitle')}
               </p>
-              <ul className="mt-4 flex flex-col gap-3 text-sm text-muted-foreground">
+              <ul className="mt-4 flex flex-col gap-3 text-sm text-white/60">
                 <li>
-                  <a href="#features" className="hover:text-foreground">
+                  <a href="#features" className="hover:text-white">
                     {t('nav.features')}
                   </a>
                 </li>
                 <li>
-                  <a href="#pricing" className="hover:text-foreground">
+                  <a href="#pricing" className="hover:text-white">
                     {t('nav.pricing')}
                   </a>
                 </li>
                 <li>
-                  <a href="#faq" className="hover:text-foreground">
+                  <a href="#faq" className="hover:text-white">
                     {t('nav.faq')}
                   </a>
                 </li>
@@ -425,25 +294,47 @@ export default async function MarketingPage() {
             </div>
 
             <div>
-              <p className="font-display text-sm font-semibold text-foreground">
+              <p className="font-display text-sm font-semibold text-white">
                 {t('footer.accountTitle')}
               </p>
-              <ul className="mt-4 flex flex-col gap-3 text-sm text-muted-foreground">
+              <ul className="mt-4 flex flex-col gap-3 text-sm text-white/60">
                 <li>
-                  <Link href="/sign-in" className="hover:text-foreground">
+                  <Link href="/sign-in" className="hover:text-white">
                     {t('nav.signIn')}
                   </Link>
                 </li>
                 <li>
-                  <Link href="/sign-up" className="hover:text-foreground">
+                  <Link href="/sign-up" className="hover:text-white">
                     {t('nav.getStarted')}
                   </Link>
                 </li>
               </ul>
             </div>
+
+            <div>
+              <p className="font-display text-sm font-semibold text-white">
+                {t('footer.legalTitle')}
+              </p>
+              <ul className="mt-4 flex flex-col gap-3 text-sm text-white/60">
+                <li>
+                  <a
+                    href="mailto:info@prepprofit.com"
+                    className="hover:text-white"
+                  >
+                    {t('footer.contact')}
+                  </a>
+                </li>
+                <li>
+                  <span className="text-white/40">{t('footer.privacy')}</span>
+                </li>
+                <li>
+                  <span className="text-white/40">{t('footer.terms')}</span>
+                </li>
+              </ul>
+            </div>
           </div>
 
-          <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-border pt-6 text-sm text-muted-foreground sm:flex-row">
+          <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 text-sm text-white/50 sm:flex-row">
             <span>
               © {new Date().getFullYear()} {productName}. {t('footer.rights')}
             </span>
@@ -452,27 +343,5 @@ export default async function MarketingPage() {
         </div>
       </footer>
     </div>
-  );
-}
-
-function FeatureTile({
-  Icon,
-  title,
-  body,
-}: {
-  Icon: typeof Calculator;
-  title: string;
-  body: string;
-}) {
-  return (
-    <Card className="h-full p-7">
-      <div className="mb-4 flex size-11 items-center justify-center rounded-xl bg-accent-500/12 text-accent-600 dark:text-accent-400">
-        <Icon className="size-5" aria-hidden />
-      </div>
-      <h3 className="font-display text-base font-semibold text-foreground">
-        {title}
-      </h3>
-      <p className="mt-2 text-sm text-muted-foreground">{body}</p>
-    </Card>
   );
 }
