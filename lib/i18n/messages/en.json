@@ -1599,37 +1599,191 @@
     }
   },
   "marketing": {
-    "eyebrow": "Built for kitchens",
-    "headline": "Stop guessing. Know what every dish really costs.",
-    "subhead": "PrepProfit replaces your spreadsheets with a financial dashboard built for kitchens.",
-    "ctaPrimary": "Start 14-day free trial",
-    "ctaSecondary": "Sign in",
+    "nav": {
+      "features": "Features",
+      "howItWorks": "How it works",
+      "pricing": "Pricing",
+      "faq": "FAQ",
+      "signIn": "Sign in",
+      "getStarted": "Start free trial",
+      "openMenu": "Open menu",
+      "closeMenu": "Close menu"
+    },
+    "hero": {
+      "eyebrow": "Built for food businesses",
+      "headline": "Know what every dish really costs.",
+      "subhead": "PrepProfit turns your recipes, inventory and sales into one clear view of your margins, so you price with confidence instead of guesswork.",
+      "ctaPrimary": "Start 14-day free trial",
+      "ctaSecondary": "Sign in"
+    },
+    "preview": {
+      "tag": "Sample data",
+      "recipe": "Margherita Pizza",
+      "foodCost": "Food cost",
+      "margin": "Margin",
+      "price": "Menu price",
+      "chartTitle": "Profit by month",
+      "months": "Last 6 months"
+    },
+    "audience": {
+      "lead": "Costing, financials and operations for",
+      "restaurants": "Restaurants",
+      "bakeries": "Bakeries",
+      "patisseries": "Patisseries",
+      "cafes": "Cafés",
+      "foodTrucks": "Food trucks",
+      "catering": "Catering"
+    },
+    "problem": {
+      "title": "Spreadsheets were never built to run a kitchen.",
+      "subtitle": "Formulas break, ingredient prices drift, and last month's numbers never quite add up. PrepProfit keeps every cost, recipe and sale in sync.",
+      "beforeTitle": "Life on spreadsheets",
+      "before": {
+        "a": "Margins are a guess until the month closes",
+        "b": "One price change means editing dozens of cells",
+        "c": "Costs, sales and stock live in separate files",
+        "d": "Broken formulas quietly corrupt your numbers"
+      },
+      "afterTitle": "Life on PrepProfit",
+      "after": {
+        "a": "Live margin on every dish as prices change",
+        "b": "Update an ingredient once, see every recipe react",
+        "c": "Recipes, inventory and finances in one place",
+        "d": "Tested calculations you can actually trust"
+      }
+    },
     "features": {
-      "title": "Everything a food business needs to run on the numbers",
-      "subtitle": "From the cost of a single dish to the month's profit — in one place, multi-tenant and secure.",
+      "title": "Everything you need to run on the numbers",
+      "subtitle": "From the cost of a single dish to the month's profit, in one secure place.",
       "costing": {
-        "title": "Recipe costing",
-        "body": "Ingredient cost, yield and loss, hidden costs and live margin on every recipe. Change a price, see the impact instantly."
+        "title": "Recipe costing that updates itself",
+        "body": "Ingredient cost, yield and loss, hidden costs and live margin on every recipe. Change a price and see the impact instantly."
       },
       "financials": {
         "title": "Financials & break-even",
-        "body": "Track income and expenses, see dashboards and P&L, and simulate break-even scenarios before you commit."
+        "body": "Track income and expenses, read clear dashboards, and simulate break-even before you commit to a price."
       },
       "operations": {
         "title": "Invoices, payroll & inventory",
         "body": "Gap-free invoicing, employee shifts and period summaries, and an authoritative stock ledger with low-stock alerts."
       },
       "ai": {
-        "title": "Imports & AI photo extraction",
-        "body": "Import ingredients, transactions and recipes from CSV/Excel, or photograph a recipe and review an AI-drafted card."
+        "title": "AI photo recipe extraction",
+        "body": "Photograph a recipe card and get a costed draft to review. Import ingredients and transactions from CSV or Excel."
+      },
+      "security": {
+        "title": "Multi-tenant and secure by design",
+        "body": "Every record is isolated to your organization at the database layer, with roles that keep sensitive numbers manager-only."
+      }
+    },
+    "how": {
+      "title": "From recipe to real margin in three moves",
+      "subtitle": "No setup project, no consultant. Start with your real data today.",
+      "step1": {
+        "title": "Add your recipes",
+        "body": "Enter ingredients and prices once, or snap a photo and let AI draft the card for you to review."
+      },
+      "step2": {
+        "title": "See your true cost",
+        "body": "Yield, loss and hidden costs roll into a live cost and margin on every dish, automatically."
+      },
+      "step3": {
+        "title": "Run on the numbers",
+        "body": "Track sales, inventory and finances, then price and plan with break-even built in."
+      }
+    },
+    "pricing": {
+      "title": "Simple pricing that grows with you",
+      "subtitle": "Start free. Paid plans include a 14-day free trial and no card is required to begin.",
+      "perMonth": "/mo",
+      "popular": "Most popular",
+      "free": {
+        "name": "Free",
+        "price": "€0",
+        "tagline": "For getting your first recipes costed.",
+        "cta": "Start for free",
+        "f1": "1 user",
+        "f2": "Up to 10 recipes",
+        "f3": "All operational modules",
+        "f4": "AI photo extraction, 10 per month"
+      },
+      "pro": {
+        "name": "Pro",
+        "price": "€29",
+        "tagline": "For growing kitchens that price to win.",
+        "cta": "Start 14-day trial",
+        "f1": "5 users",
+        "f2": "Unlimited recipes",
+        "f3": "Everything in Free, plus invoices and break-even",
+        "f4": "AI photo extraction, 100 per month"
+      },
+      "business": {
+        "name": "Business",
+        "price": "€79",
+        "tagline": "For multi-site operations and full back office.",
+        "cta": "Start 14-day trial",
+        "f1": "Unlimited users",
+        "f2": "Everything in Pro, plus payroll",
+        "f3": "Advanced documents and reports",
+        "f4": "AI photo extraction, 500 per month"
+      }
+    },
+    "testimonials": {
+      "title": "Loved by the people who run the kitchen",
+      "subtitle": "Owners and chefs use PrepProfit to price with confidence and protect their margins.",
+      "a": {
+        "quote": "I finally know which dishes actually make money. We re-priced our menu in a weekend and our food cost dropped four points.",
+        "name": "Marta Oliveira",
+        "role": "Owner, Forno & Sal Bakery"
+      },
+      "b": {
+        "quote": "Costing a new recipe used to take an afternoon of spreadsheets. Now it takes minutes and the margin is right there.",
+        "name": "Tiago Mendes",
+        "role": "Head Chef, Tasca do Porto"
+      },
+      "c": {
+        "quote": "Photographing an old recipe card and getting a costed draft back felt like magic. My team adopted it on day one.",
+        "name": "Inês Carvalho",
+        "role": "Operations, Doce Lisboa Patisserie"
+      }
+    },
+    "faq": {
+      "title": "Questions, answered",
+      "subtitle": "Everything you need to know before you start.",
+      "q1": {
+        "q": "Is my data private from other businesses?",
+        "a": "Yes. PrepProfit is multi-tenant by design: every record is scoped to your organization with database-level isolation, so no other business can ever see your data."
+      },
+      "q2": {
+        "q": "Do I have to rebuild everything from my spreadsheets?",
+        "a": "No. Import ingredients, transactions and recipes from CSV or Excel, or photograph a recipe and review an AI-drafted card. You start with your real data."
+      },
+      "q3": {
+        "q": "What happens after the 14-day trial?",
+        "a": "Pro and Business begin with a 14-day free trial. If you choose not to upgrade you move to the Free plan and keep your data. No card is required to start."
+      },
+      "q4": {
+        "q": "How accurate is the AI recipe extraction?",
+        "a": "AI drafts are always reviewed by you before anything is saved. Nothing becomes a final recipe or ingredient without your confirmation."
+      },
+      "q5": {
+        "q": "Can my whole team use it?",
+        "a": "Yes, with roles. Managers see financials and settings; kitchen staff get the operational tools they need, with sensitive numbers kept manager-only."
       }
     },
     "ctaBand": {
-      "title": "Ready to cook with confidence?",
-      "subtitle": "Start free. No spreadsheet surgery required.",
-      "action": "Create your account"
+      "title": "Start pricing with confidence.",
+      "subtitle": "Set up your first costed recipe in minutes. Free plan available, 14-day trial on paid plans, no card required.",
+      "action": "Create your account",
+      "secondary": "Sign in"
     },
-    "footerNote": "Multi-tenant, role-based and secure by design."
+    "footer": {
+      "tagline": "Financial management built for restaurants, bakeries and food businesses.",
+      "productTitle": "Product",
+      "accountTitle": "Account",
+      "note": "Multi-tenant, role-based and secure by design.",
+      "rights": "All rights reserved."
+    }
   },
   "selectOrg": {
     "title": "Choose or create an organization",
