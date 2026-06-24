@@ -19,17 +19,20 @@ export async function FaqSection() {
         <p className="mt-4 text-lg text-muted-foreground">{t('subtitle')}</p>
       </Reveal>
 
-      <div className="mt-12 divide-y divide-border border-y border-border">
-        {QUESTIONS.map((q) => (
-          <details key={q} className="group py-2">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-left font-display text-base font-semibold text-foreground transition-colors hover:text-accent-700 dark:hover:text-accent-400 [&::-webkit-details-marker]:hidden">
+      <div className="mt-12 flex flex-col gap-3">
+        {QUESTIONS.map((q, i) => (
+          <details
+            key={q}
+            open={i === 0}
+            className="group overflow-hidden rounded-xl border border-border bg-surface transition-colors open:border-accent-500/40 open:bg-gradient-to-br open:from-accent-50 open:to-surface dark:open:from-accent-500/10 dark:open:to-surface"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-left font-display text-base font-semibold text-foreground [&::-webkit-details-marker]:hidden">
               {t(`${q}.q`)}
-              <Plus
-                className="size-5 shrink-0 text-muted-foreground transition-transform duration-300 group-open:rotate-45"
-                aria-hidden
-              />
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition-transform duration-300 group-open:rotate-45 group-open:bg-accent-500 group-open:text-white">
+                <Plus className="size-4" aria-hidden />
+              </span>
             </summary>
-            <p className="pb-4 pr-9 text-[15px] leading-relaxed text-muted-foreground">
+            <p className="px-5 pb-5 pr-12 text-[15px] leading-relaxed text-muted-foreground">
               {t(`${q}.a`)}
             </p>
           </details>
