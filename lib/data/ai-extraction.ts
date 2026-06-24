@@ -1,4 +1,4 @@
-import { and, count, eq, gte } from 'drizzle-orm';
+import { and, count, eq, gte, or, sql } from 'drizzle-orm';
 import { aiExtractionAttempts } from '@/lib/db/schema';
 import type { AiExtractionAttempt } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
@@ -118,8 +118,12 @@ export function monthStartUtc(now: Date): Date {
 }
 
 /**
- * Count this org's `succeeded` attempts since `since` (the month start) — the value
- * the monthly cap is checked against. Org-scoped; RLS is the second layer.
+ * Count this org's `succeeded` attempts since `since` (the month start) — the
+ * billed-usage figure (e.g. for the usage display). Org-scoped; RLS is the second
+ * layer. NOTE: the monthly CAP is enforced with {@link countReservedAttempts} under
+ * {@link lockMonthlyExtractionQuota}, which also counts in-flight `pending` slots so
+ * concurrent uploads cannot overshoot — this succeeded-only count is not race-safe
+ * for gating on its own.
  */
 export async function countSucceededAttemptsSince(
   db: TenantClient,
@@ -134,6 +138,70 @@ export async function countSucceededAttemptsSince(
         eq(aiExtractionAttempts.organizationId, organizationId),
         eq(aiExtractionAttempts.status, 'succeeded'),
         gte(aiExtractionAttempts.createdAt, since),
+      ),
+    );
+  return rows[0]?.value ?? 0;
+}
+
+/**
+ * In-flight horizon for a `pending` attempt (F-02). A pending row reserves a quota
+ * slot from the moment it is written until it flips to succeeded/failed; this window
+ * bounds the cost of a LEAKED pending (a crash between the gate commit and the
+ * mark*), so a stuck reservation stops counting toward the cap after the horizon
+ * instead of holding a slot for the rest of the month. A real provider call resolves
+ * in seconds, well inside this window.
+ */
+export const EXTRACTION_INFLIGHT_MS = 5 * 60_000;
+
+/**
+ * Serialize the monthly-cap check for one (org, month) via a TRANSACTION-level
+ * advisory lock (F-02). Held until the surrounding `withOrg` tx commits, so two
+ * concurrent uploads for the same org can no longer both read an under-limit count
+ * and both reserve a slot — the cap becomes exact, not best-effort. The lock key is
+ * hashed from the org id + month; it is purely an in-DB mutex (no row written).
+ */
+export async function lockMonthlyExtractionQuota(
+  db: TenantClient,
+  organizationId: string,
+  monthStart: Date,
+): Promise<void> {
+  const key = `ai-extract:${organizationId}:${monthStart.getUTCFullYear()}-${
+    monthStart.getUTCMonth() + 1
+  }`;
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);
+}
+
+/**
+ * Count this org's RESERVED extraction slots for the current month: every
+ * `succeeded` attempt since `monthStart` PLUS every still-in-flight `pending`
+ * attempt (created within {@link EXTRACTION_INFLIGHT_MS} of `now`). This is the value
+ * the cap is checked against while holding {@link lockMonthlyExtractionQuota}, so
+ * concurrent in-flight uploads count toward the limit and the cap cannot overshoot.
+ * A `failed` attempt is excluded — it has released its slot.
+ */
+export async function countReservedAttempts(
+  db: TenantClient,
+  organizationId: string,
+  monthStart: Date,
+  now: Date,
+): Promise<number> {
+  const inFlightSince = new Date(now.getTime() - EXTRACTION_INFLIGHT_MS);
+  const rows = await db
+    .select({ value: count() })
+    .from(aiExtractionAttempts)
+    .where(
+      and(
+        eq(aiExtractionAttempts.organizationId, organizationId),
+        or(
+          and(
+            eq(aiExtractionAttempts.status, 'succeeded'),
+            gte(aiExtractionAttempts.createdAt, monthStart),
+          ),
+          and(
+            eq(aiExtractionAttempts.status, 'pending'),
+            gte(aiExtractionAttempts.createdAt, inFlightSince),
+          ),
+        ),
       ),
     );
   return rows[0]?.value ?? 0;

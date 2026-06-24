@@ -12,7 +12,8 @@ import {
   createExtractionAttempt,
   markAttemptSucceeded,
   markAttemptFailed,
-  countSucceededAttemptsSince,
+  countReservedAttempts,
+  lockMonthlyExtractionQuota,
   monthStartUtc,
 } from '@/lib/data/ai-extraction';
 import {
@@ -75,14 +76,17 @@ export async function POST(req: Request): Promise<NextResponse> {
     return fail('INVALID_INPUT', 400);
   }
 
-  // Monthly usage cap (D4): counted from succeeded attempts in the current month,
-  // inside withOrg. The pending attempt is created in the same tx so the check and
-  // the new row commit together. (A pending row does not count, so under heavy
-  // concurrency the cap may overshoot by at most the in-flight count — bounded by
-  // the per-minute rate limit above.)
+  // Monthly usage cap (D4), race-safe (F-02): a (org, month) advisory lock serializes
+  // the check, and the count includes still-in-flight `pending` reservations as well
+  // as `succeeded` attempts — so concurrent uploads count toward the limit and the
+  // cap can no longer overshoot. The pending attempt is created in the same tx (and
+  // under the same lock) so the check and the reservation commit together.
   const { limit: monthlyLimit } = await aiExtractionMonthlyLimit();
+  const now = new Date();
+  const monthStart = monthStartUtc(now);
   const gate = await withOrg(organizationId, async (tx) => {
-    const used = await countSucceededAttemptsSince(tx, organizationId, monthStartUtc(new Date()));
+    await lockMonthlyExtractionQuota(tx, organizationId, monthStart);
+    const used = await countReservedAttempts(tx, organizationId, monthStart, now);
     if (used >= monthlyLimit) return { capped: true as const };
     const attempt = await createExtractionAttempt(tx, organizationId, {
       actorUserId: userId,
