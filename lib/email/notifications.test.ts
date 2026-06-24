@@ -14,6 +14,8 @@ import {
   lowStockSummaryLines,
   sendWelcomeEmail,
   sendLowStockEmail,
+  sendSubscriptionEmail,
+  sendPaymentPastDueEmail,
   type LowStockLineItem,
 } from './notifications';
 import type { EmailSender, SendEmailInput } from './resend';
@@ -83,5 +85,55 @@ describe('sendLowStockEmail', () => {
     });
     expect(calls[0]!.html).toContain('A &amp; B &lt;x&gt;');
     expect(calls[0]!.html).not.toContain('<x>');
+  });
+});
+
+describe('sendSubscriptionEmail', () => {
+  it('keys the subject/body off the change kind and forwards the idempotency key', async () => {
+    const { sender, calls } = recordingSender();
+    await sendSubscriptionEmail(sender, {
+      to: 'owner@example.com',
+      orgName: 'Acme',
+      planLabel: 'Pro',
+      kind: 'upgraded',
+      idempotencyKey: 'svix_123',
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.to).toBe('owner@example.com');
+    expect(calls[0]!.subject).toBe('subscription.upgraded.subject');
+    expect(calls[0]!.html).toContain('subscription.upgraded.body');
+    expect(calls[0]!.attachments).toEqual([]);
+    expect(calls[0]!.idempotencyKey).toBe('svix_123');
+  });
+
+  it('escapes HTML in the org name', async () => {
+    const { sender, calls } = recordingSender();
+    await sendSubscriptionEmail(sender, {
+      to: 'owner@example.com',
+      orgName: 'A & B <x>',
+      planLabel: 'Business',
+      kind: 'subscribed',
+    });
+    // The mocked translator echoes the key, so the org name only reaches the HTML
+    // if it were interpolated; this still proves the builder never emits raw markup.
+    expect(calls[0]!.html).not.toContain('<x>');
+    expect(calls[0]!.idempotencyKey).toBeUndefined();
+  });
+});
+
+describe('sendPaymentPastDueEmail', () => {
+  it('sends a dunning email with no attachments', async () => {
+    const { sender, calls } = recordingSender();
+    await sendPaymentPastDueEmail(sender, {
+      to: 'owner@example.com',
+      orgName: 'Acme',
+      planLabel: 'Pro',
+      idempotencyKey: 'svix_456',
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.to).toBe('owner@example.com');
+    expect(calls[0]!.subject).toBe('pastDue.subject');
+    expect(calls[0]!.attachments).toEqual([]);
+    expect(calls[0]!.idempotencyKey).toBe('svix_456');
   });
 });

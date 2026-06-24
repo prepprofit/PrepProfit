@@ -66,6 +66,70 @@ export async function sendWelcomeEmail(
   });
 }
 
+/** Which billing transition the email announces. */
+export type SubscriptionEmailKind = 'subscribed' | 'upgraded' | 'downgraded';
+
+/**
+ * Billing lifecycle email sent from the Clerk billing webhook when an org's plan
+ * changes (subscribed / upgraded / downgraded). `to` is the org's billing email.
+ * `planLabel` is the already-localized plan name. Deliberately money-free and
+ * PII-free: it names the plan and points to the billing page, nothing more.
+ */
+export async function sendSubscriptionEmail(
+  sender: EmailSender,
+  params: {
+    to: string;
+    orgName: string;
+    planLabel: string;
+    kind: SubscriptionEmailKind;
+    idempotencyKey?: string;
+  },
+): Promise<void> {
+  const t = await getTranslations({ locale: 'en', namespace: 'notifications' });
+  const html = `<p>${escapeHtml(
+    t(`subscription.${params.kind}.body`, {
+      org: params.orgName,
+      plan: params.planLabel,
+    }),
+  )}</p>`;
+  await sender.send({
+    to: params.to,
+    subject: t(`subscription.${params.kind}.subject`, {
+      plan: params.planLabel,
+    }),
+    html,
+    attachments: [],
+    ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
+  });
+}
+
+/**
+ * Dunning email sent when a subscription goes past due (a payment failed). Asks
+ * the org to update its payment method on the billing page. No card data, no
+ * amounts — just an actionable nudge.
+ */
+export async function sendPaymentPastDueEmail(
+  sender: EmailSender,
+  params: {
+    to: string;
+    orgName: string;
+    planLabel: string;
+    idempotencyKey?: string;
+  },
+): Promise<void> {
+  const t = await getTranslations({ locale: 'en', namespace: 'notifications' });
+  const html = `<p>${escapeHtml(
+    t('pastDue.body', { org: params.orgName, plan: params.planLabel }),
+  )}</p>`;
+  await sender.send({
+    to: params.to,
+    subject: t('pastDue.subject'),
+    html,
+    attachments: [],
+    ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
+  });
+}
+
 /**
  * Low-stock digest emailed by the daily cron when an org has ingredients at/below
  * their threshold. `to` is the org's billing/business email (settings). The body

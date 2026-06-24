@@ -6,6 +6,8 @@ import { subscriptions } from '@/lib/db/schema';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import {
+  classifyPlanChange,
+  comparePlanTiers,
   planSlugToTier,
   resolveCurrentPeriodEnd,
   resolvePlanTier,
@@ -18,6 +20,36 @@ import {
  * "highest current item" logic; the PGlite block proves the upsert is idempotent,
  * ORDER-SAFE (an older event never rolls back a newer state), and org-isolated.
  */
+
+describe('comparePlanTiers', () => {
+  it('orders starter < pro < business', () => {
+    expect(comparePlanTiers('pro', 'starter')).toBeGreaterThan(0);
+    expect(comparePlanTiers('business', 'pro')).toBeGreaterThan(0);
+    expect(comparePlanTiers('starter', 'business')).toBeLessThan(0);
+    expect(comparePlanTiers('pro', 'pro')).toBe(0);
+  });
+});
+
+describe('classifyPlanChange', () => {
+  it('treats a move up from no/free plan as "subscribed"', () => {
+    expect(classifyPlanChange(null, 'pro')).toBe('subscribed');
+    expect(classifyPlanChange('starter', 'business')).toBe('subscribed');
+  });
+
+  it('treats a move up from a paid plan as "upgraded"', () => {
+    expect(classifyPlanChange('pro', 'business')).toBe('upgraded');
+  });
+
+  it('treats any move down (incl. cancellation to free) as "downgraded"', () => {
+    expect(classifyPlanChange('business', 'pro')).toBe('downgraded');
+    expect(classifyPlanChange('pro', 'starter')).toBe('downgraded');
+  });
+
+  it('returns null when the tier is unchanged (e.g. a renewal)', () => {
+    expect(classifyPlanChange('pro', 'pro')).toBeNull();
+    expect(classifyPlanChange(null, 'starter')).toBeNull();
+  });
+});
 
 describe('planSlugToTier', () => {
   it('maps known paid slugs and collapses everything else to starter', () => {
