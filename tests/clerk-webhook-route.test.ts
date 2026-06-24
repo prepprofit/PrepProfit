@@ -99,6 +99,15 @@ async function audits(org: string, action: string) {
   );
 }
 
+async function settings(org: string) {
+  return runInOrg(db, org, (tx) =>
+    tx
+      .select()
+      .from(organizationSettings)
+      .where(eq(organizationSettings.organizationId, org)),
+  );
+}
+
 beforeAll(async () => {
   const test = await createTestDb();
   client = test.client;
@@ -216,6 +225,39 @@ describe('POST /api/webhooks/clerk', () => {
     expect(settings[0]?.onboardedAt).toBeNull();
 
     expect(await audits(NEW_ORG, 'organization.create')).toHaveLength(1);
+  });
+
+  it('marks the org onboarded on a paid subscription (escapes the onboarding loop)', async () => {
+    const ORG_PAID = 'org_paid';
+    // A manager who subscribed to Pro during onboarding: the checkout reload reset
+    // the stepper, so they never clicked "Finish". This event must mark them
+    // onboarded so /dashboard stops bouncing them back to /onboarding.
+    expect(await settings(ORG_PAID)).toHaveLength(0);
+
+    const res = await post(
+      subscriptionEvent('subscription.created', ORG_PAID, 'active', [
+        { status: 'active', slug: 'pro', periodEnd: null },
+      ]),
+    );
+    expect(res.status).toBe(200);
+
+    const rows = await settings(ORG_PAID);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.onboardedAt).toBeInstanceOf(Date);
+  });
+
+  it('does NOT mark onboarded for a starter (free) subscription', async () => {
+    const ORG_FREE = 'org_free';
+    const res = await post(
+      subscriptionEvent('subscription.active', ORG_FREE, 'active', [
+        { status: 'active', slug: 'free_org', periodEnd: null },
+      ]),
+    );
+    expect(res.status).toBe(200);
+
+    // No paid plan → markOnboarded never runs, so no settings row is created and
+    // the org still goes through the guided onboarding flow.
+    expect(await settings(ORG_FREE)).toHaveLength(0);
   });
 
   it('audits a membership event without touching the mirror', async () => {

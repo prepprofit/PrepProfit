@@ -11,7 +11,11 @@ import {
   sendPaymentPastDueEmail,
 } from '@/lib/email/notifications';
 import { writeAuditEvent, type AuditActor } from '@/lib/data/audit';
-import { ensureOrgSettingsRow, getOrgSettingsRow } from '@/lib/data/org-settings';
+import {
+  ensureOrgSettingsRow,
+  getOrgSettingsRow,
+  markOnboarded,
+} from '@/lib/data/org-settings';
 import { ensureDefaultArea } from '@/lib/data/storage-areas';
 import { ensureCategoriesSeeded } from '@/lib/data/transaction-categories';
 import {
@@ -149,6 +153,16 @@ export async function POST(req: NextRequest): Promise<Response> {
             eventType: evt.type,
             eventAt,
           });
+          // A paid subscription means the manager passed the onboarding plan step
+          // (the in-onboarding <PricingTable> checkout navigates away and back,
+          // resetting the ephemeral stepper — see onboarding-stepper.tsx). Without
+          // this they'd never reach "Finish" and the /dashboard gate would bounce
+          // them to /onboarding forever. `markOnboarded` is set-once + idempotent,
+          // so this is a harmless no-op for an already-onboarded org and never
+          // fires for a free (`starter`) org.
+          if (plan !== 'starter') {
+            await markOnboarded(tx, orgId);
+          }
           await writeAuditEvent(tx, orgId, actor, {
             // past_due is the only downgrade signal among these → 'lapse'.
             action:

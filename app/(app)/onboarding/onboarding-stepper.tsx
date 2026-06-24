@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { PricingTable } from '@clerk/nextjs';
@@ -15,6 +15,19 @@ import { completeOnboardingAction } from './actions';
 
 type StepKey = 'setup' | 'plan' | 'tour';
 const STEP_ORDER: StepKey[] = ['setup', 'plan', 'tour'];
+
+// The plan step renders Clerk's <PricingTable>; subscribing runs a checkout that
+// navigates away and reloads the page on return, which would otherwise reset the
+// stepper to step 1. Persist the current step in sessionStorage (survives the
+// full-page round-trip within the tab) so the user lands back where they left off.
+const STEP_STORAGE_KEY = 'prepprofit:onboarding-step';
+
+function readInitialStep(): number {
+  if (typeof window === 'undefined') return 0;
+  const saved = window.sessionStorage.getItem(STEP_STORAGE_KEY) as StepKey | null;
+  const index = saved == null ? -1 : STEP_ORDER.indexOf(saved);
+  return index >= 0 ? index : 0;
+}
 
 const TOUR_ITEMS = [
   { key: 'recipes', href: '/recipes', icon: Utensils },
@@ -36,9 +49,15 @@ const TOUR_ITEMS = [
 export function OnboardingStepper({ settings }: { settings: SettingsFormValues }) {
   const t = useTranslations('onboarding');
   const actionError = useActionError();
-  const [stepIndex, setStepIndex] = useState(0);
+  const [stepIndex, setStepIndex] = useState(readInitialStep);
   const [finishError, setFinishError] = useState<ActionErrorCode | null>(null);
   const [finishing, startFinish] = useTransition();
+
+  // Keep the persisted step in sync so a checkout round-trip (or any reload)
+  // restores the current step instead of snapping back to step 1.
+  useEffect(() => {
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, STEP_ORDER[stepIndex] ?? 'setup');
+  }, [stepIndex]);
 
   const finish = () => {
     setFinishError(null);
@@ -46,7 +65,13 @@ export function OnboardingStepper({ settings }: { settings: SettingsFormValues }
       // On success the action redirects (the transition follows it); only a
       // refusal (e.g. forged non-manager POST) resolves to a result here.
       const result = await completeOnboardingAction();
-      if (result && !result.ok) setFinishError(result.code);
+      if (result && !result.ok) {
+        setFinishError(result.code);
+        return;
+      }
+      // Flow is done — drop the saved step so a later visit (e.g. a different org
+      // in the same tab) starts clean at step 1.
+      window.sessionStorage.removeItem(STEP_STORAGE_KEY);
     });
   };
 
