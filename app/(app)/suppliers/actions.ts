@@ -44,8 +44,9 @@ export async function createSupplierAction(
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'supplier.create',
       entityType: 'supplier',
+      // id only (audit F-07): the supplier name is business data, not an audit
+      // descriptor — `entityId` already identifies the row.
       entityId: result.supplier.id,
-      metadata: { name: result.supplier.name },
     });
     return result.supplier;
   });
@@ -73,8 +74,8 @@ export async function updateSupplierAction(
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'supplier.update',
       entityType: 'supplier',
+      // id only (audit F-07) — the name is business data, not an audit descriptor.
       entityId: id,
-      metadata: { name: result.supplier.name },
     });
     return result.supplier;
   });

@@ -192,10 +192,10 @@ export async function issueInvoiceAction(
           action: 'invoice.issue',
           entityType: 'invoice',
           entityId: id,
-          metadata: {
-            number: result.invoice.number,
-            totalCents: result.invoice.totalCents,
-          },
+          // number only (audit F-07): the assigned invoice number is a document
+          // identifier (gap-free fiscal sequence), not a person-linked amount.
+          // `totalCents` dropped — money is business data, not an audit descriptor.
+          metadata: { number: result.invoice.number },
         });
       }
       return result;
