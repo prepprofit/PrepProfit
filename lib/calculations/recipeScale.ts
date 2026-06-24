@@ -1,0 +1,106 @@
+/**
+ * Recipe scaling — pure math (Recipe scaling MVP). No I/O, no DB.
+ *
+ * Scaling resizes an existing recipe to a different batch size and recomputes its
+ * ingredient lines. It is DERIVE-ON-READ only: nothing here is persisted, no scale
+ * factor is stored. This module is deliberately SEPARATE from production explosion
+ * (lib/calculations/production.ts): production applies yield/loss and aggregates for
+ * stock consumption; recipe scaling simply multiplies the recipe's lines by a factor
+ * and keeps `yieldPercentage` as untouched recipe metadata.
+ *
+ * Quantities are canonical (g / ml / count). Accumulate/derive with UNROUNDED
+ * numbers, then round scaled canonical quantities ONCE to 2 decimals for
+ * display/export — matching `recipe_ingredients.quantity numeric(10,2)`.
+ */
+
+/** Max canonical quantity a scaled recipe line may reach (numeric(10,2) domain). */
+export const RECIPE_SCALE_QUANTITY_MAX = 99_999_999.99;
+
+export type RecipeScaleMode =
+  /** User entered the desired portions: `factor = targetPortions / yieldPortions`. */
+  | { kind: 'portions'; targetPortions: number }
+  /** User pinned one line to a target amount (in canonical units):
+   *  `factor = targetCanonical / anchorLineQuantity`. */
+  | { kind: 'anchor'; anchorLineQuantity: number; targetCanonical: number };
+
+export type RecipeScaleResult =
+  | { ok: true; factor: number; scaledPortions: number }
+  | {
+      ok: false;
+      reason:
+        | 'invalid_target'
+        | 'invalid_anchor'
+        | 'invalid_yield'
+        | 'invalid_factor'
+        | 'overflow';
+    };
+
+/** A finite, strictly-positive real number (rejects 0, negatives, NaN, ±Infinity). */
+function isPositiveFinite(n: number): boolean {
+  return Number.isFinite(n) && n > 0;
+}
+
+/** Round a canonical quantity once to 2 decimals (the numeric(10,2) boundary). */
+export function roundCanonical(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Scale one canonical line quantity by `factor`, rounded once to 2 decimals. */
+export function scaleLineQuantity(quantity: number, factor: number): number {
+  return roundCanonical(quantity * factor);
+}
+
+/** Scale a money amount (integer cents) by `factor`, rounded to whole cents. */
+export function scaleMoneyCents(cents: number, factor: number): number {
+  return Math.round(cents * factor);
+}
+
+/**
+ * Derive the scale factor + resulting portions for a recipe, validating every input
+ * and guarding against overflow on any scaled line. Pass the recipe's canonical line
+ * quantities so the overflow guard can reject a factor that would push any line above
+ * `RECIPE_SCALE_QUANTITY_MAX`. A factor of exactly 1 is the identity.
+ */
+export function deriveScale(
+  yieldPortions: number,
+  mode: RecipeScaleMode,
+  lineQuantities: readonly number[] = [],
+): RecipeScaleResult {
+  if (!isPositiveFinite(yieldPortions)) {
+    return { ok: false, reason: 'invalid_yield' };
+  }
+
+  let factor: number;
+  if (mode.kind === 'portions') {
+    if (!isPositiveFinite(mode.targetPortions)) {
+      return { ok: false, reason: 'invalid_target' };
+    }
+    factor = mode.targetPortions / yieldPortions;
+  } else {
+    if (
+      !isPositiveFinite(mode.anchorLineQuantity) ||
+      !isPositiveFinite(mode.targetCanonical)
+    ) {
+      return { ok: false, reason: 'invalid_anchor' };
+    }
+    factor = mode.targetCanonical / mode.anchorLineQuantity;
+  }
+
+  if (!isPositiveFinite(factor)) {
+    return { ok: false, reason: 'invalid_factor' };
+  }
+
+  // Reject before exposing any scaled line beyond the storage/display domain.
+  for (const q of lineQuantities) {
+    if (q * factor > RECIPE_SCALE_QUANTITY_MAX) {
+      return { ok: false, reason: 'overflow' };
+    }
+  }
+
+  const scaledPortions = yieldPortions * factor;
+  if (!Number.isFinite(scaledPortions)) {
+    return { ok: false, reason: 'invalid_factor' };
+  }
+
+  return { ok: true, factor, scaledPortions };
+}

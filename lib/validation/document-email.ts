@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isValidPeriodKey, type PeriodView } from '@/lib/finance/period';
+import { RECIPE_SCALE_PORTIONS_MAX } from '@/lib/validation/recipe-scale';
 
 /**
  * Server-side validation for the document-email action (Sprint 3.5C). The client
@@ -22,6 +23,15 @@ export const documentEmailSchema = z.discriminatedUnion('documentType', [
   z.object({
     documentType: z.literal('recipeCard'),
     recipeId: z.string().uuid(),
+    // Optional batch scaling (Recipe scaling MVP): when present, the regenerated
+    // PDF is scaled to these portions, so a scaled print page never emails the
+    // unscaled document. Absent = the base recipe card.
+    portions: z
+      .number()
+      .positive()
+      .max(RECIPE_SCALE_PORTIONS_MAX)
+      .finite()
+      .optional(),
     recipient,
   }),
   z

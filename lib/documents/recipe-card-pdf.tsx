@@ -51,6 +51,7 @@ const styles = StyleSheet.create({
   },
   recipeName: { fontSize: 13, fontFamily: 'Helvetica-Bold', color: INK },
   yieldLine: { color: MUTED, marginTop: 2 },
+  scaleLine: { color: ACCENT, fontFamily: 'Helvetica-Bold', marginTop: 2 },
   table: { marginTop: 8 },
   tHead: {
     flexDirection: 'row',
@@ -124,6 +125,14 @@ function RecipeCardDocument({
               {labels.yield}: {data.yieldPortions} {labels.portions} ·{' '}
               {labels.usableYield} {data.yieldPercentage}%
             </Text>
+            {data.scale && (
+              <Text style={styles.scaleLine}>
+                {labels.scaledTo({
+                  portions: String(data.scale.scaledPortions),
+                  factor: String(data.scale.factor),
+                })}
+              </Text>
+            )}
           </View>
         </View>
 

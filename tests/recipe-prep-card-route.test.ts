@@ -15,12 +15,13 @@ import { runInOrg } from '@/lib/db/tenant';
 import { rateLimitKey } from '@/lib/rate-limit';
 
 /**
- * Integration test for the recipe-card PDF route (Sprint 3.5B; MANAGER-ONLY since
- * F4). Runs the real handler against PGlite under the non-privileged `tenant_app`
- * role (RLS enforced), with `@/lib/auth`, `@/lib/db` and next-intl stubbed. Proves:
- * a manager render audits `export.recipeCardPdf` in the active org only, a trashed
- * recipe id → 404, a cross-org id → 404 with no audit leak, and the `documents`
- * rate limit returns 429. (Kitchen → 403 is covered in recipe-card-route-rbac.test.)
+ * Integration test for the operational prep-card PDF route (Recipe scaling MVP).
+ * Runs the real handler against PGlite under the non-privileged `tenant_app` role
+ * (RLS enforced), with `@/lib/auth`, `@/lib/db` and next-intl stubbed. Proves: BOTH
+ * roles can render (no RBAC gate — the card is money-free), a scaled request renders,
+ * an invalid `?portions=` → 400, render audits `export.recipePrepCardPdf` in the
+ * active org only, a trashed/cross-org id → 404 with no audit leak, and the
+ * `documents` rate limit returns 429.
  */
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
@@ -35,7 +36,6 @@ vi.mock('@/lib/auth', () => ({
   getUserId: vi.fn(async () => h.auth.userId),
   getUserRole: vi.fn(async () => h.auth.role),
   getOrgName: vi.fn(async () => 'Test Org'),
-  canSeeRecipeCosts: (role: string) => role === 'manager',
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -50,7 +50,7 @@ vi.mock('next-intl/server', () => ({
   getTranslations: async () => (key: string) => key,
 }));
 
-import { GET } from '@/app/api/recipes/[id]/card/pdf/route';
+import { GET } from '@/app/api/recipes/[id]/prep-card/pdf/route';
 
 let client: PGlite;
 let db: TenantDb;
@@ -58,7 +58,7 @@ let recipeId = '';
 let trashedId = '';
 
 function call(id: string, query = '') {
-  return GET(new Request(`http://test/api/recipes/${id}/card/pdf${query}`), {
+  return GET(new Request(`http://test/api/recipes/${id}/prep-card/pdf${query}`), {
     params: Promise.resolve({ id }),
   });
 }
@@ -124,9 +124,9 @@ afterAll(async () => {
   await client.close();
 });
 
-describe('GET /api/recipes/[id]/card/pdf', () => {
-  it('lets a manager generate the cost-sheet card and audits it', async () => {
-    h.auth = { orgId: ORG_A, userId: 'manager_1', role: 'manager' };
+describe('GET /api/recipes/[id]/prep-card/pdf', () => {
+  it('lets KITCHEN render the money-free prep card and audits it', async () => {
+    h.auth = { orgId: ORG_A, userId: 'kitchen_1', role: 'kitchen' };
     const res = await call(recipeId);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/pdf');
@@ -141,7 +141,7 @@ describe('GET /api/recipes/[id]/card/pdf', () => {
         .where(
           and(
             eq(auditLog.organizationId, ORG_A),
-            eq(auditLog.action, 'export.recipeCardPdf'),
+            eq(auditLog.action, 'export.recipePrepCardPdf'),
           ),
         ),
     );
@@ -149,23 +149,29 @@ describe('GET /api/recipes/[id]/card/pdf', () => {
     expect(audited[0]?.entityId).toBe(recipeId);
   });
 
-  it('renders a scaled cost sheet for a valid ?portions= (still manager-only)', async () => {
-    h.auth = { orgId: ORG_A, userId: 'manager_2', role: 'manager' };
+  it('lets a MANAGER render it too (no RBAC gate)', async () => {
+    h.auth = { orgId: ORG_A, userId: 'manager_1', role: 'manager' };
+    const res = await call(recipeId);
+    expect(res.status).toBe(200);
+  });
+
+  it('renders a scaled card for a valid ?portions=', async () => {
+    h.auth = { orgId: ORG_A, userId: 'kitchen_2', role: 'kitchen' };
     const res = await call(recipeId, '?portions=20');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/pdf');
   });
 
   it('returns 400 for an invalid ?portions=', async () => {
-    h.auth = { orgId: ORG_A, userId: 'manager_3', role: 'manager' };
+    h.auth = { orgId: ORG_A, userId: 'kitchen_3', role: 'kitchen' };
     expect((await call(recipeId, '?portions=0')).status).toBe(400);
-    expect((await call(recipeId, '?portions=1.23456')).status).toBe(400);
+    expect((await call(recipeId, '?portions=-4')).status).toBe(400);
+    expect((await call(recipeId, '?portions=abc')).status).toBe(400);
   });
 
   it('returns 404 for a trashed recipe', async () => {
-    h.auth = { orgId: ORG_A, userId: 'user_1', role: 'manager' };
-    const res = await call(trashedId);
-    expect(res.status).toBe(404);
+    h.auth = { orgId: ORG_A, userId: 'user_1', role: 'kitchen' };
+    expect((await call(trashedId)).status).toBe(404);
   });
 
   it('returns 404 for a recipe id belonging to another org (no audit leak)', async () => {
@@ -183,8 +189,7 @@ describe('GET /api/recipes/[id]/card/pdf', () => {
     const key = rateLimitKey('documents', `${ORG_A}:rl_user`);
     await db.insert(rateLimits).values({ key, windowStart: sql`now()`, count: 20 });
 
-    h.auth = { orgId: ORG_A, userId: 'rl_user', role: 'manager' };
-    const res = await call(recipeId);
-    expect(res.status).toBe(429);
+    h.auth = { orgId: ORG_A, userId: 'rl_user', role: 'kitchen' };
+    expect((await call(recipeId)).status).toBe(429);
   });
 });

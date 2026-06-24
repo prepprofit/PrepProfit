@@ -117,4 +117,54 @@ describe('buildRecipeCardData', () => {
   it('builds a sanitized filename stem', () => {
     expect(recipeCardFilename('Sourdough loaf')).toBe('recipe-Sourdough loaf');
   });
+
+  it('leaves scale null and figures unchanged when no scale is passed', () => {
+    const base = buildRecipeCardData(data, settings, null);
+    const same = buildRecipeCardData(data, settings, null, null);
+    expect(base.scale).toBeNull();
+    expect(same.scale).toBeNull();
+    expect(same.totalCostCents).toBe(base.totalCostCents);
+    expect(same.lines).toEqual(base.lines);
+  });
+
+  it('scales quantities and batch totals; unit economics stay invariant', () => {
+    const base = buildRecipeCardData(data, settings, null);
+    const scaled = buildRecipeCardData(data, settings, null, {
+      ok: true,
+      factor: 5,
+      scaledPortions: 20,
+    });
+
+    // Scale metadata is stamped.
+    expect(scaled.scale).toEqual({ factor: 5, scaledPortions: 20 });
+
+    // Quantities ×5.
+    expect(scaled.lines[0]!.quantity).toBe(5000);
+    expect(scaled.lines[1]!.quantity).toBe(15);
+
+    // Batch money scales from the originals (×5), no cent drift.
+    expect(scaled.ingredientCostCents).toBe(base.ingredientCostCents * 5);
+    expect(scaled.laborCostCents).toBe(base.laborCostCents * 5);
+    expect(scaled.energyCostCents).toBe(base.energyCostCents * 5);
+    expect(scaled.packagingCostCents).toBe(base.packagingCostCents * 5);
+    expect(scaled.totalCostCents).toBe(base.totalCostCents * 5);
+
+    // Unit economics are invariant under scaling.
+    expect(scaled.costPerPortionCents).toBe(base.costPerPortionCents);
+    expect(scaled.sellingPriceCents).toBe(base.sellingPriceCents);
+    expect(scaled.marginPercent).toBe(base.marginPercent);
+
+    // yieldPortions stays the recipe's own; scaledPortions lives on `scale`.
+    expect(scaled.yieldPortions).toBe(base.yieldPortions);
+  });
+
+  it('ignores an unsuccessful scale result (renders unscaled)', () => {
+    const base = buildRecipeCardData(data, settings, null);
+    const scaled = buildRecipeCardData(data, settings, null, {
+      ok: false,
+      reason: 'overflow',
+    });
+    expect(scaled.scale).toBeNull();
+    expect(scaled.totalCostCents).toBe(base.totalCostCents);
+  });
 });

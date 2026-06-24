@@ -19,7 +19,7 @@ import { emailDocumentAction } from '@/app/(app)/documents/email-actions';
  */
 type DocPayload =
   | { documentType: 'invoice'; invoiceId: string }
-  | { documentType: 'recipeCard'; recipeId: string }
+  | { documentType: 'recipeCard'; recipeId: string; portions?: number }
   | { documentType: 'pl'; view: 'month' | 'year'; period?: string };
 
 export function SendDocumentDialog({

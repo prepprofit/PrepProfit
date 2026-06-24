@@ -1,40 +1,41 @@
 import { NextResponse } from 'next/server';
 import { getTranslations } from 'next-intl/server';
-import {
-  canSeeRecipeCosts,
-  getOrgId,
-  getOrgName,
-  getUserId,
-  getUserRole,
-} from '@/lib/auth';
+import { getOrgId, getOrgName, getUserId, getUserRole } from '@/lib/auth';
 import { getDb, withOrg } from '@/lib/db';
-import { getRecipeWithIngredients } from '@/lib/data/recipes';
+import {
+  getRecipeWithIngredients,
+  toKitchenRecipeWithIngredients,
+} from '@/lib/data/recipes';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
 import { writeAuditEvent } from '@/lib/data/audit';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import {
-  buildRecipeCardData,
-  recipeCardFilename,
-} from '@/lib/documents/recipe-card-data';
-import { buildRecipeCardLabels } from '@/lib/documents/recipe-card-labels';
-import { renderRecipeCardPdf } from '@/lib/documents/recipe-card-pdf';
-import { deriveScale } from '@/lib/calculations/recipeScale';
-import { parseScaleParam } from '@/lib/validation/recipe-scale';
+  buildRecipePrepCardData,
+  recipePrepCardFilename,
+} from '@/lib/documents/recipe-prep-card-data';
+import { buildRecipePrepCardLabels } from '@/lib/documents/recipe-prep-card-labels';
+import { renderRecipePrepCardPdf } from '@/lib/documents/recipe-prep-card-pdf';
 import { loadSafeLogo } from '@/lib/documents/logo';
 import { documentFilename } from '@/lib/documents/format';
+import { deriveScale } from '@/lib/calculations/recipeScale';
+import { parseScaleParam } from '@/lib/validation/recipe-scale';
 
 // @react-pdf/renderer + the neon-serverless Pool need Node; never cache a download.
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Recipe card (cost sheet) PDF download (Sprint 3.5B; MANAGER-ONLY since F4) — a
- * justified API route. The card is entirely cost + margin + selling price, so a
- * non-manager (kitchen, who sees no money) gets 403 before any data access. It is
+ * Operational scaled prep-card PDF (Recipe scaling MVP) — a justified API route. The
+ * prep card is MONEY-FREE (no cost/price/margin), so BOTH roles may download it; there
+ * is no RBAC gate here (unlike the manager-only cost sheet at ../card/pdf). It is
  * org-scoped (RULE #1) — the org id is derived server-side and the read runs inside
  * `withOrg` so RLS is active — rate-limited (`documents` bucket), and audited
- * (`export.recipeCardPdf`) only after a successful render. A trashed or cross-org
- * recipe id returns 404 (never leaks existence).
+ * (`export.recipePrepCardPdf`) only after a successful render. A trashed or cross-org
+ * recipe id returns 404. Optional `?portions=` scales the card; a malformed/out-of-
+ * domain value returns 400 (never silently mis-scaled).
+ *
+ * The view-model is built from `toKitchenRecipeWithIngredients`, so the document is
+ * money-free by TYPE — it can never carry a cost even by mistake.
  */
 export async function GET(
   req: Request,
@@ -44,13 +45,7 @@ export async function GET(
   const userId = await getUserId();
   const role = await getUserRole();
 
-  // The cost sheet is financial — managers only (Sprint F4). Refuse before any work.
-  if (!canSeeRecipeCosts(role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  // Optional `?portions=` scaling — a malformed value is a 400 (never silently
-  // mis-scaled). Missing = unscaled.
+  // Optional `?portions=` scaling — a malformed value is a 400. Missing = unscaled.
   const parsedScale = parseScaleParam(new URL(req.url).searchParams.get('portions'));
   if (!parsedScale.ok) {
     return NextResponse.json({ error: 'Bad request' }, { status: 400 });
@@ -80,14 +75,16 @@ export async function GET(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  // Derive the scale now that we have the recipe; an out-of-domain factor
-  // (overflowing line) is a 400 too.
+  // Strip money BEFORE building the view-model (defense in depth + the builder takes
+  // the kitchen shape).
+  const operational = toKitchenRecipeWithIngredients(loaded.recipe);
+
   const scale =
     parsedScale.portions != null
       ? deriveScale(
-          loaded.recipe.recipe.yieldPortions,
+          operational.recipe.yieldPortions,
           { kind: 'portions', targetPortions: parsedScale.portions },
-          loaded.recipe.lines.map((l) => l.quantity),
+          operational.lines.map((l) => l.quantity),
         )
       : null;
   if (scale && !scale.ok) {
@@ -96,22 +93,22 @@ export async function GET(
 
   const settings = loaded.settings ?? DEFAULT_ORG_SETTINGS;
   const orgName = settings.businessName?.trim() ? null : await getOrgName();
-  const t = await getTranslations('recipeCardDocument');
-  const data = buildRecipeCardData(loaded.recipe, settings, orgName, scale);
+  const t = await getTranslations('recipePrepCardDocument');
+  const data = buildRecipePrepCardData(operational, settings, orgName, scale);
   // SSRF/DoS-safe: fetch + validate the logo ourselves and embed local bytes.
   data.seller.logoUrl = await loadSafeLogo(data.seller.logoUrl);
 
-  const pdf = await renderRecipeCardPdf(data, buildRecipeCardLabels(t));
-  const filename = `${documentFilename(recipeCardFilename(loaded.recipe.recipe.name))}.pdf`;
+  const pdf = await renderRecipePrepCardPdf(data, buildRecipePrepCardLabels(t));
+  const filename = `${documentFilename(recipePrepCardFilename(operational.recipe.name))}.pdf`;
 
-  // Audit only now that the PDF rendered successfully (id only — no costs/margins).
+  // Audit only now that the PDF rendered successfully (id only — no costs/scale value).
   await withOrg(organizationId, (tx) =>
     writeAuditEvent(
       tx,
       organizationId,
       { userId, role, requestId: crypto.randomUUID() },
       {
-        action: 'export.recipeCardPdf',
+        action: 'export.recipePrepCardPdf',
         entityType: 'recipe',
         entityId: id,
       },

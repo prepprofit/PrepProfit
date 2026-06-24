@@ -19,6 +19,7 @@ import { buildPlLabels } from './pl-labels';
 import { renderPlPdf } from './pl-pdf';
 import { loadSafeLogo } from './logo';
 import { documentFilename } from './format';
+import { deriveScale } from '@/lib/calculations/recipeScale';
 import type { DocumentEmailInput } from '@/lib/validation/document-email';
 
 /**
@@ -84,7 +85,17 @@ export async function renderDocumentForEmail(
       const settings = loaded.settings ?? DEFAULT_ORG_SETTINGS;
       const orgName = settings.businessName?.trim() ? null : await getOrgName();
       const t = await getTranslations('recipeCardDocument');
-      const data = buildRecipeCardData(loaded.recipe, settings, orgName);
+      // Mirror the scaled view the manager emailed from, if any.
+      const scale =
+        input.portions != null
+          ? deriveScale(
+              loaded.recipe.recipe.yieldPortions,
+              { kind: 'portions', targetPortions: input.portions },
+              loaded.recipe.lines.map((l) => l.quantity),
+            )
+          : null;
+      if (scale && !scale.ok) return null;
+      const data = buildRecipeCardData(loaded.recipe, settings, orgName, scale);
       data.seller.logoUrl = await loadSafeLogo(data.seller.logoUrl);
 
       const pdf = await renderRecipeCardPdf(data, buildRecipeCardLabels(t));

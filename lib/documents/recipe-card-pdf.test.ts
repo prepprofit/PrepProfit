@@ -11,6 +11,7 @@ const data: RecipeCardDocumentData = {
   recipeName: 'Sourdough loaf',
   yieldPortions: 4,
   yieldPercentage: 90,
+  scale: null,
   lines: [
     { name: 'Flour', dimension: 'weight', quantity: 1000, costCents: 120 },
     { name: 'Eggs', dimension: 'count', quantity: 3, costCents: 90 },

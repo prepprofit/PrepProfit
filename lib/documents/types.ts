@@ -102,6 +102,18 @@ export type RecipeCardLine = {
   costCents: number;
 };
 
+/**
+ * Scale metadata stamped onto a document when it was resized (Recipe scaling MVP).
+ * `null` on an unscaled document. `factor` and `scaledPortions` are pre-rounded for
+ * display; the underlying figures are scaled with unrounded math before rounding.
+ */
+export type RecipeScaleMeta = {
+  /** Multiplier applied to the original batch (e.g. 5, 0.5, 2.5). */
+  factor: number;
+  /** Resulting portions (may be fractional in anchor mode). */
+  scaledPortions: number;
+};
+
 /** Recipe card (cost sheet) view-model. Reuses the recipe cost/margin calcs. */
 export type RecipeCardDocumentData = {
   seller: SellerIdentity;
@@ -109,6 +121,8 @@ export type RecipeCardDocumentData = {
   yieldPortions: number;
   /** Usable yield after trim/loss (100 = no loss). */
   yieldPercentage: number;
+  /** Present only when the card was scaled; drives the "Scaled to …" header line. */
+  scale: RecipeScaleMeta | null;
   lines: RecipeCardLine[];
   ingredientCostCents: number;
   laborCostCents: number;
@@ -129,6 +143,8 @@ export type RecipeCardDocumentLabels = {
   yield: string;
   portions: string;
   usableYield: string;
+  /** "Scaled to {portions} portions (×{factor})" — only shown when scaled. */
+  scaledTo: (args: { portions: string; factor: string }) => string;
   ingredient: string;
   quantity: string;
   cost: string;
@@ -220,6 +236,51 @@ export type PayrollDocumentLabels = {
   pay: string;
   total: string;
   empty: string;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Recipe scaling MVP — operational prep card (money-free, BOTH roles)         */
+/* -------------------------------------------------------------------------- */
+
+/** One ingredient line on the prep card — name + dimension + scaled quantity ONLY. */
+export type RecipePrepCardLine = {
+  name: string;
+  dimension: 'weight' | 'volume' | 'count';
+  /** Canonical amount (g / ml / pieces), already scaled if the card was scaled. */
+  quantity: number;
+};
+
+/**
+ * Operational prep-card view-model (Recipe scaling MVP). Deliberately money-free —
+ * it carries NO cost, price, margin, or total key, by TYPE, so it can be shown to
+ * kitchen and managers alike. It is the print/download counterpart for the kitchen,
+ * distinct from the manager-only financial recipe cost sheet.
+ */
+export type RecipePrepCardData = {
+  seller: SellerIdentity;
+  recipeName: string;
+  /** The recipe's own batch size (unscaled). */
+  yieldPortions: number;
+  /** Usable yield after trim/loss (100 = no loss). */
+  yieldPercentage: number;
+  /** Present only when scaled; drives the "Scaled to …" header line. */
+  scale: RecipeScaleMeta | null;
+  lines: RecipePrepCardLine[];
+  notes: string | null;
+};
+
+export type RecipePrepCardLabels = {
+  title: string;
+  yield: string;
+  portions: string;
+  usableYield: string;
+  /** "Scaled to {portions} portions (×{factor})" — only shown when scaled. */
+  scaledTo: (args: { portions: string; factor: string }) => string;
+  ingredient: string;
+  quantity: string;
+  notes: string;
+  /** Unit suffix by dimension (e.g. g / ml / ×). */
+  units: Record<'weight' | 'volume' | 'count', string>;
 };
 
 /* -------------------------------------------------------------------------- */

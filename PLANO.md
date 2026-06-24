@@ -408,10 +408,21 @@ Acceptance criteria:
 
 ---
 
+## Done outside the numbered sprints
+
+- **Recipe scaling/batch planning (DB-inert).** Resize an existing recipe live to a
+  different batch (target-portions or anchor-ingredient mode) and read recalculated
+  quantities. Derive-on-read only — NO migration, schema change, stored factor, or new
+  dependency. Operational scaled prep card (money-free, both roles) at
+  `/recipes/[id]/prep-card/{print,pdf}`; the existing manager-only cost sheet accepts an
+  optional `?portions=`; scaled cost-sheet emails carry the same `portions`. Unit
+  economics (cost/portion, price, margin) stay invariant; kitchen payload stays
+  money-free by type. Pure math in `lib/calculations/recipeScale.ts`.
+
 ## Backlog - not scheduled until prioritized
 
 - Advanced multi-image extraction, OCR tuning, handwriting-specific improvements, and free-form prose/doc import beyond Sprint 4.7.
-- Recipe scaling/batch planning.
+- Duplicate-as-scaled-recipe (persisted scaling — Recipe scaling Phase 2).
 - Suppliers as first-class entities with per-supplier price history.
 - Saved reports and scheduled email summaries.
 - True scheduled recurring checklists after Sprint 6 proves manual lists.

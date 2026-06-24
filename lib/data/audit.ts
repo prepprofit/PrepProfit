@@ -149,6 +149,9 @@ export type AuditAction =
   | 'export.transactionsCsv'
   | 'export.invoicePdf'
   | 'export.recipeCardPdf'
+  // Operational scaled prep card (Recipe scaling MVP) — money-free, BOTH roles;
+  // metadata is the recipe id only (no costs, no scale value beyond the id).
+  | 'export.recipePrepCardPdf'
   | 'export.plPdf'
   | 'export.plXlsx'
   | 'export.payrollPdf'

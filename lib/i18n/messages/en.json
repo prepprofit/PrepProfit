@@ -565,6 +565,37 @@
       "downloadPdf": "Download PDF",
       "print": "Print"
     },
+    "prepCard": {
+      "action": "Prep card",
+      "back": "Back to recipe",
+      "downloadPdf": "Download PDF",
+      "print": "Print"
+    },
+    "scale": {
+      "title": "Scale batch",
+      "description": "Resize this recipe for a different batch. Nothing is saved — it's just a preview.",
+      "mode": "Scale by",
+      "modePortions": "Target portions",
+      "modeAnchor": "Ingredient amount",
+      "targetPortions": "Target portions",
+      "anchorIngredient": "Ingredient",
+      "anchorAmount": "Amount",
+      "anchorUnit": "Unit",
+      "result": "{from} → {to} portions (×{factor})",
+      "scaledTotal": "Scaled batch cost",
+      "reset": "Reset to ×1",
+      "printPrep": "Print prep card",
+      "downloadPrep": "Download prep card",
+      "openCostSheet": "Scaled cost sheet",
+      "saveFirst": "Save your changes before printing or downloading.",
+      "errors": {
+        "invalid_target": "Enter a target greater than zero.",
+        "invalid_anchor": "Enter an amount greater than zero.",
+        "invalid_yield": "This recipe has no usable batch size to scale from.",
+        "invalid_factor": "That scale isn't valid.",
+        "overflow": "That batch is too large — try a smaller target."
+      }
+    },
     "placeholders": {
       "name": "e.g. Sourdough loaf",
       "notes": "Method, allergens, plating…"
@@ -1263,6 +1294,7 @@
     "yield": "Yield",
     "portions": "portions",
     "usableYield": "usable",
+    "scaledTo": "Scaled to {portions} portions (×{factor})",
     "ingredient": "Ingredient",
     "quantity": "Qty",
     "cost": "Cost",
@@ -1274,6 +1306,21 @@
     "costPerPortion": "Cost per portion",
     "sellingPrice": "Selling price",
     "margin": "Margin",
+    "notes": "Notes",
+    "units": {
+      "weight": "g",
+      "volume": "ml",
+      "count": "×"
+    }
+  },
+  "recipePrepCardDocument": {
+    "title": "PREP CARD",
+    "yield": "Yield",
+    "portions": "portions",
+    "usableYield": "usable",
+    "scaledTo": "Scaled to {portions} portions (×{factor})",
+    "ingredient": "Ingredient",
+    "quantity": "Qty",
     "notes": "Notes",
     "units": {
       "weight": "g",

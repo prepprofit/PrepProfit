@@ -8,6 +8,8 @@ import { getRecipeWithIngredients } from '@/lib/data/recipes';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
 import { buildRecipeCardData } from '@/lib/documents/recipe-card-data';
 import { buildRecipeCardLabels } from '@/lib/documents/recipe-card-labels';
+import { deriveScale } from '@/lib/calculations/recipeScale';
+import { parseScaleParam } from '@/lib/validation/recipe-scale';
 import { formatMoney } from '@/lib/documents/format';
 import { Button } from '@/components/ui/button';
 import { PrintButton } from '@/components/app/invoices/print-button';
@@ -27,8 +29,10 @@ export const dynamic = 'force-dynamic';
  */
 export default async function RecipeCardPrintPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ portions?: string | string[] }>;
 }) {
   // The cost sheet is financial — managers only (Sprint F4). Kitchen is blocked
   // before any data access.
@@ -37,6 +41,7 @@ export default async function RecipeCardPrintPage({
   }
 
   const { id } = await params;
+  const { portions: rawPortions } = await searchParams;
   const organizationId = await getOrgId();
 
   const [loaded, t, tCard] = await Promise.all([
@@ -58,7 +63,23 @@ export default async function RecipeCardPrintPage({
   const settings = loaded.settings ?? DEFAULT_ORG_SETTINGS;
   const orgName = settings.businessName?.trim() ? null : await getOrgName();
   const labels = buildRecipeCardLabels(t);
-  const data = buildRecipeCardData(loaded.recipe, settings, orgName);
+
+  // Optional `?portions=` scaling. An invalid/over-range value falls back to the
+  // unscaled card (the export download/email below mirror whatever was applied here).
+  const parsedScale = parseScaleParam(rawPortions);
+  const scale =
+    parsedScale.ok && parsedScale.portions != null
+      ? deriveScale(
+          loaded.recipe.recipe.yieldPortions,
+          { kind: 'portions', targetPortions: parsedScale.portions },
+          loaded.recipe.lines.map((l) => l.quantity),
+        )
+      : null;
+  const appliedPortions =
+    scale && scale.ok ? (parsedScale.ok ? parsedScale.portions : null) : null;
+  const scaleQuery = appliedPortions != null ? `?portions=${appliedPortions}` : '';
+
+  const data = buildRecipeCardData(loaded.recipe, settings, orgName, scale);
   const money = (cents: number) => formatMoney(cents, data.currency);
   const { seller } = data;
 
@@ -81,11 +102,21 @@ export default async function RecipeCardPrintPage({
           </Button>
           <div className="flex items-center gap-2">
             <Button asChild variant="outline" size="sm">
-              <a href={`/api/recipes/${id}/card/pdf`}>{tCard('downloadPdf')}</a>
+              <a href={`/api/recipes/${id}/card/pdf${scaleQuery}`}>
+                {tCard('downloadPdf')}
+              </a>
             </Button>
             <PrintButton label={tCard('print')} />
             {canEmail && (
-              <SendDocumentDialog doc={{ documentType: 'recipeCard', recipeId: id }} />
+              <SendDocumentDialog
+                doc={{
+                  documentType: 'recipeCard',
+                  recipeId: id,
+                  // Email the SAME (scaled) document the page is showing — never the
+                  // unscaled PDF from a scaled view.
+                  ...(appliedPortions != null ? { portions: appliedPortions } : {}),
+                }}
+              />
             )}
           </div>
         </div>
@@ -115,6 +146,14 @@ export default async function RecipeCardPrintPage({
                 {labels.yield}: {data.yieldPortions} {labels.portions} ·{' '}
                 {labels.usableYield} {data.yieldPercentage}%
               </span>
+              {data.scale && (
+                <span className="font-semibold text-[#c2410c]">
+                  {labels.scaledTo({
+                    portions: String(data.scale.scaledPortions),
+                    factor: String(data.scale.factor),
+                  })}
+                </span>
+              )}
             </div>
           </div>
 

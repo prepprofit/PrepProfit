@@ -6,13 +6,14 @@ import type { RecipeCardDocumentLabels } from './types';
  * HTML print page so both render identical wording.
  */
 export function buildRecipeCardLabels(
-  t: (key: string) => string,
+  t: (key: string, values?: Record<string, string>) => string,
 ): RecipeCardDocumentLabels {
   return {
     title: t('title'),
     yield: t('yield'),
     portions: t('portions'),
     usableYield: t('usableYield'),
+    scaledTo: ({ portions, factor }) => t('scaledTo', { portions, factor }),
     ingredient: t('ingredient'),
     quantity: t('quantity'),
     cost: t('cost'),
