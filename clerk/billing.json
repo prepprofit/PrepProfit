@@ -32,6 +32,8 @@
         "currency": "usd",
         "is_recurring": true,
         "publicly_visible": true,
+        "free_trial_enabled": true,
+        "free_trial_days": 14,
         "features": ["invoices", "break_even"]
       },
       "business": {
@@ -42,6 +44,8 @@
         "currency": "usd",
         "is_recurring": true,
         "publicly_visible": true,
+        "free_trial_enabled": true,
+        "free_trial_days": 14,
         "features": ["invoices", "break_even", "payroll", "advanced_documents"]
       }
     }
