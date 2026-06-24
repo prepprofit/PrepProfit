@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { ArrowLeft } from 'lucide-react';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
-import { canUseFeature } from '@/lib/entitlements';
+import { requireDocumentAccess } from '@/lib/entitlements';
 import {
   currentPeriodKey,
   isValidPeriodKey,
@@ -32,7 +32,8 @@ export default async function PlPrintPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!canAccessFinancials(await getUserRole())) return <NoAccess />;
-  if (!(await canUseFeature('advanced_documents'))) return <UpgradeRequired />;
+  // Advanced-document gate via the entitlement matrix (audit F-08).
+  if (await requireDocumentAccess('financials_print')) return <UpgradeRequired />;
 
   const sp = await searchParams;
   const view: PeriodView = sp.view === 'year' ? 'year' : 'month';

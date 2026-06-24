@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getTranslations } from 'next-intl/server';
 import { getOrgId, getUserId, isManager } from '@/lib/auth';
-import { canUseFeature } from '@/lib/entitlements';
+import { requireDocumentAccess } from '@/lib/entitlements';
 import { getDb, withOrg } from '@/lib/db';
 import { writeAuditEvent } from '@/lib/data/audit';
 import { enforceRateLimit } from '@/lib/rate-limit';
@@ -31,7 +31,8 @@ export async function GET(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   // Advanced documents are a Business-plan feature; fail-closed plan gate (Sprint 4).
-  if (!(await canUseFeature('advanced_documents'))) {
+  // The advanced-vs-operational boundary lives in the entitlement matrix (audit F-08).
+  if (await requireDocumentAccess('pl_xlsx')) {
     return NextResponse.json({ error: 'Upgrade required' }, { status: 402 });
   }
 

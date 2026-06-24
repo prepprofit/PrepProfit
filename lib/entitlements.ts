@@ -67,6 +67,65 @@ export function isWithinLimit(
 }
 
 /* -------------------------------------------------------------------------- */
+/* Generated-document entitlement matrix (audit F-08).                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every downloadable/printable document the app generates. The SINGLE source of
+ * truth for which documents are gated behind the Business `advanced_documents`
+ * feature vs available on every plan.
+ *
+ * Scope: this matrix governs ONLY the `advanced_documents` axis. Documents that
+ * live behind a different feature flag (payroll PDF/XLSX → `payroll`; invoice PDF
+ * → `invoices`) or that are purely operational are NOT gated here — they keep their
+ * own module's gate. The point is to codify, and lock with a test
+ * (tests/document-entitlements.test.ts), the boundary the audit found implicit:
+ * financial/reporting deliverables are `advanced`; operational kitchen/purchasing
+ * outputs are free. Routes consult `requireDocumentAccess()` so the boundary can
+ * never drift silently.
+ */
+export type GeneratedDocument =
+  // Financial reporting deliverables — Business `advanced_documents`.
+  | 'pl_pdf'
+  | 'pl_xlsx'
+  | 'financials_print'
+  // Operational outputs — every plan (their own RBAC still applies).
+  | 'recipe_card_pdf'
+  | 'recipe_prep_card_pdf'
+  | 'allergen_matrix_pdf'
+  | 'allergen_matrix_xlsx'
+  | 'purchase_order_pdf';
+
+export const GENERATED_DOCUMENTS = {
+  pl_pdf: 'advanced',
+  pl_xlsx: 'advanced',
+  financials_print: 'advanced',
+  recipe_card_pdf: 'operational',
+  recipe_prep_card_pdf: 'operational',
+  allergen_matrix_pdf: 'operational',
+  allergen_matrix_xlsx: 'operational',
+  purchase_order_pdf: 'operational',
+} as const satisfies Record<GeneratedDocument, 'advanced' | 'operational'>;
+
+/** True when the document is gated behind the Business `advanced_documents` feature. */
+export function documentRequiresAdvanced(doc: GeneratedDocument): boolean {
+  return GENERATED_DOCUMENTS[doc] === 'advanced';
+}
+
+/**
+ * Gate a generated document before rendering it. Returns `'UPGRADE_REQUIRED'` when
+ * the document needs `advanced_documents` and the plan lacks it, else `null`
+ * (allowed). Operational documents are always `null` here — their module-level RBAC
+ * (manager-only, feature flag) is enforced separately at the call site.
+ */
+export async function requireDocumentAccess(
+  doc: GeneratedDocument,
+): Promise<Extract<ActionErrorCode, 'UPGRADE_REQUIRED'> | null> {
+  if (!documentRequiresAdvanced(doc)) return null;
+  return (await canUseFeature('advanced_documents')) ? null : 'UPGRADE_REQUIRED';
+}
+
+/* -------------------------------------------------------------------------- */
 /* Comped orgs (operator / internal) — env-driven allowlist.                  */
 /* -------------------------------------------------------------------------- */
 

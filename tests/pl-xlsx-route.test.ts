@@ -37,9 +37,13 @@ vi.mock('@/lib/auth', () => ({
   getOrgName: vi.fn(async () => 'Test Org'),
 }));
 
-// Plan gate (Sprint 4): allowed unless a test sets `feature: false`.
+// Plan gate (Sprint 4): allowed unless a test sets `feature: false`. The route now
+// gates via the document entitlement matrix (audit F-08), so mock that helper too.
 vi.mock('@/lib/entitlements', () => ({
   canUseFeature: vi.fn(async () => h.auth.feature !== false),
+  requireDocumentAccess: vi.fn(async () =>
+    h.auth.feature === false ? 'UPGRADE_REQUIRED' : null,
+  ),
 }));
 
 vi.mock('@/lib/db', () => ({
