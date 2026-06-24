@@ -143,6 +143,13 @@ export type AuditAction =
   | 'inventory.areaDelete'
   | 'inventory.transfer'
   | 'inventory.countCommit'
+  // Manual inventory adjustments (Sprint 3 / audit F-06, kitchen OR manager).
+  // `inventory.movement` = a manual stock movement was posted (deduped replays are
+  // NOT audited); `inventory.thresholdSet` = a low-stock threshold was set/cleared.
+  // metadata = ingredient id + a direction/cleared descriptor only — NEVER the delta
+  // quantity, the threshold value, or any note text.
+  | 'inventory.movement'
+  | 'inventory.thresholdSet'
   // Org settings
   | 'settings.update'
   // Sensitive exports / generated documents

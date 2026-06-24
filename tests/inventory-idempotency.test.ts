@@ -33,17 +33,28 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth', () => ({
   getOrgId: vi.fn(async () => h.org),
+  // `recordMovementAction` now resolves an actor (audit F-06) → getUserId/Role.
+  getUserId: vi.fn(async () => 'user_test'),
+  getUserRole: vi.fn(async () => 'manager'),
 }));
 
 // withOrg → run the fn against the SAME PGlite db (as tenant_app, RLS active),
 // instead of the production Neon pool. runInOrg sets the org GUC per transaction.
+// getDb is only the rate-limiter's handle here, which the mock below short-circuits.
 vi.mock('@/lib/db', async () => {
   const { runInOrg: realRunInOrg } = await import('@/lib/db/tenant');
   return {
+    getDb: () => h.db,
     withOrg: (org: string, fn: (tx: never) => unknown) =>
       realRunInOrg(h.db, org, fn as never),
   };
 });
+
+// The `inventory` rate-limit bucket (audit F-05) is proven in the limiter's own
+// suite; here we always allow so the idempotency assertions stay isolated.
+vi.mock('@/lib/rate-limit', () => ({
+  enforceRateLimit: vi.fn(async () => ({ allowed: true })),
+}));
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
