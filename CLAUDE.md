@@ -75,7 +75,8 @@ Planned additions must land only in their sprint:
 
 - AI output is untrusted input. Validate with Zod, stage it server-side, and require human confirmation.
 - AI/photo extraction must never create final recipes or ingredients directly.
-- New ingredients from AI/import default to `priceCents = 0` and must be flagged as needing pricing.
+- New ingredients from **AI/photo extraction** always default to `priceCents = 0` and `needsPricing = true` — vision output is untrusted, so a price it "reads" is never persisted as final.
+- New ingredients from a **deterministic CSV/XLSX import** (Sprint 4.5/4.6) may keep a price that is present in the file: it is first-party data the user uploads and reviews in the staged preview before confirming. A blank/zero/missing price still imports at `priceCents = 0` and MUST set `needsPricing = true` so cost stays honest.
 - Store provider/cost/status metadata, not raw sensitive image contents, unless an explicit retention decision is approved.
 - AI features require entitlement checks, usage limits, rate limits, audit logs, and stable error codes.
 
