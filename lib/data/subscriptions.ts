@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { subscriptions } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import type { PlanTier } from '@/lib/entitlements';
@@ -32,6 +32,35 @@ export function planSlugToTier(slug: string | null | undefined): PlanTier {
 
 /** Rank used to pick the HIGHEST active tier when a subscription has many items. */
 const TIER_RANK: Record<PlanTier, number> = { starter: 0, pro: 1, business: 2 };
+
+/**
+ * Compare two plan tiers by rank: negative if `a` is lower than `b`, positive if
+ * higher, 0 if equal. Used by the billing webhook to classify a subscription change
+ * as an upgrade vs a downgrade (which drives which notification email is sent).
+ */
+export function comparePlanTiers(a: PlanTier, b: PlanTier): number {
+  return TIER_RANK[a] - TIER_RANK[b];
+}
+
+/** Which billing-lifecycle email a plan change should trigger (null = stay quiet). */
+export type PlanChangeKind = 'subscribed' | 'upgraded' | 'downgraded';
+
+/**
+ * Classify a plan change for the billing email. Returns the email kind, or null
+ * when the tier did not change (e.g. a renewal) so we stay quiet. A move up from
+ * no/free plan is "subscribed"; up from a paid plan is "upgraded"; any move down
+ * (including a cancellation back to free) is "downgraded".
+ */
+export function classifyPlanChange(
+  oldPlan: PlanTier | null,
+  newPlan: PlanTier,
+): PlanChangeKind | null {
+  const previous: PlanTier = oldPlan ?? 'starter';
+  const delta = comparePlanTiers(newPlan, previous);
+  if (delta === 0) return null;
+  if (delta > 0) return previous === 'starter' ? 'subscribed' : 'upgraded';
+  return 'downgraded';
+}
 
 /**
  * Item statuses that mean the org is CURRENTLY on that item's plan. `past_due`
@@ -122,4 +151,24 @@ export async function upsertSubscriptionMirror(
       // Only advance the row when the incoming event is newer-or-equal.
       setWhere: sql`${subscriptions.lastEventAt} <= ${input.eventAt}`,
     });
+}
+
+/**
+ * The org's currently-mirrored plan tier, or `null` if no mirror row exists yet.
+ * Read INSIDE `withOrg(orgId, …)` BEFORE an upsert so the billing webhook can
+ * compare the old plan against the incoming one (upgrade vs downgrade). Never
+ * gates access — display/notification use only.
+ */
+export async function getMirroredPlan(
+  db: TenantClient,
+  organizationId: string,
+): Promise<PlanTier | null> {
+  const rows = await db
+    .select({ plan: subscriptions.plan })
+    .from(subscriptions)
+    .where(eq(subscriptions.organizationId, organizationId))
+    .limit(1);
+  // The mirror only ever stores a resolved PlanTier (upsertSubscriptionMirror), so
+  // narrowing the untyped text column here is safe.
+  return (rows[0]?.plan as PlanTier | undefined) ?? null;
 }

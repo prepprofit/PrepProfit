@@ -1,15 +1,22 @@
 import { verifyWebhook } from '@clerk/nextjs/webhooks';
 import { clerkClient } from '@clerk/nextjs/server';
+import { getTranslations } from 'next-intl/server';
 import type { NextRequest } from 'next/server';
 import { withOrg } from '@/lib/db';
 import { isEmailConfigured } from '@/lib/env';
 import { getEmailSender } from '@/lib/email/resend';
-import { sendWelcomeEmail } from '@/lib/email/notifications';
+import {
+  sendWelcomeEmail,
+  sendSubscriptionEmail,
+  sendPaymentPastDueEmail,
+} from '@/lib/email/notifications';
 import { writeAuditEvent, type AuditActor } from '@/lib/data/audit';
-import { ensureOrgSettingsRow } from '@/lib/data/org-settings';
+import { ensureOrgSettingsRow, getOrgSettingsRow } from '@/lib/data/org-settings';
 import { ensureDefaultArea } from '@/lib/data/storage-areas';
 import { ensureCategoriesSeeded } from '@/lib/data/transaction-categories';
 import {
+  classifyPlanChange,
+  getMirroredPlan,
   resolveCurrentPeriodEnd,
   resolvePlanTier,
   upsertSubscriptionMirror,
@@ -51,6 +58,44 @@ function buildActor(requestId: string): AuditActor {
   return { userId: null, role: 'system', requestId };
 }
 
+/**
+ * Best-effort billing recipient + display name for an org. Prefers the org's own
+ * billing email (settings); falls back to the org's first admin via Clerk. Used
+ * only for notification copy, off the verified org id. Returns `to: null` when no
+ * address can be resolved (the caller then skips quietly).
+ */
+async function resolveOrgBilling(
+  organizationId: string,
+  businessEmail: string | null,
+  businessName: string | null,
+): Promise<{ to: string | null; orgName: string }> {
+  let to = businessEmail?.trim() || null;
+  let orgName = businessName?.trim() || null;
+
+  if (!to || !orgName) {
+    const client = await clerkClient();
+    if (!orgName) {
+      const org = await client.organizations.getOrganization({ organizationId });
+      orgName = org.name ?? null;
+    }
+    if (!to) {
+      const members = await client.organizations.getOrganizationMembershipList({
+        organizationId,
+        limit: 20,
+      });
+      const admin = members.data.find((m) => m.role === 'org:admin');
+      const identifier = admin?.publicUserData?.identifier;
+      to = identifier?.includes('@') ? identifier : null;
+      if (!to && admin?.publicUserData?.userId) {
+        const user = await client.users.getUser(admin.publicUserData.userId);
+        to = user.primaryEmailAddress?.emailAddress ?? null;
+      }
+    }
+  }
+
+  return { to, orgName: orgName ?? 'your organization' };
+}
+
 export async function POST(req: NextRequest): Promise<Response> {
   let evt;
   try {
@@ -89,26 +134,79 @@ export async function POST(req: NextRequest): Promise<Response> {
       const currentPeriodEnd = resolveCurrentPeriodEnd(items);
       const eventAt = new Date(evt.data.updated_at);
 
-      await withOrg(orgId, async (tx) => {
-        await upsertSubscriptionMirror(tx, orgId, {
-          plan,
-          status: evt.data.status,
-          clerkSubscriptionId: evt.data.id,
-          currentPeriodEnd,
-          eventType: evt.type,
-          eventAt,
-        });
-        await writeAuditEvent(tx, orgId, actor, {
-          // past_due is the only downgrade signal among these → 'lapse'.
-          action:
-            evt.type === 'subscription.pastDue'
-              ? 'subscription.lapse'
-              : 'subscription.update',
-          entityType: 'subscription',
-          entityId: evt.data.id,
-          metadata: { eventType: evt.type, plan, status: evt.data.status },
-        });
-      });
+      // Read the previously-mirrored plan + billing identity in the SAME tx, before
+      // the upsert, so the email below can classify upgrade vs downgrade.
+      const { oldPlan, businessEmail, businessName } = await withOrg(
+        orgId,
+        async (tx) => {
+          const prior = await getMirroredPlan(tx, orgId);
+          const settings = await getOrgSettingsRow(tx, orgId);
+          await upsertSubscriptionMirror(tx, orgId, {
+            plan,
+            status: evt.data.status,
+            clerkSubscriptionId: evt.data.id,
+            currentPeriodEnd,
+            eventType: evt.type,
+            eventAt,
+          });
+          await writeAuditEvent(tx, orgId, actor, {
+            // past_due is the only downgrade signal among these → 'lapse'.
+            action:
+              evt.type === 'subscription.pastDue'
+                ? 'subscription.lapse'
+                : 'subscription.update',
+            entityType: 'subscription',
+            entityId: evt.data.id,
+            metadata: { eventType: evt.type, plan, status: evt.data.status },
+          });
+          return {
+            oldPlan: prior,
+            businessEmail: settings?.businessEmail ?? null,
+            businessName: settings?.businessName ?? null,
+          };
+        },
+      );
+
+      // Best-effort billing email (mirrors the welcome-email guard): never let a
+      // send/lookup failure 5xx the webhook, which would make Svix retry the whole
+      // delivery. `idempotencyKey` = svix-id so a retry never double-sends.
+      if (isEmailConfigured()) {
+        try {
+          const { to, orgName } = await resolveOrgBilling(
+            orgId,
+            businessEmail,
+            businessName,
+          );
+          if (to) {
+            const tPlans = await getTranslations({
+              locale: 'en',
+              namespace: 'notifications.plans',
+            });
+            const planLabel = tPlans(plan);
+            if (evt.type === 'subscription.pastDue') {
+              await sendPaymentPastDueEmail(getEmailSender(), {
+                to,
+                orgName,
+                planLabel,
+                idempotencyKey: requestId,
+              });
+            } else {
+              const kind = classifyPlanChange(oldPlan, plan);
+              if (kind) {
+                await sendSubscriptionEmail(getEmailSender(), {
+                  to,
+                  orgName,
+                  planLabel,
+                  kind,
+                  idempotencyKey: requestId,
+                });
+              }
+            }
+          }
+        } catch (err) {
+          logError({ action: 'clerkWebhook.billingEmail' }, err);
+        }
+      }
       return new Response('OK', { status: 200 });
     }
 

@@ -11,6 +11,29 @@
     "lowStock": {
       "subject": "{count, plural, one {# ingredient is running low} other {# ingredients are running low}}",
       "body": "These ingredients in {org} are at or below their low-stock threshold and may need reordering:"
+    },
+    "plans": {
+      "starter": "Free",
+      "pro": "Pro",
+      "business": "Business"
+    },
+    "subscription": {
+      "subscribed": {
+        "subject": "You're on PrepProfit {plan} 🎉",
+        "body": "Thanks for subscribing — {org} is now on the {plan} plan and every feature it unlocks is ready to use. You can review or change your plan any time on the billing page. Reply to this email if you need a hand."
+      },
+      "upgraded": {
+        "subject": "Your plan is now PrepProfit {plan}",
+        "body": "{org} has been upgraded to the {plan} plan. The extra limits and modules it includes are available immediately. You can review your plan any time on the billing page."
+      },
+      "downgraded": {
+        "subject": "Your PrepProfit plan changed to {plan}",
+        "body": "{org} is now on the {plan} plan. Your data is safe and stays exactly as it is; only the plan's limits and modules change. You can move back up any time on the billing page."
+      }
+    },
+    "pastDue": {
+      "subject": "Action needed: update your payment method",
+      "body": "We couldn't process the latest payment for {org} on the {plan} plan, so the subscription is now past due. Please update your payment method on the billing page to keep your plan active. If you've already updated it, you can ignore this message."
     }
   },
   "actionErrors": {
