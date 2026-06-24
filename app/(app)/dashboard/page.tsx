@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import {
   DollarSign,
   FileText,
@@ -54,8 +54,8 @@ import {
   type LowStockItem,
 } from '@/components/app/dashboard/low-stock-card';
 
-const shortMonth = (month: number) =>
-  new Date(2000, month - 1, 1).toLocaleDateString('en', { month: 'short' });
+const shortMonth = (month: number, locale: string) =>
+  new Date(2000, month - 1, 1).toLocaleDateString(locale, { month: 'short' });
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
@@ -65,7 +65,10 @@ function todayKey(now: Date = new Date()): string {
 }
 
 /** Last 12 month keys descending from the given month key, for the period select. */
-function buildPeriodOptions(currentKey: string): { key: string; label: string }[] {
+function buildPeriodOptions(
+  currentKey: string,
+  locale: string,
+): { key: string; label: string }[] {
   const year = Number(currentKey.slice(0, 4));
   const month = Number(currentKey.slice(5, 7));
   const options: { key: string; label: string }[] = [];
@@ -74,7 +77,7 @@ function buildPeriodOptions(currentKey: string): { key: string; label: string }[
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const key = `${y}-${m}`;
-    const label = d.toLocaleDateString('en', { month: 'long', year: 'numeric' });
+    const label = d.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
     options.push({ key, label });
   }
   return options;
@@ -131,6 +134,7 @@ export default async function DashboardPage({
     redirect('/onboarding');
   }
   const firstName = await getFirstName();
+  const locale = await getLocale();
   const sp = await searchParams;
 
   // Period for the financial widgets — defaults to current month.
@@ -140,7 +144,7 @@ export default async function DashboardPage({
       ? sp.period
       : currentKey;
   const resolved = resolvePeriod('month', periodKey);
-  const periodOptions = buildPeriodOptions(currentKey);
+  const periodOptions = buildPeriodOptions(currentKey, locale);
 
   // Recipes + ingredients are operational (no financial figures) — both roles.
   const { recipes, ingredients } = await withOrg(organizationId, async (tx) => ({
@@ -238,7 +242,7 @@ export default async function DashboardPage({
               totalCents: c.totalCents,
             })),
           monthly: monthlyBuckets(txns.year, resolved.year).map((b) => ({
-            label: shortMonth(b.month),
+            label: shortMonth(b.month, locale),
             incomeCents: b.incomeCents,
             expenseCents: b.expenseCents,
             profitCents: b.profitCents,
