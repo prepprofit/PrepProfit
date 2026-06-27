@@ -22,7 +22,7 @@ import {
   RECIPE_EXTRACTION_MODEL,
   RECIPE_EXTRACTION_PROVIDER,
 } from '@/lib/ai/recipe-extraction';
-import { mapExtractedRecipe } from '@/lib/ai/map-extraction';
+import { mapExtractionToPhotoDraft, normalizePhotoDraftForImport } from '@/lib/ai/photo-draft';
 import { validateImageUpload } from '@/lib/ai/image';
 import { IMPORT_JOB_TTL_MS } from '@/lib/validation/import';
 import type { PhotoExtractionPreview } from '@/lib/ai/types';
@@ -130,8 +130,17 @@ export async function POST(req: Request): Promise<NextResponse> {
     return fail(code, busy ? 503 : 502);
   }
 
-  // Pure mapping (no DB): extracted recipe → draft + issues + quality flags.
-  const mapped = mapExtractedRecipe(extraction.recipe);
+  // Pure mapping (no DB): extracted recipe → a line-complete editable draft, then the
+  // canonical DraftRecipe[] + issues for the planner. The no-loss draft keeps every
+  // line the model read; lines that cannot canonicalize (descriptor without a pack
+  // size, unreadable quantity, unknown unit) surface as issues — visible to the user,
+  // never silently dropped (G1).
+  const draft = mapExtractionToPhotoDraft(extraction.recipe, {
+    attemptId,
+    provider: extraction.provider,
+    model: extraction.model,
+  });
+  const mapped = normalizePhotoDraftForImport(draft);
 
   try {
     const preview = await withOrg(organizationId, async (tx): Promise<PhotoExtractionPreview> => {
@@ -154,7 +163,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         inputTokens: extraction.usage.inputTokens,
         outputTokens: extraction.usage.outputTokens,
         costMicros: null,
-        qualityFlags: mapped.qualityFlags,
+        qualityFlags: draft.qualityFlags,
       });
       await writeAuditEvent(tx, organizationId, actor, {
         action: 'ai.extract',
@@ -170,7 +179,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           importable: plan.counts.importable,
           skipped: plan.counts.skipped,
           issues: plan.issues.length,
-          qualityFlags: mapped.qualityFlags.length,
+          qualityFlags: draft.qualityFlags.length,
         },
       });
       return {
@@ -178,7 +187,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         counts: plan.counts,
         issues: plan.issues,
         recipePayload: plan.payload,
-        qualityFlags: mapped.qualityFlags,
+        qualityFlags: draft.qualityFlags,
       };
     });
     // Product analytics (Sprint 5c): post-success, PII-free (counts only).

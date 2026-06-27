@@ -4,7 +4,7 @@ import type { Unit } from './index';
  * Raw unit-TOKEN resolution — the single source of truth for turning a free-text
  * unit token ("g", "kilograms", "cups", "") into a canonical {@link Unit}. Shared
  * by the spreadsheet recipe parser (lib/import/parse.ts) and the AI photo-extraction
- * mapper (lib/ai/map-extraction.ts) so both honour the SAME alias set and the SAME
+ * descriptor parser (lib/units/descriptor.ts) so both honour the SAME alias set and the SAME
  * rule: blank ⇒ count, a known token/alias ⇒ its unit, anything else ⇒ a row issue
  * (`INVALID_UNIT`) — never a silent guess (CLAUDE.md AI/import rules).
  */
