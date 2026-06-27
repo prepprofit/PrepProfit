@@ -46,6 +46,7 @@ const h = vi.hoisted(() => ({
   role: 'manager' as 'manager' | 'kitchen',
   monthlyLimit: 50,
   throws: false,
+  busy: false,
   result: {
     recipe: null as unknown,
     usage: { inputTokens: 1000, outputTokens: 200 },
@@ -73,17 +74,31 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
-vi.mock('@/lib/ai/recipe-extraction', () => ({
-  getRecipeExtractor: () => ({
-    extract: async () => {
-      if (h.throws) throw new Error('provider down');
-      return h.result;
-    },
-  }),
-  RecipeExtractionError: class RecipeExtractionError extends Error {},
-  RECIPE_EXTRACTION_MODEL: 'gemini-3.5-flash',
-  RECIPE_EXTRACTION_PROVIDER: 'google',
-}));
+vi.mock('@/lib/ai/recipe-extraction', () => {
+  // Defined inside the factory (vi.mock is hoisted) — mirrors the real class's
+  // `retryable` flag so the route can distinguish a busy overload from a hard failure.
+  class RecipeExtractionError extends Error {
+    readonly retryable: boolean;
+    constructor(message: string, options?: { retryable?: boolean }) {
+      super(message);
+      this.retryable = options?.retryable ?? false;
+    }
+  }
+  return {
+    getRecipeExtractor: () => ({
+      extract: async () => {
+        // `busy` = a transient overload that survived retries (retryable); `throws` =
+        // an unexpected non-provider failure. They map to different codes/statuses.
+        if (h.busy) throw new RecipeExtractionError('model overloaded', { retryable: true });
+        if (h.throws) throw new Error('provider down');
+        return h.result;
+      },
+    }),
+    RecipeExtractionError,
+    RECIPE_EXTRACTION_MODEL: 'gemini-3.5-flash',
+    RECIPE_EXTRACTION_PROVIDER: 'google',
+  };
+});
 
 // Import the route AFTER the mocks are registered.
 import { POST } from '@/app/api/recipes/import/photo/route';
@@ -128,6 +143,7 @@ beforeEach(() => {
   h.role = 'manager';
   h.monthlyLimit = 50;
   h.throws = false;
+  h.busy = false;
   h.result = {
     recipe: goodRecipe,
     usage: { inputTokens: 1000, outputTokens: 200 },
@@ -257,5 +273,23 @@ describe('POST /api/recipes/import/photo — provider failure', () => {
         .where(and(eq(auditLog.organizationId, ORG_A), eq(auditLog.action, 'ai.extractFailed'))),
     );
     expect(failAudit.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('returns 503 AI_EXTRACTION_BUSY on a transient overload (retryable), not 502', async () => {
+    h.userId = 'busy_user';
+    h.busy = true;
+    const res = await POST(request(jpegBytes()));
+    expect(res.status).toBe(503);
+    expect((await res.json()).code).toBe('AI_EXTRACTION_BUSY');
+
+    const attempt = await runInOrg(db, ORG_A, (tx) =>
+      tx
+        .select()
+        .from(aiExtractionAttempts)
+        .where(eq(aiExtractionAttempts.actorUserId, 'busy_user')),
+    );
+    expect(attempt[0]?.status).toBe('failed');
+    expect(attempt[0]?.errorCode).toBe('AI_EXTRACTION_BUSY');
+    expect(attempt[0]?.importJobId).toBeNull();
   });
 });

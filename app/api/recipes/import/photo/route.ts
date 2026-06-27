@@ -108,23 +108,26 @@ export async function POST(req: Request): Promise<NextResponse> {
   try {
     extraction = await getRecipeExtractor().extract({ imageBytes: bytes, mimeType });
   } catch (err) {
+    // A transient provider overload (busy, survived retries) is reported distinctly
+    // from an unusable-output failure: 503 + AI_EXTRACTION_BUSY tells the user to try
+    // again shortly rather than wrongly blaming their photo. Both stage nothing.
+    const busy = err instanceof RecipeExtractionError && err.retryable;
+    const code = busy ? 'AI_EXTRACTION_BUSY' : 'AI_EXTRACTION_FAILED';
     const eventId = logError({ action: 'recipePhotoExtract', orgId: organizationId }, err);
     await withOrg(organizationId, async (tx) => {
-      await markAttemptFailed(tx, organizationId, attemptId, {
-        errorCode: 'AI_EXTRACTION_FAILED',
-      });
+      await markAttemptFailed(tx, organizationId, attemptId, { errorCode: code });
       await writeAuditEvent(tx, organizationId, actor, {
         action: 'ai.extractFailed',
         entityType: 'aiExtractionAttempt',
         entityId: attemptId,
         metadata: {
           provider: 'google',
-          reason: err instanceof RecipeExtractionError ? 'provider' : 'unexpected',
+          reason: busy ? 'overloaded' : err instanceof RecipeExtractionError ? 'provider' : 'unexpected',
           eventId,
         },
       });
     });
-    return fail('AI_EXTRACTION_FAILED', 502);
+    return fail(code, busy ? 503 : 502);
   }
 
   // Pure mapping (no DB): extracted recipe → draft + issues + quality flags.

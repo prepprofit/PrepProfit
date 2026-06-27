@@ -44,6 +44,10 @@ export type ActionErrorCode =
   // The AI vision provider failed or returned unusable output (Sprint 4.7). The
   // image is discarded; nothing is staged.
   | 'AI_EXTRACTION_FAILED'
+  // The AI vision provider was TRANSIENTLY overloaded/rate-limited and stayed busy
+  // through our retries (Sprint 4.7) — distinct from AI_EXTRACTION_FAILED so the user
+  // is told to retry in a moment, not to take a clearer photo. Nothing is staged.
+  | 'AI_EXTRACTION_BUSY'
   // The org reached its monthly AI-extraction allowance for the plan (Sprint 4.7).
   | 'USAGE_LIMIT_REACHED'
   // A recipe allergen override tried to lower/remove a presence — overrides may only

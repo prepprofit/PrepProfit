@@ -58,6 +58,7 @@
     "PLAN_LIMIT_REACHED": "You've reached your plan's limit. Upgrade to add more.",
     "IMPORT_EXPIRED": "This import preview has expired. Upload the file again to import it.",
     "AI_EXTRACTION_FAILED": "We couldn't read a recipe from that photo. Try a clearer, well-lit image.",
+    "AI_EXTRACTION_BUSY": "The recipe scanner is busy right now. Please wait a moment and try again — your photo is fine.",
     "USAGE_LIMIT_REACHED": "You've used all of this month's photo extractions on your plan. They reset next month, or upgrade for more.",
     "ALLERGEN_CANNOT_DOWNGRADE": "A recipe allergen can only be added or raised, never lowered or removed. Allergens from ingredients can't be suppressed here.",
     "MENU_RECIPE_INVALID": "One of the menu's recipes is missing or in the trash. Remove or replace that line, then save again.",
