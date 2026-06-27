@@ -1,4 +1,11 @@
-import { GoogleGenAI, Type, type Schema } from '@google/genai';
+import {
+  GoogleGenAI,
+  ApiError,
+  Type,
+  type Schema,
+  type GenerateContentParameters,
+  type GenerateContentResponse,
+} from '@google/genai';
 import { z } from 'zod';
 import { aiEnv } from '@/lib/env';
 
@@ -133,11 +140,19 @@ const responseSchema: Schema = {
   ],
 };
 
-/** Thrown when the model returns non-JSON or a response that fails validation. */
+/**
+ * Thrown when the model returns non-JSON, fails validation, or the provider call
+ * fails. `retryable` is true when the underlying failure was a TRANSIENT provider
+ * overload/rate-limit (a 429/5xx that survived our in-extractor retries) rather than
+ * a genuine "couldn't read this photo". The route uses it to show the user an honest
+ * "service is busy, try again" message instead of wrongly blaming their image.
+ */
 export class RecipeExtractionError extends Error {
-  constructor(message: string) {
+  readonly retryable: boolean;
+  constructor(message: string, options?: { retryable?: boolean }) {
     super(message);
     this.name = 'RecipeExtractionError';
+    this.retryable = options?.retryable ?? false;
   }
 }
 
@@ -160,6 +175,54 @@ export function parseExtractionResponse(rawText: string): ExtractedRecipe {
     throw new RecipeExtractionError('Model output failed schema validation.');
   }
   return parsed.data;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Transient-failure retry.                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Gemini returns a 503 ("This model is currently experiencing high demand") or a
+ * 429 (rate limited) under load — both transient. A brand-new, popular Flash model
+ * is routinely overloaded, so a single attempt fails often enough to make the whole
+ * photo-import feature look broken to the user. We retry the call a few times with
+ * exponential backoff + full jitter; a non-transient error (e.g. 400 bad request,
+ * 404 unknown model, or a validation failure) fails fast and is NOT retried. Total
+ * added latency is bounded (~0.4s + ~0.8s worst case before the final attempt) so
+ * the upload request stays well within the function timeout.
+ */
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 3;
+const BASE_BACKOFF_MS = 400;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** A transient provider failure worth retrying — an `ApiError` with a 429/5xx status. */
+function isTransientProviderError(err: unknown): boolean {
+  return err instanceof ApiError && RETRYABLE_STATUS.has(err.status);
+}
+
+/**
+ * Call `generateContent`, retrying transient overload/rate-limit failures with
+ * exponential backoff. Re-throws the last error once attempts are exhausted (the
+ * caller wraps it as a key-free {@link RecipeExtractionError}).
+ */
+async function generateContentWithRetry(
+  ai: GoogleGenAI,
+  request: GenerateContentParameters,
+): Promise<GenerateContentResponse> {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await ai.models.generateContent(request);
+    } catch (err) {
+      if (attempt >= MAX_ATTEMPTS || !isTransientProviderError(err)) throw err;
+      // Full jitter over an exponentially growing window: [0, 400), [0, 800), …
+      const window = BASE_BACKOFF_MS * 2 ** (attempt - 1);
+      await sleep(Math.random() * window);
+    }
+  }
+  // Unreachable: the loop returns on success or throws on the final attempt.
+  throw new RecipeExtractionError('Recipe extraction exhausted all retries.');
 }
 
 /* -------------------------------------------------------------------------- */
@@ -221,7 +284,7 @@ export function getRecipeExtractor(): RecipeExtractor {
 
       let response;
       try {
-        response = await ai.models.generateContent({
+        response = await generateContentWithRetry(ai, {
           model: RECIPE_EXTRACTION_MODEL,
           contents: [
             {
@@ -246,8 +309,12 @@ export function getRecipeExtractor(): RecipeExtractor {
         });
       } catch (err) {
         // Surface a key-free message; the caller logs it and returns the stable code.
+        // A transient overload that survived every retry is flagged `retryable` so the
+        // user is told the service is busy, not that their photo was unreadable.
         const reason = err instanceof Error ? err.message : 'unknown error';
-        throw new RecipeExtractionError(`Recipe extraction request failed: ${reason}`);
+        throw new RecipeExtractionError(`Recipe extraction request failed: ${reason}`, {
+          retryable: isTransientProviderError(err),
+        });
       }
 
       const text = response.text;
