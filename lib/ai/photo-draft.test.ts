@@ -11,6 +11,16 @@ const META = { attemptId: 'att_1', provider: 'google', model: 'gemini-test' };
 const draftOf = (extracted: ExtractedRecipe): PhotoExtractionDraft =>
   mapExtractionToPhotoDraft(extracted, META);
 
+/** A minimal extraction wrapping just the ingredient lines under test. */
+const recipe = (ingredients: ExtractedRecipe['ingredients']): ExtractedRecipe => ({
+  name: 'Test',
+  yieldPortions: null,
+  ingredients,
+  preparationNotes: null,
+  overallConfidence: 0.9,
+  imageQuality: 'good',
+});
+
 /** Codes attached to the line whose ingredient name matches. */
 const codesFor = (draft: PhotoExtractionDraft, name: string): PhotoDraftIssueCode[] => {
   const line = draft.recipe.lines.find((l) => l.ingredientName === name);
@@ -92,6 +102,101 @@ describe('mapExtractionToPhotoDraft — keeps every line (no silent loss)', () =
     });
     expect(draft.recipe.lines.every((l) => l.status === 'ready')).toBe(true);
     expect(draft.qualityFlags).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Phase 2 — rich extraction fields (sections, fractions, pack size, crossed)  */
+/* -------------------------------------------------------------------------- */
+
+describe('mapExtractionToPhotoDraft — Phase 2 rich fields', () => {
+  it('re-parses the written quantity text, ignoring a wrong model numeric (§5.4)', () => {
+    const draft = draftOf(
+      recipe([{ name: 'Honey', quantityText: '½', quantity: 9, unit: 'cup', confidence: 0.9 }]),
+    );
+    const line = draft.recipe.lines[0]!;
+    // The server trusts the chef's text (0.5), never the model's arithmetic (9).
+    expect(line.quantityValue).toBe(0.5);
+    expect(line.quantityText).toBe('½');
+    expect(line.status).toBe('ready');
+  });
+
+  it('keeps a line whose written text is unparseable as needs_review (no guess)', () => {
+    const draft = draftOf(
+      recipe([{ name: 'Salt', quantityText: 'to taste', quantity: null, unit: 'g', confidence: 0.6 }]),
+    );
+    const line = draft.recipe.lines[0]!;
+    expect(line.quantityValue).toBeNull();
+    expect(line.status).toBe('needs_review');
+    expect(line.issues.map((i) => i.code)).toContain('MISSING_QUANTITY');
+  });
+
+  it('makes a descriptor WITH a pack size ready and canonicalizes from the pack (§5.2)', () => {
+    const draft = draftOf(
+      recipe([
+        {
+          name: 'Walnuts',
+          quantity: 2,
+          unit: 'pkt',
+          packageSizeValue: 300,
+          packageSizeUnit: 'g',
+          confidence: 0.9,
+        },
+      ]),
+    );
+    expect(draft.recipe.lines[0]!.status).toBe('ready');
+    const { recipes } = normalizePhotoDraftForImport(draft);
+    const line = recipes[0]!.lines[0]!;
+    expect(line.dimension).toBe('weight');
+    expect(line.quantityCanonical).toBe(600); // 2 pkt × 300 g
+  });
+
+  it('keeps a descriptor WITHOUT a usable pack size as needs_review', () => {
+    const draft = draftOf(
+      recipe([
+        // A bare number as the pack unit is not a measurable pack → still needs review.
+        { name: 'Walnuts', quantity: 1, unit: 'pkt', packageSizeValue: 300, packageSizeUnit: null, confidence: 0.9 },
+      ]),
+    );
+    expect(draft.recipe.lines[0]!.status).toBe('needs_review');
+    expect(draft.recipe.lines[0]!.issues.map((i) => i.code)).toContain(
+      'DESCRIPTOR_NEEDS_PACKAGE_SIZE',
+    );
+  });
+
+  it('treats a crossed-out line as ignored: no issues, never imported', () => {
+    const draft = draftOf(
+      recipe([
+        { name: 'Brandy', quantity: 2, unit: 'tbsp', crossedOut: true, confidence: 0.7 },
+        { name: 'Honey', quantity: 3, unit: 'tbsp', crossedOut: false, confidence: 0.9 },
+      ]),
+    );
+    const brandy = draft.recipe.lines[0]!;
+    expect(brandy.status).toBe('ignored');
+    expect(brandy.issues).toEqual([]);
+
+    const { recipes, issues } = normalizePhotoDraftForImport(draft);
+    expect(recipes[0]!.lines.map((l) => l.normalizedName)).toEqual(['honey']);
+    expect(issues).toEqual([]); // an ignored line is never surfaced as an issue
+  });
+
+  it('preserves section, rawText, and unit token on the draft line', () => {
+    const draft = draftOf(
+      recipe([
+        {
+          rawText: '200 ml water',
+          section: 'Syrup',
+          name: 'Water',
+          quantity: 200,
+          unit: 'ml',
+          confidence: 0.95,
+        },
+      ]),
+    );
+    const line = draft.recipe.lines[0]!;
+    expect(line.section).toBe('Syrup');
+    expect(line.rawText).toBe('200 ml water');
+    expect(line.unitToken).toBe('ml');
   });
 });
 

@@ -62,6 +62,9 @@ const MAX_NAME_LEN = 200;
 const MAX_UNIT_LEN = 40;
 const MAX_NOTES_LEN = 5000;
 const MAX_PORTIONS = 100_000;
+const MAX_RAWTEXT_LEN = 300;
+const MAX_SECTION_LEN = 80;
+const MAX_QTY_TEXT_LEN = 40;
 
 /**
  * The model's read of overall photo legibility. An enum (not free prose) so it is
@@ -74,14 +77,32 @@ export type ImageQuality = (typeof IMAGE_QUALITY)[number];
 /**
  * One extracted ingredient line as the model READ it (not yet resolved). `quantity`
  * / `unit` are nullable: the model returns null for an unreadable or absent value
- * rather than inventing one. `unit` is the RAW token ("g", "cups", "") — the mapping
- * step resolves it through the shared unit parser (unknown ⇒ a row issue, never a
- * silent guess). `confidence` is the model's per-line certainty in [0, 1].
+ * rather than inventing one. `unit` is the RAW token ("g", "cups", "pkt", "") — the
+ * mapping step resolves it through the shared unit/descriptor parser (unknown ⇒ kept
+ * for review, never a silent guess). `confidence` is the per-line certainty in [0, 1].
+ *
+ * The improvement-plan (Phase 2) fields are `.optional()` so an older/sparse response
+ * still validates (defence in depth), but the prompt + `responseSchema` ask the model
+ * to always return them:
+ *  - `rawText`: the full source line, REVIEW-ONLY (never logged/audited).
+ *  - `section`: a heading the line sits under (`Syrup`, `Filling`), for review grouping.
+ *  - `quantityText`: the quantity EXACTLY as written (`1/2`, `1 1/2`, `½`). The server
+ *    re-parses this (it never trusts the model's arithmetic); `quantity` is the model's
+ *    best-effort numeric and the fallback.
+ *  - `packageSizeValue`/`packageSizeUnit`: a parenthetical pack size (`1 pkt (300 g)`),
+ *    captured separately so a descriptor line can canonicalize from the pack.
+ *  - `crossedOut`: a struck-through line — returned (so we can explain it) but ignored.
  */
 export const extractedLineSchema = z.object({
+  rawText: z.string().trim().max(MAX_RAWTEXT_LEN).nullable().optional(),
+  section: z.string().trim().max(MAX_SECTION_LEN).nullable().optional(),
   name: z.string().trim().min(1).max(MAX_NAME_LEN),
+  quantityText: z.string().trim().max(MAX_QTY_TEXT_LEN).nullable().optional(),
   quantity: z.number().positive().finite().nullable(),
   unit: z.string().trim().max(MAX_UNIT_LEN).nullable(),
+  packageSizeValue: z.number().positive().finite().nullable().optional(),
+  packageSizeUnit: z.string().trim().max(MAX_UNIT_LEN).nullable().optional(),
+  crossedOut: z.boolean().optional(),
   confidence: z.number().min(0).max(1),
 });
 export type ExtractedLine = z.infer<typeof extractedLineSchema>;
@@ -118,12 +139,29 @@ const responseSchema: Schema = {
       items: {
         type: Type.OBJECT,
         properties: {
+          rawText: { type: Type.STRING, nullable: true },
+          section: { type: Type.STRING, nullable: true },
           name: { type: Type.STRING },
+          quantityText: { type: Type.STRING, nullable: true },
           quantity: { type: Type.NUMBER, nullable: true },
           unit: { type: Type.STRING, nullable: true },
+          packageSizeValue: { type: Type.NUMBER, nullable: true },
+          packageSizeUnit: { type: Type.STRING, nullable: true },
+          crossedOut: { type: Type.BOOLEAN },
           confidence: { type: Type.NUMBER },
         },
-        required: ['name', 'quantity', 'unit', 'confidence'],
+        required: [
+          'rawText',
+          'section',
+          'name',
+          'quantityText',
+          'quantity',
+          'unit',
+          'packageSizeValue',
+          'packageSizeUnit',
+          'crossedOut',
+          'confidence',
+        ],
       },
     },
     preparationNotes: { type: Type.STRING, nullable: true },
@@ -254,19 +292,82 @@ export interface RecipeExtractor {
   extract(input: ExtractRecipeInput): Promise<ExtractRecipeResult>;
 }
 
-/** The extraction instruction. Optimized for printed/typed sources (Q1). */
+/**
+ * The extraction instruction (improvement-plan Phase 2). Optimized for completeness:
+ * EVERY active line must be returned — a rough line we can review beats a missing one.
+ * Sections, raw quantity text, parenthetical pack sizes, and crossed-out state are all
+ * captured so the deterministic mapper/review UI can correct rather than discard.
+ */
 const EXTRACTION_PROMPT = [
   'You are extracting a single cooking recipe from one photograph of a recipe',
   '(printed card, cookbook page, supplier sheet, or handwritten note).',
-  'Return ONLY the recipe shown. Follow these rules strictly:',
-  '- Transcribe the recipe title, the yield in portions if stated, and every',
-  '  ingredient line with its quantity and unit exactly as written.',
+  'Return ONLY the recipe shown, as JSON matching the schema. Rules:',
+  '- Extract EVERY active ingredient line. Completeness matters most: never omit a',
+  '  line just because a value is hard to read.',
   '- NEVER invent ingredients, quantities, or units. If a value is missing or',
   '  unreadable, return null for it — do not guess.',
-  '- Keep each ingredient unit as the raw token shown (e.g. "g", "cups", "tbsp").',
+  '- For each line set rawText to the full line exactly as written.',
+  '- Preserve section headings (e.g. "Syrup", "Filling", "Dough", "Sauce") in section;',
+  '  use null when the line sits under no heading. Do NOT fold a section into the name.',
+  '- Set quantityText to the quantity EXACTLY as written, including fractions',
+  '  ("1/2", "1 1/2", "½"). Also set quantity to your best-effort numeric value, or',
+  '  null if you cannot read a number. Keep unit as the raw token shown',
+  '  ("g", "cups", "tbsp", "tsp", "pkt", "clove").',
+  '- If a line shows a parenthetical pack size, capture it SEPARATELY:',
+  '  "1 pkt walnuts (300g)" -> quantity 1, unit "pkt", packageSizeValue 300,',
+  '  packageSizeUnit "g". Otherwise packageSizeValue and packageSizeUnit are null.',
+  '- Set crossedOut true for a clearly struck-through/deleted line (still return it so',
+  '  it can be explained); otherwise false.',
   '- Give a confidence in [0,1] per ingredient line and one overall, and rate the',
   '  image legibility as "good", "fair", or "poor".',
   '- Put method/preparation steps (if any) in preparationNotes, else null.',
+  '',
+  'Example (handwritten, sectioned, with a pack size and a crossed-out line):',
+  JSON.stringify({
+    name: 'Walnut Tart',
+    yieldPortions: 8,
+    ingredients: [
+      {
+        rawText: '1 pkt walnuts (300g)',
+        section: 'Filling',
+        name: 'Walnuts',
+        quantityText: '1',
+        quantity: 1,
+        unit: 'pkt',
+        packageSizeValue: 300,
+        packageSizeUnit: 'g',
+        crossedOut: false,
+        confidence: 0.9,
+      },
+      {
+        rawText: '½ cup honey',
+        section: 'Syrup',
+        name: 'Honey',
+        quantityText: '½',
+        quantity: 0.5,
+        unit: 'cup',
+        packageSizeValue: null,
+        packageSizeUnit: null,
+        crossedOut: false,
+        confidence: 0.88,
+      },
+      {
+        rawText: '2 tbsp brandy',
+        section: 'Syrup',
+        name: 'Brandy',
+        quantityText: '2',
+        quantity: 2,
+        unit: 'tbsp',
+        packageSizeValue: null,
+        packageSizeUnit: null,
+        crossedOut: true,
+        confidence: 0.7,
+      },
+    ],
+    preparationNotes: 'Toast the walnuts; layer; pour over syrup.',
+    overallConfidence: 0.86,
+    imageQuality: 'fair',
+  }),
 ].join('\n');
 
 /**

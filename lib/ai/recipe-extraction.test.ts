@@ -88,6 +88,51 @@ describe('parseExtractionResponse — happy path', () => {
   });
 });
 
+describe('parseExtractionResponse — Phase 2 rich line fields', () => {
+  it('parses and preserves rawText, section, quantityText, pack size, and crossedOut', () => {
+    const result = parseExtractionResponse(
+      json({
+        ...goodResponse,
+        ingredients: [
+          {
+            rawText: '1 pkt walnuts (300g)',
+            section: 'Filling',
+            name: 'Walnuts',
+            quantityText: '1',
+            quantity: 1,
+            unit: 'pkt',
+            packageSizeValue: 300,
+            packageSizeUnit: 'g',
+            crossedOut: false,
+            confidence: 0.9,
+          },
+        ],
+      }),
+    );
+    expect(result.ingredients[0]).toMatchObject({
+      rawText: '1 pkt walnuts (300g)',
+      section: 'Filling',
+      quantityText: '1',
+      packageSizeValue: 300,
+      packageSizeUnit: 'g',
+      crossedOut: false,
+    });
+  });
+
+  it('rejects a non-positive package size (untrusted-input boundary)', () => {
+    expect(() =>
+      parseExtractionResponse(
+        json({
+          ...goodResponse,
+          ingredients: [
+            { name: 'Walnuts', quantity: 1, unit: 'pkt', packageSizeValue: -5, confidence: 0.9 },
+          ],
+        }),
+      ),
+    ).toThrow(RecipeExtractionError);
+  });
+});
+
 describe('parseExtractionResponse — rejects malformed output', () => {
   it('throws on non-JSON output', () => {
     expect(() => parseExtractionResponse('not json at all')).toThrow(RecipeExtractionError);

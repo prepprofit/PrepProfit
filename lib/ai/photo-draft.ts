@@ -1,14 +1,17 @@
-import { dimensionOf, toCanonical } from '@/lib/units';
+import { dimensionOf, toCanonical, type Dimension, type Unit } from '@/lib/units';
 import { parseRecipeUnit } from '@/lib/units/descriptor';
+import { parseQuantityText } from '@/lib/units/quantity';
+import { parseUnitToken } from '@/lib/units/token';
 import { normalizeIngredientName } from '@/lib/import/resolveIngredient';
 import type { DraftRecipe, DraftRecipeLine } from '@/lib/import/parse';
 import type { ImportRowIssue } from '@/lib/import/types';
-import type { ExtractedRecipe } from './recipe-extraction';
+import type { ExtractedLine, ExtractedRecipe } from './recipe-extraction';
 import {
   AI_QUALITY_FLAGS,
   type AiQualityFlag,
   type PhotoDraftIssue,
   type PhotoDraftLine,
+  type PhotoDraftLineStatus,
   type PhotoExtractionDraft,
 } from './types';
 
@@ -37,6 +40,36 @@ export const LOW_CONFIDENCE_THRESHOLD = 0.6;
 const recipeKey = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
 /**
+ * The server's TRUSTED numeric quantity (§5.4): re-parse the chef's written text
+ * (fractions included) rather than trusting the model's arithmetic, falling back to
+ * the model's numeric `quantity`. Null when neither yields a positive number.
+ */
+function resolveQuantityValue(ing: ExtractedLine): number | null {
+  if (ing.quantityText != null && ing.quantityText.trim() !== '') {
+    const parsed = parseQuantityText(ing.quantityText);
+    if ('value' in parsed) return parsed.value;
+  }
+  return ing.quantity ?? null;
+}
+
+/**
+ * A USABLE package size: a positive value with a CANONICAL (measurable) unit. A bare
+ * number or a descriptor pack-unit is rejected (null) — a pack must measure in g/ml/…
+ * to canonicalize an ingredient that is priced by weight or volume.
+ */
+function canonicalPackageSize(
+  value: number | null,
+  unitToken: string | null,
+): { value: number; unit: Unit } | null {
+  if (value == null || !(value > 0)) return null;
+  const token = (unitToken ?? '').trim();
+  if (token === '') return null;
+  const parsed = parseUnitToken(token);
+  if ('error' in parsed) return null;
+  return { value, unit: parsed.unit };
+}
+
+/**
  * Map a validated extraction into a line-complete editable draft. Every ingredient
  * line becomes a {@link PhotoDraftLine}; one that cannot be canonicalized yet (null
  * quantity, a package descriptor, an unknown unit, or an unreadable name) is
@@ -56,43 +89,58 @@ export function mapExtractionToPhotoDraft(
   if (extracted.overallConfidence < LOW_CONFIDENCE_THRESHOLD) flags.add('low_confidence');
 
   const lines: PhotoDraftLine[] = extracted.ingredients.map((ing) => {
-    if (ing.confidence < LOW_CONFIDENCE_THRESHOLD) flags.add('low_confidence');
-
+    const crossedOut = ing.crossedOut === true;
+    const quantityValue = resolveQuantityValue(ing);
+    const packageSize = canonicalPackageSize(ing.packageSizeValue ?? null, ing.packageSizeUnit ?? null);
+    const unitResult = parseRecipeUnit(ing.unit ?? '');
     const issues: PhotoDraftIssue[] = [];
 
-    // Name: kept visible even if it normalizes away (the user can retype it).
-    if (normalizeIngredientName(ing.name) === '') {
-      issues.push({ code: 'MISSING_NAME' });
+    // A crossed-out line is returned (so the UI can show why) but never validated or
+    // imported — it starts `ignored` and carries no issues/flags.
+    if (!crossedOut) {
+      if (ing.confidence < LOW_CONFIDENCE_THRESHOLD) flags.add('low_confidence');
+
+      // Name: kept visible even if it normalizes away (the user can retype it).
+      if (normalizeIngredientName(ing.name) === '') issues.push({ code: 'MISSING_NAME' });
+
+      // Quantity: a null/unparseable quantity blocks import but stays visible.
+      if (quantityValue === null) {
+        issues.push({ code: 'MISSING_QUANTITY' });
+        flags.add('missing_quantity');
+      }
+
+      // Unit: a descriptor canonicalizes from a pack size; without one it needs review.
+      // An unknown token always needs review. Canonical units are fine.
+      if (unitResult.kind === 'descriptor') {
+        if (!packageSize) {
+          issues.push({ code: 'DESCRIPTOR_NEEDS_PACKAGE_SIZE' });
+          flags.add('ambiguous_unit');
+        }
+      } else if (unitResult.kind === 'unknown') {
+        issues.push({ code: 'UNKNOWN_UNIT' });
+        flags.add('ambiguous_unit');
+      }
     }
 
-    // Unit: canonical units are fine; descriptors/unknowns keep the line for review.
-    const unitResult = parseRecipeUnit(ing.unit ?? '');
-    if (unitResult.kind === 'descriptor') {
-      issues.push({ code: 'DESCRIPTOR_NEEDS_PACKAGE_SIZE' });
-      flags.add('ambiguous_unit');
-    } else if (unitResult.kind === 'unknown') {
-      issues.push({ code: 'UNKNOWN_UNIT' });
-      flags.add('ambiguous_unit');
-    }
-
-    // Quantity: a null (unreadable/absent) quantity blocks import but stays visible.
-    if (ing.quantity === null) {
-      issues.push({ code: 'MISSING_QUANTITY' });
-      flags.add('missing_quantity');
-    }
+    const status: PhotoDraftLineStatus = crossedOut
+      ? 'ignored'
+      : issues.length === 0
+        ? 'ready'
+        : 'needs_review';
 
     return {
       id: crypto.randomUUID(),
-      rawText: null,
-      section: null,
+      rawText: ing.rawText ?? null,
+      section: ing.section ?? null,
       ingredientName: ing.name,
-      quantityText: ing.quantity === null ? null : String(ing.quantity),
-      quantityValue: ing.quantity,
+      // Prefer the chef's written text; fall back to the trusted numeric for display.
+      quantityText: ing.quantityText ?? (quantityValue === null ? null : String(quantityValue)),
+      quantityValue,
       unitToken: ing.unit,
-      packageSizeValue: null,
-      packageSizeUnitToken: null,
+      packageSizeValue: ing.packageSizeValue ?? null,
+      packageSizeUnitToken: ing.packageSizeUnit ?? null,
       confidence: ing.confidence,
-      status: issues.length === 0 ? 'ready' : 'needs_review',
+      status,
       issues,
     };
   });
@@ -130,6 +178,34 @@ export type NormalizedPhotoImport = {
 };
 
 /**
+ * The canonical (g/ml/count) quantity + dimension for a READY line: a true unit
+ * converts directly; a package descriptor canonicalizes from its pack size
+ * (`2 pkt × 300 g = 600 g`). Null when the line cannot be canonicalized (a ready
+ * line should never hit this — it is a defensive guard for the no-loss invariant).
+ */
+function canonicalForLine(
+  line: PhotoDraftLine,
+): { quantityCanonical: number; dimension: Dimension } | null {
+  if (line.quantityValue === null) return null;
+  const unitResult = parseRecipeUnit(line.unitToken ?? '');
+  if (unitResult.kind === 'canonical') {
+    return {
+      quantityCanonical: toCanonical(line.quantityValue, unitResult.unit),
+      dimension: dimensionOf(unitResult.unit),
+    };
+  }
+  if (unitResult.kind === 'descriptor') {
+    const pack = canonicalPackageSize(line.packageSizeValue, line.packageSizeUnitToken);
+    if (!pack) return null;
+    return {
+      quantityCanonical: line.quantityValue * toCanonical(pack.value, pack.unit),
+      dimension: dimensionOf(pack.unit),
+    };
+  }
+  return null;
+}
+
+/**
  * Convert an edited draft into the `DraftRecipe[]` + `ImportRowIssue[]` the 4.6
  * planner consumes. Only `ready` lines become importable canonical lines; `ignored`
  * lines are dropped silently (the user removed them); `needs_review` lines are
@@ -156,10 +232,10 @@ export function normalizePhotoDraftForImport(
       return;
     }
 
-    const unitResult = parseRecipeUnit(line.unitToken ?? '');
-    if (unitResult.kind !== 'canonical') {
-      // Defensive: a ready line should always carry a canonical unit. If not, surface
-      // it rather than silently dropping (keeps the no-loss invariant honest).
+    const canonical = canonicalForLine(line);
+    if (!canonical) {
+      // Defensive: a ready line should always canonicalize. If not, surface it rather
+      // than silently dropping (keeps the no-loss invariant honest).
       issues.push({ line: ordinal, column: 'unit', code: 'INVALID_UNIT' });
       return;
     }
@@ -170,22 +246,23 @@ export function normalizePhotoDraftForImport(
       return;
     }
 
-    const unit = unitResult.unit;
-    const dimension = dimensionOf(unit);
-    const quantityCanonical = toCanonical(line.quantityValue, unit);
-
     // Same ingredient twice → sum same-dimension quantities; conflicting dimensions flag.
     const existing = lines.find((l) => l.normalizedName === normalizedName);
     if (existing) {
-      if (existing.dimension !== dimension) {
+      if (existing.dimension !== canonical.dimension) {
         issues.push({ line: ordinal, column: 'unit', code: 'UNIT_MISMATCH' });
       } else {
-        existing.quantityCanonical += quantityCanonical;
+        existing.quantityCanonical += canonical.quantityCanonical;
       }
       return;
     }
 
-    lines.push({ ingredientName: line.ingredientName, normalizedName, quantityCanonical, dimension });
+    lines.push({
+      ingredientName: line.ingredientName,
+      normalizedName,
+      quantityCanonical: canonical.quantityCanonical,
+      dimension: canonical.dimension,
+    });
   });
 
   const recipe: DraftRecipe = {
