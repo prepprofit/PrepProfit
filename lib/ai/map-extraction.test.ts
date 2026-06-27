@@ -59,7 +59,8 @@ describe('mapExtractedRecipe — ambiguous / unreadable values never become data
   it('flags an unknown unit as a row issue and drops the line (no guess)', () => {
     const { recipes, issues, qualityFlags } = mapExtractedRecipe({
       ...base,
-      ingredients: [{ name: 'Butter', quantity: 2, unit: 'tablespoons', confidence: 0.9 }],
+      // A genuine descriptor token (not a true unit) — tsp/tbsp now resolve (RC-1).
+      ingredients: [{ name: 'Butter', quantity: 2, unit: 'handful', confidence: 0.9 }],
     });
     expect(recipes[0]!.lines).toHaveLength(0);
     expect(issues).toEqual([{ line: 1, column: 'unit', code: 'INVALID_UNIT' }]);

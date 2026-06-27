@@ -13,7 +13,15 @@ export type Dimension = 'weight' | 'volume' | 'count';
 export type MeasurementSystem = 'metric' | 'imperial';
 
 export type WeightUnit = 'g' | 'kg' | 'oz' | 'lb';
-export type VolumeUnit = 'ml' | 'l' | 'floz' | 'cup';
+/**
+ * `tsp`/`tbsp` are true measurable cooking volumes (US customary: 1 tsp =
+ * 4.92892159375 ml, 1 tbsp = 14.78676478125 ml). They are accepted as ENTRY/parse
+ * units — chefs write them on recipe cards — and canonicalize to ml like any other
+ * volume. They are deliberately NOT offered by `displayUnitsFor`/`pickDisplayUnit`
+ * (storage stays ml/l), so dropdowns and auto-display are unchanged. Package
+ * DESCRIPTORS (pkt, block, can…) are NOT units and never enter this union.
+ */
+export type VolumeUnit = 'ml' | 'l' | 'floz' | 'cup' | 'tsp' | 'tbsp';
 export type CountUnit = 'count';
 export type Unit = WeightUnit | VolumeUnit | CountUnit;
 
@@ -27,6 +35,8 @@ const UNIT_TO_CANONICAL: Record<Unit, number> = {
   l: 1000,
   floz: 29.5735295625,
   cup: 236.5882365,
+  tsp: 4.92892159375,
+  tbsp: 14.78676478125,
   count: 1,
 };
 
@@ -39,6 +49,8 @@ const UNIT_DIMENSION: Record<Unit, Dimension> = {
   l: 'volume',
   floz: 'volume',
   cup: 'volume',
+  tsp: 'volume',
+  tbsp: 'volume',
   count: 'count',
 };
 
@@ -52,6 +64,8 @@ const UNIT_LABEL: Record<Unit, string> = {
   l: 'l',
   floz: 'fl oz',
   cup: 'cup',
+  tsp: 'tsp',
+  tbsp: 'tbsp',
   count: '',
 };
 
@@ -65,6 +79,8 @@ const UNIT_DECIMALS: Record<Unit, number> = {
   l: 3,
   floz: 1,
   cup: 2,
+  tsp: 2,
+  tbsp: 2,
   count: 0,
 };
 

@@ -33,13 +33,20 @@ describe('toCanonical / fromCanonical', () => {
     expect(fromCanonical(1000, 'floz')).toBeCloseTo(33.8140227, 6);
   });
 
+  it('converts true cooking volumes (tsp/tbsp, US customary)', () => {
+    expect(toCanonical(1, 'tsp')).toBeCloseTo(4.92892159375, 8);
+    expect(toCanonical(1, 'tbsp')).toBeCloseTo(14.78676478125, 8);
+    // A tablespoon is exactly three teaspoons.
+    expect(toCanonical(1, 'tbsp')).toBeCloseTo(toCanonical(3, 'tsp'), 8);
+  });
+
   it('treats count as a passthrough', () => {
     expect(toCanonical(12, 'count')).toBe(12);
     expect(fromCanonical(12, 'count')).toBe(12);
   });
 
   it('round-trips through canonical for every unit', () => {
-    const units: Unit[] = ['g', 'kg', 'oz', 'lb', 'ml', 'l', 'floz', 'cup', 'count'];
+    const units: Unit[] = ['g', 'kg', 'oz', 'lb', 'ml', 'l', 'floz', 'cup', 'tsp', 'tbsp', 'count'];
     for (const unit of units) {
       expect(fromCanonical(toCanonical(3.7, unit), unit)).toBeCloseTo(3.7, 9);
     }

@@ -10,7 +10,9 @@ import type { Unit } from './index';
  */
 
 /** The canonical unit tokens accepted verbatim. */
-const UNIT_SET = new Set<Unit>(['g', 'kg', 'oz', 'lb', 'ml', 'l', 'floz', 'cup', 'count']);
+const UNIT_SET = new Set<Unit>([
+  'g', 'kg', 'oz', 'lb', 'ml', 'l', 'floz', 'cup', 'tsp', 'tbsp', 'count',
+]);
 
 /** Friendly aliases (lowercased, whitespace-stripped) mapped to a canonical unit. */
 const UNIT_ALIASES: Record<string, Unit> = {
@@ -22,6 +24,9 @@ const UNIT_ALIASES: Record<string, Unit> = {
   litre: 'l', liter: 'l', litres: 'l', liters: 'l',
   fluidounce: 'floz', fluidounces: 'floz',
   cups: 'cup',
+  // True measurable cooking volumes (RC-1): teaspoon/tablespoon and their plurals.
+  teaspoon: 'tsp', teaspoons: 'tsp',
+  tablespoon: 'tbsp', tablespoons: 'tbsp', tbsps: 'tbsp', tbs: 'tbsp',
   piece: 'count', pieces: 'count', pc: 'count', pcs: 'count', unit: 'count', units: 'count', each: 'count',
 };
 
