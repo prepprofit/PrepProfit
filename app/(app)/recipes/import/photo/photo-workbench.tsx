@@ -588,7 +588,11 @@ function LineEditor({
               value={line.packageSizeValue ?? ''}
               onChange={(e) => {
                 const n = Number(e.target.value);
-                onPatch({ packageSizeValue: e.target.value !== '' && Number.isFinite(n) && n > 0 ? n : null });
+                onPatch({
+                  packageSizeValue: e.target.value !== '' && Number.isFinite(n) && n > 0 ? n : null,
+                  // The chef is overriding the value — it is no longer the inferred pack.
+                  packageSizeInferred: false,
+                });
               }}
             />
           </label>
@@ -598,7 +602,10 @@ function LineEditor({
               className={inputClass}
               value={line.packageSizeUnitToken ?? ''}
               onChange={(e) =>
-                onPatch({ packageSizeUnitToken: e.target.value === '' ? null : e.target.value })
+                onPatch({
+                  packageSizeUnitToken: e.target.value === '' ? null : e.target.value,
+                  packageSizeInferred: false,
+                })
               }
             >
               <option value="">—</option>
@@ -609,6 +616,12 @@ function LineEditor({
               ))}
             </select>
           </label>
+          {line.packageSizeInferred && (
+            <span className="inline-flex items-center gap-1 pb-1.5 text-[11px] text-accent-600 dark:text-accent-400">
+              <Sparkles className="size-3" />
+              {t('draft.packageSizeInferred')}
+            </span>
+          )}
         </div>
       )}
 

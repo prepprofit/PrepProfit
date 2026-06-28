@@ -325,6 +325,7 @@ describe('POST /api/recipes/import/photo — Phase 6 supplier pack inference', (
     // The supplier pack (250 g) was inferred → the line is now ready, no price touched.
     expect(line.packageSizeValue).toBe(250);
     expect(line.packageSizeUnitToken).toBe('g');
+    expect(line.packageSizeInferred).toBe(true);
     expect(line.status).toBe('ready');
 
     // The audit records the count of inferred packs (PII-free).

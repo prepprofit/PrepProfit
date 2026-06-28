@@ -107,6 +107,13 @@ export type PhotoDraftLine = {
   /** A parenthetical package size value (`1 pkt walnuts (300g)` → 300), or null. */
   packageSizeValue: number | null;
   packageSizeUnitToken: string | null;
+  /**
+   * True when the package size was INFERRED from the org's supplier packs (Phase 6),
+   * not read from the photo or typed by the chef — a review-only hint so the UI can
+   * flag "we filled this from your supplier, please check". Cleared once the chef edits
+   * the pack; stripped at staging (display-only, never trusted server-side).
+   */
+  packageSizeInferred?: boolean;
   /** The model's per-line certainty in [0, 1]. */
   confidence: number;
   status: PhotoDraftLineStatus;

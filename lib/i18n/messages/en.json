@@ -586,6 +586,7 @@
         "packageSize": "Pack size:",
         "packageSizeValue": "Pack size amount",
         "packageSizeUnit": "Pack size unit",
+        "packageSizeInferred": "From your supplier — please check",
         "addLine": "Add ingredient",
         "removed": "Removed lines",
         "restore": "Restore",

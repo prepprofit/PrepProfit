@@ -203,6 +203,7 @@ describe('applySupplierPacks', () => {
     expect(lines[0]).toMatchObject({
       packageSizeValue: 250,
       packageSizeUnitToken: 'g',
+      packageSizeInferred: true,
       status: 'ready',
       issues: [],
     });
@@ -238,6 +239,7 @@ describe('applySupplierPacks', () => {
     );
     expect(resolved).toBe(0);
     expect(lines[0]).toMatchObject({ packageSizeValue: 500 });
+    expect(lines[0]?.packageSizeInferred).toBeFalsy();
   });
 
   it('leaves an ambiguous ingredient (two distinct packs) for the chef', () => {

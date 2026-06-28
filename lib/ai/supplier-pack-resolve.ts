@@ -179,6 +179,9 @@ export function applySupplierPacks(
       ...line,
       packageSizeValue: res.packageSizeValue,
       packageSizeUnitToken: res.packageSizeUnitToken,
+      // Review-only hint: this pack came from supplier data, so the UI can ask the
+      // chef to double-check it (never read from the photo).
+      packageSizeInferred: true,
     };
     // Re-derive: a previously DESCRIPTOR_NEEDS_PACKAGE_SIZE line is now resolvable.
     const { status, issues } = deriveDraftLineStatus(filled);
