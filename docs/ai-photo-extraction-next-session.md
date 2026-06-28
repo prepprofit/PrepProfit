@@ -62,12 +62,26 @@ Today only Baklava exists. The plan wants **20 photos**: 5 handwritten, 5 printe
   target** (latency is reported but NOT gated). If a fuller set confirms it's slow,
   consider image downscaling before upload, or revisit the model.
 
-### 3. Phase 6 — supplier pack integration
-Only after 0–5 are stable (they are). Resolve package descriptors (`1 pkt phyllo`,
-`1 block butter`, `300g bag walnuts`) against `ingredient_suppliers` pack metadata.
-Rules from the plan §6/§13: preserve `needsPricing` for anything without a trustworthy
-cost; **never auto-price from AI text alone** unless the pack match is exact and
-org-scoped. New ingredients from AI still default to `priceCents = 0`.
+### 3. Phase 6 — supplier pack integration ✅ DONE (2026-06-28, on `main`, not pushed)
+Resolves package descriptors (`1 pkt phyllo`, `1 block butter`, `300g bag walnuts`)
+against `ingredient_suppliers` pack metadata. Shipped in three slices:
+- **Slice 1 (`d412cad`)** — pure `lib/ai/supplier-pack-resolve.ts` `resolveSupplierPack`:
+  resolves only purchase-container descriptors (pkt/bag/block/can/…), never portion
+  words (clove/slice/…); needs exactly one distinct usable pack; never carries a price.
+- **Slice 2 (`8a5f869`)** — wired into the EXTRACTION route (not stage — the workbench
+  blocks Stage on needs_review, so inference must reach the returned draft). New
+  `loadSupplierPacksByIngredientName` (org-scoped) + pure `applySupplierPacks`; audits a
+  PII-free `packsResolved` count.
+- **Slice 3 (`0a308e4`)** — display-only `packageSizeInferred` flag + a "From your
+  supplier — please check" hint in the workbench, cleared when the chef edits the pack.
+
+Rules held (plan §6/§13): `needsPricing` preserved; **never auto-prices from AI text** —
+only the recipe line's quantity canonicalizes; new AI ingredients still start at
+`priceCents = 0`. Stage unchanged (the pack arrives on the line; `canonicalPackageSize`
+re-validates). ⚠️ The supplier-inferred hint has not been visually verified in a browser
+yet (same Clerk-auth blocker) — covered by integration tests + types.
+
+Phases 0–6 are now COMPLETE. The only remaining track is the 20-photo eval set above (#2).
 
 ---
 
