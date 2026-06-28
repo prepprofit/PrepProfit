@@ -70,13 +70,14 @@ afterEach(() => {
 });
 
 /** A staged recipe_photo payload with one recipe and one new-ingredient line. */
-function photoPayload(recipeName: string): ImportRecipePayload {
+function photoPayload(recipeName: string, notes: string | null = null): ImportRecipePayload {
   return {
     recipes: [
       {
         name: recipeName,
         yieldPortions: 8,
         yieldPercentage: 100,
+        notes,
         lines: [
           {
             ingredientName: 'Flour',
@@ -142,6 +143,20 @@ describe('recipe_photo confirm — reuses the 4.6 path', () => {
     const second = await confirmImportAction(null, confirmForm(jobId, [{ name: 'flour', action: 'create' }]));
     expect(second).toMatchObject({ ok: true, alreadyCommitted: true });
     expect(await countRecipes('org_a', 'Photo Cake')).toBe(1);
+  });
+
+  it('persists the reviewed instructions/notes onto the created recipe', async () => {
+    const method = 'Melt butter, add sugar + milk; boil 5 min; pour into a 9x13 pan.';
+    const jobId = await stagePhotoJob('org_a', photoPayload('Fudge', method));
+
+    const res = await confirmImportAction(null, confirmForm(jobId, [{ name: 'flour', action: 'create' }]));
+    expect(res).toMatchObject({ ok: true, phase: 'committed', created: 1 });
+
+    const [row] = await h.db
+      .select({ notes: recipes.notes })
+      .from(recipes)
+      .where(and(eq(recipes.organizationId, 'org_a'), eq(recipes.name, 'Fudge')));
+    expect(row?.notes).toBe(method);
   });
 
   it('rejects a forged resolution (link to a non-offered id) and writes nothing', async () => {

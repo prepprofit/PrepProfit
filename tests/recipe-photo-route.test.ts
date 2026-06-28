@@ -36,6 +36,8 @@ type ExtractResult = {
   provider: string;
 };
 
+const GOOD_RECIPE_NOTES = 'Bata os ovos com o açúcar; junte a farinha; leve ao forno 40 min.';
+
 const goodRecipe = {
   name: 'Bolo de Cenoura',
   yieldPortions: 8,
@@ -43,7 +45,7 @@ const goodRecipe = {
     { name: 'Farinha', quantity: 300, unit: 'g', confidence: 0.95 },
     { name: 'Cenoura', quantity: 200, unit: 'g', confidence: 0.4 }, // low → flag
   ],
-  preparationNotes: null,
+  preparationNotes: GOOD_RECIPE_NOTES,
   overallConfidence: 0.9,
   imageQuality: 'good',
 };
@@ -244,6 +246,8 @@ describe('POST /api/recipes/import/photo — success returns an editable draft',
     expect(body.recipe.lines).toHaveLength(2);
     expect(body.recipe.lines.every((l: { status: string }) => l.status === 'ready')).toBe(true);
     expect(body.qualityFlags).toContain('low_confidence');
+    // The extracted preparation method is shown on the editable draft for review.
+    expect(body.recipe.preparationNotes).toBe(GOOD_RECIPE_NOTES);
 
     // The attempt is succeeded but carries NO job link yet (§4.3).
     const attempt = await runInOrg(db, ORG_A, (tx) =>
@@ -373,6 +377,8 @@ describe('POST /api/recipes/import/photo/stage — server trust boundary', () =>
     expect(typeof preview.jobId).toBe('string');
     expect(preview.recipePayload.recipes).toHaveLength(1);
     expect(preview.recipePayload.recipes[0].lines).toHaveLength(2);
+    // The reviewed method is carried into the staged recipe payload.
+    expect(preview.recipePayload.recipes[0].notes).toBe(GOOD_RECIPE_NOTES);
 
     const job = await runInOrg(db, ORG_A, (tx) =>
       tx.select().from(importJobs).where(eq(importJobs.id, preview.jobId)),
@@ -380,6 +386,9 @@ describe('POST /api/recipes/import/photo/stage — server trust boundary', () =>
     expect(job[0]?.entity).toBe('recipe_photo');
     expect(job[0]?.format).toBe('photo');
     expect(job[0]?.status).toBe('parsed');
+    // ...and into the stored job's normalized payload.
+    const storedRows = job[0]!.normalizedRows as { recipes: { notes: string }[] };
+    expect(storedRows.recipes[0]!.notes).toBe(GOOD_RECIPE_NOTES);
 
     // The attempt now links the staged job.
     const attempt = await runInOrg(db, ORG_A, (tx) =>

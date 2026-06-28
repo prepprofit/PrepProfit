@@ -36,6 +36,8 @@ describe('parseRecipes — grouping & yield', () => {
     expect(bread.yieldPortions).toBe(10);
     expect(bread.yieldPercentage).toBe(95);
     expect(bread.lines).toHaveLength(3);
+    // Spreadsheet recipes carry no method column → notes is always null.
+    expect(bread.notes).toBeNull();
   });
 
   it('groups case-insensitively, keeping the first display name', () => {

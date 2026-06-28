@@ -4,6 +4,7 @@ import { DIMENSIONS } from '@/lib/validation/ingredients';
 import { TRANSACTION_TYPES } from '@/lib/validation/transactions';
 import { FILE_IMPORT_ENTITIES, IMPORT_FORMATS, IMPORT_ISSUE_CODES } from '@/lib/import/types';
 import { MAX_SUGGESTIONS } from '@/lib/import/resolveIngredient';
+import { RECIPE_NOTES_MAX_LENGTH } from '@/lib/validation/recipes';
 import { NUMERIC_12_2_MAX } from '@/lib/calculations/production';
 import { MAX_TAX_RATE_BPS, saleTotals } from '@/lib/calculations/tax';
 
@@ -171,6 +172,17 @@ export const importRecipeRecordSchema = z.object({
   name: z.string().trim().min(1).max(RECIPE_LIMITS.recipeName),
   yieldPortions: z.number().int().min(1).max(1_000_000),
   yieldPercentage: z.number().int().min(1).max(100),
+  // Recipe instructions/notes, already normalized to the recipe-editor bound at the
+  // import boundary. Optional + defaulted to null so jobs staged before this field
+  // existed (and spreadsheet imports, which carry no method column) still confirm.
+  notes: z
+    .string()
+    .trim()
+    .max(RECIPE_NOTES_MAX_LENGTH)
+    .transform((s) => (s === '' ? null : s))
+    .nullable()
+    .optional()
+    .default(null),
   lines: z.array(importRecipeLineSchema).max(RECIPE_LIMITS.maxLines),
 });
 

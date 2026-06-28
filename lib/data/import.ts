@@ -279,6 +279,7 @@ export async function planRecipeImport(
       name: recipe.name,
       yieldPortions: recipe.yieldPortions,
       yieldPercentage: recipe.yieldPercentage,
+      notes: recipe.notes,
       lines,
     });
   }
@@ -377,6 +378,7 @@ export async function applyRecipeImport(
       name: recipe.name,
       yieldPortions: recipe.yieldPortions,
       yieldPercentage: recipe.yieldPercentage,
+      notes: recipe.notes,
     });
 
     // Sum quantities per resolved ingredient id, preserving first-seen order.

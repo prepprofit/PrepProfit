@@ -187,6 +187,12 @@ export type ImportRecipeRecord = {
   name: string;
   yieldPortions: number;
   yieldPercentage: number;
+  /**
+   * Recipe instructions/notes. For an AI photo import this is the reviewed
+   * preparation method, already normalized to the recipe-editor length bound. For a
+   * spreadsheet import it is null (no method column). Never raw image bytes.
+   */
+  notes: string | null;
   lines: ImportRecipeLine[];
 };
 

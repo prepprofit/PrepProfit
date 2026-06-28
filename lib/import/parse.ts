@@ -252,6 +252,11 @@ export type DraftRecipe = {
   normalizedKey: string;
   yieldPortions: number;
   yieldPercentage: number;
+  /**
+   * Recipe instructions/notes, normalized to the recipe-editor bound. Null for a
+   * spreadsheet import (no method column); populated by the photo-import path.
+   */
+  notes: string | null;
   /** 1-based line of the recipe's first row (for ordering / messages). */
   firstLine: number;
   lines: DraftRecipeLine[];
@@ -343,6 +348,8 @@ export function parseRecipes(matrix: string[][]): ParseRecipesResult {
         normalizedKey: key,
         yieldPortions: 'error' in yp ? 1 : yp.value,
         yieldPercentage: 'error' in ypct ? 100 : ypct.value,
+        // Spreadsheet recipes carry no method column (D7 out of scope).
+        notes: null,
         firstLine: line,
         lines: [],
       };

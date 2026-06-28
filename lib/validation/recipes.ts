@@ -4,6 +4,15 @@ import { z } from 'zod';
 
 const cents = z.number().int().min(0).max(100_000_000);
 
+/**
+ * Max length of a recipe's instructions/notes. The single source of truth shared by
+ * the manual editor schemas (below) AND the photo-import boundary
+ * (`lib/validation/import.ts`, `lib/ai/photo-draft.ts`), so an AI-extracted note is
+ * normalized to exactly what the editor can later re-save (extraction itself caps at a
+ * larger anti-balloon bound; this is the persistable recipe bound).
+ */
+export const RECIPE_NOTES_MAX_LENGTH = 2000;
+
 export const recipeSchema = z.object({
   name: z.string().trim().min(1).max(160),
   // Folder this recipe is filed under; null/omitted = "No folder".
@@ -18,7 +27,7 @@ export const recipeSchema = z.object({
   notes: z
     .string()
     .trim()
-    .max(2000)
+    .max(RECIPE_NOTES_MAX_LENGTH)
     .transform((s) => (s === '' ? null : s))
     .nullable()
     .optional(),
@@ -42,7 +51,7 @@ export const kitchenRecipeSchema = z.object({
   notes: z
     .string()
     .trim()
-    .max(2000)
+    .max(RECIPE_NOTES_MAX_LENGTH)
     .transform((s) => (s === '' ? null : s))
     .nullable()
     .optional(),

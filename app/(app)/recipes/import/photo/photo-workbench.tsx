@@ -34,6 +34,7 @@ import type {
   PhotoExtractionPreview,
 } from '@/lib/ai/types';
 import { deriveDraftLineStatus } from '@/lib/ai/photo-draft';
+import { RECIPE_NOTES_MAX_LENGTH } from '@/lib/validation/recipes';
 import { parseRecipeUnit } from '@/lib/units/descriptor';
 import { parseQuantityText } from '@/lib/units/quantity';
 import { confirmImportAction, type ImportActionState } from '@/app/(app)/import/actions';
@@ -515,6 +516,24 @@ function DraftWorkbench({
                 />
               </label>
             </div>
+
+            {/* Instructions / notes read from the photo — reviewed/edited before staging
+                (AI output is untrusted; the chef confirms it). Capped to the persistable
+                recipe bound so the reviewed text matches what can be saved. */}
+            <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+              {t('draft.instructionsNotes')}
+              <textarea
+                className={`${inputClass} min-h-24 resize-y`}
+                value={draft.recipe.preparationNotes ?? ''}
+                maxLength={RECIPE_NOTES_MAX_LENGTH}
+                placeholder={t('draft.instructionsNotesPlaceholder')}
+                onChange={(e) =>
+                  onPatchRecipe({
+                    preparationNotes: e.target.value === '' ? null : e.target.value,
+                  })
+                }
+              />
+            </label>
 
             {/* Lines grouped by section. */}
             {groups.map((group, gi) => (

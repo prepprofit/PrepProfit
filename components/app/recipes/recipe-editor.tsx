@@ -783,6 +783,22 @@ export function RecipeEditor({
         </div>
       </div>
 
+      {/* Instructions / notes — placed right after the ingredients/parameters grid and
+          before the scale panel (it's where the chef reads/writes how to make the recipe). */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('fields.instructionsNotes')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            value={form.notes}
+            disabled={pending}
+            placeholder={t('placeholders.notes')}
+            onChange={(e) => setField({ notes: e.target.value })}
+          />
+        </CardContent>
+      </Card>
+
       {/* Scale batch — DB-inert, both roles; money preview managers-only. Export is
           gated on saved state because the export routes read the persisted recipe. */}
       <RecipeScalePanel
@@ -801,21 +817,6 @@ export function RecipeEditor({
         batchTotalCents={cost ? cost.totalCostCents : null}
         exportDisabled={pending || headerDirty || linesDirty}
       />
-
-      {/* Notes */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('fields.notes')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Textarea
-            value={form.notes}
-            disabled={pending}
-            placeholder={t('placeholders.notes')}
-            onChange={(e) => setField({ notes: e.target.value })}
-          />
-        </CardContent>
-      </Card>
 
       <ConfirmDialog
         open={confirmOpen}

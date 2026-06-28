@@ -106,6 +106,41 @@ describe('mapExtractionToPhotoDraft — keeps every line (no silent loss)', () =
 });
 
 /* -------------------------------------------------------------------------- */
+/* Instructions / notes — extracted, normalized, and carried to the import      */
+/* -------------------------------------------------------------------------- */
+
+describe('preparationNotes — reviewed method survives to the import payload', () => {
+  it('keeps the extracted method on the draft and carries it onto the import recipe', () => {
+    const method = 'Melt butter, add sugar + milk; boil 5 min; pour into a 9x13 pan.';
+    const draft = draftOf({ ...recipe([{ name: 'Sugar', quantity: 3, unit: 'cup', confidence: 0.9 }]), preparationNotes: method });
+    expect(draft.recipe.preparationNotes).toBe(method);
+
+    const { recipes } = normalizePhotoDraftForImport(draft);
+    expect(recipes[0]!.notes).toBe(method);
+  });
+
+  it('normalizes blank / whitespace-only notes to null', () => {
+    const draft = draftOf({ ...recipe([{ name: 'Sugar', quantity: 1, unit: 'cup', confidence: 0.9 }]), preparationNotes: '   ' });
+    expect(draft.recipe.preparationNotes).toBeNull();
+    expect(normalizePhotoDraftForImport(draft).recipes[0]!.notes).toBeNull();
+  });
+
+  it('truncates notes longer than the recipe-editor bound (2000) before display/import', () => {
+    const long = 'x'.repeat(5000);
+    const draft = draftOf({ ...recipe([{ name: 'Sugar', quantity: 1, unit: 'cup', confidence: 0.9 }]), preparationNotes: long });
+    expect(draft.recipe.preparationNotes).toHaveLength(2000);
+    expect(normalizePhotoDraftForImport(draft).recipes[0]!.notes).toHaveLength(2000);
+  });
+
+  it('re-normalizes the reviewed note server-side even if the client widened it', () => {
+    // Simulate an edited/forged client draft whose note exceeds the bound.
+    const draft = draftOf(recipe([{ name: 'Sugar', quantity: 1, unit: 'cup', confidence: 0.9 }]));
+    draft.recipe.preparationNotes = '  ' + 'y'.repeat(2100) + '  ';
+    expect(normalizePhotoDraftForImport(draft).recipes[0]!.notes).toHaveLength(2000);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* Phase 2 — rich extraction fields (sections, fractions, pack size, crossed)  */
 /* -------------------------------------------------------------------------- */
 

@@ -3,6 +3,7 @@ import { parseRecipeUnit } from '@/lib/units/descriptor';
 import { parseQuantityText } from '@/lib/units/quantity';
 import { parseUnitToken } from '@/lib/units/token';
 import { normalizeIngredientName } from '@/lib/import/resolveIngredient';
+import { RECIPE_NOTES_MAX_LENGTH } from '@/lib/validation/recipes';
 import type { DraftRecipe, DraftRecipeLine } from '@/lib/import/parse';
 import type { ImportRowIssue } from '@/lib/import/types';
 import type { ExtractedLine, ExtractedRecipe } from './recipe-extraction';
@@ -38,6 +39,19 @@ export const LOW_CONFIDENCE_THRESHOLD = 0.6;
 
 /** Lower/trim/collapse key for a recipe name (mirrors the parser + planner). */
 const recipeKey = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Normalize an AI-extracted preparation note to what the recipe editor can later save:
+ * trim, treat blank as absent (null), and cap at the persistable recipe bound (the
+ * extraction schema's larger cap is only an anti-balloon guard). Used both when
+ * building the editable draft (so the chef reviews exactly what will persist) and at
+ * the import boundary (a server-side backstop against an edited/old/forged client).
+ */
+export function normalizeImportedRecipeNotes(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? '';
+  if (trimmed === '') return null;
+  return trimmed.slice(0, RECIPE_NOTES_MAX_LENGTH);
+}
 
 /**
  * The server's TRUSTED numeric quantity (§5.4): re-parse the chef's written text
@@ -184,7 +198,8 @@ export function mapExtractionToPhotoDraft(
     recipe: {
       name: extracted.name,
       yieldPortions: extracted.yieldPortions,
-      preparationNotes: extracted.preparationNotes,
+      // Show the chef exactly the text that can persist (trimmed, capped to 2000).
+      preparationNotes: normalizeImportedRecipeNotes(extracted.preparationNotes),
       lines,
     },
     qualityFlags: AI_QUALITY_FLAGS.filter((f) => flags.has(f)),
@@ -304,6 +319,8 @@ export function normalizePhotoDraftForImport(
     normalizedKey: recipeKey(draft.recipe.name),
     yieldPortions: draft.recipe.yieldPortions ?? 1,
     yieldPercentage: 100,
+    // Server-side backstop: re-normalize the reviewed note (the client draft is untrusted).
+    notes: normalizeImportedRecipeNotes(draft.recipe.preparationNotes),
     firstLine: 1,
     lines,
   };

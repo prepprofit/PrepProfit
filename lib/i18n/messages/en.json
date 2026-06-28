@@ -588,6 +588,8 @@
         "recipeName": "Recipe name",
         "yield": "Portions",
         "yieldPlaceholder": "—",
+        "instructionsNotes": "Instructions / notes",
+        "instructionsNotesPlaceholder": "Method / preparation steps read from the photo…",
         "section": "Section",
         "ingredientName": "Ingredient",
         "quantity": "Qty",
@@ -678,7 +680,8 @@
       "labor": "Labor cost",
       "energy": "Energy cost",
       "packaging": "Packaging cost",
-      "notes": "Notes"
+      "notes": "Notes",
+      "instructionsNotes": "Instructions / notes"
     },
     "folders": {
       "title": "Folders",
