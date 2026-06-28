@@ -1,0 +1,17 @@
+{
+  "slug": "sock-it-to-me-cake",
+  "name": "Sock It To Me Cake",
+  "category": "handwritten",
+  "language": "en",
+  "yieldPortions": null,
+  "lines": [
+    { "name": "Yellow cake mix", "aliases": ["cake mix", "duncan hines yellow cake mix", "yellow cake mix"], "section": null, "quantityValue": 1, "unitToken": "box", "expectedStatus": "needs_review" },
+    { "name": "Butter", "section": null, "quantityValue": 0.75, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Sugar", "section": null, "quantityValue": 0.5, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Eggs", "aliases": ["egg"], "section": null, "quantityValue": 4, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Chopped pecans", "aliases": ["pecans", "pecan"], "section": null, "quantityValue": 1, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Sour cream", "section": null, "quantityValue": 8, "unitToken": "oz", "expectedStatus": "ready" },
+    { "name": "Cinnamon", "aliases": ["ground cinnamon"], "section": null, "quantityValue": 2, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Brown sugar", "section": null, "quantityValue": 2, "unitToken": "tbsp", "expectedStatus": "ready" }
+  ]
+}

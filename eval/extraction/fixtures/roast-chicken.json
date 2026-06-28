@@ -1,0 +1,19 @@
+{
+  "slug": "roast-chicken",
+  "name": "Roast Chicken with Gravy",
+  "category": "multi-section",
+  "language": "en",
+  "yieldPortions": 4,
+  "lines": [
+    { "name": "Whole chicken", "aliases": ["chicken"], "section": "Chicken", "quantityValue": 1, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Olive oil", "section": "Chicken", "quantityValue": 2, "unitToken": "tbsp", "expectedStatus": "ready" },
+    { "name": "Salt", "section": "Chicken", "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Pepper", "aliases": ["black pepper"], "section": "Chicken", "quantityValue": 0.5, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Lemon", "section": "Chicken", "quantityValue": 1, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Butter", "section": "Gravy", "quantityValue": 30, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Flour", "section": "Gravy", "quantityValue": 2, "unitToken": "tbsp", "expectedStatus": "ready" },
+    { "name": "Chicken stock", "aliases": ["stock", "chicken broth"], "section": "Gravy", "quantityValue": 400, "unitToken": "ml", "expectedStatus": "ready" },
+    { "name": "Potatoes", "aliases": ["potato"], "section": "Sides", "quantityValue": 600, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Carrots", "aliases": ["carrot"], "section": "Sides", "quantityValue": 300, "unitToken": "g", "expectedStatus": "ready" }
+  ]
+}

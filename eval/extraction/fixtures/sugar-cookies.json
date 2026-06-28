@@ -1,0 +1,17 @@
+{
+  "slug": "sugar-cookies",
+  "name": "Sugar Cookies",
+  "category": "low-light",
+  "language": "en",
+  "yieldPortions": null,
+  "lines": [
+    { "name": "Butter", "section": null, "quantityValue": 1, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Sugar", "section": null, "quantityValue": 1.5, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Eggs", "aliases": ["egg"], "section": null, "quantityValue": 2, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Vanilla", "aliases": ["vanilla extract"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Flour", "section": null, "quantityValue": 3.5, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Cream of tartar", "section": null, "quantityValue": 2, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Baking soda", "aliases": ["soda"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Salt", "section": null, "quantityValue": 0.5, "unitToken": "tsp", "expectedStatus": "ready" }
+  ]
+}

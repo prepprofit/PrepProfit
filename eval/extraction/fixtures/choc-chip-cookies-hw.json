@@ -1,0 +1,15 @@
+{
+  "slug": "choc-chip-cookies-hw",
+  "name": "Chocolate Chip Cookies",
+  "category": "low-light",
+  "language": "en",
+  "yieldPortions": null,
+  "lines": [
+    { "name": "Flour", "section": null, "quantityValue": 2.25, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Baking soda", "aliases": ["soda"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Oleo", "aliases": ["margarine", "butter"], "section": null, "quantityValue": 1, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Sugar", "section": null, "quantityValue": 0.25, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Brown sugar", "section": null, "quantityValue": 0.75, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Vanilla", "aliases": ["vanilla extract"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" }
+  ]
+}

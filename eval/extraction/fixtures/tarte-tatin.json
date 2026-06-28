@@ -1,0 +1,14 @@
+{
+  "slug": "tarte-tatin",
+  "name": "Tarte Tatin",
+  "category": "non-english",
+  "language": "fr",
+  "yieldPortions": 6,
+  "lines": [
+    { "name": "Pommes", "aliases": ["apples", "apple", "pomme"], "section": null, "quantityValue": 6, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Sucre", "aliases": ["sugar"], "section": null, "quantityValue": 150, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Beurre", "aliases": ["butter"], "section": null, "quantityValue": 100, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Pâte brisée", "aliases": ["shortcrust pastry", "pastry", "pate brisee"], "section": null, "quantityValue": 1, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Cannelle", "aliases": ["cinnamon", "ground cinnamon"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" }
+  ]
+}

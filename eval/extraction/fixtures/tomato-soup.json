@@ -1,0 +1,17 @@
+{
+  "slug": "tomato-soup",
+  "name": "Creamy Tomato Soup",
+  "category": "printed",
+  "language": "en",
+  "yieldPortions": 4,
+  "lines": [
+    { "name": "Tomato passata", "aliases": ["passata", "tomato sauce"], "section": null, "quantityValue": 800, "unitToken": "ml", "expectedStatus": "ready" },
+    { "name": "Vegetable stock", "aliases": ["stock", "vegetable broth"], "section": null, "quantityValue": 250, "unitToken": "ml", "expectedStatus": "ready" },
+    { "name": "Double cream", "aliases": ["cream", "heavy cream"], "section": null, "quantityValue": 150, "unitToken": "ml", "expectedStatus": "ready" },
+    { "name": "Olive oil", "section": null, "quantityValue": 2, "unitToken": "tbsp", "expectedStatus": "ready" },
+    { "name": "Onion", "section": null, "quantityValue": 1, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Garlic", "section": null, "quantityValue": 2, "unitToken": "cloves", "expectedStatus": "needs_review" },
+    { "name": "Sugar", "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Black pepper", "aliases": ["pepper"], "section": null, "quantityValue": 0.5, "unitToken": "tsp", "expectedStatus": "ready" }
+  ]
+}

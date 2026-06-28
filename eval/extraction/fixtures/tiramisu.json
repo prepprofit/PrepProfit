@@ -1,0 +1,16 @@
+{
+  "slug": "tiramisu",
+  "name": "Tiramisu",
+  "category": "multi-section",
+  "language": "en",
+  "yieldPortions": 8,
+  "lines": [
+    { "name": "Eggs", "aliases": ["egg"], "section": "Cream", "quantityValue": 4, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Sugar", "section": "Cream", "quantityValue": 100, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Mascarpone", "aliases": ["mascarpone cheese"], "section": "Cream", "quantityValue": 500, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Strong coffee", "aliases": ["coffee", "espresso"], "section": "Coffee soak", "quantityValue": 300, "unitToken": "ml", "expectedStatus": "ready" },
+    { "name": "Marsala wine", "aliases": ["marsala"], "section": "Coffee soak", "quantityValue": 2, "unitToken": "tbsp", "expectedStatus": "ready" },
+    { "name": "Ladyfingers", "aliases": ["savoiardi", "sponge fingers"], "section": "Assembly", "quantityValue": 200, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Cocoa powder", "aliases": ["cocoa"], "section": "Assembly", "quantityValue": 2, "unitToken": "tbsp", "expectedStatus": "ready" }
+  ]
+}

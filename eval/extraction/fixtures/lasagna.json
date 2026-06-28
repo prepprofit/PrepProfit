@@ -1,0 +1,21 @@
+{
+  "slug": "lasagna",
+  "name": "Beef Lasagna",
+  "category": "multi-section",
+  "language": "en",
+  "yieldPortions": 6,
+  "lines": [
+    { "name": "Minced beef", "aliases": ["ground beef", "beef mince"], "section": "Ragù", "quantityValue": 500, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Onion", "section": "Ragù", "quantityValue": 1, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Garlic", "section": "Ragù", "quantityValue": 2, "unitToken": "cloves", "expectedStatus": "needs_review" },
+    { "name": "Chopped tomatoes", "aliases": ["canned tomatoes", "tomatoes"], "section": "Ragù", "quantityValue": 800, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Olive oil", "section": "Ragù", "quantityValue": 2, "unitToken": "tbsp", "expectedStatus": "ready" },
+    { "name": "Butter", "section": "Béchamel", "quantityValue": 50, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Flour", "section": "Béchamel", "quantityValue": 50, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Milk", "section": "Béchamel", "quantityValue": 500, "unitToken": "ml", "expectedStatus": "ready" },
+    { "name": "Nutmeg", "section": "Béchamel", "quantityValue": 1, "unitToken": "pinch", "expectedStatus": "needs_review" },
+    { "name": "Lasagna sheets", "aliases": ["lasagne sheets", "pasta sheets"], "section": "Assembly", "quantityValue": 250, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Parmesan", "aliases": ["parmesan cheese"], "section": "Assembly", "quantityValue": 150, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Mozzarella", "section": "Assembly", "quantityValue": 200, "unitToken": "g", "expectedStatus": "ready" }
+  ]
+}

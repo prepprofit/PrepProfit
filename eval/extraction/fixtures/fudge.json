@@ -1,0 +1,16 @@
+{
+  "slug": "fudge",
+  "name": "Fudge",
+  "category": "handwritten",
+  "language": "en",
+  "yieldPortions": null,
+  "lines": [
+    { "name": "Sugar", "section": null, "quantityValue": 3, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Butter", "section": null, "quantityValue": 0.75, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Evaporated milk", "section": null, "quantityValue": 0.6666666666666666, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Semisweet chocolate", "aliases": ["chocolate", "semi-sweet chocolate"], "section": null, "quantityValue": 12, "unitToken": "oz", "expectedStatus": "ready" },
+    { "name": "Vanilla", "aliases": ["vanilla extract"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Nuts", "aliases": ["nut", "chopped nuts"], "section": null, "quantityValue": 1, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Marshmallow cream", "aliases": ["marshmallow creme", "marshmallow fluff"], "section": null, "quantityValue": 7, "unitToken": "oz", "expectedStatus": "ready" }
+  ]
+}

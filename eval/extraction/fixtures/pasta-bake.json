@@ -1,0 +1,15 @@
+{
+  "slug": "pasta-bake",
+  "name": "Easy Pasta Bake",
+  "category": "package-heavy",
+  "language": "en",
+  "yieldPortions": 4,
+  "lines": [
+    { "name": "Penne pasta", "aliases": ["penne", "pasta"], "section": null, "quantityValue": 1, "unitToken": "box", "expectedStatus": "needs_review" },
+    { "name": "Tomato sauce", "aliases": ["pasta sauce"], "section": null, "quantityValue": 2, "unitToken": "jar", "expectedStatus": "needs_review" },
+    { "name": "Mozzarella", "aliases": ["mozzarella cheese"], "section": null, "quantityValue": 1, "unitToken": "pkt", "expectedStatus": "needs_review" },
+    { "name": "Sliced olives", "aliases": ["olives"], "section": null, "quantityValue": 1, "unitToken": "can", "expectedStatus": "needs_review" },
+    { "name": "Olive oil", "section": null, "quantityValue": 1, "unitToken": "tbsp", "expectedStatus": "ready" },
+    { "name": "Dried oregano", "aliases": ["oregano"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" }
+  ]
+}

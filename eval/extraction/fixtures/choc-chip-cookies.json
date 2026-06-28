@@ -1,0 +1,18 @@
+{
+  "slug": "choc-chip-cookies",
+  "name": "Chocolate Chip Cookies",
+  "category": "printed",
+  "language": "en",
+  "yieldPortions": 24,
+  "lines": [
+    { "name": "Plain flour", "aliases": ["flour", "all-purpose flour"], "section": null, "quantityValue": 250, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Baking soda", "aliases": ["bicarbonate of soda"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Salt", "section": null, "quantityValue": 0.5, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Butter", "section": null, "quantityValue": 170, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Brown sugar", "section": null, "quantityValue": 200, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "White sugar", "aliases": ["sugar"], "section": null, "quantityValue": 100, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Eggs", "aliases": ["egg"], "section": null, "quantityValue": 2, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Vanilla extract", "aliases": ["vanilla"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Chocolate chips", "section": null, "quantityValue": 300, "unitToken": "g", "expectedStatus": "ready" }
+  ]
+}

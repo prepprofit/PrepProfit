@@ -1,0 +1,15 @@
+{
+  "slug": "shrimp-dip",
+  "name": "Shrimp Dip",
+  "category": "handwritten",
+  "language": "en",
+  "yieldPortions": null,
+  "lines": [
+    { "name": "Cream cheese", "aliases": ["philadelphia cream cheese", "phila cream cheese", "philadelphia"], "section": null, "quantityValue": 1, "unitToken": "lge", "expectedStatus": "needs_review" },
+    { "name": "Sour cream", "aliases": ["cultured sour cream"], "section": null, "quantityValue": 0.5, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Mayonnaise", "aliases": ["mayo"], "section": null, "quantityValue": 0.5, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Garlic salt", "section": null, "quantityValue": 0.5, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Shrimp", "aliases": ["shrimps", "prawns"], "section": null, "quantityValue": 1, "unitToken": "can", "expectedStatus": "needs_review" },
+    { "name": "Worcestershire sauce", "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" }
+  ]
+}

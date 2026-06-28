@@ -1,0 +1,17 @@
+{
+  "slug": "banana-bread",
+  "name": "Banana Bread",
+  "category": "printed",
+  "language": "en",
+  "yieldPortions": 10,
+  "lines": [
+    { "name": "Bananas", "aliases": ["ripe bananas", "banana"], "section": null, "quantityValue": 3, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Butter", "aliases": ["melted butter"], "section": null, "quantityValue": 100, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Sugar", "section": null, "quantityValue": 150, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Egg", "aliases": ["eggs"], "section": null, "quantityValue": 1, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Vanilla", "aliases": ["vanilla extract"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Baking soda", "aliases": ["bicarbonate of soda"], "section": null, "quantityValue": 0.5, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Salt", "section": null, "quantityValue": 1, "unitToken": "pinch", "expectedStatus": "needs_review" },
+    { "name": "Flour", "aliases": ["plain flour", "all-purpose flour"], "section": null, "quantityValue": 200, "unitToken": "g", "expectedStatus": "ready" }
+  ]
+}

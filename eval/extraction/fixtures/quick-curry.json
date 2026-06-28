@@ -1,0 +1,16 @@
+{
+  "slug": "quick-curry",
+  "name": "Quick Veg Curry",
+  "category": "package-heavy",
+  "language": "en",
+  "yieldPortions": 4,
+  "lines": [
+    { "name": "Coconut milk", "section": null, "quantityValue": 1, "unitToken": "can", "expectedStatus": "needs_review" },
+    { "name": "Curry paste", "section": null, "quantityValue": 1, "unitToken": "pkt", "expectedStatus": "needs_review" },
+    { "name": "Baby spinach", "aliases": ["spinach"], "section": null, "quantityValue": 2, "unitToken": "bag", "expectedStatus": "needs_review" },
+    { "name": "Firm tofu", "aliases": ["tofu"], "section": null, "quantityValue": 1, "unitToken": "block", "expectedStatus": "needs_review" },
+    { "name": "Onion", "section": null, "quantityValue": 1, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Garlic", "section": null, "quantityValue": 2, "unitToken": "cloves", "expectedStatus": "needs_review" },
+    { "name": "Oil", "aliases": ["vegetable oil", "cooking oil"], "section": null, "quantityValue": 1, "unitToken": "tbsp", "expectedStatus": "ready" }
+  ]
+}

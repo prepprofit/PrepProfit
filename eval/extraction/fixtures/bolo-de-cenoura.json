@@ -1,0 +1,16 @@
+{
+  "slug": "bolo-de-cenoura",
+  "name": "Bolo de Cenoura",
+  "category": "non-english",
+  "language": "pt",
+  "yieldPortions": 8,
+  "lines": [
+    { "name": "Cenouras", "aliases": ["carrots", "cenoura", "carrot"], "section": null, "quantityValue": 3, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Ovos", "aliases": ["eggs", "egg"], "section": null, "quantityValue": 4, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Óleo", "aliases": ["oil", "vegetable oil", "oleo"], "section": null, "quantityValue": 200, "unitToken": "ml", "expectedStatus": "ready" },
+    { "name": "Açúcar", "aliases": ["sugar", "acucar"], "section": null, "quantityValue": 300, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Farinha de trigo", "aliases": ["flour", "wheat flour", "farinha"], "section": null, "quantityValue": 250, "unitToken": "g", "expectedStatus": "ready" },
+    { "name": "Fermento", "aliases": ["baking powder", "raising agent", "fermento em po"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Sal", "aliases": ["salt"], "section": null, "quantityValue": 1, "unitToken": "pitada", "expectedStatus": "needs_review" }
+  ]
+}

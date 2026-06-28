@@ -7,6 +7,139 @@
       "sha256": "876a8a08e59b2498134063e4faa6e851c28defe970691f30315b4f3cabf4ae99",
       "category": "handwritten",
       "language": "en"
+    },
+    {
+      "slug": "choc-chip-cookies",
+      "image": "choc-chip-cookies.png",
+      "sha256": "2734e30ff737459df7250cfe2835da8c606eee08393540189092d6ba310a2929",
+      "category": "printed",
+      "language": "en"
+    },
+    {
+      "slug": "quick-curry",
+      "image": "quick-curry.png",
+      "sha256": "37ab732290da4f714b830fd3a5b302805a6d9e7b22af827be3d4e9728bcf3b18",
+      "category": "package-heavy",
+      "language": "en"
+    },
+    {
+      "slug": "lasagna",
+      "image": "lasagna.png",
+      "sha256": "5832421b055c2812e619a20f6d6eaa54ed70f881b0cf247fd2abe86315fc1f7c",
+      "category": "multi-section",
+      "language": "en"
+    },
+    {
+      "slug": "shrimp-dip",
+      "image": "3-Moms-Recipes-1.webp",
+      "sha256": "d4625d0da88eedde45cd795e9eb2f9590ae39e8060f6c8c09fd732f32a5fcb0d",
+      "category": "handwritten",
+      "language": "en"
+    },
+    {
+      "slug": "banana-bread",
+      "image": "banana-bread.png",
+      "sha256": "51a39c2031aa1167fe84a2426cb1b0024e2be2020ba028a4e0764e89c29b401f",
+      "category": "printed",
+      "language": "en"
+    },
+    {
+      "slug": "tomato-soup",
+      "image": "tomato-soup.png",
+      "sha256": "01657ecc8c79864f1ea2029d0029040d688d253bc7173e80500540fb26f294a9",
+      "category": "printed",
+      "language": "en"
+    },
+    {
+      "slug": "pancakes",
+      "image": "pancakes.png",
+      "sha256": "07b0af8f05cdb77e76f870ca660e7f12db9eb13583d53eb81e752c63ab971728",
+      "category": "printed",
+      "language": "en"
+    },
+    {
+      "slug": "tiramisu",
+      "image": "tiramisu.png",
+      "sha256": "960ab2091fdd3ede714c202e1ec157e12c4c33cff37ad273cb62b41271e23291",
+      "category": "multi-section",
+      "language": "en"
+    },
+    {
+      "slug": "roast-chicken",
+      "image": "roast-chicken.png",
+      "sha256": "b40f63dcfe78f99e72489eb6bd0725e793c33183362468d4c82d576df14a8f77",
+      "category": "multi-section",
+      "language": "en"
+    },
+    {
+      "slug": "loaded-nachos",
+      "image": "loaded-nachos.png",
+      "sha256": "6991f777661c239e75e38c47711084212e79ac9b50652168fc3c014226a26d0e",
+      "category": "package-heavy",
+      "language": "en"
+    },
+    {
+      "slug": "pasta-bake",
+      "image": "pasta-bake.png",
+      "sha256": "836c1415921181b1c1ed5b4823dce8c3f03e53698901dda784072555ea3f3729",
+      "category": "package-heavy",
+      "language": "en"
+    },
+    {
+      "slug": "bolo-de-cenoura",
+      "image": "bolo-de-cenoura (PT).png",
+      "sha256": "965e6dcec4bf1fbbda8b6096682bd762825a38ea2cda9c1dd03f0bafbc86e2b2",
+      "category": "non-english",
+      "language": "pt"
+    },
+    {
+      "slug": "tarte-tatin",
+      "image": "tarte-tatin (FR).png",
+      "sha256": "1e263c0ecd269feedb9d176a4783e2c4ae215f9dfaaf82580825c6dcbf94ac3e",
+      "category": "non-english",
+      "language": "fr"
+    },
+    {
+      "slug": "sock-it-to-me-cake",
+      "image": "90d1664b31ebca0b3316b3f35a756ccf.jpg",
+      "sha256": "1bd47c90796f0dff8dd147e662a776ba2f8fef13c21228720a35c7505de271fa",
+      "category": "handwritten",
+      "language": "en"
+    },
+    {
+      "slug": "mississippi-mud-cake",
+      "image": "f7db6d199a9b475e0a61cee60bbf1c27.jpg",
+      "sha256": "8eab2138c5460ddf7fed5c8db9a66218a0528dde06038a91cd1a2ac022ea734f",
+      "category": "handwritten",
+      "language": "en"
+    },
+    {
+      "slug": "fudge",
+      "image": "image-asset.webp",
+      "sha256": "f1dcab8a16902c0468b4c6b5055535e280df6cf96f0048aa3523bca7809eea59",
+      "category": "handwritten",
+      "language": "en"
+    },
+    {
+      "slug": "sugar-cookies",
+      "image": "Sugar_cookie_recipe_ojdpqc.webp",
+      "sha256": "a20c027abc58e26ab3c4231cb469b68159c7cd46dc1853625e9020623c253b16",
+      "category": "low-light",
+      "language": "en"
+    },
+    {
+      "slug": "choc-chip-cookies-hw",
+      "image": "20190213205334-ent19-march-backpage.webp",
+      "sha256": "e13f7ab6d9b7c53978c7c6166ce16ca6a3b60bb5448a268d57630f773c02a432",
+      "category": "low-light",
+      "language": "en"
+    },
+    {
+      "slug": "choc-chip-cookies-notebook",
+      "image": "anyone-else-prefer-writing-down-your-favourite-recipes-v0-gmmfu01ruqic1.jpg",
+      "sha256": "727b9b7eb299171ae678d687fa0eba718e72d9d7bd50b80f8ecaad9cccf35908",
+      "category": "handwritten",
+      "language": "en"
     }
   ]
 }

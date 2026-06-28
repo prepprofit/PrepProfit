@@ -1,0 +1,15 @@
+{
+  "slug": "loaded-nachos",
+  "name": "Loaded Nachos",
+  "category": "package-heavy",
+  "language": "en",
+  "yieldPortions": 6,
+  "lines": [
+    { "name": "Tortilla chips", "aliases": ["nacho chips", "corn chips"], "section": null, "quantityValue": 1, "unitToken": "bag", "expectedStatus": "needs_review" },
+    { "name": "Salsa", "section": null, "quantityValue": 1, "unitToken": "jar", "expectedStatus": "needs_review" },
+    { "name": "Black beans", "aliases": ["beans"], "section": null, "quantityValue": 1, "unitToken": "can", "expectedStatus": "needs_review" },
+    { "name": "Sour cream", "section": null, "quantityValue": 1, "unitToken": "tub", "expectedStatus": "needs_review" },
+    { "name": "Cheddar cheese", "aliases": ["cheddar", "cheese"], "section": null, "quantityValue": 2, "unitToken": "block", "expectedStatus": "needs_review" },
+    { "name": "Jalapenos", "aliases": ["jalapeños", "jalapeno peppers"], "section": null, "quantityValue": 1, "unitToken": "jar", "expectedStatus": "needs_review" }
+  ]
+}

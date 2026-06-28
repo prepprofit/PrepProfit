@@ -1,0 +1,23 @@
+{
+  "slug": "mississippi-mud-cake",
+  "name": "Mississippi Mud Cake",
+  "category": "handwritten",
+  "language": "en",
+  "yieldPortions": null,
+  "lines": [
+    { "name": "Eggs", "aliases": ["egg"], "section": null, "quantityValue": 4, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Flour", "section": null, "quantityValue": 1.5, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Butter", "aliases": ["melted butter"], "section": null, "quantityValue": 2, "unitToken": "sticks", "expectedStatus": "needs_review" },
+    { "name": "Cocoa", "aliases": ["cocoa powder"], "section": null, "quantityValue": 0.3333333333333333, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Vanilla", "aliases": ["vanilla extract"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Coconut", "aliases": ["shredded coconut"], "section": null, "quantityValue": 1, "unitToken": "cup", "expectedStatus": "ignored" },
+    { "name": "Sugar", "section": null, "quantityValue": 2, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Marshmallow creme", "aliases": ["marshmallow cream", "marshmallow fluff"], "section": null, "quantityValue": 1, "unitToken": "jar", "expectedStatus": "needs_review" },
+    { "name": "Butter", "section": "Frosting", "quantityValue": 1, "unitToken": "stick", "expectedStatus": "needs_review" },
+    { "name": "Cocoa", "aliases": ["cocoa powder"], "section": "Frosting", "quantityValue": 0.3333333333333333, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Vanilla", "aliases": ["vanilla extract"], "section": "Frosting", "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Milk", "section": "Frosting", "quantityValue": 0.3333333333333333, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Powdered sugar", "aliases": ["icing sugar", "confectioners sugar"], "section": "Frosting", "quantityValue": 1, "unitToken": "box", "expectedStatus": "needs_review" },
+    { "name": "Nuts", "aliases": ["nut", "pecans", "chopped nuts"], "section": "Frosting", "quantityValue": 1, "unitToken": "cup", "expectedStatus": "ready" }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "slug": "pancakes",
+  "name": "Fluffy Pancakes",
+  "category": "printed",
+  "language": "en",
+  "yieldPortions": 8,
+  "lines": [
+    { "name": "Flour", "aliases": ["plain flour", "all-purpose flour"], "section": null, "quantityValue": 1.5, "unitToken": "cups", "expectedStatus": "ready" },
+    { "name": "Baking powder", "section": null, "quantityValue": 3.5, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Sugar", "section": null, "quantityValue": 1, "unitToken": "tbsp", "expectedStatus": "ready" },
+    { "name": "Salt", "section": null, "quantityValue": 0.25, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Milk", "section": null, "quantityValue": 1.25, "unitToken": "cups", "expectedStatus": "ready" },
+    { "name": "Egg", "aliases": ["eggs"], "section": null, "quantityValue": 1, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Butter", "aliases": ["melted butter"], "section": null, "quantityValue": 3, "unitToken": "tbsp", "expectedStatus": "ready" }
+  ]
+}

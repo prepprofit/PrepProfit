@@ -1,0 +1,18 @@
+{
+  "slug": "choc-chip-cookies-notebook",
+  "name": "Chocolate Chip Cookies",
+  "category": "handwritten",
+  "language": "en",
+  "yieldPortions": null,
+  "lines": [
+    { "name": "Flour", "section": null, "quantityValue": 2.75, "unitToken": "cups", "expectedStatus": "ready" },
+    { "name": "Baking soda", "aliases": ["soda"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Salt", "section": null, "quantityValue": 0.5, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Butter", "section": null, "quantityValue": 1, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Sugar", "section": null, "quantityValue": 0.75, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Brown sugar", "section": null, "quantityValue": 1, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Eggs", "aliases": ["egg"], "section": null, "quantityValue": 2, "unitToken": null, "expectedStatus": "ready" },
+    { "name": "Vanilla", "aliases": ["vanilla extract"], "section": null, "quantityValue": 1, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Chocolate chips", "aliases": ["choc chips", "chocolate chip"], "section": null, "quantityValue": 2, "unitToken": "cups", "expectedStatus": "ready" }
+  ]
+}
