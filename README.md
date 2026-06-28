@@ -23,21 +23,30 @@ bakeries, patisseries, and other food businesses. Each organization's data is is
 by application-level org scoping and Postgres Row-Level Security. Cost, margin,
 break-even, invoice, payroll, and finance calculations live in pure tested modules.
 
+The core product (Sprints 0–5) is built and in production: billing, document/PDF/XLSX
+generation, transactional email, deterministic imports, reviewed AI photo recipe
+extraction, and launch operations are all shipped. See [PLANO.md](PLANO.md).
+
 ## Product modules
 
 | # | Module | Current scope |
 |---|--------|---------------|
-| 1 | Recipes | Recipe cost, yield/loss, hidden costs, margin, folders, trash |
-| 2 | Financials | Transactions, categories, CSV export, monthly/annual dashboard |
-| 3 | Inventory | Stock movements, authoritative ledger, low-stock thresholds |
-| 4 | Break-even | Scenario simulator with safe zero/negative-margin handling |
-| 5 | Payroll | Employees, shifts, period summaries, manager-only |
-| 6 | Invoices | Customers, draft/issue/pay/void lifecycle, gap-free numbering |
-| 7 | Global search | Typo-tolerant search across allowed entities with RBAC |
+| 1 | Recipes | Cost, yield/loss, hidden costs, margin, folders, trash, live batch scaling + prep cards |
+| 2 | Ingredients & suppliers | Ingredients, supplier links with purchase packs, observed-cost pricing |
+| 3 | Financials | Transactions, categories, CSV export, monthly/annual dashboard |
+| 4 | Inventory | Stock movements, authoritative ledger, low-stock thresholds |
+| 5 | Break-even | Scenario simulator with safe zero/negative-margin handling |
+| 6 | Payroll | Employees, shifts, period summaries, manager-only |
+| 7 | Invoices | Customers, draft/issue/pay/void lifecycle, gap-free numbering |
+| 8 | Kitchen ops | Menus, productions, sales, and gap-free purchase orders |
+| 9 | Documents | Print, PDF, XLSX, and emailed outputs (invoices, recipe cards, P&L, payroll) |
+| 10 | Imports | Deterministic staged CSV/XLSX import of ingredients, transactions, and recipes |
+| 11 | AI photo extraction | Reviewed recipe drafts from photos (Gemini): no-loss editable workbench, supplier-pack inference, never auto-priced |
+| 12 | Global search | Typo-tolerant search across allowed entities with RBAC |
+| 13 | Tasks | Kitchen operations task lists |
 
-Planned next: production hardening, document/PDF generation, billing, deterministic
-imports, AI photo recipe extraction, launch readiness, and optional kitchen task lists.
-See [PLANO.md](PLANO.md).
+Backlog (not scheduled until prioritized): advanced multi-image/OCR extraction, saved
+reports, recurring checklists, and persisted recipe scaling. See [PLANO.md](PLANO.md).
 
 ## Stack
 
@@ -45,16 +54,18 @@ Active stack:
 
 - Next.js 15 App Router, React 19, strict TypeScript
 - PostgreSQL on Neon with Drizzle ORM
-- Clerk auth with Organizations and org roles
+- Clerk auth with Organizations and org roles, Clerk Billing + Stripe for subscriptions
 - Tailwind CSS v4, shadcn/ui patterns, Recharts
 - next-intl for UI copy and action error messages
 - Zod for server-side validation
+- `@react-pdf/renderer` for PDFs, `write-excel-file` for XLSX, Resend for email
+- Google Gemini for reviewed AI photo recipe extraction (behind a mockable wrapper)
+- Sentry + PostHog for observability/analytics, Playwright for E2E smoke tests
 - Vitest + PGlite for database and calculation tests
 - Vercel deployment
 
-Planned stack additions are introduced only in their sprint: PDF rendering in Sprint 3.5A,
-Resend email in Sprint 3.5B, Clerk Billing/Stripe in Sprint 4, and vision/AI extraction in
-Sprint 4.7.
+The stack is current as of the launch-readiness sprint; earlier "planned in sprint X"
+additions (PDF, email, billing, vision/AI) are all shipped.
 
 ## Multi-tenant architecture
 
@@ -101,6 +112,7 @@ See [SETUP.md](SETUP.md) for the full local and production setup.
 | `npm run seed` | Seed demo data for two env-provided org ids |
 | `npm run seed:org` | Seed one active Clerk organization |
 | `npm run seed:demo` | Seed richer demo data for one org |
+| `npm run eval:extraction` | Run the AI photo-extraction eval set against the live provider (needs `GEMINI_API_KEY`) |
 
 ## Testing
 
@@ -124,7 +136,7 @@ Required production checks:
 
 ## Roadmap
 
-[PLANO.md](PLANO.md) is the source of truth. Current sequence:
+[PLANO.md](PLANO.md) is the source of truth. Sprints 0–5 are complete and in production:
 
 - [x] Sprint 0 - Multi-tenant foundation
 - [x] Sprint 1 - Recipes, ingredients, units, inventory
@@ -135,14 +147,18 @@ Required production checks:
 - [x] Sprint 2.7 - Global search
 - [x] Sprint 3 - Invoices and payroll data/builders
 - [x] Sprint 3.1 - Production hardening (rate limiter, audit log, concurrency proof)
-- [ ] Sprint 3.5A - Document foundation and invoice PDF
-- [ ] Sprint 3.5B - Reports, Excel exports, and document email
-- [ ] Sprint 4 - Billing and entitlements
-- [ ] Sprint 4.5 - Deterministic import foundation
-- [ ] Sprint 4.6 - Recipe import
-- [ ] Sprint 4.7 - AI photo recipe extraction
-- [ ] Sprint 5 - Launch readiness
-- [ ] Sprint 6 - Kitchen operations tasks, if prioritized
+- [x] Sprint 3.5A - Document foundation and invoice PDF
+- [x] Sprint 3.5B - Reports and Excel exports
+- [x] Sprint 3.5C - Document email (Resend)
+- [x] Sprint 4 - Billing, entitlements, and organization lifecycle
+- [x] Sprint 4.5 - Deterministic import foundation
+- [x] Sprint 4.6 - Recipe import and ingredient resolver
+- [x] Sprint 4.7 - AI photo recipe extraction (Gemini), with a 20-photo eval gate
+- [x] Sprint 5 - Launch readiness and beta operations
+- [ ] Sprint 6 - Kitchen operations tasks, if prioritized by beta feedback
+
+Also shipped outside the numbered sprints: a kitchen-ops module set (suppliers, menus,
+productions, sales, purchase orders) and live recipe batch scaling.
 
 ---
 
