@@ -29,6 +29,20 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
+ * Coarse, PII-free latency bucket for product analytics (improvement plan Phase 5 /
+ * G6). A bucket label, never the raw millisecond figure, keeps the event a low-
+ * cardinality dimension for the P95-extraction launch metric without exposing
+ * anything about the user or their recipe.
+ */
+function latencyBucket(ms: number): string {
+  if (ms < 2_000) return '<2s';
+  if (ms < 5_000) return '2-5s';
+  if (ms < 10_000) return '5-10s';
+  if (ms < 20_000) return '10-20s';
+  return '>=20s';
+}
+
+/**
  * AI photo recipe extraction (Sprint 4.7, improvement plan §4.1). A multipart image
  * upload → an EDITABLE `PhotoExtractionDraft` the user reviews and corrects in the
  * workbench; nothing is staged here (CLAUDE.md: AI output is untrusted; staging +
@@ -102,6 +116,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   // Provider call OUTSIDE any DB transaction. Untrusted output is validated inside
   // the extractor (strict Zod) before it returns.
   let extraction;
+  const extractStartedAt = Date.now();
   try {
     extraction = await getRecipeExtractor().extract({ imageBytes: bytes, mimeType });
   } catch (err) {
@@ -143,6 +158,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     needsReview: lines.filter((l) => l.status === 'needs_review').length,
     ignored: lines.filter((l) => l.status === 'ignored').length,
   };
+  // Provider wall-clock for the §9.3 P95 launch metric. A non-PII count/label only.
+  const extractLatencyMs = Date.now() - extractStartedAt;
+  const retried = (extraction.attempts ?? 1) > 1;
 
   try {
     await withOrg(organizationId, async (tx) => {
@@ -173,14 +191,24 @@ export async function POST(req: Request): Promise<NextResponse> {
           needsReview: counts.needsReview,
           ignored: counts.ignored,
           qualityFlags: draft.qualityFlags.length,
+          latencyMs: extractLatencyMs,
+          attempts: extraction.attempts ?? 1,
         },
       });
     });
-    // Product analytics (Sprint 5c): post-success, PII-free (counts only).
+    // Product analytics (Sprint 5c): post-success, PII-free — counts, flags, model,
+    // and a coarse latency BUCKET (never the raw ms or any recipe/image content; G6).
     await trackEvent({
       event: 'recipe_photo_extracted',
       orgId: organizationId,
-      properties: { lines: counts.total, needsReview: counts.needsReview },
+      properties: {
+        lines: counts.total,
+        needsReview: counts.needsReview,
+        qualityFlags: draft.qualityFlags.length,
+        model: extraction.model,
+        latencyBucket: latencyBucket(extractLatencyMs),
+        retried,
+      },
     });
     return NextResponse.json(draft, { status: 200, headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
