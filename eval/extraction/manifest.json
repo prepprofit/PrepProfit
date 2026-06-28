@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "slug": "baklava",
+      "image": "baklava.jpg",
+      "sha256": null,
+      "category": "handwritten",
+      "language": "en"
+    }
+  ]
+}

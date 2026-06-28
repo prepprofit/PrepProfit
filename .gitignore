@@ -62,3 +62,7 @@ scripts/test-email.mjs
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# AI extraction eval images — real recipe photos are private fixtures, never
+# committed. The sanitized golden JSON + manifest (with checksums) ARE versioned.
+/eval/extraction/images/
