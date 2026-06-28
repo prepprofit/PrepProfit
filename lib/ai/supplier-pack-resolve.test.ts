@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applySupplierPacks,
+  isUnresolvedPackDescriptor,
   resolveSupplierPack,
   type PackResolvableLine,
   type SupplierPackCandidate,
 } from './supplier-pack-resolve';
+import type { PhotoDraftLine } from './types';
 
 /** A descriptor line with no package size of its own (the resolver's target case). */
 const descriptorLine = (unitToken: string): PackResolvableLine => ({
@@ -141,5 +144,118 @@ describe('resolveSupplierPack — never carries a price', () => {
     expect(Object.keys(res).sort()).toEqual(
       ['packageSizeUnitToken', 'packageSizeValue', 'resolved'].sort(),
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* isUnresolvedPackDescriptor — the cheap pre-check                            */
+/* -------------------------------------------------------------------------- */
+
+describe('isUnresolvedPackDescriptor', () => {
+  it('is true for a purchase-pack descriptor with no usable size', () => {
+    expect(isUnresolvedPackDescriptor(descriptorLine('pkt'))).toBe(true);
+  });
+
+  it('is false once the line already has a usable size', () => {
+    expect(
+      isUnresolvedPackDescriptor({ unitToken: 'pkt', packageSizeValue: 300, packageSizeUnitToken: 'g' }),
+    ).toBe(false);
+  });
+
+  it('is false for portion descriptors and for true units', () => {
+    expect(isUnresolvedPackDescriptor(descriptorLine('clove'))).toBe(false);
+    expect(isUnresolvedPackDescriptor(descriptorLine('g'))).toBe(false);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* applySupplierPacks — wiring into a draft                                    */
+/* -------------------------------------------------------------------------- */
+
+/** A minimal active draft line; overrides patch the fields under test. */
+const draftLine = (over: Partial<PhotoDraftLine>): PhotoDraftLine => ({
+  id: 'l1',
+  rawText: null,
+  section: null,
+  ingredientName: 'Butter',
+  quantityText: '1',
+  quantityValue: 1,
+  unitToken: 'block',
+  packageSizeValue: null,
+  packageSizeUnitToken: null,
+  confidence: 0.9,
+  status: 'needs_review',
+  issues: [{ code: 'DESCRIPTOR_NEEDS_PACKAGE_SIZE' }],
+  ...over,
+});
+
+const packMap = (
+  entries: Record<string, SupplierPackCandidate[]>,
+): Map<string, SupplierPackCandidate[]> => new Map(Object.entries(entries));
+
+describe('applySupplierPacks', () => {
+  it('fills the pack size and flips a needs_review descriptor to ready', () => {
+    const { lines, resolved } = applySupplierPacks(
+      [draftLine({})],
+      packMap({ butter: [pack(250, 'g')] }),
+    );
+    expect(resolved).toBe(1);
+    expect(lines[0]).toMatchObject({
+      packageSizeValue: 250,
+      packageSizeUnitToken: 'g',
+      status: 'ready',
+      issues: [],
+    });
+  });
+
+  it('matches the ingredient by NORMALIZED name (case/accent insensitive)', () => {
+    const { resolved } = applySupplierPacks(
+      [draftLine({ ingredientName: '  BÚTTER ' })],
+      packMap({ butter: [pack(250, 'g')] }),
+    );
+    expect(resolved).toBe(1);
+  });
+
+  it('leaves lines untouched when the ingredient has no candidate packs', () => {
+    const { lines, resolved } = applySupplierPacks([draftLine({})], packMap({}));
+    expect(resolved).toBe(0);
+    expect(lines[0]).toMatchObject({ packageSizeValue: null, status: 'needs_review' });
+  });
+
+  it('never resolves an ignored line', () => {
+    const { lines, resolved } = applySupplierPacks(
+      [draftLine({ status: 'ignored', issues: [] })],
+      packMap({ butter: [pack(250, 'g')] }),
+    );
+    expect(resolved).toBe(0);
+    expect(lines[0]).toMatchObject({ packageSizeValue: null, status: 'ignored' });
+  });
+
+  it('does not override a pack size the chef already entered', () => {
+    const { lines, resolved } = applySupplierPacks(
+      [draftLine({ packageSizeValue: 500, packageSizeUnitToken: 'g', status: 'ready', issues: [] })],
+      packMap({ butter: [pack(250, 'g')] }),
+    );
+    expect(resolved).toBe(0);
+    expect(lines[0]).toMatchObject({ packageSizeValue: 500 });
+  });
+
+  it('leaves an ambiguous ingredient (two distinct packs) for the chef', () => {
+    const { lines, resolved } = applySupplierPacks(
+      [draftLine({})],
+      packMap({ butter: [pack(250, 'g'), pack(1, 'kg')] }),
+    );
+    expect(resolved).toBe(0);
+    expect(lines[0]).toMatchObject({ packageSizeValue: null, status: 'needs_review' });
+  });
+
+  it('still flags a missing quantity after filling the pack (re-derives fully)', () => {
+    const { lines } = applySupplierPacks(
+      [draftLine({ quantityText: null, quantityValue: null })],
+      packMap({ butter: [pack(250, 'g')] }),
+    );
+    // Pack resolved, but the line is still needs_review for the missing quantity.
+    expect(lines[0]).toMatchObject({ packageSizeValue: 250, status: 'needs_review' });
+    expect(lines[0]?.issues.map((i) => i.code)).toContain('MISSING_QUANTITY');
   });
 });

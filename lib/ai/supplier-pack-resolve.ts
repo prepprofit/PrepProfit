@@ -1,6 +1,8 @@
 import { dimensionOf, toCanonical } from '@/lib/units';
 import { parseRecipeUnit } from '@/lib/units/descriptor';
-import { canonicalPackageSize } from './photo-draft';
+import { normalizeIngredientName } from '@/lib/import/resolveIngredient';
+import { canonicalPackageSize, deriveDraftLineStatus } from './photo-draft';
+import type { PhotoDraftLine } from './types';
 
 /**
  * Phase 6 — supplier pack integration (improvement plan §6 / §13). When a photo-draft
@@ -133,4 +135,54 @@ export function resolveSupplierPack(
     packageSizeValue: first.packageSizeValue,
     packageSizeUnitToken: first.packageSizeUnitToken,
   };
+}
+
+/**
+ * Whether a line is a PURCHASE-PACK descriptor that still lacks a usable package size —
+ * i.e. the only kind of line `resolveSupplierPack` could ever fill. A cheap pre-check
+ * the extraction route uses to skip the supplier-pack DB query entirely when no line
+ * could benefit (the common case: a recipe written in real units).
+ */
+export function isUnresolvedPackDescriptor(line: PackResolvableLine): boolean {
+  const unit = parseRecipeUnit(line.unitToken ?? '');
+  if (unit.kind !== 'descriptor') return false;
+  if (!PACK_DESCRIPTORS.has(normalizeDescriptor(unit.descriptor))) return false;
+  return !canonicalPackageSize(line.packageSizeValue, line.packageSizeUnitToken);
+}
+
+/**
+ * Fill inferred supplier pack sizes into a draft's descriptor lines (Phase 6 wiring).
+ * For each ACTIVE line, look up the ingredient's candidate packs by normalized name and
+ * apply {@link resolveSupplierPack}; a resolved line gets the pack size AND its status
+ * re-derived (so a `needs_review` descriptor flips to `ready`). Ignored lines, lines
+ * with no candidate packs, and ambiguous/unresolvable ones are returned untouched.
+ *
+ * Pure: the caller (extraction route) loads `packsByName` org-scoped under withOrg/RLS
+ * and passes it in. Never sets a price — only the recipe line's quantity canonicalizes.
+ * Returns the new lines plus a PII-free count of how many were filled (for the audit).
+ */
+export function applySupplierPacks(
+  lines: readonly PhotoDraftLine[],
+  packsByName: ReadonlyMap<string, readonly SupplierPackCandidate[]>,
+): { lines: PhotoDraftLine[]; resolved: number } {
+  let resolved = 0;
+  const out = lines.map((line) => {
+    if (line.status === 'ignored') return line;
+    const packs = packsByName.get(normalizeIngredientName(line.ingredientName));
+    if (!packs || packs.length === 0) return line;
+
+    const res = resolveSupplierPack(line, packs);
+    if (!res.resolved) return line;
+
+    resolved += 1;
+    const filled: PhotoDraftLine = {
+      ...line,
+      packageSizeValue: res.packageSizeValue,
+      packageSizeUnitToken: res.packageSizeUnitToken,
+    };
+    // Re-derive: a previously DESCRIPTOR_NEEDS_PACKAGE_SIZE line is now resolvable.
+    const { status, issues } = deriveDraftLineStatus(filled);
+    return { ...filled, status, issues };
+  });
+  return { lines: out, resolved };
 }

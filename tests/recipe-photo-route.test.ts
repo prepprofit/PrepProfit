@@ -2,7 +2,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { and, eq, sql } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
-import { aiExtractionAttempts, auditLog, importJobs, rateLimits } from '@/lib/db/schema';
+import {
+  aiExtractionAttempts,
+  auditLog,
+  importJobs,
+  ingredients,
+  ingredientSuppliers,
+  rateLimits,
+  suppliers,
+} from '@/lib/db/schema';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import { rateLimitKey } from '@/lib/rate-limit';
@@ -262,6 +270,94 @@ describe('POST /api/recipes/import/photo — success returns an editable draft',
         .where(and(eq(auditLog.organizationId, ORG_A), eq(auditLog.action, 'ai.extract'))),
     );
     expect(audited.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('POST /api/recipes/import/photo — Phase 6 supplier pack inference', () => {
+  it('fills a descriptor line\'s pack size from the org\'s supplier pack (→ ready)', async () => {
+    h.userId = 'pack_user';
+    // Seed an existing ingredient with a single supplier pack: 250 g of Butter.
+    await runInOrg(db, ORG_A, async (tx) => {
+      await tx
+        .insert(ingredients)
+        .values({
+          id: 'ing_butter',
+          organizationId: ORG_A,
+          name: 'Butter',
+          dimension: 'weight',
+          priceCents: 0,
+          needsPricing: true,
+        });
+      await tx
+        .insert(suppliers)
+        .values({ id: 'sup_dairy', organizationId: ORG_A, name: 'Dairy Co', normalizedName: 'dairy co' });
+      await tx.insert(ingredientSuppliers).values({
+        organizationId: ORG_A,
+        ingredientId: 'ing_butter',
+        supplierId: 'sup_dairy',
+        packSize: '250',
+        packUnit: 'g',
+        isDefault: true,
+      });
+    });
+
+    // The AI reads "1 block butter" — a descriptor with no pack size of its own.
+    h.result = {
+      recipe: {
+        name: 'Buttered Toast',
+        yieldPortions: 2,
+        ingredients: [{ name: 'Butter', quantity: 1, unit: 'block', confidence: 0.95 }],
+        preparationNotes: null,
+        overallConfidence: 0.9,
+        imageQuality: 'good',
+      },
+      usage: { inputTokens: 100, outputTokens: 20 },
+      model: 'gemini-3.5-flash',
+      provider: 'google',
+    };
+
+    const res = await POST(request(jpegBytes()));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    const line = body.recipe.lines[0];
+    expect(line.unitToken).toBe('block');
+    // The supplier pack (250 g) was inferred → the line is now ready, no price touched.
+    expect(line.packageSizeValue).toBe(250);
+    expect(line.packageSizeUnitToken).toBe('g');
+    expect(line.status).toBe('ready');
+
+    // The audit records the count of inferred packs (PII-free).
+    const audited = await runInOrg(db, ORG_A, (tx) =>
+      tx
+        .select({ metadata: auditLog.metadata })
+        .from(auditLog)
+        .where(and(eq(auditLog.organizationId, ORG_A), eq(auditLog.action, 'ai.extract'))),
+    );
+    const mine = audited.find((a) => (a.metadata as { packsResolved?: number }).packsResolved === 1);
+    expect(mine).toBeDefined();
+  });
+
+  it('leaves the descriptor needs_review when the ingredient is unknown to the org', async () => {
+    h.userId = 'nopack_user';
+    h.result = {
+      recipe: {
+        name: 'Mystery Bake',
+        yieldPortions: 1,
+        ingredients: [{ name: 'Phyllo Pastry', quantity: 1, unit: 'pkt', confidence: 0.95 }],
+        preparationNotes: null,
+        overallConfidence: 0.9,
+        imageQuality: 'good',
+      },
+      usage: { inputTokens: 100, outputTokens: 20 },
+      model: 'gemini-3.5-flash',
+      provider: 'google',
+    };
+
+    const body = await (await POST(request(jpegBytes()))).json();
+    const line = body.recipe.lines[0];
+    expect(line.packageSizeValue).toBeNull();
+    expect(line.status).toBe('needs_review');
   });
 });
 

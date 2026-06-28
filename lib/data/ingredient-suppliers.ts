@@ -6,6 +6,8 @@ import { lockActiveIngredientRow } from '@/lib/data/ingredients';
 import { recordPriceObservation } from '@/lib/data/ingredient-pricing';
 import { findOrCreateSupplierByName } from '@/lib/data/suppliers';
 import { isPackUnitCompatible } from '@/lib/suppliers/display-name';
+import { normalizeIngredientName } from '@/lib/import/resolveIngredient';
+import type { SupplierPackCandidate } from '@/lib/ai/supplier-pack-resolve';
 import type { Unit } from '@/lib/units';
 import type { IngredientSupplierInput } from '@/lib/validation/suppliers';
 
@@ -206,6 +208,46 @@ export async function loadDefaultLinksByIngredient(
       packUnit: r.packUnit,
       packPriceCents: r.packPriceCents,
     });
+  }
+  return map;
+}
+
+/**
+ * Candidate supplier packs for every ACTIVE ingredient that has a supplier link,
+ * keyed by the ingredient's NORMALIZED name (the same key the import resolver uses).
+ * Phase 6 (AI photo extraction): the extraction route passes this to
+ * `applySupplierPacks` so a descriptor line (`1 block butter`) can infer its pack size
+ * from the org's own supplier data. Trashed ingredients are excluded; a name with
+ * several ingredients merges their packs (the resolver then refuses if they disagree).
+ */
+export async function loadSupplierPacksByIngredientName(
+  db: TenantClient,
+  organizationId: string,
+): Promise<Map<string, SupplierPackCandidate[]>> {
+  const rows = await db
+    .select({
+      name: ingredients.name,
+      packSize: ingredientSuppliers.packSize,
+      packUnit: ingredientSuppliers.packUnit,
+    })
+    .from(ingredientSuppliers)
+    .innerJoin(
+      ingredients,
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, ingredientSuppliers.ingredientId),
+        isNull(ingredients.deletedAt),
+      ),
+    )
+    .where(eq(ingredientSuppliers.organizationId, organizationId));
+
+  const map = new Map<string, SupplierPackCandidate[]>();
+  for (const r of rows) {
+    const key = normalizeIngredientName(r.name);
+    if (key === '') continue;
+    const list = map.get(key) ?? [];
+    list.push({ packSize: numOrNull(r.packSize), packUnit: r.packUnit });
+    map.set(key, list);
   }
   return map;
 }

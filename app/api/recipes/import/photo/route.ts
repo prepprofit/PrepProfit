@@ -21,6 +21,8 @@ import {
   RECIPE_EXTRACTION_PROVIDER,
 } from '@/lib/ai/recipe-extraction';
 import { mapExtractionToPhotoDraft } from '@/lib/ai/photo-draft';
+import { applySupplierPacks, isUnresolvedPackDescriptor } from '@/lib/ai/supplier-pack-resolve';
+import { loadSupplierPacksByIngredientName } from '@/lib/data/ingredient-suppliers';
 import { validateImageUpload } from '@/lib/ai/image';
 import type { ActionErrorCode } from '@/lib/action-result';
 
@@ -151,19 +153,35 @@ export async function POST(req: Request): Promise<NextResponse> {
     provider: extraction.provider,
     model: extraction.model,
   });
-  const lines = draft.recipe.lines;
-  const counts = {
-    total: lines.length,
-    ready: lines.filter((l) => l.status === 'ready').length,
-    needsReview: lines.filter((l) => l.status === 'needs_review').length,
-    ignored: lines.filter((l) => l.status === 'ignored').length,
-  };
   // Provider wall-clock for the §9.3 P95 launch metric. A non-PII count/label only.
   const extractLatencyMs = Date.now() - extractStartedAt;
   const retried = (extraction.attempts ?? 1) > 1;
+  // Phase 6: only touch the supplier-pack table if some descriptor line could benefit
+  // (the common case — a recipe in real units — skips the query entirely).
+  const wantsPacks = draft.recipe.lines.some(
+    (l) => l.status !== 'ignored' && isUnresolvedPackDescriptor(l),
+  );
 
   try {
-    await withOrg(organizationId, async (tx) => {
+    const { draft: finalDraft, counts } = await withOrg(organizationId, async (tx) => {
+      // Phase 6 supplier-pack inference: fill a descriptor line's pack size from the
+      // org's own `ingredient_suppliers` data (`1 block butter` → 250 g) so the chef's
+      // returned draft is already canonical. NEVER auto-prices (§6/§13) — it only
+      // canonicalizes the recipe line's quantity; new ingredients still start at 0.
+      const { lines, resolved: packsResolved } = wantsPacks
+        ? applySupplierPacks(
+            draft.recipe.lines,
+            await loadSupplierPacksByIngredientName(tx, organizationId),
+          )
+        : { lines: draft.recipe.lines, resolved: 0 };
+      const finalDraft = { ...draft, recipe: { ...draft.recipe, lines } };
+      const counts = {
+        total: lines.length,
+        ready: lines.filter((l) => l.status === 'ready').length,
+        needsReview: lines.filter((l) => l.status === 'needs_review').length,
+        ignored: lines.filter((l) => l.status === 'ignored').length,
+      };
+
       // Provider-successful: the attempt is `succeeded` now — its cost is spent, so it
       // counts toward the monthly cap even if the user abandons before staging (§4.3) —
       // but with NO import job yet. The draft is staged later (stage endpoint), which
@@ -173,7 +191,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         inputTokens: extraction.usage.inputTokens,
         outputTokens: extraction.usage.outputTokens,
         costMicros: null,
-        qualityFlags: draft.qualityFlags,
+        qualityFlags: finalDraft.qualityFlags,
       });
       await writeAuditEvent(tx, organizationId, actor, {
         action: 'ai.extract',
@@ -190,11 +208,13 @@ export async function POST(req: Request): Promise<NextResponse> {
           ready: counts.ready,
           needsReview: counts.needsReview,
           ignored: counts.ignored,
-          qualityFlags: draft.qualityFlags.length,
+          packsResolved,
+          qualityFlags: finalDraft.qualityFlags.length,
           latencyMs: extractLatencyMs,
           attempts: extraction.attempts ?? 1,
         },
       });
+      return { draft: finalDraft, counts };
     });
     // Product analytics (Sprint 5c): post-success, PII-free — counts, flags, model,
     // and a coarse latency BUCKET (never the raw ms or any recipe/image content; G6).
@@ -204,13 +224,13 @@ export async function POST(req: Request): Promise<NextResponse> {
       properties: {
         lines: counts.total,
         needsReview: counts.needsReview,
-        qualityFlags: draft.qualityFlags.length,
+        qualityFlags: finalDraft.qualityFlags.length,
         model: extraction.model,
         latencyBucket: latencyBucket(extractLatencyMs),
         retried,
       },
     });
-    return NextResponse.json(draft, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(finalDraft, { status: 200, headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
     const eventId = logError({ action: 'recipePhotoExtract', orgId: organizationId }, err);
     await withOrg(organizationId, (tx) =>
