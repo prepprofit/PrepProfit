@@ -549,7 +549,17 @@
         "title": "Upload a recipe photo",
         "help": "Use a clear, well-lit photo of a printed or handwritten recipe (JPEG, PNG or WebP, up to 8 MB). One recipe per photo.",
         "cta": "Extract recipe",
-        "extracting": "Reading the photo…"
+        "extracting": "Reading the photo…",
+        "progress": {
+          "title": "Reading your recipe…",
+          "hint": "This usually takes 15–20 seconds. Please keep this tab open.",
+          "steps": {
+            "reading": "Reading the photo…",
+            "ingredients": "Identifying ingredients…",
+            "quantities": "Working out quantities…",
+            "assembling": "Almost there — assembling the recipe…"
+          }
+        }
       },
       "preview": {
         "title": "Review the draft",

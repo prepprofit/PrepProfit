@@ -19,6 +19,12 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { type MeasurementSystem } from '@/lib/units';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import type { ActionErrorCode } from '@/lib/action-result';
@@ -263,6 +269,7 @@ function PhotoFlow({
   // Upload.
   return (
     <Card>
+      <ExtractionProgressDialog open={extracting} />
       <CardHeader>
         <CardTitle>{t('upload.title')}</CardTitle>
         <CardDescription>{t('upload.help')}</CardDescription>
@@ -300,6 +307,94 @@ function PhotoFlow({
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Extraction progress modal                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** Step message keys, shown in order; the flow holds on the last one. */
+const PROGRESS_STEP_KEYS = ['reading', 'ingredients', 'quantities', 'assembling'] as const;
+const STEP_INTERVAL_MS = 3500;
+const PROGRESS_TICK_MS = 150;
+/** The bar eases toward this ceiling but never reaches it until the server replies. */
+const PROGRESS_CEILING = 92;
+
+/**
+ * Non-dismissible loading dialog shown while the photo is being extracted
+ * (a 15–20s server round-trip). It does NOT report real progress — the bar
+ * eases asymptotically toward a ceiling and the step message advances on a
+ * timer, so the wait feels alive and never looks frozen. When `open` flips
+ * back to false the dialog closes; the bar snaps to 100% on the way out.
+ */
+function ExtractionProgressDialog({ open }: { open: boolean }) {
+  const t = useTranslations('recipes.importPhoto');
+  const [progress, setProgress] = useState(0);
+  const [stepIndex, setStepIndex] = useState(0);
+
+  // Reset and drive the animations only while open.
+  useEffect(() => {
+    if (!open) {
+      setProgress(100); // snap full on the way out
+      return;
+    }
+    setProgress(0);
+    setStepIndex(0);
+
+    const bar = setInterval(() => {
+      setProgress((p) => p + (PROGRESS_CEILING - p) * 0.045);
+    }, PROGRESS_TICK_MS);
+    const step = setInterval(() => {
+      setStepIndex((i) => Math.min(i + 1, PROGRESS_STEP_KEYS.length - 1));
+    }, STEP_INTERVAL_MS);
+
+    return () => {
+      clearInterval(bar);
+      clearInterval(step);
+    };
+  }, [open]);
+
+  return (
+    <Dialog open={open}>
+      <DialogContent
+        // Stay put: the extraction is in flight, so block every close affordance.
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        className="max-w-md"
+      >
+        <div className="flex flex-col items-center gap-5 rounded-xl border border-border bg-surface p-8 text-center shadow-xl">
+          <span className="flex size-12 items-center justify-center rounded-full bg-accent-50 dark:bg-accent-500/10">
+            <Sparkles className="size-6 animate-pulse text-accent-600 dark:text-accent-400" />
+          </span>
+
+          <div className="flex flex-col gap-1.5">
+            <DialogTitle className="text-base font-semibold text-foreground">
+              {t('upload.progress.title')}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {t(`upload.progress.steps.${PROGRESS_STEP_KEYS[stepIndex]}`)}
+            </p>
+          </div>
+
+          <div
+            className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2"
+            role="progressbar"
+            aria-label={t('upload.progress.title')}
+          >
+            <div
+              className="h-full rounded-full bg-accent-500 transition-[width] duration-150 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          <DialogDescription className="text-xs text-muted-foreground">
+            {t('upload.progress.hint')}
+          </DialogDescription>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
