@@ -11,6 +11,7 @@ import {
   markAttemptSucceeded,
   markAttemptFailed,
   countSucceededAttemptsSince,
+  sumExtractionCostSince,
   monthStartUtc,
 } from '@/lib/data/ai-extraction';
 
@@ -189,6 +190,56 @@ describe('monthly usage count', () => {
       countSucceededAttemptsSince(tx, org, nextMonth),
     );
     expect(usedNext).toBe(0);
+  });
+});
+
+describe('cost summary (weekly report figures)', () => {
+  it('sums tokens + cost of only succeeded attempts in the window, org-scoped', async () => {
+    const org = 'org_cost';
+    const jobId = await stageJob(org);
+
+    // Two succeeded with usage, one failed (must be excluded from every sum).
+    for (const usage of [
+      { inputTokens: 1000, outputTokens: 200, costMicros: 800 },
+      { inputTokens: 1500, outputTokens: 400, costMicros: 1450 },
+    ]) {
+      const a = await runInOrg(db, org, (tx) =>
+        createExtractionAttempt(tx, org, {
+          actorUserId: 'u',
+          provider: 'google',
+          model: 'gemini-2.5-flash',
+          imageCount: 1,
+        }),
+      );
+      await runInOrg(db, org, (tx) =>
+        markAttemptSucceeded(tx, org, a.id, { importJobId: jobId, qualityFlags: [], ...usage }),
+      );
+    }
+    const failed = await runInOrg(db, org, (tx) =>
+      createExtractionAttempt(tx, org, {
+        actorUserId: 'u',
+        provider: 'google',
+        model: 'gemini-2.5-flash',
+        imageCount: 1,
+      }),
+    );
+    await runInOrg(db, org, (tx) =>
+      markAttemptFailed(tx, org, failed.id, { errorCode: 'AI_EXTRACTION_FAILED' }),
+    );
+
+    const since = monthStartUtc(new Date());
+    const summary = await runInOrg(db, org, (tx) => sumExtractionCostSince(tx, org, since));
+    expect(summary.count).toBe(2);
+    expect(summary.inputTokens).toBe(2500);
+    expect(summary.outputTokens).toBe(600);
+    expect(summary.costMicros).toBe(2250);
+  });
+
+  it('returns zeroes (not null) for an org with no extractions', async () => {
+    const summary = await runInOrg(db, 'org_empty_cost', (tx) =>
+      sumExtractionCostSince(tx, 'org_empty_cost', monthStartUtc(new Date())),
+    );
+    expect(summary).toEqual({ count: 0, inputTokens: 0, outputTokens: 0, costMicros: 0 });
   });
 });
 

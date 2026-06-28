@@ -20,6 +20,7 @@ import {
   RECIPE_EXTRACTION_MODEL,
   RECIPE_EXTRACTION_PROVIDER,
 } from '@/lib/ai/recipe-extraction';
+import { computeCostMicros } from '@/lib/ai/pricing';
 import { mapExtractionToPhotoDraft } from '@/lib/ai/photo-draft';
 import { applySupplierPacks, isUnresolvedPackDescriptor } from '@/lib/ai/supplier-pack-resolve';
 import { loadSupplierPacksByIngredientName } from '@/lib/data/ingredient-suppliers';
@@ -190,7 +191,13 @@ export async function POST(req: Request): Promise<NextResponse> {
         importJobId: null,
         inputTokens: extraction.usage.inputTokens,
         outputTokens: extraction.usage.outputTokens,
-        costMicros: null,
+        // Estimated provider spend (tokens × published Gemini price); null when the
+        // model is unpriced or no usage was reported. Operator metadata, not tenant money.
+        costMicros: computeCostMicros({
+          model: extraction.model,
+          inputTokens: extraction.usage.inputTokens,
+          outputTokens: extraction.usage.outputTokens,
+        }),
         qualityFlags: finalDraft.qualityFlags,
       });
       await writeAuditEvent(tx, organizationId, actor, {

@@ -2043,5 +2043,20 @@
     "body": "Please find attached purchase order {number} from {seller}. The order details are in the attached PDF.",
     "cancelSubject": "Purchase order {number} cancelled",
     "cancelBody": "Purchase order {number} has been cancelled. Please disregard the earlier order."
+  },
+  "aiCostReport": {
+    "subject": "PrepProfit — AI spend report ({period})",
+    "heading": "AI extraction spend",
+    "period": "Last 7 days ({period})",
+    "totalSpend": "Estimated spend",
+    "extractions": "Extractions",
+    "avgPerCall": "Average per extraction",
+    "inputTokens": "Input tokens",
+    "outputTokens": "Output tokens",
+    "byOrg": "By organization",
+    "orgColumn": "Organization",
+    "noOrgActivity": "No extractions in this period.",
+    "model": "Model: {model}",
+    "estimateNote": "Estimated from token usage × Gemini list price; may differ slightly from Google billing."
   }
 }

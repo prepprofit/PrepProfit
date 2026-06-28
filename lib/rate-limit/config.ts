@@ -42,6 +42,10 @@ export const RATE_LIMITS = {
   // cron auth header (the worker is org-less at entry). Generous ceiling — only
   // abusive retries should trip it; legitimate Vercel Cron fires on a schedule.
   outboxWorker: { limit: 5, windowMs: MINUTE },
+  // Weekly AI-spend report cron. Keyed by a hash of the cron auth header (org-less at
+  // entry). Generous ceiling — only abusive retries should trip it; legitimate Vercel
+  // Cron fires once a week.
+  aiCostReport: { limit: 5, windowMs: MINUTE },
   // Inventory depth mutations (Sprint 12c) — area CRUD, transfers, count commits. Per
   // org+user; interactive operational writes, so a brisk cadence is fine.
   inventory: { limit: 30, windowMs: MINUTE },

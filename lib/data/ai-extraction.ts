@@ -195,6 +195,53 @@ export async function countSucceededAttemptsSince(
   return rows[0]?.value ?? 0;
 }
 
+/** Aggregated provider spend for one org over a window — the weekly-report figures. */
+export type ExtractionCostSummary = {
+  /** Number of `succeeded` extractions in the window. */
+  count: number;
+  /** Summed reported input/output tokens (0 when none reported). */
+  inputTokens: number;
+  outputTokens: number;
+  /** Summed estimated provider cost in micros of USD (0 when none estimated). */
+  costMicros: number;
+};
+
+/**
+ * Sum this org's `succeeded` extractions since `since`: attempt count, total tokens,
+ * and total estimated provider cost (micros of USD). Org-scoped (RULE #1); RLS is the
+ * second layer. The operator cost report (cron) calls this once PER org inside
+ * `withOrg` and adds the per-org totals — there is no cross-tenant query. NULL sums
+ * (no rows / unreported usage) coalesce to 0.
+ */
+export async function sumExtractionCostSince(
+  db: TenantClient,
+  organizationId: string,
+  since: Date,
+): Promise<ExtractionCostSummary> {
+  const rows = await db
+    .select({
+      count: count(),
+      inputTokens: sql<number>`coalesce(sum(${aiExtractionAttempts.inputTokens}), 0)`,
+      outputTokens: sql<number>`coalesce(sum(${aiExtractionAttempts.outputTokens}), 0)`,
+      costMicros: sql<number>`coalesce(sum(${aiExtractionAttempts.costMicros}), 0)`,
+    })
+    .from(aiExtractionAttempts)
+    .where(
+      and(
+        eq(aiExtractionAttempts.organizationId, organizationId),
+        eq(aiExtractionAttempts.status, 'succeeded'),
+        gte(aiExtractionAttempts.createdAt, since),
+      ),
+    );
+  const row = rows[0];
+  return {
+    count: Number(row?.count ?? 0),
+    inputTokens: Number(row?.inputTokens ?? 0),
+    outputTokens: Number(row?.outputTokens ?? 0),
+    costMicros: Number(row?.costMicros ?? 0),
+  };
+}
+
 /**
  * In-flight horizon for a `pending` attempt (F-02). A pending row reserves a quota
  * slot from the moment it is written until it flips to succeeded/failed; this window

@@ -165,6 +165,28 @@ export type AiEnv = {
 };
 
 /**
+ * Recipient of the weekly AI-spend report (cron). Read only on the report path, on its
+ * OWN narrow schema — deliberately NOT part of `serverEnvSchema`, so an unset/invalid
+ * value just disables the report (the cron skips quietly) and never affects the app.
+ * A single operator address; not a secret, but only read from env, never hardcoded.
+ */
+const aiCostReportEnvSchema = z.object({
+  AI_COST_REPORT_EMAIL: z
+    .string()
+    .email('AI_COST_REPORT_EMAIL must be a valid email address'),
+});
+
+/**
+ * The weekly AI-cost report recipient, or `null` when unconfigured (so the cron
+ * no-ops instead of throwing — the report is best-effort operator tooling). Never
+ * load-bearing for any request.
+ */
+export function aiCostReportRecipient(): string | null {
+  const parsed = aiCostReportEnvSchema.safeParse(process.env);
+  return parsed.success ? parsed.data.AI_COST_REPORT_EMAIL : null;
+}
+
+/**
  * Asserts the AI-extraction key is configured and returns it narrowed. Throws a
  * readable (key-free) error if `GEMINI_API_KEY` is missing or empty — the extract
  * action maps that to a stable `AI_EXTRACTION_FAILED` code and logs it via
