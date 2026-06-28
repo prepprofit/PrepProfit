@@ -211,9 +211,10 @@ describe('parseExtractionResponse — rejects malformed output', () => {
   });
 });
 
-describe('pinned model config (D1/Q3 — guard against an accidental swap)', () => {
-  it('uses the stable Gemini 3.5 Flash id from the single source of truth', () => {
-    expect(RECIPE_EXTRACTION_MODEL).toBe('gemini-3.5-flash');
+describe('pinned model config (guard against an accidental swap)', () => {
+  it('uses the stable Gemini 2.5 Flash id from the single source of truth', () => {
+    // 2.5 Flash, not 3.5: the newer model returns chronic 503s under launch load.
+    expect(RECIPE_EXTRACTION_MODEL).toBe('gemini-2.5-flash');
     expect(RECIPE_EXTRACTION_PROVIDER).toBe('google');
   });
 });
