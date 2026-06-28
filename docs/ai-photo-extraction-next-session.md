@@ -47,20 +47,21 @@ covered by integration tests + build + the provider eval before this.
 - Next time a deeper local re-run is wanted, drive it with the preview_* tools
   (needs Clerk auth + `GEMINI_API_KEY` in `.env.local`).
 
-### 2. Broaden the eval set to the §9.2 target (marketing-grade G5)
-Today only Baklava exists. The plan wants **20 photos**: 5 handwritten, 5 printed,
-3 multi-section, 3 package-heavy, 2 low-light/blurry, 2 non-English. For each:
-- Drop the image in `eval/extraction/images/<slug>.<ext>` (gitignored).
-- Add a sanitized golden `eval/extraction/fixtures/<slug>.json` (see
-  `lib/ai/eval/metrics.ts` `ExpectedRecipe`/`ExpectedLine`; aliases for name variants;
-  `expectedStatus` = ready | needs_review | ignored).
-- Add the `manifest.json` entry (pin `sha256` once the image is final — the runner
-  prints the hash for `unpinned` fixtures).
-- Re-run `npm run eval:extraction`. The launch gate (§9.3) is enforced in
-  `checkThresholds`; silent-loss must stay 0.
-- **Also watch latency:** the single Baklava call took ~20 s vs the §9.3 **< 12 s P95
-  target** (latency is reported but NOT gated). If a fuller set confirms it's slow,
-  consider image downscaling before upload, or revisit the model.
+### 2. Broaden the eval set to the §9.2 target (marketing-grade G5) ✅ DONE (2026-06-28)
+The full **20-photo** §9.2 set is built and **PASSES the live §9.3 gate** on a Tier-1
+Gemini key: line recall 100%, correctable 98.2%, ready 98.0%, hallucination 0.0%,
+silent-loss 0.0% (20/20 fixtures). Set composition: 4 printed, 3 multi-section, 3
+package-heavy, 2 non-English (PT/FR), 6 handwritten (incl. Baklava), 2 low-light.
+- Goldens in `eval/extraction/fixtures/*.json`, all transcribed from the real images;
+  `manifest.json` has all 20 with `sha256` pinned; images stay gitignored.
+- Run with `npm run eval:extraction` (needs `GEMINI_API_KEY` in `.env.local`).
+- ⚠️ **Free-tier Gemini cannot run the full set** (5 req/min + 20 req/day). The owner
+  enabled billing (Tier 1) to run all 20 at once. If re-running on free tier, batch it.
+- ⚠️ Two non-gated soft spots remain (not launch blockers): **unit field accuracy ~82%**
+  (PT/FR units like "colher de chá"/"c. à café" and pack descriptors the model doesn't
+  normalize) and **latency p95 ~16.5 s vs the §9.3 < 12 s target** (reported, NOT gated).
+  To tune: image downscaling before upload, or a unit-synonym pass; revisit only if a
+  product decision needs the P95.
 
 ### 3. Phase 6 — supplier pack integration ✅ DONE (2026-06-28, on `main`, not pushed)
 Resolves package descriptors (`1 pkt phyllo`, `1 block butter`, `300g bag walnuts`)
