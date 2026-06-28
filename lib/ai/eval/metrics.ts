@@ -180,23 +180,35 @@ export function scoreDraft(expected: ExpectedRecipe, draft: PhotoExtractionDraft
     fields: emptyFields(),
   };
 
-  // Index draft lines by normalized name; each is consumable at most once.
+  // Index draft lines by normalized name; each is consumable at most once. When an
+  // ingredient legitimately repeats across sections (e.g. sugar in both Filling and
+  // Syrup, or a crossed-out duplicate), a same-section match is preferred before a
+  // name-only fallback so the two expected lines pair to the right draft lines.
   const draftLines = draft.recipe.lines;
   const consumed = new Set<number>();
-  const findDraftLine = (keys: string[]): number => {
+  const findDraftLine = (keys: string[], section: string | null): number => {
+    let nameOnly = -1;
     for (let i = 0; i < draftLines.length; i++) {
       if (consumed.has(i)) continue;
-      if (keys.includes(normalizeIngredientName(draftLines[i]!.ingredientName))) return i;
+      if (!keys.includes(normalizeIngredientName(draftLines[i]!.ingredientName))) continue;
+      if (sectionEqual(draftLines[i]!.section, section)) return i;
+      if (nameOnly === -1) nameOnly = i;
     }
-    return -1;
+    return nameOnly;
   };
 
   const lines: LineOutcome[] = [];
+  // The expected line each draft index actually paired with — reused for ready
+  // accuracy / hallucination so a repeated name is scored against the RIGHT line.
+  const pairedExpected = new Map<number, ExpectedLine>();
 
   for (const exp of expected.lines) {
-    const idx = findDraftLine(expectedKeys(exp));
+    const idx = findDraftLine(expectedKeys(exp), exp.section);
     const match = idx >= 0 ? draftLines[idx]! : null;
-    if (idx >= 0) consumed.add(idx);
+    if (idx >= 0) {
+      consumed.add(idx);
+      pairedExpected.set(idx, exp);
+    }
 
     const isActive = exp.expectedStatus !== 'ignored';
     if (!isActive) {
@@ -246,15 +258,12 @@ export function scoreDraft(expected: ExpectedRecipe, draft: PhotoExtractionDraft
   // Ready accuracy + hallucinations are computed over the DRAFT's active lines, so a
   // ready line invented by the model (no expected match) counts as both active and
   // (since unpaired) NOT ready-correct — penalizing confident hallucinations.
-  const expectedByKey = new Map<string, ExpectedLine>();
-  for (const exp of expected.lines) for (const k of expectedKeys(exp)) expectedByKey.set(k, exp);
-
   const hallucinatedNames: string[] = [];
   draftLines.forEach((line, i) => {
     if (line.status === 'ignored') return;
     counts.activeDraftLines += 1;
 
-    const exp = consumed.has(i) ? expectedByKey.get(normalizeIngredientName(line.ingredientName)) : undefined;
+    const exp = pairedExpected.get(i);
     if (!exp) {
       counts.hallucinated += 1;
       hallucinatedNames.push(line.ingredientName);

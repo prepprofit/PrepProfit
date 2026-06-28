@@ -92,7 +92,15 @@ async function runFixture(fixture: LoadedFixture): Promise<FixtureRun | null> {
   try {
     extraction = await getRecipeExtractor().extract({ imageBytes, mimeType });
   } catch (err) {
-    const reason = err instanceof RecipeExtractionError ? err.message : 'extraction failed';
+    // Surface the real reason: a provider failure (RecipeExtractionError) OR a config
+    // error like a missing GEMINI_API_KEY (aiEnv throws before the call). Both messages
+    // are key-free by design, so they are safe to print and save a confused debug.
+    const reason =
+      err instanceof RecipeExtractionError
+        ? err.message
+        : err instanceof Error
+          ? (err.message.split('\n')[0] ?? err.message)
+          : 'extraction failed';
     return { slug, ok: false, reason };
   }
   const latencyMs = Date.now() - startedAt;

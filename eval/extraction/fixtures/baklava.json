@@ -3,19 +3,19 @@
   "name": "Baklava",
   "category": "handwritten",
   "language": "en",
-  "yieldPortions": 24,
+  "yieldPortions": null,
   "lines": [
-    { "name": "Phyllo pastry", "aliases": ["filo pastry", "filo"], "section": null, "quantityValue": 1, "unitToken": "pkt", "expectedStatus": "needs_review" },
-    { "name": "Unsalted butter", "aliases": ["butter"], "section": null, "quantityValue": 250, "unitToken": "g", "expectedStatus": "ready" },
-    { "name": "Walnuts", "section": "Filling", "quantityValue": 1, "unitToken": "pkt", "expectedStatus": "needs_review" },
-    { "name": "Almonds", "section": "Filling", "quantityValue": 100, "unitToken": "g", "expectedStatus": "ready" },
-    { "name": "Sugar", "section": "Filling", "quantityValue": 100, "unitToken": "g", "expectedStatus": "ready" },
-    { "name": "Cinnamon", "aliases": ["ground cinnamon"], "section": "Filling", "quantityValue": 2, "unitToken": "tsp", "expectedStatus": "ready" },
-    { "name": "Cloves", "aliases": ["ground cloves"], "section": "Filling", "quantityValue": null, "unitToken": null, "expectedStatus": "needs_review" },
-    { "name": "Water", "section": "Syrup", "quantityValue": 200, "unitToken": "ml", "expectedStatus": "ready" },
-    { "name": "Honey", "section": "Syrup", "quantityValue": 3, "unitToken": "tbsp", "expectedStatus": "ready" },
-    { "name": "Caster sugar", "aliases": ["caster suger"], "section": "Syrup", "quantityValue": 400, "unitToken": "g", "expectedStatus": "ready" },
-    { "name": "Cinnamon sticks", "section": "Syrup", "quantityValue": 2, "unitToken": "sticks", "expectedStatus": "needs_review" },
-    { "name": "Rosewater", "aliases": ["rose water"], "section": "Syrup", "quantityValue": 1, "unitToken": "tbsp", "expectedStatus": "ignored" }
+    { "name": "Phyllo pastry", "aliases": ["filo pastry", "filo", "phyllo"], "section": null, "quantityValue": 1, "unitToken": "pkt", "expectedStatus": "needs_review" },
+    { "name": "Unsalted butter", "aliases": ["butter"], "section": null, "quantityValue": 1, "unitToken": "block", "expectedStatus": "needs_review" },
+    { "name": "Walnuts", "section": null, "quantityValue": 1, "unitToken": "pkt", "expectedStatus": "ready" },
+    { "name": "Almonds", "section": null, "quantityValue": 1.5, "unitToken": "pkt", "expectedStatus": "ready" },
+    { "name": "Sugar", "aliases": ["white sugar", "sugar (white)"], "section": null, "quantityValue": 0.5, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Cinnamon", "aliases": ["ground cinnamon"], "section": null, "quantityValue": 4, "unitToken": "tsp", "expectedStatus": "ready" },
+    { "name": "Cloves", "aliases": ["ground cloves"], "section": null, "quantityValue": null, "unitToken": null, "expectedStatus": "needs_review" },
+    { "name": "Cinnamon sticks", "section": null, "quantityValue": null, "unitToken": "sticks", "expectedStatus": "ignored" },
+    { "name": "Sugar", "aliases": ["white sugar", "sugar (white)"], "section": "Syrup", "quantityValue": 4, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Water", "section": "Syrup", "quantityValue": 3, "unitToken": "cup", "expectedStatus": "ready" },
+    { "name": "Honey", "section": "Syrup", "quantityValue": 2, "unitToken": "tbsp", "expectedStatus": "ready" },
+    { "name": "Cinnamon sticks", "section": "Syrup", "quantityValue": 2, "unitToken": "sticks", "expectedStatus": "needs_review" }
   ]
 }

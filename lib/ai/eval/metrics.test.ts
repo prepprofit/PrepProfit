@@ -210,6 +210,35 @@ describe('scoreDraft — duplicate draft line', () => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* An ingredient repeated across sections pairs section-aware                  */
+/* -------------------------------------------------------------------------- */
+
+describe('scoreDraft — same name in two sections', () => {
+  it('pairs each expected line to the draft line in its own section', () => {
+    const g: ExpectedRecipe = {
+      slug: 's',
+      name: 'S',
+      yieldPortions: null,
+      lines: [
+        { name: 'Sugar', section: 'Filling', quantityValue: 0.5, unitToken: 'cup', expectedStatus: 'ready' },
+        { name: 'Sugar', section: 'Syrup', quantityValue: 4, unitToken: 'cup', expectedStatus: 'ready' },
+      ],
+    };
+    // Draft lists the Syrup sugar FIRST — a name-only greedy match would mis-pair it.
+    const draft = draftOf([
+      draftLine({ ingredientName: 'Sugar', section: 'Syrup', quantityValue: 4, unitToken: 'cup', status: 'ready' }),
+      draftLine({ ingredientName: 'Sugar', section: 'Filling', quantityValue: 0.5, unitToken: 'cup', status: 'ready' }),
+    ]);
+    const score = scoreDraft(g, draft);
+    // Both pair within-section → every field correct, no hallucination, no loss.
+    expect(score.counts.visible).toBe(2);
+    expect(score.counts.hallucinated).toBe(0);
+    expect(score.lines.every((l) => l.fieldErrors.length === 0)).toBe(true);
+    expect(rates(score.counts).readyAccuracy).toBe(1);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* Aggregation is a micro-average                                             */
 /* -------------------------------------------------------------------------- */
 

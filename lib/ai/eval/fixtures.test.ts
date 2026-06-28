@@ -51,22 +51,31 @@ describe('Baklava golden — mandatory fixture (§9.2 / §15)', () => {
     expect(ignored).toHaveLength(1);
   });
 
-  it('sections water, honey, caster sugar, and cinnamon sticks under Syrup', () => {
+  it('sections sugar, water, honey, and cinnamon sticks under Syrup', () => {
     const bySyrup = baklava()
       .lines.filter((l) => l.section === 'Syrup')
       .map((l) => l.name);
     expect(bySyrup).toEqual(
-      expect.arrayContaining(['Water', 'Honey', 'Caster sugar', 'Cinnamon sticks']),
+      expect.arrayContaining(['Sugar', 'Water', 'Honey', 'Cinnamon sticks']),
     );
   });
 
-  it('expects the package-descriptor lines to need review', () => {
+  it('expects the bare-descriptor lines (no pack size) to need review', () => {
     const review = baklava()
       .lines.filter((l) => l.expectedStatus === 'needs_review')
       .map((l) => l.name);
+    // Phyllo (pkt) + butter (block) + cloves (no qty) + syrup cinnamon sticks.
     expect(review).toEqual(
-      expect.arrayContaining(['Phyllo pastry', 'Walnuts', 'Cloves', 'Cinnamon sticks']),
+      expect.arrayContaining(['Phyllo pastry', 'Unsalted butter', 'Cloves', 'Cinnamon sticks']),
     );
+  });
+
+  it('expects the package-sized descriptor lines (300g bag) to be ready', () => {
+    const ready = baklava()
+      .lines.filter((l) => l.expectedStatus === 'ready')
+      .map((l) => l.name);
+    // Walnuts + almonds carry a "300grm bag" pack size → canonicalize → ready.
+    expect(ready).toEqual(expect.arrayContaining(['Walnuts', 'Almonds']));
   });
 
   it('expects the tbsp/tsp lines to be ready', () => {

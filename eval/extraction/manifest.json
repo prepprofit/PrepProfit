@@ -3,8 +3,8 @@
   "fixtures": [
     {
       "slug": "baklava",
-      "image": "baklava.jpg",
-      "sha256": null,
+      "image": "original-recipe.jpg",
+      "sha256": "876a8a08e59b2498134063e4faa6e851c28defe970691f30315b4f3cabf4ae99",
       "category": "handwritten",
       "language": "en"
     }
