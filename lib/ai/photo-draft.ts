@@ -57,7 +57,7 @@ function resolveQuantityValue(ing: ExtractedLine): number | null {
  * number or a descriptor pack-unit is rejected (null) — a pack must measure in g/ml/…
  * to canonicalize an ingredient that is priced by weight or volume.
  */
-function canonicalPackageSize(
+export function canonicalPackageSize(
   value: number | null,
   unitToken: string | null,
 ): { value: number; unit: Unit } | null {
@@ -67,6 +67,55 @@ function canonicalPackageSize(
   const parsed = parseUnitToken(token);
   if ('error' in parsed) return null;
   return { value, unit: parsed.unit };
+}
+
+/** The line fields that decide whether a draft line can become canonical data. */
+export type DraftLineResolvable = {
+  ingredientName: string;
+  quantityValue: number | null;
+  unitToken: string | null;
+  packageSizeValue: number | null;
+  packageSizeUnitToken: string | null;
+};
+
+/**
+ * Decide whether a (non-ignored) draft line is `ready` or `needs_review`, and why.
+ * The SINGLE source of truth for resolvability — shared by `mapExtractionToPhotoDraft`,
+ * the editable review UI (live status as the chef types), and the stage endpoint's
+ * server-side re-check — so the three can never disagree about what is importable.
+ */
+export function deriveDraftLineStatus(line: DraftLineResolvable): {
+  status: Exclude<PhotoDraftLineStatus, 'ignored'>;
+  issues: PhotoDraftIssue[];
+} {
+  const issues: PhotoDraftIssue[] = [];
+
+  if (normalizeIngredientName(line.ingredientName) === '') issues.push({ code: 'MISSING_NAME' });
+  if (line.quantityValue === null) issues.push({ code: 'MISSING_QUANTITY' });
+
+  const unitResult = parseRecipeUnit(line.unitToken ?? '');
+  if (unitResult.kind === 'descriptor') {
+    if (!canonicalPackageSize(line.packageSizeValue, line.packageSizeUnitToken)) {
+      issues.push({ code: 'DESCRIPTOR_NEEDS_PACKAGE_SIZE' });
+    }
+  } else if (unitResult.kind === 'unknown') {
+    issues.push({ code: 'UNKNOWN_UNIT' });
+  }
+
+  return { status: issues.length === 0 ? 'ready' : 'needs_review', issues };
+}
+
+/** Map a draft-line issue to the coarse quality flag the preview warns on. */
+function flagForIssue(code: PhotoDraftIssue['code']): AiQualityFlag | null {
+  switch (code) {
+    case 'MISSING_QUANTITY':
+      return 'missing_quantity';
+    case 'UNKNOWN_UNIT':
+    case 'DESCRIPTOR_NEEDS_PACKAGE_SIZE':
+      return 'ambiguous_unit';
+    case 'MISSING_NAME':
+      return null;
+  }
 }
 
 /**
@@ -91,42 +140,27 @@ export function mapExtractionToPhotoDraft(
   const lines: PhotoDraftLine[] = extracted.ingredients.map((ing) => {
     const crossedOut = ing.crossedOut === true;
     const quantityValue = resolveQuantityValue(ing);
-    const packageSize = canonicalPackageSize(ing.packageSizeValue ?? null, ing.packageSizeUnit ?? null);
-    const unitResult = parseRecipeUnit(ing.unit ?? '');
-    const issues: PhotoDraftIssue[] = [];
 
     // A crossed-out line is returned (so the UI can show why) but never validated or
     // imported — it starts `ignored` and carries no issues/flags.
+    const resolvable: DraftLineResolvable = {
+      ingredientName: ing.name,
+      quantityValue,
+      unitToken: ing.unit,
+      packageSizeValue: ing.packageSizeValue ?? null,
+      packageSizeUnitToken: ing.packageSizeUnit ?? null,
+    };
+    const { status, issues } = crossedOut
+      ? { status: 'ignored' as PhotoDraftLineStatus, issues: [] as PhotoDraftIssue[] }
+      : deriveDraftLineStatus(resolvable);
+
     if (!crossedOut) {
       if (ing.confidence < LOW_CONFIDENCE_THRESHOLD) flags.add('low_confidence');
-
-      // Name: kept visible even if it normalizes away (the user can retype it).
-      if (normalizeIngredientName(ing.name) === '') issues.push({ code: 'MISSING_NAME' });
-
-      // Quantity: a null/unparseable quantity blocks import but stays visible.
-      if (quantityValue === null) {
-        issues.push({ code: 'MISSING_QUANTITY' });
-        flags.add('missing_quantity');
-      }
-
-      // Unit: a descriptor canonicalizes from a pack size; without one it needs review.
-      // An unknown token always needs review. Canonical units are fine.
-      if (unitResult.kind === 'descriptor') {
-        if (!packageSize) {
-          issues.push({ code: 'DESCRIPTOR_NEEDS_PACKAGE_SIZE' });
-          flags.add('ambiguous_unit');
-        }
-      } else if (unitResult.kind === 'unknown') {
-        issues.push({ code: 'UNKNOWN_UNIT' });
-        flags.add('ambiguous_unit');
+      for (const issue of issues) {
+        const flag = flagForIssue(issue.code);
+        if (flag) flags.add(flag);
       }
     }
-
-    const status: PhotoDraftLineStatus = crossedOut
-      ? 'ignored'
-      : issues.length === 0
-        ? 'ready'
-        : 'needs_review';
 
     return {
       id: crypto.randomUUID(),

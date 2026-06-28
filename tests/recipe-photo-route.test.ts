@@ -8,13 +8,15 @@ import { runInOrg } from '@/lib/db/tenant';
 import { rateLimitKey } from '@/lib/rate-limit';
 
 /**
- * Integration test for the AI photo extraction route (Sprint 4.7). Runs the REAL
- * handler against PGlite under `tenant_app` (RLS enforced), with auth, entitlements,
- * the DB seam, and the Gemini PROVIDER stubbed — the provider is never called for
- * real (CLAUDE.md). Proves the canonical order (RBAC→feature→rate→image→cap), that a
- * success stages a recipe_photo job + a succeeded attempt + an `ai.extract` audit in
- * the active org only, and that a provider failure records a `failed` attempt and
- * stages nothing.
+ * Integration test for the AI photo extraction + stage routes (Sprint 4.7, improvement
+ * plan §4). Runs the REAL handlers against PGlite under `tenant_app` (RLS enforced),
+ * with auth, entitlements, the DB seam, and the Gemini PROVIDER stubbed — the provider
+ * is never called for real (CLAUDE.md). Proves the canonical order
+ * (RBAC→feature→rate→image→cap), that extraction returns an editable DRAFT + a
+ * succeeded attempt with NO job yet + an `ai.extract` audit (active org only), that a
+ * provider failure records a `failed` attempt and stages nothing, and that the stage
+ * endpoint validates the edited draft server-side (ownership, needs_review blocking),
+ * builds the recipe_photo job, and links it to the attempt (`ai.stage`).
  */
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
@@ -100,8 +102,30 @@ vi.mock('@/lib/ai/recipe-extraction', () => {
   };
 });
 
-// Import the route AFTER the mocks are registered.
+// Import the routes AFTER the mocks are registered.
 import { POST } from '@/app/api/recipes/import/photo/route';
+import { POST as stagePOST } from '@/app/api/recipes/import/photo/stage/route';
+
+/** Build a stage request from an extraction draft body (optionally patching lines). */
+function stageRequest(
+  draft: { attemptId: string; recipe: { name: string; yieldPortions: number | null; preparationNotes: string | null; lines: unknown[] } },
+  lines?: unknown[],
+): Request {
+  const body = {
+    attemptId: draft.attemptId,
+    recipe: {
+      name: draft.recipe.name,
+      yieldPortions: draft.recipe.yieldPortions,
+      preparationNotes: draft.recipe.preparationNotes,
+      lines: lines ?? draft.recipe.lines,
+    },
+  };
+  return new Request('http://test/api/recipes/import/photo/stage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 
 let client: PGlite;
 let db: TenantDb;
@@ -200,28 +224,20 @@ describe('POST /api/recipes/import/photo — monthly usage cap', () => {
   });
 });
 
-describe('POST /api/recipes/import/photo — success', () => {
-  it('stages a recipe_photo job, succeeds the attempt, and audits ai.extract in the active org', async () => {
+describe('POST /api/recipes/import/photo — success returns an editable draft', () => {
+  it('returns a line-complete draft, succeeds the attempt WITHOUT a job, audits ai.extract', async () => {
     h.userId = 'happy_user';
     const res = await POST(request(jpegBytes()));
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    expect(typeof body.jobId).toBe('string');
-    expect(body.recipePayload.recipes).toHaveLength(1);
-    expect(body.recipePayload.recipes[0].lines).toHaveLength(2);
-    // The low-confidence ingredient raised a flag.
+    // The response is the editable draft — no job is staged yet.
+    expect(typeof body.attemptId).toBe('string');
+    expect(body.recipe.lines).toHaveLength(2);
+    expect(body.recipe.lines.every((l: { status: string }) => l.status === 'ready')).toBe(true);
     expect(body.qualityFlags).toContain('low_confidence');
 
-    // The job is a recipe_photo / photo job in ORG_A.
-    const job = await runInOrg(db, ORG_A, (tx) =>
-      tx.select().from(importJobs).where(eq(importJobs.id, body.jobId)),
-    );
-    expect(job[0]?.entity).toBe('recipe_photo');
-    expect(job[0]?.format).toBe('photo');
-    expect(job[0]?.status).toBe('parsed');
-
-    // The attempt succeeded and links the job.
+    // The attempt is succeeded but carries NO job link yet (§4.3).
     const attempt = await runInOrg(db, ORG_A, (tx) =>
       tx
         .select()
@@ -229,8 +245,14 @@ describe('POST /api/recipes/import/photo — success', () => {
         .where(eq(aiExtractionAttempts.actorUserId, 'happy_user')),
     );
     expect(attempt[0]?.status).toBe('succeeded');
-    expect(attempt[0]?.importJobId).toBe(body.jobId);
+    expect(attempt[0]?.importJobId).toBeNull();
     expect(attempt[0]?.qualityFlags).toContain('low_confidence');
+
+    // No import job was staged by extraction.
+    const jobs = await runInOrg(db, ORG_A, (tx) =>
+      tx.select({ n: sql<number>`count(*)::int` }).from(importJobs),
+    );
+    expect(jobs[0]?.n).toBe(0);
 
     // ai.extract audit in ORG_A; ORG_B sees nothing.
     const audited = await runInOrg(db, ORG_A, (tx) =>
@@ -240,11 +262,68 @@ describe('POST /api/recipes/import/photo — success', () => {
         .where(and(eq(auditLog.organizationId, ORG_A), eq(auditLog.action, 'ai.extract'))),
     );
     expect(audited.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('POST /api/recipes/import/photo/stage — server trust boundary', () => {
+  it('stages the edited draft into a recipe_photo job, links the attempt, audits ai.stage', async () => {
+    h.userId = 'stage_user';
+    const draft = await (await POST(request(jpegBytes()))).json();
+
+    const res = await stagePOST(stageRequest(draft));
+    expect(res.status).toBe(200);
+    const preview = await res.json();
+    expect(typeof preview.jobId).toBe('string');
+    expect(preview.recipePayload.recipes).toHaveLength(1);
+    expect(preview.recipePayload.recipes[0].lines).toHaveLength(2);
+
+    const job = await runInOrg(db, ORG_A, (tx) =>
+      tx.select().from(importJobs).where(eq(importJobs.id, preview.jobId)),
+    );
+    expect(job[0]?.entity).toBe('recipe_photo');
+    expect(job[0]?.format).toBe('photo');
+    expect(job[0]?.status).toBe('parsed');
+
+    // The attempt now links the staged job.
+    const attempt = await runInOrg(db, ORG_A, (tx) =>
+      tx
+        .select()
+        .from(aiExtractionAttempts)
+        .where(eq(aiExtractionAttempts.actorUserId, 'stage_user')),
+    );
+    expect(attempt[0]?.importJobId).toBe(preview.jobId);
+
+    const staged = await runInOrg(db, ORG_A, (tx) =>
+      tx
+        .select({ action: auditLog.action })
+        .from(auditLog)
+        .where(and(eq(auditLog.organizationId, ORG_A), eq(auditLog.action, 'ai.stage'))),
+    );
+    expect(staged.length).toBeGreaterThanOrEqual(1);
 
     const inB = await runInOrg(db, ORG_B, (tx) =>
       tx.select({ n: sql<number>`count(*)::int` }).from(importJobs),
     );
     expect(inB[0]?.n).toBe(0);
+  });
+
+  it('blocks staging (400) while an active line is still needs_review', async () => {
+    h.userId = 'block_user';
+    const draft = await (await POST(request(jpegBytes()))).json();
+    // Make one line an unresolved descriptor (no pack size) → must block.
+    const lines = draft.recipe.lines.map((l: Record<string, unknown>, i: number) =>
+      i === 0 ? { ...l, unitToken: 'pkt', packageSizeValue: null, packageSizeUnitToken: null } : l,
+    );
+    const res = await stagePOST(stageRequest(draft, lines));
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('INVALID_INPUT');
+  });
+
+  it('rejects an unknown / cross-context attempt id with 404', async () => {
+    h.userId = 'owner_user';
+    const draft = await (await POST(request(jpegBytes()))).json();
+    const res = await stagePOST(stageRequest({ ...draft, attemptId: 'att_does_not_exist' }));
+    expect(res.status).toBe(404);
   });
 });
 

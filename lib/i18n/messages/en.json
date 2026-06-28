@@ -567,9 +567,44 @@
       },
       "flags": {
         "low_confidence": "Some values were read with low confidence — double-check them.",
-        "ambiguous_unit": "A unit couldn't be recognized, so that line was left out.",
-        "missing_quantity": "A quantity couldn't be read, so that line was left out.",
+        "ambiguous_unit": "A unit couldn't be recognized — that line needs your review.",
+        "missing_quantity": "A quantity couldn't be read — that line needs your review.",
         "unreadable_image": "The photo was hard to read — results may be incomplete."
+      },
+      "draft": {
+        "title": "Review the extracted recipe",
+        "subtitle": "Every line we read is here. Fix anything highlighted, remove what you don't need, then continue. Nothing is saved yet.",
+        "photoAlt": "The recipe photo you uploaded",
+        "recipeName": "Recipe name",
+        "yield": "Portions",
+        "yieldPlaceholder": "—",
+        "section": "Section",
+        "ingredientName": "Ingredient",
+        "quantity": "Qty",
+        "unit": "Unit",
+        "unitNone": "(none)",
+        "packageSize": "Pack size:",
+        "packageSizeValue": "Pack size amount",
+        "packageSizeUnit": "Pack size unit",
+        "addLine": "Add ingredient",
+        "removed": "Removed lines",
+        "restore": "Restore",
+        "unnamed": "(unnamed line)",
+        "remove": "Remove line",
+        "status": {
+          "ready": "Ready",
+          "needsReview": "Needs review"
+        },
+        "stage": "Continue to matching",
+        "staging": "Preparing…",
+        "blockedHint": "{count, plural, one {# line needs review or removal before you can continue} other {# lines need review or removal before you can continue}}",
+        "noLines": "Add at least one ingredient line to continue."
+      },
+      "draftIssues": {
+        "MISSING_QUANTITY": "Add a quantity",
+        "UNKNOWN_UNIT": "Pick a unit",
+        "DESCRIPTOR_NEEDS_PACKAGE_SIZE": "Add the pack size (e.g. 300 g)",
+        "MISSING_NAME": "Add an ingredient name"
       },
       "startOver": "Start over"
     },

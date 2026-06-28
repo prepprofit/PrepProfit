@@ -6,8 +6,6 @@ import { enforceRateLimit } from '@/lib/rate-limit';
 import { logError } from '@/lib/observability';
 import { trackEvent } from '@/lib/analytics';
 import { writeAuditEvent } from '@/lib/data/audit';
-import { createImportJob } from '@/lib/data/import-jobs';
-import { planRecipeImport } from '@/lib/data/import';
 import {
   createExtractionAttempt,
   markAttemptSucceeded,
@@ -22,10 +20,8 @@ import {
   RECIPE_EXTRACTION_MODEL,
   RECIPE_EXTRACTION_PROVIDER,
 } from '@/lib/ai/recipe-extraction';
-import { mapExtractionToPhotoDraft, normalizePhotoDraftForImport } from '@/lib/ai/photo-draft';
+import { mapExtractionToPhotoDraft } from '@/lib/ai/photo-draft';
 import { validateImageUpload } from '@/lib/ai/image';
-import { IMPORT_JOB_TTL_MS } from '@/lib/validation/import';
-import type { PhotoExtractionPreview } from '@/lib/ai/types';
 import type { ActionErrorCode } from '@/lib/action-result';
 
 // The Gemini SDK + neon-serverless Pool need Node; an upload is never cached.
@@ -33,19 +29,20 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * AI photo recipe extraction (Sprint 4.7, D3 Route Handler). A multipart image
- * upload → a staged `recipe_photo` job the user must review and confirm (CLAUDE.md:
- * AI output is untrusted, staged, human-confirmed — never an automatic write).
+ * AI photo recipe extraction (Sprint 4.7, improvement plan §4.1). A multipart image
+ * upload → an EDITABLE `PhotoExtractionDraft` the user reviews and corrects in the
+ * workbench; nothing is staged here (CLAUDE.md: AI output is untrusted; staging +
+ * the mandatory confirm happen later, via the stage endpoint + `confirmImportAction`).
  *
  * Canonical order, ALL before the image is read: RBAC (manager-only, 403) → rate
  * limit (`aiExtraction`, 429) → image validation (415/413/400) → monthly usage cap
  * (402, the only entitlement check — AI is universal, metered by quota). Then: a
- * `pending` attempt is
- * written, the provider is called OUTSIDE any DB transaction (so a slow network call
- * never holds a tx open), the result is validated + mapped, and on success a job is
- * staged + the attempt flipped to `succeeded` + `ai.extract` audited — all org-scoped
- * (RULE #1, `withOrg`/RLS). A failure records a `failed` attempt and stages nothing;
- * the image bytes are discarded either way (ephemeral, D5).
+ * `pending` attempt is written, the provider is called OUTSIDE any DB transaction (so
+ * a slow network call never holds a tx open), the result is validated + mapped to the
+ * no-loss draft, the attempt is flipped to `succeeded` with NO job yet (its cost is
+ * spent regardless, §4.3) + `ai.extract` audited — all org-scoped (RULE #1,
+ * `withOrg`/RLS). A failure records a `failed` attempt; the image bytes are discarded
+ * either way (ephemeral, D5).
  */
 function fail(code: ActionErrorCode, status: number): NextResponse {
   return NextResponse.json({ code }, { status });
@@ -130,36 +127,31 @@ export async function POST(req: Request): Promise<NextResponse> {
     return fail(code, busy ? 503 : 502);
   }
 
-  // Pure mapping (no DB): extracted recipe → a line-complete editable draft, then the
-  // canonical DraftRecipe[] + issues for the planner. The no-loss draft keeps every
-  // line the model read; lines that cannot canonicalize (descriptor without a pack
-  // size, unreadable quantity, unknown unit) surface as issues — visible to the user,
-  // never silently dropped (G1).
+  // Pure mapping (no DB): extracted recipe → a line-complete, EDITABLE draft. Every
+  // line the model read is kept (ready / needs_review / ignored); nothing is staged
+  // here. The user reviews + corrects the draft, then the separate stage endpoint
+  // turns the edited draft into an import job (G1 no-loss; G2 server trust boundary).
   const draft = mapExtractionToPhotoDraft(extraction.recipe, {
     attemptId,
     provider: extraction.provider,
     model: extraction.model,
   });
-  const mapped = normalizePhotoDraftForImport(draft);
+  const lines = draft.recipe.lines;
+  const counts = {
+    total: lines.length,
+    ready: lines.filter((l) => l.status === 'ready').length,
+    needsReview: lines.filter((l) => l.status === 'needs_review').length,
+    ignored: lines.filter((l) => l.status === 'ignored').length,
+  };
 
   try {
-    const preview = await withOrg(organizationId, async (tx): Promise<PhotoExtractionPreview> => {
-      // Reuse the 4.6 planner: ingredient resolution (exact/fuzzy/new, never an
-      // auto-link), org duplicate-recipe detection, and the staged payload.
-      const plan = await planRecipeImport(tx, organizationId, mapped.recipes, mapped.issues);
-      const job = await createImportJob(tx, organizationId, {
-        actorUserId: userId,
-        entity: 'recipe_photo',
-        format: 'photo',
-        sourceFilename: null,
-        rowCount: plan.counts.importable,
-        normalizedRows: plan.payload,
-        issues: plan.issues,
-        idempotencyKey: null,
-        expiresAt: new Date(Date.now() + IMPORT_JOB_TTL_MS),
-      });
+    await withOrg(organizationId, async (tx) => {
+      // Provider-successful: the attempt is `succeeded` now — its cost is spent, so it
+      // counts toward the monthly cap even if the user abandons before staging (§4.3) —
+      // but with NO import job yet. The draft is staged later (stage endpoint), which
+      // links the job back to this attempt.
       await markAttemptSucceeded(tx, organizationId, attemptId, {
-        importJobId: job.id,
+        importJobId: null,
         inputTokens: extraction.usage.inputTokens,
         outputTokens: extraction.usage.outputTokens,
         costMicros: null,
@@ -167,38 +159,32 @@ export async function POST(req: Request): Promise<NextResponse> {
       });
       await writeAuditEvent(tx, organizationId, actor, {
         action: 'ai.extract',
-        entityType: 'importJob',
-        entityId: job.id,
-        // COUNTS + provider metadata only — never the recipe text or image.
+        entityType: 'aiExtractionAttempt',
+        entityId: attemptId,
+        // COUNTS + provider metadata only — never the recipe text or image (G6).
         metadata: {
           provider: extraction.provider,
           model: extraction.model,
           imageCount: 1,
           inputTokens: extraction.usage.inputTokens,
           outputTokens: extraction.usage.outputTokens,
-          importable: plan.counts.importable,
-          skipped: plan.counts.skipped,
-          issues: plan.issues.length,
+          lines: counts.total,
+          ready: counts.ready,
+          needsReview: counts.needsReview,
+          ignored: counts.ignored,
           qualityFlags: draft.qualityFlags.length,
         },
       });
-      return {
-        jobId: job.id,
-        counts: plan.counts,
-        issues: plan.issues,
-        recipePayload: plan.payload,
-        qualityFlags: draft.qualityFlags,
-      };
     });
     // Product analytics (Sprint 5c): post-success, PII-free (counts only).
     await trackEvent({
       event: 'recipe_photo_extracted',
       orgId: organizationId,
-      properties: { importable: preview.counts.importable },
+      properties: { lines: counts.total, needsReview: counts.needsReview },
     });
-    return NextResponse.json(preview, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(draft, { status: 200, headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
-    const eventId = logError({ action: 'recipePhotoStage', orgId: organizationId }, err);
+    const eventId = logError({ action: 'recipePhotoExtract', orgId: organizationId }, err);
     await withOrg(organizationId, (tx) =>
       markAttemptFailed(tx, organizationId, attemptId, { errorCode: 'AI_EXTRACTION_FAILED' }),
     ).catch(() => undefined);

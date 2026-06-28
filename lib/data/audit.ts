@@ -186,12 +186,14 @@ export type AuditAction =
   // holds only entity + counts (importable/created/skipped), never cell contents.
   | 'import.preview'
   | 'import.commit'
-  // AI photo recipe extraction (Sprint 4.7). `ai.extract` = an image was extracted
-  // and staged as a recipe_photo job (status `parsed`); `ai.extractFailed` = the
-  // provider/validation failed and a `failed` attempt was recorded. metadata holds
-  // only provider/model/token counts/quality-flag + issue COUNTS — never the image
-  // or recipe text.
+  // AI photo recipe extraction (Sprint 4.7; improvement plan §4). `ai.extract` = an
+  // image was extracted into an editable draft (attempt `succeeded`, no job yet);
+  // `ai.stage` = the user's edited draft was staged into a recipe_photo job (status
+  // `parsed`) and linked to the attempt; `ai.extractFailed` = the provider/validation
+  // failed and a `failed` attempt was recorded. metadata holds only provider/model/
+  // token counts/quality-flag/line + issue COUNTS — never the image or recipe text.
   | 'ai.extract'
+  | 'ai.stage'
   | 'ai.extractFailed'
   // GDPR account lifecycle (Sprint 5e). `account.export` = a manager downloaded the
   // full org data bundle (metadata = row count only, never the data). `account.

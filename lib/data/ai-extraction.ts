@@ -1,4 +1,4 @@
-import { and, count, eq, gte, or, sql } from 'drizzle-orm';
+import { and, count, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { aiExtractionAttempts } from '@/lib/db/schema';
 import type { AiExtractionAttempt } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
@@ -44,14 +44,21 @@ export async function createExtractionAttempt(
 }
 
 export type AttemptSuccessInput = {
-  importJobId: string;
+  /**
+   * The staged job this attempt produced, or NULL when the provider succeeded but the
+   * user has not staged the (editable) draft yet (improvement plan §4.3). A
+   * provider-successful attempt counts toward the monthly cap whether or not it is
+   * eventually staged — the provider cost was already spent. The link is filled in
+   * later by {@link linkAttemptToImportJob} when the draft is staged.
+   */
+  importJobId: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
   costMicros: number | null;
   qualityFlags: AiQualityFlag[];
 };
 
-/** Flip an attempt to `succeeded`, linking the staged job + recording usage. */
+/** Flip an attempt to `succeeded`, recording usage (and the staged job, if any). */
 export async function markAttemptSucceeded(
   db: TenantClient,
   organizationId: string,
@@ -75,6 +82,51 @@ export async function markAttemptSucceeded(
         eq(aiExtractionAttempts.id, id),
       ),
     );
+}
+
+/** Read one attempt by id (org-scoped; RLS is the second layer). Null when absent. */
+export async function getExtractionAttempt(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<AiExtractionAttempt | null> {
+  const rows = await db
+    .select()
+    .from(aiExtractionAttempts)
+    .where(
+      and(
+        eq(aiExtractionAttempts.organizationId, organizationId),
+        eq(aiExtractionAttempts.id, id),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Link a succeeded attempt to the import job staged from its (edited) draft (§4.2).
+ * Only an attempt that has not yet been staged (`import_job_id IS NULL`) is updated,
+ * so a draft cannot be staged twice onto one attempt. Returns whether a row matched.
+ */
+export async function linkAttemptToImportJob(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+  importJobId: string,
+): Promise<boolean> {
+  const rows = await db
+    .update(aiExtractionAttempts)
+    .set({ importJobId })
+    .where(
+      and(
+        eq(aiExtractionAttempts.organizationId, organizationId),
+        eq(aiExtractionAttempts.id, id),
+        eq(aiExtractionAttempts.status, 'succeeded'),
+        isNull(aiExtractionAttempts.importJobId),
+      ),
+    )
+    .returning({ id: aiExtractionAttempts.id });
+  return rows.length > 0;
 }
 
 export type AttemptFailureInput = {

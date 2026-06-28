@@ -1,8 +1,16 @@
 'use client';
 
-import { useMemo, useState, useActionState } from 'react';
+import { useEffect, useMemo, useState, useActionState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Camera, CheckCircle2, AlertTriangle, Sparkles } from 'lucide-react';
+import {
+  Camera,
+  CheckCircle2,
+  AlertTriangle,
+  Sparkles,
+  Plus,
+  Trash2,
+  RotateCcw,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -14,7 +22,14 @@ import {
 import { type MeasurementSystem } from '@/lib/units';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import type { ActionErrorCode } from '@/lib/action-result';
-import type { PhotoExtractionPreview } from '@/lib/ai/types';
+import type {
+  PhotoDraftLine,
+  PhotoExtractionDraft,
+  PhotoExtractionPreview,
+} from '@/lib/ai/types';
+import { deriveDraftLineStatus } from '@/lib/ai/photo-draft';
+import { parseRecipeUnit } from '@/lib/units/descriptor';
+import { parseQuantityText } from '@/lib/units/quantity';
 import { confirmImportAction, type ImportActionState } from '@/app/(app)/import/actions';
 import {
   RecipeResolutionPanel,
@@ -26,12 +41,31 @@ import {
 
 const ISSUE_DISPLAY_LIMIT = 50;
 
+/** True measurable units offered in the per-line unit picker. */
+const CANONICAL_UNITS = ['g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 'cup', 'floz', 'oz', 'lb', 'count'];
+/** Package/entry descriptors (need a pack size to canonicalize). */
+const DESCRIPTOR_UNITS = ['pkt', 'bag', 'box', 'block', 'can', 'jar', 'bunch', 'clove', 'slice', 'sheet', 'stick', 'pinch'];
+/** Measurable units a package size can be expressed in. */
+const PACK_UNITS = ['g', 'kg', 'ml', 'l', 'oz', 'lb'];
+
+const inputClass =
+  'w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-accent-500';
+
+/** Parse a written quantity to a number for live status, or null when unusable. */
+function deriveQuantity(text: string): number | null {
+  if (text.trim() === '') return null;
+  const parsed = parseQuantityText(text);
+  return 'value' in parsed ? parsed.value : null;
+}
+
 /**
- * AI photo extraction workbench (Sprint 4.7). The upload posts to the Route Handler
- * (`/api/recipes/import/photo`) via fetch — the only stage that touches the provider
- * — and the returned staged draft is reviewed with the SAME 4.6 resolution panel +
- * recipe grid, then confirmed through the unchanged `confirmImportAction`. Quality
- * flags from the model are surfaced as warnings; nothing is written without confirm.
+ * AI photo extraction workbench (Sprint 4.7 improvement plan). The upload returns an
+ * EDITABLE PhotoExtractionDraft — every line the model read is shown (ready /
+ * needs_review / ignored), and the chef corrects name/quantity/unit/package size/
+ * section, adds missing lines, or removes crossed-out ones, all on one screen. Only
+ * when every active line is ready does Stage post the edited draft to the server,
+ * which validates it, builds the import job, and returns the resolution preview —
+ * then the unchanged confirm path creates the recipe.
  */
 export function PhotoImportWorkbench({
   measurementSystem,
@@ -59,7 +93,10 @@ function PhotoFlow({
   const actionError = useActionError();
 
   const [extracting, setExtracting] = useState(false);
+  const [staging, setStaging] = useState(false);
   const [error, setError] = useState<ActionErrorCode | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [draft, setDraft] = useState<PhotoExtractionDraft | null>(null);
   const [preview, setPreview] = useState<PhotoExtractionPreview | null>(null);
   const [linkChoices, setLinkChoices] = useState<Record<string, string>>({});
 
@@ -70,10 +107,12 @@ function PhotoFlow({
   const committed =
     confirmState?.ok && confirmState.phase === 'committed' ? confirmState : null;
 
+  // Free the local object URL when the photo changes or the flow unmounts.
+  useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
+
   async function onExtract(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.currentTarget;
-    const data = new FormData(form);
+    const data = new FormData(e.currentTarget);
     const image = data.get('image');
     if (!(image instanceof File) || image.size === 0) {
       setError('INVALID_INPUT');
@@ -88,9 +127,9 @@ function PhotoFlow({
         setError(body.code ?? 'UNEXPECTED');
         return;
       }
-      const result = (await res.json()) as PhotoExtractionPreview;
-      setPreview(result);
-      setLinkChoices(initFuzzyChoices(result.recipePayload));
+      const result = (await res.json()) as PhotoExtractionDraft;
+      setDraft(result);
+      setImageUrl(URL.createObjectURL(image));
     } catch {
       setError('UNEXPECTED');
     } finally {
@@ -98,7 +137,76 @@ function PhotoFlow({
     }
   }
 
-  // Success screen.
+  function patchRecipe(patch: Partial<PhotoExtractionDraft['recipe']>) {
+    setDraft((d) => (d ? { ...d, recipe: { ...d.recipe, ...patch } } : d));
+  }
+
+  function patchLine(id: string, patch: Partial<PhotoDraftLine>) {
+    setDraft((d) =>
+      d
+        ? {
+            ...d,
+            recipe: {
+              ...d.recipe,
+              lines: d.recipe.lines.map((l) => (l.id === id ? { ...l, ...patch } : l)),
+            },
+          }
+        : d,
+    );
+  }
+
+  function addLine() {
+    const line: PhotoDraftLine = {
+      id: crypto.randomUUID(),
+      rawText: null,
+      section: null,
+      ingredientName: '',
+      quantityText: null,
+      quantityValue: null,
+      unitToken: null,
+      packageSizeValue: null,
+      packageSizeUnitToken: null,
+      confidence: 1,
+      status: 'needs_review',
+      issues: [],
+    };
+    setDraft((d) => (d ? { ...d, recipe: { ...d.recipe, lines: [...d.recipe.lines, line] } } : d));
+  }
+
+  async function onStage() {
+    if (!draft) return;
+    setError(null);
+    setStaging(true);
+    try {
+      const payload = {
+        attemptId: draft.attemptId,
+        recipe: {
+          name: draft.recipe.name,
+          yieldPortions: draft.recipe.yieldPortions,
+          preparationNotes: draft.recipe.preparationNotes,
+          lines: draft.recipe.lines.map((l) => ({ ...l, issues: [] })),
+        },
+      };
+      const res = await fetch('/api/recipes/import/photo/stage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { code?: ActionErrorCode };
+        setError(body.code ?? 'UNEXPECTED');
+        return;
+      }
+      const result = (await res.json()) as PhotoExtractionPreview;
+      setPreview(result);
+      setLinkChoices(initFuzzyChoices(result.recipePayload));
+    } catch {
+      setError('UNEXPECTED');
+    } finally {
+      setStaging(false);
+    }
+  }
+
   if (committed) {
     return (
       <Card>
@@ -117,64 +225,421 @@ function PhotoFlow({
     );
   }
 
-  return (
-    <div className="flex flex-col gap-5">
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('upload.title')}</CardTitle>
-          <CardDescription>{t('upload.help')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onExtract} className="flex flex-col gap-4">
-            <input
-              type="file"
-              name="image"
-              accept="image/jpeg,image/png,image/webp"
-              capture="environment"
-              required
-              className="block w-full cursor-pointer rounded-lg border border-border bg-surface text-sm text-foreground transition-colors file:mr-4 file:cursor-pointer file:border-0 file:bg-surface-2 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-foreground hover:bg-surface-2/50"
-            />
-            {error && (
-              <p className="text-sm text-destructive" role="alert">
-                {actionError(error)}
-              </p>
-            )}
-            <div>
-              <Button type="submit" disabled={extracting}>
-                {extracting ? (
-                  <>
-                    <Sparkles className="size-4 animate-pulse" />
-                    {t('upload.extracting')}
-                  </>
-                ) : (
-                  <>
-                    <Camera className="size-4" />
-                    {t('upload.cta')}
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+  if (preview) {
+    return (
+      <PhotoPreview
+        preview={preview}
+        measurementSystem={measurementSystem}
+        choices={linkChoices}
+        onChoiceChange={(name, value) =>
+          setLinkChoices((prev) => ({ ...prev, [name]: value }))
+        }
+        confirmState={confirmState}
+        confirmAction={confirmAction}
+        confirming={confirming}
+        onStartOver={onStartOver}
+      />
+    );
+  }
 
-      {preview && (
-        <PhotoPreview
-          preview={preview}
-          measurementSystem={measurementSystem}
-          choices={linkChoices}
-          onChoiceChange={(name, value) =>
-            setLinkChoices((prev) => ({ ...prev, [name]: value }))
-          }
-          confirmState={confirmState}
-          confirmAction={confirmAction}
-          confirming={confirming}
-          onStartOver={onStartOver}
-        />
-      )}
-    </div>
+  if (draft) {
+    return (
+      <DraftWorkbench
+        draft={draft}
+        imageUrl={imageUrl}
+        error={error}
+        staging={staging}
+        onPatchRecipe={patchRecipe}
+        onPatchLine={patchLine}
+        onAddLine={addLine}
+        onRemoveLine={(id) => patchLine(id, { status: 'ignored' })}
+        onRestoreLine={(id) => patchLine(id, { status: 'needs_review' })}
+        onStage={onStage}
+        onStartOver={onStartOver}
+      />
+    );
+  }
+
+  // Upload.
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('upload.title')}</CardTitle>
+        <CardDescription>{t('upload.help')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={onExtract} className="flex flex-col gap-4">
+          <input
+            type="file"
+            name="image"
+            accept="image/jpeg,image/png,image/webp"
+            capture="environment"
+            required
+            className="block w-full cursor-pointer rounded-lg border border-border bg-surface text-sm text-foreground transition-colors file:mr-4 file:cursor-pointer file:border-0 file:bg-surface-2 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-foreground hover:bg-surface-2/50"
+          />
+          {error && (
+            <p className="text-sm text-destructive" role="alert">
+              {actionError(error)}
+            </p>
+          )}
+          <div>
+            <Button type="submit" disabled={extracting}>
+              {extracting ? (
+                <>
+                  <Sparkles className="size-4 animate-pulse" />
+                  {t('upload.extracting')}
+                </>
+              ) : (
+                <>
+                  <Camera className="size-4" />
+                  {t('upload.cta')}
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Editable draft workbench                                                   */
+/* -------------------------------------------------------------------------- */
+
+function DraftWorkbench({
+  draft,
+  imageUrl,
+  error,
+  staging,
+  onPatchRecipe,
+  onPatchLine,
+  onAddLine,
+  onRemoveLine,
+  onRestoreLine,
+  onStage,
+  onStartOver,
+}: {
+  draft: PhotoExtractionDraft;
+  imageUrl: string | null;
+  error: ActionErrorCode | null;
+  staging: boolean;
+  onPatchRecipe: (patch: Partial<PhotoExtractionDraft['recipe']>) => void;
+  onPatchLine: (id: string, patch: Partial<PhotoDraftLine>) => void;
+  onAddLine: () => void;
+  onRemoveLine: (id: string) => void;
+  onRestoreLine: (id: string) => void;
+  onStage: () => void;
+  onStartOver: () => void;
+}) {
+  const t = useTranslations('recipes.importPhoto');
+  const actionError = useActionError();
+
+  const lines = draft.recipe.lines;
+  const activeLines = lines.filter((l) => l.status !== 'ignored');
+  const ignoredLines = lines.filter((l) => l.status === 'ignored');
+
+  // Live resolvability — the SAME derivation the server uses (G2 stays consistent).
+  const needsReview = activeLines.filter((l) => deriveDraftLineStatus(l).status === 'needs_review');
+  const blocked = activeLines.length === 0 || needsReview.length > 0;
+
+  // Group active lines by section (first-seen order) for review.
+  const groups = useMemo(() => {
+    const acc: { section: string | null; items: PhotoDraftLine[] }[] = [];
+    for (const l of activeLines) {
+      const key = l.section?.trim() ? l.section.trim() : null;
+      let g = acc.find((x) => x.section === key);
+      if (!g) {
+        g = { section: key, items: [] };
+        acc.push(g);
+      }
+      g.items.push(l);
+    }
+    return acc;
+  }, [activeLines]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('draft.title')}</CardTitle>
+        <CardDescription>{t('draft.subtitle')}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-5">
+        {draft.qualityFlags.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+            <p className="inline-flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="size-4" />
+              {t('preview.qualityTitle')}
+            </p>
+            <ul className="flex flex-col gap-1 text-sm text-amber-700 dark:text-amber-200">
+              {draft.qualityFlags.map((flag) => (
+                <li key={flag}>{t(`flags.${flag}`)}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+          {/* Source photo (local preview only — never uploaded back). */}
+          {imageUrl && (
+            <div className="order-first lg:order-none">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageUrl}
+                alt={t('draft.photoAlt')}
+                className="sticky top-4 max-h-[70vh] w-full rounded-lg border border-border object-contain"
+              />
+            </div>
+          )}
+
+          <div className="flex flex-col gap-4">
+            {/* Recipe header. */}
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-muted-foreground">
+                {t('draft.recipeName')}
+                <input
+                  className={inputClass}
+                  value={draft.recipe.name}
+                  onChange={(e) => onPatchRecipe({ name: e.target.value })}
+                />
+              </label>
+              <label className="flex w-full flex-col gap-1 text-xs font-medium text-muted-foreground sm:w-32">
+                {t('draft.yield')}
+                <input
+                  className={inputClass}
+                  type="number"
+                  min={1}
+                  value={draft.recipe.yieldPortions ?? ''}
+                  placeholder={t('draft.yieldPlaceholder')}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    onPatchRecipe({
+                      yieldPortions: e.target.value === '' || !Number.isFinite(n) || n < 1 ? null : Math.floor(n),
+                    });
+                  }}
+                />
+              </label>
+            </div>
+
+            {/* Lines grouped by section. */}
+            {groups.map((group, gi) => (
+              <div key={gi} className="flex flex-col gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {group.section ?? t('draft.section.none')}
+                </p>
+                <ul className="flex flex-col gap-2">
+                  {group.items.map((line) => (
+                    <LineEditor
+                      key={line.id}
+                      line={line}
+                      onPatch={(patch) => onPatchLine(line.id, patch)}
+                      onRemove={() => onRemoveLine(line.id)}
+                    />
+                  ))}
+                </ul>
+              </div>
+            ))}
+
+            <div>
+              <Button variant="outline" size="sm" onClick={onAddLine}>
+                <Plus className="size-4" />
+                {t('draft.addLine')}
+              </Button>
+            </div>
+
+            {/* Removed (ignored) lines — restorable until staging. */}
+            {ignoredLines.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-2/40 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('draft.removed')}
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {ignoredLines.map((line) => (
+                    <li key={line.id} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-muted-foreground line-through">
+                        {line.ingredientName || line.rawText || t('draft.unnamed')}
+                      </span>
+                      <Button variant="ghost" size="sm" onClick={() => onRestoreLine(line.id)}>
+                        <RotateCcw className="size-3.5" />
+                        {t('draft.restore')}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {actionError(error)}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={onStage} disabled={blocked || staging}>
+            {staging ? t('draft.staging') : t('draft.stage')}
+          </Button>
+          {blocked && (
+            <p className="text-sm text-muted-foreground">
+              {activeLines.length === 0 ? t('draft.noLines') : t('draft.blockedHint', { count: needsReview.length })}
+            </p>
+          )}
+          <Button variant="ghost" onClick={onStartOver} disabled={staging}>
+            {t('startOver')}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LineEditor({
+  line,
+  onPatch,
+  onRemove,
+}: {
+  line: PhotoDraftLine;
+  onPatch: (patch: Partial<PhotoDraftLine>) => void;
+  onRemove: () => void;
+}) {
+  const t = useTranslations('recipes.importPhoto');
+  const { status, issues } = deriveDraftLineStatus(line);
+  const isDescriptor = parseRecipeUnit(line.unitToken ?? '').kind === 'descriptor';
+
+  // The unit picker offers canonical units + descriptors, preserving the model's
+  // token if it is something else (so a rare unit is never silently lost).
+  const cur = (line.unitToken ?? '').trim().toLowerCase();
+  const extra = cur && ![...CANONICAL_UNITS, ...DESCRIPTOR_UNITS].includes(cur) ? [cur] : [];
+
+  return (
+    <li
+      className={`flex flex-col gap-2 rounded-lg border p-2.5 ${
+        status === 'needs_review' ? 'border-amber-400/70 bg-amber-50/40 dark:bg-amber-500/5' : 'border-border'
+      }`}
+    >
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-[11px] font-medium text-muted-foreground">
+          {t('draft.ingredientName')}
+          <input
+            className={inputClass}
+            value={line.ingredientName}
+            onChange={(e) => onPatch({ ingredientName: e.target.value })}
+          />
+        </label>
+        <label className="flex w-20 flex-col gap-1 text-[11px] font-medium text-muted-foreground">
+          {t('draft.quantity')}
+          <input
+            className={inputClass}
+            value={line.quantityText ?? ''}
+            onChange={(e) =>
+              onPatch({ quantityText: e.target.value, quantityValue: deriveQuantity(e.target.value) })
+            }
+          />
+        </label>
+        <label className="flex w-28 flex-col gap-1 text-[11px] font-medium text-muted-foreground">
+          {t('draft.unit')}
+          <select
+            className={inputClass}
+            value={cur}
+            onChange={(e) => onPatch({ unitToken: e.target.value === '' ? null : e.target.value })}
+          >
+            <option value="">{t('draft.unitNone')}</option>
+            {extra.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+            {CANONICAL_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+            {DESCRIPTOR_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onRemove}
+          aria-label={t('draft.remove')}
+          className="text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
+
+      {/* Package size — shown for a descriptor unit; canonicalizes the line. */}
+      {isDescriptor && (
+        <div className="flex flex-wrap items-end gap-2 pl-1">
+          <span className="pb-1.5 text-[11px] font-medium text-muted-foreground">
+            {t('draft.packageSize')}
+          </span>
+          <label className="flex w-20 flex-col gap-1 text-[11px] text-muted-foreground">
+            <span className="sr-only">{t('draft.packageSizeValue')}</span>
+            <input
+              className={inputClass}
+              inputMode="decimal"
+              value={line.packageSizeValue ?? ''}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                onPatch({ packageSizeValue: e.target.value !== '' && Number.isFinite(n) && n > 0 ? n : null });
+              }}
+            />
+          </label>
+          <label className="flex w-24 flex-col gap-1 text-[11px] text-muted-foreground">
+            <span className="sr-only">{t('draft.packageSizeUnit')}</span>
+            <select
+              className={inputClass}
+              value={line.packageSizeUnitToken ?? ''}
+              onChange={(e) =>
+                onPatch({ packageSizeUnitToken: e.target.value === '' ? null : e.target.value })
+              }
+            >
+              <option value="">—</option>
+              {PACK_UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 pl-1">
+        <label className="flex flex-1 items-center gap-1.5 text-[11px] text-muted-foreground">
+          {t('draft.section')}
+          <input
+            className={`${inputClass} max-w-[12rem]`}
+            value={line.section ?? ''}
+            onChange={(e) => onPatch({ section: e.target.value === '' ? null : e.target.value })}
+          />
+        </label>
+        {status === 'needs_review' ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+            <AlertTriangle className="size-3" />
+            {issues[0] ? t(`draftIssues.${issues[0].code}`) : t('draft.status.needsReview')}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+            <CheckCircle2 className="size-3" />
+            {t('draft.status.ready')}
+          </span>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Post-stage resolution + confirm (reuses the 4.6 panel/grid, unchanged)     */
+/* -------------------------------------------------------------------------- */
 
 function PhotoPreview({
   preview,
@@ -212,8 +677,6 @@ function PhotoPreview({
         <CardDescription>{t('preview.subtitle')}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        {/* Model quality warnings — low-confidence/ambiguous values are flagged, never
-            silently trusted. */}
         {qualityFlags.length > 0 && (
           <div className="flex flex-col gap-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
             <p className="inline-flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
@@ -228,7 +691,6 @@ function PhotoPreview({
           </div>
         )}
 
-        {/* Counts. */}
         <div className="flex flex-wrap gap-2 text-sm">
           <Stat tone="good" label={t('preview.importable', { count: counts.importable })} />
           {counts.skipped > 0 && (
@@ -236,7 +698,6 @@ function PhotoPreview({
           )}
         </div>
 
-        {/* Issues (reuse the deterministic-import issue copy). */}
         {issues.length > 0 && (
           <div className="flex flex-col gap-2">
             <p className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
@@ -262,7 +723,6 @@ function PhotoPreview({
           </div>
         )}
 
-        {/* Reused 4.6 resolution panel + recipe grid. */}
         <RecipeResolutionPanel payload={recipePayload} choices={choices} onChange={onChoiceChange} />
         <RecipeGrid payload={recipePayload} measurementSystem={measurementSystem} />
 
@@ -272,7 +732,6 @@ function PhotoPreview({
           </p>
         )}
 
-        {/* Mandatory confirm — nothing is created until the user reviews and confirms. */}
         <div className="flex flex-wrap items-center gap-3">
           {counts.importable > 0 ? (
             <form action={confirmAction}>
