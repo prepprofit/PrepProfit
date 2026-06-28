@@ -65,6 +65,14 @@ describe('getRecipeExtractor — transient overload retry', () => {
 
     expect(result.recipe.name).toBe('Pão de Ló');
     expect(mockGenerate).toHaveBeenCalledTimes(3);
+    // The provider-call count is surfaced for the eval harness's retry-rate metric.
+    expect(result.attempts).toBe(3);
+  });
+
+  it('reports a single attempt on a first-try success', async () => {
+    mockGenerate.mockResolvedValueOnce(okResponse);
+    const result = await getRecipeExtractor().extract(input);
+    expect(result.attempts).toBe(1);
   });
 
   it('also retries a 429 (rate limited)', async () => {

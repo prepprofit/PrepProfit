@@ -248,10 +248,11 @@ function isTransientProviderError(err: unknown): boolean {
 async function generateContentWithRetry(
   ai: GoogleGenAI,
   request: GenerateContentParameters,
-): Promise<GenerateContentResponse> {
+): Promise<{ response: GenerateContentResponse; attempts: number }> {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      return await ai.models.generateContent(request);
+      const response = await ai.models.generateContent(request);
+      return { response, attempts: attempt };
     } catch (err) {
       if (attempt >= MAX_ATTEMPTS || !isTransientProviderError(err)) throw err;
       // Full jitter over an exponentially growing window: [0, 400), [0, 800), …
@@ -286,6 +287,13 @@ export type ExtractRecipeResult = {
   /** The model id used (recorded on the attempt row for traceability). */
   model: string;
   provider: string;
+  /**
+   * How many provider calls this extraction took (1 = first-try success; >1 = a
+   * transient overload was retried). Optional and additive: the production extractor
+   * sets it for the eval harness's retry-rate metric (§9 / Phase 5); test fakes and
+   * older callers may omit it. Never persisted as PII — a count only.
+   */
+  attempts?: number;
 };
 
 export interface RecipeExtractor {
@@ -384,8 +392,9 @@ export function getRecipeExtractor(): RecipeExtractor {
       const ai = new GoogleGenAI({ apiKey });
 
       let response;
+      let attempts: number;
       try {
-        response = await generateContentWithRetry(ai, {
+        ({ response, attempts } = await generateContentWithRetry(ai, {
           model: RECIPE_EXTRACTION_MODEL,
           contents: [
             {
@@ -407,7 +416,7 @@ export function getRecipeExtractor(): RecipeExtractor {
             // Deterministic transcription: no creative sampling.
             temperature: 0,
           },
-        });
+        }));
       } catch (err) {
         // Surface a key-free message; the caller logs it and returns the stable code.
         // A transient overload that survived every retry is flagged `retryable` so the
@@ -431,6 +440,7 @@ export function getRecipeExtractor(): RecipeExtractor {
         },
         model: RECIPE_EXTRACTION_MODEL,
         provider: RECIPE_EXTRACTION_PROVIDER,
+        attempts,
       };
     },
   };

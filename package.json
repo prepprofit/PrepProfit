@@ -18,7 +18,8 @@
     "seed": "tsx scripts/seed.ts",
     "seed:org": "tsx scripts/seed-org.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
-    "backfill:suppliers": "tsx scripts/backfill-suppliers.ts"
+    "backfill:suppliers": "tsx scripts/backfill-suppliers.ts",
+    "eval:extraction": "tsx scripts/eval-extraction.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.7",
