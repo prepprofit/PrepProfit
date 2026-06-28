@@ -5,7 +5,7 @@
   "language": "en",
   "yieldPortions": null,
   "lines": [
-    { "name": "Yellow cake mix", "aliases": ["cake mix", "duncan hines yellow cake mix", "yellow cake mix"], "section": null, "quantityValue": 1, "unitToken": "box", "expectedStatus": "needs_review" },
+    { "name": "Yellow cake mix", "aliases": ["cake mix", "yellow cake mix", "duncan hines yellow cake mix", "duncan hines recipe yellow cake mix"], "section": null, "quantityValue": 1, "unitToken": "box", "expectedStatus": "needs_review" },
     { "name": "Butter", "section": null, "quantityValue": 0.75, "unitToken": "cup", "expectedStatus": "ready" },
     { "name": "Sugar", "section": null, "quantityValue": 0.5, "unitToken": "cup", "expectedStatus": "ready" },
     { "name": "Eggs", "aliases": ["egg"], "section": null, "quantityValue": 4, "unitToken": null, "expectedStatus": "ready" },
