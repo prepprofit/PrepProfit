@@ -548,6 +548,8 @@
       "upload": {
         "title": "Upload a recipe photo",
         "help": "Use a clear, well-lit photo of a printed or handwritten recipe (JPEG, PNG or WebP, up to 8 MB). One recipe per photo.",
+        "takePhoto": "Take a photo",
+        "chooseFromGallery": "Choose from gallery",
         "cta": "Extract recipe",
         "extracting": "Reading the photo…",
         "progress": {

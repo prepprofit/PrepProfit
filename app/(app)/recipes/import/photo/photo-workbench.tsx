@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useActionState } from 'react';
+import { useEffect, useMemo, useRef, useState, useActionState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Camera,
@@ -10,6 +10,7 @@ import {
   Plus,
   Trash2,
   RotateCcw,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -102,7 +103,10 @@ function PhotoFlow({
   const [extracting, setExtracting] = useState(false);
   const [staging, setStaging] = useState(false);
   const [error, setError] = useState<ActionErrorCode | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<PhotoExtractionDraft | null>(null);
   const [preview, setPreview] = useState<PhotoExtractionPreview | null>(null);
   const [linkChoices, setLinkChoices] = useState<Record<string, string>>({});
@@ -117,17 +121,25 @@ function PhotoFlow({
   // Free the local object URL when the photo changes or the flow unmounts.
   useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
 
+  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setSelectedFile(file);
+    if (file) setError(null);
+    // Allow re-selecting the same file (onChange won't fire otherwise).
+    e.target.value = '';
+  }
+
   async function onExtract(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const data = new FormData(e.currentTarget);
-    const image = data.get('image');
-    if (!(image instanceof File) || image.size === 0) {
+    if (!selectedFile || selectedFile.size === 0) {
       setError('INVALID_INPUT');
       return;
     }
     setError(null);
     setExtracting(true);
     try {
+      const data = new FormData();
+      data.set('image', selectedFile);
       const res = await fetch('/api/recipes/import/photo', { method: 'POST', body: data });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { code?: ActionErrorCode };
@@ -136,7 +148,7 @@ function PhotoFlow({
       }
       const result = (await res.json()) as PhotoExtractionDraft;
       setDraft(result);
-      setImageUrl(URL.createObjectURL(image));
+      setImageUrl(URL.createObjectURL(selectedFile));
     } catch {
       setError('UNEXPECTED');
     } finally {
@@ -278,19 +290,55 @@ function PhotoFlow({
       <CardContent>
         <form onSubmit={onExtract} className="flex flex-col gap-4">
           <input
+            ref={cameraInputRef}
             type="file"
-            name="image"
             accept="image/jpeg,image/png,image/webp"
-            required
-            className="block w-full cursor-pointer rounded-lg border border-border bg-surface text-sm text-foreground transition-colors file:mr-4 file:cursor-pointer file:border-0 file:bg-surface-2 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-foreground hover:bg-surface-2/50"
+            capture="environment"
+            onChange={onPickFile}
+            className="hidden"
           />
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={onPickFile}
+            className="hidden"
+          />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              disabled={extracting}
+              onClick={() => cameraInputRef.current?.click()}
+            >
+              <Camera className="size-4" />
+              {t('upload.takePhoto')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              disabled={extracting}
+              onClick={() => galleryInputRef.current?.click()}
+            >
+              <ImageIcon className="size-4" />
+              {t('upload.chooseFromGallery')}
+            </Button>
+          </div>
+          {selectedFile && (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <CheckCircle2 className="size-4 text-accent-600" />
+              {selectedFile.name}
+            </p>
+          )}
           {error && (
             <p className="text-sm text-destructive" role="alert">
               {actionError(error)}
             </p>
           )}
           <div>
-            <Button type="submit" disabled={extracting}>
+            <Button type="submit" disabled={extracting || !selectedFile}>
               {extracting ? (
                 <>
                   <Sparkles className="size-4 animate-pulse" />
@@ -298,7 +346,7 @@ function PhotoFlow({
                 </>
               ) : (
                 <>
-                  <Camera className="size-4" />
+                  <Sparkles className="size-4" />
                   {t('upload.cta')}
                 </>
               )}
