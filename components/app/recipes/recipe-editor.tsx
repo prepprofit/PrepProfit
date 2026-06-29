@@ -393,7 +393,7 @@ export function RecipeEditor({
   };
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6">
+    <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <Link
