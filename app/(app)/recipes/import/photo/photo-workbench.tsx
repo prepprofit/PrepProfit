@@ -586,7 +586,7 @@ function DraftWorkbench({
             {groups.map((group, gi) => (
               <div key={gi} className="flex flex-col gap-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {group.section ?? t('draft.section.none')}
+                  {group.section ?? t('draft.sectionNone')}
                 </p>
                 <ul className="flex flex-col gap-2">
                   {group.items.map((line) => (

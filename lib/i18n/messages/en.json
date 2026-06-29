@@ -593,6 +593,7 @@
         "instructionsNotes": "Instructions / notes",
         "instructionsNotesPlaceholder": "Method / preparation steps read from the photo…",
         "section": "Section",
+        "sectionNone": "No section",
         "ingredientName": "Ingredient",
         "quantity": "Qty",
         "unit": "Unit",
