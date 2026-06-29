@@ -281,7 +281,6 @@ function PhotoFlow({
             type="file"
             name="image"
             accept="image/jpeg,image/png,image/webp"
-            capture="environment"
             required
             className="block w-full cursor-pointer rounded-lg border border-border bg-surface text-sm text-foreground transition-colors file:mr-4 file:cursor-pointer file:border-0 file:bg-surface-2 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-foreground hover:bg-surface-2/50"
           />
