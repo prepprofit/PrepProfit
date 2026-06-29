@@ -3,6 +3,7 @@ import { Pool, neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 import * as schema from './schema';
 import { serverEnv } from '../env';
+import { logError } from '../observability';
 import { runInOrg, type TenantTx } from './tenant';
 
 export * from './schema';
@@ -25,7 +26,18 @@ let cached: NeonDatabase<typeof schema> | null = null;
 export function getDb(): NeonDatabase<typeof schema> {
   if (!cached) {
     const { DATABASE_URL } = serverEnv();
-    cached = drizzle(new Pool({ connectionString: DATABASE_URL }), { schema });
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    // node-postgres emits 'error' ASYNCHRONOUSLY on idle pooled clients when the
+    // backend terminates them — e.g. Neon's idle timeout / scale-to-zero firing
+    // while a slow AI call runs between two transactions. That event is off the
+    // await path, so a request's try/catch can never catch it; without this
+    // listener it escalates to an unhandled rejection ('Connection terminated
+    // unexpectedly') that Sentry reports as a crash. We log it and let the pool
+    // discard the dead client and reconnect on the next checkout.
+    pool.on('error', (err: Error) => {
+      logError({ action: 'dbPoolIdleClient' }, err);
+    });
+    cached = drizzle(pool, { schema });
   }
   return cached;
 }
