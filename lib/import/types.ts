@@ -155,12 +155,16 @@ export type ImportTransactionRecord = {
 
 /**
  * The resolution computed for ONE distinct ingredient name at preview, stored in
- * the job and used at confirm to VALIDATE the manager's choice (D8): a `link`
- * must target an id that was offered here (an exact match or one of the fuzzy
- * suggestions). `new` stages a fresh ingredient (priceCents 0, needs pricing).
+ * the job and shown in the resolution UI. `new` stages a fresh ingredient
+ * (priceCents 0, needs pricing); `fuzzy` carries ranked suggestions; `exact` is the
+ * single auto-link.
  *
  * Resolution is NOT the final decision — the UI lets the manager pick among these
- * options (a fuzzy match defaults to "create new", never auto-linked).
+ * options OR, via the inline ingredient search (Sprint 4.7), link `new`/`fuzzy`
+ * names to ANY active org ingredient. The old D8 rule ("a link must target an id
+ * offered here") was relaxed for that search; confirm now re-validates each linked
+ * id is an active org ingredient with a matching dimension (`buildResolvedChoices`
+ * + `findResolutionDimensionMismatches`). A fuzzy match is never auto-linked.
  */
 export type ImportIngredientResolution =
   | { kind: 'exact'; ingredientId: string; ingredientName: string }

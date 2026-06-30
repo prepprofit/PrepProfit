@@ -1025,9 +1025,30 @@
         "linked": "{count, plural, one {# ingredient matched} other {# ingredients matched}}",
         "willCreate": "{count, plural, one {# new ingredient} other {# new ingredients}}",
         "review": "{count, plural, one {# to review} other {# to review}}",
+        "unresolved": "{count, plural, one {# to resolve} other {# to resolve}}",
         "forName": "“{name}”",
         "match": "{percent}% match",
-        "createNew": "Create a new ingredient (priced at 0, flagged for pricing)"
+        "createNew": "Create a new ingredient (priced at 0, flagged for pricing)",
+        "edit": "Match",
+        "change": "Change",
+        "searchTitle": "Match “{name}”",
+        "searchPlaceholder": "Search your ingredients…",
+        "suggestions": "Suggestions",
+        "allIngredients": "All ingredients",
+        "noResults": "No ingredients found.",
+        "createNamed": "Create new ingredient “{name}”",
+        "stateUnresolved": "Needs a match",
+        "linkedTo": "Matched to {name}",
+        "willCreateNamed": "Will create “{name}”",
+        "dimensionMismatch": "Incompatible unit type",
+        "createAllNew": "Create all {count, plural, one {# new ingredient} other {# new ingredients}}",
+        "resolveMissingHint": "{count, plural, one {Resolve # ingredient before importing} other {Resolve # ingredients before importing}}",
+        "fixDimensionHint": "{count, plural, one {# match uses an incompatible unit type — fix it before importing} other {# matches use incompatible unit types — fix them before importing}}",
+        "dimensions": {
+          "weight": "weight",
+          "volume": "volume",
+          "count": "count"
+        }
       },
       "grid": {
         "title": "Recipes to create",

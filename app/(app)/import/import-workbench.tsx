@@ -38,9 +38,12 @@ import {
   RecipeResolutionPanel,
   RecipeGrid,
   Stat,
-  initFuzzyChoices,
+  initResolutionChoices,
   buildResolutions,
+  countUnresolved,
+  countDimensionMismatches,
 } from './recipe-resolution';
+import type { IngredientOption } from '@/lib/data/ingredients';
 
 const ISSUE_DISPLAY_LIMIT = 50;
 
@@ -53,9 +56,11 @@ const ISSUE_DISPLAY_LIMIT = 50;
 export function ImportWorkbench({
   currency,
   measurementSystem,
+  ingredientOptions,
 }: {
   currency: string;
   measurementSystem: MeasurementSystem;
+  ingredientOptions: IngredientOption[];
 }) {
   const t = useTranslations('import');
   const [entity, setEntity] = useState<FileImportEntity>('ingredients');
@@ -123,6 +128,7 @@ export function ImportWorkbench({
         format={format}
         currency={currency}
         measurementSystem={measurementSystem}
+        ingredientOptions={ingredientOptions}
         onStartOver={() => setResetKey((k) => k + 1)}
       />
     </div>
@@ -134,12 +140,14 @@ function ImportFlow({
   format,
   currency,
   measurementSystem,
+  ingredientOptions,
   onStartOver,
 }: {
   entity: FileImportEntity;
   format: FileImportFormat;
   currency: string;
   measurementSystem: MeasurementSystem;
+  ingredientOptions: IngredientOption[];
   onStartOver: () => void;
 }) {
   const t = useTranslations('import');
@@ -220,6 +228,7 @@ function ImportFlow({
           preview={preview}
           currency={currency}
           measurementSystem={measurementSystem}
+          ingredientOptions={ingredientOptions}
           confirmState={confirmState}
           confirmAction={confirmAction}
           confirming={confirming}
@@ -234,6 +243,7 @@ function PreviewResult({
   preview,
   currency,
   measurementSystem,
+  ingredientOptions,
   confirmState,
   confirmAction,
   confirming,
@@ -244,27 +254,33 @@ function PreviewResult({
   >;
   currency: string;
   measurementSystem: MeasurementSystem;
+  ingredientOptions: IngredientOption[];
   confirmState: ImportActionState | null;
   confirmAction: (formData: FormData) => void;
   confirming: boolean;
   onStartOver: () => void;
 }) {
   const t = useTranslations('import');
+  const tResolve = useTranslations('import.recipes.resolve');
   const actionError = useActionError();
   const { counts, issues, sample, entity } = preview;
   const shownIssues = issues.slice(0, ISSUE_DISPLAY_LIMIT);
 
-  // Recipe-only: the per-distinct-ingredient resolution choices. A FUZZY name
-  // defaults to "create new" (never auto-linked); EXACT/NEW are server-forced and
-  // not user-editable here. The chosen links travel to confirm as a JSON field.
+  // Recipe-only: the per-distinct-ingredient resolution choices. Every NON-exact
+  // name starts UNRESOLVED and must be linked (to any active ingredient) or created
+  // explicitly; EXACT is server-forced. The chosen links travel to confirm as a JSON
+  // field, and Confirm is blocked while any name is unresolved or dimension-mismatched.
   const recipePayload = preview.recipePayload;
   const [linkChoices, setLinkChoices] = useState<Record<string, string>>(() =>
-    initFuzzyChoices(recipePayload),
+    initResolutionChoices(recipePayload),
   );
   const resolutionsJson = useMemo(
     () => JSON.stringify(buildResolutions(linkChoices)),
     [linkChoices],
   );
+  const unresolved = countUnresolved(recipePayload, linkChoices);
+  const mismatches = countDimensionMismatches(recipePayload, linkChoices, ingredientOptions);
+  const recipeBlocked = entity === 'recipes' && (unresolved > 0 || mismatches > 0);
 
   return (
     <Card>
@@ -361,6 +377,7 @@ function PreviewResult({
               onChange={(name, value) =>
                 setLinkChoices((prev) => ({ ...prev, [name]: value }))
               }
+              ingredientOptions={ingredientOptions}
             />
             <RecipeGrid payload={recipePayload} measurementSystem={measurementSystem} />
           </>
@@ -405,7 +422,7 @@ function PreviewResult({
               {entity === 'recipes' && (
                 <input type="hidden" name="resolutions" value={resolutionsJson} />
               )}
-              <Button type="submit" disabled={confirming}>
+              <Button type="submit" disabled={confirming || recipeBlocked}>
                 {confirming
                   ? t('confirming')
                   : entity === 'sales'
@@ -416,6 +433,13 @@ function PreviewResult({
           ) : (
             <p className="text-sm text-muted-foreground">
               {entity === 'sales' ? t('sales.nothingToImport') : t('nothingToImport')}
+            </p>
+          )}
+          {recipeBlocked && (
+            <p className="text-sm text-muted-foreground">
+              {unresolved > 0
+                ? tResolve('resolveMissingHint', { count: unresolved })
+                : tResolve('fixDimensionHint', { count: mismatches })}
             </p>
           )}
           <Button variant="ghost" onClick={onStartOver} disabled={confirming}>

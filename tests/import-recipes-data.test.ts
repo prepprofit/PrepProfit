@@ -9,8 +9,10 @@ import {
   planRecipeImport,
   applyRecipeImport,
   buildResolvedChoices,
+  findResolutionDimensionMismatches,
   type ResolvedChoice,
 } from '@/lib/data/import';
+import type { ImportRecipePayload } from '@/lib/import/types';
 import { createIngredient } from '@/lib/data/ingredients';
 import { createRecipe } from '@/lib/data/recipes';
 import { parseCsv } from '@/lib/import/csv';
@@ -88,8 +90,8 @@ describe('planRecipeImport — resolution', () => {
   });
 });
 
-describe('buildResolvedChoices — D8 validation', () => {
-  it('force-links exact, force-creates new, and rejects a forged link to a new name', () => {
+describe('buildResolvedChoices — inline-match resolution (Sprint 4.7)', () => {
+  it('force-links exact and defaults new to create when no choice is sent', () => {
     const resolutions = {
       flour: { kind: 'exact' as const, ingredientId: 'i_flour', ingredientName: 'Flour' },
       saffron: { kind: 'new' as const },
@@ -100,35 +102,95 @@ describe('buildResolvedChoices — D8 validation', () => {
       expect(ok.choices.get('flour')).toEqual({ action: 'link', ingredientId: 'i_flour' });
       expect(ok.choices.get('saffron')).toEqual({ action: 'create' });
     }
-    // A client tries to link the 'new' name to an arbitrary id → rejected.
-    const forged = buildResolvedChoices(resolutions, [
-      { name: 'saffron', action: 'link', ingredientId: 'i_evil' },
-    ]);
-    expect(forged.ok).toBe(false);
   });
 
-  it('accepts a fuzzy link only to an offered suggestion id', () => {
+  it('accepts an arbitrary link to a NEW name (inline search) — re-checked downstream', () => {
+    const resolutions = { saffron: { kind: 'new' as const } };
+    const linked = buildResolvedChoices(resolutions, [
+      { name: 'saffron', action: 'link', ingredientId: 'i_chosen' },
+    ]);
+    expect(linked.ok).toBe(true);
+    if (linked.ok) {
+      expect(linked.choices.get('saffron')).toEqual({ action: 'link', ingredientId: 'i_chosen' });
+      expect(linked.linkIds).toContain('i_chosen');
+    }
+  });
+
+  it('accepts a FUZZY link to ANY id, not only an offered suggestion', () => {
     const resolutions = {
       tomatoes: {
         kind: 'fuzzy' as const,
         suggestions: [{ ingredientId: 'i_tomato', name: 'Tomato', score: 0.8 }],
       },
     };
-    const good = buildResolvedChoices(resolutions, [
-      { name: 'tomatoes', action: 'link', ingredientId: 'i_tomato' },
-    ]);
-    expect(good.ok).toBe(true);
-    if (good.ok) expect(good.choices.get('tomatoes')).toEqual({ action: 'link', ingredientId: 'i_tomato' });
-
-    const forged = buildResolvedChoices(resolutions, [
+    // An id the server never suggested is now accepted (validated at confirm).
+    const offList = buildResolvedChoices(resolutions, [
       { name: 'tomatoes', action: 'link', ingredientId: 'i_other' },
     ]);
-    expect(forged.ok).toBe(false);
+    expect(offList.ok).toBe(true);
+    if (offList.ok) expect(offList.choices.get('tomatoes')).toEqual({ action: 'link', ingredientId: 'i_other' });
 
-    // Default (no choice) → create, never auto-link.
+    // Default (no choice) still → create, never auto-link.
     const def = buildResolvedChoices(resolutions, []);
     expect(def.ok).toBe(true);
     if (def.ok) expect(def.choices.get('tomatoes')).toEqual({ action: 'create' });
+  });
+
+  it('rejects a malformed link with an empty ingredient id', () => {
+    const resolutions = { saffron: { kind: 'new' as const } };
+    const bad = buildResolvedChoices(resolutions, [
+      { name: 'saffron', action: 'link', ingredientId: '' },
+    ]);
+    expect(bad.ok).toBe(false);
+  });
+});
+
+describe('findResolutionDimensionMismatches', () => {
+  const payload: ImportRecipePayload = {
+    recipes: [
+      {
+        name: 'Dressing',
+        yieldPortions: 1,
+        yieldPercentage: 100,
+        notes: null,
+        lines: [
+          { ingredientName: 'Olive Oil', normalizedName: 'olive oil', quantityCanonical: 50, dimension: 'weight' },
+        ],
+      },
+    ],
+    resolutions: { 'olive oil': { kind: 'new' } },
+  };
+
+  it('flags a link whose ingredient dimension differs from the line', () => {
+    const choices = new Map<string, ResolvedChoice>([
+      ['olive oil', { action: 'link', ingredientId: 'i_oil' }],
+    ]);
+    const dimById = new Map([['i_oil', 'volume' as const]]);
+    const mismatches = findResolutionDimensionMismatches(payload, choices, dimById);
+    expect(mismatches).toHaveLength(1);
+    expect(mismatches[0]).toMatchObject({
+      normalizedName: 'olive oil',
+      lineDimension: 'weight',
+      ingredientDimension: 'volume',
+    });
+  });
+
+  it('accepts a link whose dimension matches, and ignores create choices', () => {
+    const dimById = new Map([['i_oil', 'weight' as const]]);
+    expect(
+      findResolutionDimensionMismatches(
+        payload,
+        new Map([['olive oil', { action: 'link', ingredientId: 'i_oil' }]]),
+        dimById,
+      ),
+    ).toHaveLength(0);
+    expect(
+      findResolutionDimensionMismatches(
+        payload,
+        new Map([['olive oil', { action: 'create' }]]),
+        dimById,
+      ),
+    ).toHaveLength(0);
   });
 });
 

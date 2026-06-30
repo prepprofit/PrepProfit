@@ -52,6 +52,41 @@ export async function listIngredients(
     .orderBy(ingredients.name);
 }
 
+/**
+ * A lightweight ingredient option for the recipe-import resolution search (Sprint
+ * 4.7): id + display name + dimension only — never a price/cost. The dimension lets
+ * the inline match UI hint (and the server reject) a dimension-incompatible link.
+ */
+export type IngredientOption = {
+  id: string;
+  name: string;
+  dimension: Ingredient['dimension'];
+};
+
+/**
+ * All ACTIVE ingredients as `{ id, name, dimension }` options, ordered by name, for
+ * the recipe-import inline ingredient search. Org-scoped (Rule 1); carries no money.
+ */
+export async function listIngredientOptions(
+  db: TenantClient,
+  organizationId: string,
+): Promise<IngredientOption[]> {
+  return db
+    .select({
+      id: ingredients.id,
+      name: ingredients.name,
+      dimension: ingredients.dimension,
+    })
+    .from(ingredients)
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        isNull(ingredients.deletedAt),
+      ),
+    )
+    .orderBy(ingredients.name);
+}
+
 export async function getIngredientById(
   db: TenantClient,
   organizationId: string,

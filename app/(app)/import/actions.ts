@@ -27,6 +27,7 @@ import {
   applyTransactionRecords,
   applyRecipeImport,
   buildResolvedChoices,
+  findResolutionDimensionMismatches,
   type ImportPlan,
   type RecipeImportPlan,
 } from '@/lib/data/import';
@@ -333,9 +334,14 @@ export async function confirmImportAction(
         const built = buildResolvedChoices(payload.resolutions, clientResolutions);
         if (!built.ok) return { kind: 'invalid' as const };
 
+        // The inline ingredient search (Sprint 4.7) lets the manager link a line to
+        // ANY ingredient, so the trust check lives here: every linked id must be an
+        // ACTIVE org ingredient AND its dimension must match the line's. A mismatch
+        // would otherwise be silently skipped by applyRecipeImport (dropped line) —
+        // reject the whole confirm instead, so no partial recipe is ever created.
         if (built.linkIds.length > 0) {
           const active = await tx
-            .select({ id: ingredients.id })
+            .select({ id: ingredients.id, dimension: ingredients.dimension })
             .from(ingredients)
             .where(
               and(
@@ -346,6 +352,10 @@ export async function confirmImportAction(
             );
           const activeIds = new Set(active.map((r) => r.id));
           if (built.linkIds.some((id) => !activeIds.has(id))) {
+            return { kind: 'invalid' as const };
+          }
+          const dimensionById = new Map(active.map((r) => [r.id, r.dimension]));
+          if (findResolutionDimensionMismatches(payload, built.choices, dimensionById).length > 0) {
             return { kind: 'invalid' as const };
           }
         }

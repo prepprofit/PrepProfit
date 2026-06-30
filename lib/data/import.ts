@@ -28,6 +28,7 @@ import type {
   ImportRecord,
   ImportRowIssue,
   ImportIngredientResolution,
+  ImportDimension,
   ImportRecipePayload,
   ImportRecipeRecord,
 } from '@/lib/import/types';
@@ -407,11 +408,19 @@ export async function applyRecipeImport(
 }
 
 /**
- * Validate the client's resolution choices against the job's STORED suggestions
- * (D8) — pure (the active-ingredient re-check is the caller's, with DB access).
- * An EXACT name is force-linked to its match; a NEW name is force-created; a FUZZY
- * name may link ONLY to one of its offered suggestion ids, else defaults to create
- * (fuzzy is never auto-linked). A `link` to an id that was not offered → reject.
+ * Resolve the client's resolution choices into apply-ready actions (Sprint 4.7
+ * inline-match revision). An EXACT name is force-linked to its stored match; a NEW
+ * or FUZZY name may either link to ANY ingredient id the client chose (the inline
+ * ingredient search lets the manager pick a match the server never suggested) or
+ * default to create. A missing/empty `link` id is the only structural reject here.
+ *
+ * The previous D8 rule ("a fuzzy link must be one of the offered suggestion ids; a
+ * new name can never link") is deliberately RELAXED — it blocked the inline search.
+ * The trust boundary is NOT this pure function: `confirmImportAction` re-checks,
+ * inside `withOrg`, that every returned `linkId` is an ACTIVE ingredient of the
+ * current org (RLS + `deleted_at IS NULL`) and that its dimension matches the
+ * line's (see {@link findResolutionDimensionMismatches}). `organizationId` is never
+ * taken from the client. A name with no client choice still defaults to `create`.
  */
 export function buildResolvedChoices(
   resolutions: Record<string, ImportIngredientResolution>,
@@ -427,18 +436,11 @@ export function buildResolvedChoices(
       linkIds.push(res.ingredientId);
       continue;
     }
-    if (res.kind === 'new') {
-      // No id was offered for this name; a `link` choice is forged → reject.
-      const c = byName.get(name);
-      if (c && c.action === 'link') return { ok: false };
-      choices.set(name, { action: 'create' });
-      continue;
-    }
-    // fuzzy: link only to an offered suggestion; otherwise create (default).
+    // new / fuzzy: link to any id the client chose (org/active/dimension re-checked
+    // downstream), otherwise create. An empty link id is malformed → reject.
     const c = byName.get(name);
     if (c && c.action === 'link') {
-      const offered = res.suggestions.some((s) => s.ingredientId === c.ingredientId);
-      if (!offered || !c.ingredientId) return { ok: false };
+      if (!c.ingredientId) return { ok: false };
       choices.set(name, { action: 'link', ingredientId: c.ingredientId });
       linkIds.push(c.ingredientId);
     } else {
@@ -446,6 +448,63 @@ export function buildResolvedChoices(
     }
   }
   return { ok: true, choices, linkIds };
+}
+
+/** One link choice whose chosen ingredient's dimension conflicts with a recipe line. */
+export type ResolutionDimensionMismatch = {
+  /** Normalized ingredient name (the resolutions/choices key). */
+  normalizedName: string;
+  /** A recipe-line dimension that does not match the linked ingredient. */
+  lineDimension: ImportDimension;
+  /** The linked ingredient's actual dimension. */
+  ingredientDimension: ImportDimension;
+};
+
+/**
+ * Find link choices whose chosen ingredient measures in a DIFFERENT dimension than
+ * the recipe line(s) using that name (e.g. a line in grams linked to a volume
+ * ingredient). Pure and DB-free — the caller passes `dimensionById` for the linked
+ * ids (loaded inside `withOrg`).
+ *
+ * Critical for the inline search (Sprint 4.7): `applyRecipeImport` silently SKIPS a
+ * dimension-mismatched line, which would drop ingredients from the recipe without a
+ * trace. The confirm path runs this BEFORE applying and rejects atomically instead,
+ * and the UI blocks the same case — so a manual mis-link never produces a partial
+ * recipe. An id absent from `dimensionById` is ignored here (the active-id re-check
+ * already rejects it).
+ */
+export function findResolutionDimensionMismatches(
+  payload: ImportRecipePayload,
+  choices: Map<string, ResolvedChoice>,
+  dimensionById: Map<string, ImportDimension>,
+): ResolutionDimensionMismatch[] {
+  const lineDimsByName = new Map<string, Set<ImportDimension>>();
+  for (const recipe of payload.recipes) {
+    for (const line of recipe.lines) {
+      let dims = lineDimsByName.get(line.normalizedName);
+      if (!dims) {
+        dims = new Set();
+        lineDimsByName.set(line.normalizedName, dims);
+      }
+      dims.add(line.dimension);
+    }
+  }
+
+  const mismatches: ResolutionDimensionMismatch[] = [];
+  for (const [name, choice] of choices) {
+    if (choice.action !== 'link') continue;
+    const ingredientDimension = dimensionById.get(choice.ingredientId);
+    if (ingredientDimension === undefined) continue; // active-id re-check handles this
+    const lineDims = lineDimsByName.get(name);
+    if (!lineDims) continue;
+    for (const lineDimension of lineDims) {
+      if (lineDimension !== ingredientDimension) {
+        mismatches.push({ normalizedName: name, lineDimension, ingredientDimension });
+        break;
+      }
+    }
+  }
+  return mismatches;
 }
 
 /**

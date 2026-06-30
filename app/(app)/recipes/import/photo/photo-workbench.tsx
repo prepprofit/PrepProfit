@@ -43,9 +43,12 @@ import {
   RecipeResolutionPanel,
   RecipeGrid,
   Stat,
-  initFuzzyChoices,
+  initResolutionChoices,
   buildResolutions,
+  countUnresolved,
+  countDimensionMismatches,
 } from '@/app/(app)/import/recipe-resolution';
+import type { IngredientOption } from '@/lib/data/ingredients';
 
 const ISSUE_DISPLAY_LIMIT = 50;
 
@@ -77,14 +80,17 @@ function deriveQuantity(text: string): number | null {
  */
 export function PhotoImportWorkbench({
   measurementSystem,
+  ingredientOptions,
 }: {
   measurementSystem: MeasurementSystem;
+  ingredientOptions: IngredientOption[];
 }) {
   const [resetKey, setResetKey] = useState(0);
   return (
     <PhotoFlow
       key={resetKey}
       measurementSystem={measurementSystem}
+      ingredientOptions={ingredientOptions}
       onStartOver={() => setResetKey((k) => k + 1)}
     />
   );
@@ -92,9 +98,11 @@ export function PhotoImportWorkbench({
 
 function PhotoFlow({
   measurementSystem,
+  ingredientOptions,
   onStartOver,
 }: {
   measurementSystem: MeasurementSystem;
+  ingredientOptions: IngredientOption[];
   onStartOver: () => void;
 }) {
   const t = useTranslations('recipes.importPhoto');
@@ -218,7 +226,7 @@ function PhotoFlow({
       }
       const result = (await res.json()) as PhotoExtractionPreview;
       setPreview(result);
-      setLinkChoices(initFuzzyChoices(result.recipePayload));
+      setLinkChoices(initResolutionChoices(result.recipePayload));
     } catch {
       setError('UNEXPECTED');
     } finally {
@@ -249,6 +257,7 @@ function PhotoFlow({
       <PhotoPreview
         preview={preview}
         measurementSystem={measurementSystem}
+        ingredientOptions={ingredientOptions}
         choices={linkChoices}
         onChoiceChange={(name, value) =>
           setLinkChoices((prev) => ({ ...prev, [name]: value }))
@@ -818,6 +827,7 @@ function LineEditor({
 function PhotoPreview({
   preview,
   measurementSystem,
+  ingredientOptions,
   choices,
   onChoiceChange,
   confirmState,
@@ -827,6 +837,7 @@ function PhotoPreview({
 }: {
   preview: PhotoExtractionPreview;
   measurementSystem: MeasurementSystem;
+  ingredientOptions: IngredientOption[];
   choices: Record<string, string>;
   onChoiceChange: (name: string, value: string) => void;
   confirmState: ImportActionState | null;
@@ -836,6 +847,7 @@ function PhotoPreview({
 }) {
   const t = useTranslations('recipes.importPhoto');
   const tImport = useTranslations('import');
+  const tResolve = useTranslations('import.recipes.resolve');
   const actionError = useActionError();
   const { counts, issues, recipePayload, qualityFlags } = preview;
   const shownIssues = issues.slice(0, ISSUE_DISPLAY_LIMIT);
@@ -843,6 +855,9 @@ function PhotoPreview({
     () => JSON.stringify(buildResolutions(choices)),
     [choices],
   );
+  const unresolved = countUnresolved(recipePayload, choices);
+  const mismatches = countDimensionMismatches(recipePayload, choices, ingredientOptions);
+  const resolutionBlocked = unresolved > 0 || mismatches > 0;
 
   return (
     <Card>
@@ -897,7 +912,12 @@ function PhotoPreview({
           </div>
         )}
 
-        <RecipeResolutionPanel payload={recipePayload} choices={choices} onChange={onChoiceChange} />
+        <RecipeResolutionPanel
+          payload={recipePayload}
+          choices={choices}
+          onChange={onChoiceChange}
+          ingredientOptions={ingredientOptions}
+        />
         <RecipeGrid payload={recipePayload} measurementSystem={measurementSystem} />
 
         {confirmState && !confirmState.ok && (
@@ -911,7 +931,7 @@ function PhotoPreview({
             <form action={confirmAction}>
               <input type="hidden" name="jobId" value={preview.jobId} />
               <input type="hidden" name="resolutions" value={resolutionsJson} />
-              <Button type="submit" disabled={confirming}>
+              <Button type="submit" disabled={confirming || resolutionBlocked}>
                 {confirming
                   ? t('preview.confirming')
                   : t('preview.confirm', { count: counts.importable })}
@@ -919,6 +939,13 @@ function PhotoPreview({
             </form>
           ) : (
             <p className="text-sm text-muted-foreground">{t('preview.nothingToImport')}</p>
+          )}
+          {resolutionBlocked && (
+            <p className="text-sm text-muted-foreground">
+              {unresolved > 0
+                ? tResolve('resolveMissingHint', { count: unresolved })
+                : tResolve('fixDimensionHint', { count: mismatches })}
+            </p>
           )}
           <Button variant="ghost" onClick={onStartOver} disabled={confirming}>
             {t('startOver')}

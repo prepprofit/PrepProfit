@@ -1,6 +1,8 @@
 import { getTranslations } from 'next-intl/server';
-import { canAccessFinancials, getUserRole } from '@/lib/auth';
+import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
+import { withOrg } from '@/lib/db';
 import { getOrgSettings } from '@/lib/data/org-settings';
+import { listIngredientOptions } from '@/lib/data/ingredients';
 import { NoAccess } from '@/components/app/no-access';
 import { PhotoImportWorkbench } from './photo-workbench';
 
@@ -20,11 +22,18 @@ export default async function PhotoImportPage() {
   }
 
   const settings = await getOrgSettings();
+  const organizationId = await getOrgId();
+  const ingredientOptions = await withOrg(organizationId, (tx) =>
+    listIngredientOptions(tx, organizationId),
+  );
 
   return (
     <div className="flex flex-col gap-5">
       <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
-      <PhotoImportWorkbench measurementSystem={settings.measurementSystem} />
+      <PhotoImportWorkbench
+        measurementSystem={settings.measurementSystem}
+        ingredientOptions={ingredientOptions}
+      />
     </div>
   );
 }

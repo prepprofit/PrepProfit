@@ -1,6 +1,8 @@
 import { getTranslations } from 'next-intl/server';
-import { canAccessFinancials, getUserRole } from '@/lib/auth';
+import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
+import { withOrg } from '@/lib/db';
 import { getOrgSettings } from '@/lib/data/org-settings';
+import { listIngredientOptions } from '@/lib/data/ingredients';
 import { NoAccess } from '@/components/app/no-access';
 import { ImportWorkbench } from './import-workbench';
 
@@ -17,6 +19,10 @@ export default async function ImportPage() {
   }
 
   const settings = await getOrgSettings();
+  const organizationId = await getOrgId();
+  const ingredientOptions = await withOrg(organizationId, (tx) =>
+    listIngredientOptions(tx, organizationId),
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -24,6 +30,7 @@ export default async function ImportPage() {
       <ImportWorkbench
         currency={settings.currency}
         measurementSystem={settings.measurementSystem}
+        ingredientOptions={ingredientOptions}
       />
     </div>
   );

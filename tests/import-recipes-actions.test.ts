@@ -123,26 +123,134 @@ describe('recipe import actions — preview then confirm', () => {
   });
 });
 
-describe('recipe import actions — forged resolution', () => {
-  it('rejects a link to a non-offered ingredient id and writes nothing', async () => {
-    await createIngredient(h.db, 'org_a', { name: 'Tomato', dimension: 'weight', priceCents: 50 });
+async function countIngredients(org: string, name: string): Promise<number> {
+  const rows = await h.db
+    .select()
+    .from(ingredients)
+    .where(and(eq(ingredients.organizationId, org), eq(ingredients.name, name)));
+  return rows.length;
+}
+
+describe('recipe import actions — inline match link validation (Sprint 4.7)', () => {
+  it('links a NEW name to any ACTIVE same-org ingredient (not just a suggestion), no duplicate', async () => {
+    // The inline search lets the manager link "Caster Sugar" to an existing
+    // ingredient the server never suggested.
+    const sugar = await createIngredient(h.db, 'org_a', {
+      name: 'Demerara Sugar',
+      dimension: 'weight',
+      priceCents: 90,
+    });
 
     const preview = await previewImportAction(
       null,
-      previewForm(`${HEADER}\nSalsa,1,100,Tomatoes,800,g`),
+      previewForm(`${HEADER}\nSponge,8,100,Caster Sugar,200,g`),
     );
     if (!preview.ok || preview.phase !== 'preview') throw new Error('expected preview');
-    // 'Tomatoes' fuzzy-matches the existing 'Tomato'.
-    expect(preview.preview.recipePayload?.resolutions['tomatoes']?.kind).toBe('fuzzy');
+    // No close existing name → it resolves as NEW (old rule would have blocked a link).
+    expect(preview.preview.recipePayload?.resolutions['caster sugar']?.kind).toBe('new');
+
+    const confirmed = await confirmImportAction(
+      null,
+      confirmForm(preview.preview.jobId, [
+        { name: 'caster sugar', action: 'link', ingredientId: sugar.id },
+      ]),
+    );
+    expect(confirmed).toMatchObject({ ok: true, phase: 'committed', created: 1 });
+    expect(await countRecipes('org_a', 'Sponge')).toBe(1);
+    // Linked to the existing ingredient → no duplicate "Caster Sugar" was created.
+    expect(await countIngredients('org_a', 'Caster Sugar')).toBe(0);
+  });
+
+  it('rejects a link to a non-existent ingredient id and writes nothing', async () => {
+    const preview = await previewImportAction(
+      null,
+      previewForm(`${HEADER}\nSalsa,1,100,Mystery Spice,800,g`),
+    );
+    if (!preview.ok || preview.phase !== 'preview') throw new Error('expected preview');
 
     const forged = await confirmImportAction(
       null,
       confirmForm(preview.preview.jobId, [
-        { name: 'tomatoes', action: 'link', ingredientId: 'i_not_offered' },
+        { name: 'mystery spice', action: 'link', ingredientId: 'i_does_not_exist' },
       ]),
     );
     expect(forged).toEqual({ ok: false, code: 'INVALID_INPUT' });
     expect(await countRecipes('org_a', 'Salsa')).toBe(0);
+  });
+
+  it('rejects a link to a SOFT-DELETED ingredient and writes nothing', async () => {
+    const dead = await createIngredient(h.db, 'org_a', {
+      name: 'Retired Flour',
+      dimension: 'weight',
+      priceCents: 100,
+    });
+    await h.db
+      .update(ingredients)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(ingredients.organizationId, 'org_a'), eq(ingredients.id, dead.id)));
+
+    const preview = await previewImportAction(
+      null,
+      previewForm(`${HEADER}\nLoaf,2,100,Strong Flour,500,g`),
+    );
+    if (!preview.ok || preview.phase !== 'preview') throw new Error('expected preview');
+
+    const res = await confirmImportAction(
+      null,
+      confirmForm(preview.preview.jobId, [
+        { name: 'strong flour', action: 'link', ingredientId: dead.id },
+      ]),
+    );
+    expect(res).toEqual({ ok: false, code: 'INVALID_INPUT' });
+    expect(await countRecipes('org_a', 'Loaf')).toBe(0);
+  });
+
+  it('rejects a link to ANOTHER org’s ingredient and writes nothing', async () => {
+    const foreign = await createIngredient(h.db, 'org_b', {
+      name: 'Org B Spice',
+      dimension: 'weight',
+      priceCents: 100,
+    });
+
+    const preview = await previewImportAction(
+      null,
+      previewForm(`${HEADER}\nRub,1,100,Some Spice,5,g`),
+    );
+    if (!preview.ok || preview.phase !== 'preview') throw new Error('expected preview');
+
+    const res = await confirmImportAction(
+      null,
+      confirmForm(preview.preview.jobId, [
+        { name: 'some spice', action: 'link', ingredientId: foreign.id },
+      ]),
+    );
+    expect(res).toEqual({ ok: false, code: 'INVALID_INPUT' });
+    expect(await countRecipes('org_a', 'Rub')).toBe(0);
+  });
+
+  it('rejects a link whose dimension conflicts with the line and writes nothing', async () => {
+    const oil = await createIngredient(h.db, 'org_a', {
+      name: 'Olive Oil',
+      dimension: 'volume',
+      priceCents: 800,
+    });
+
+    // The line is in grams (weight); linking to a volume ingredient must fail
+    // atomically — applyRecipeImport would otherwise silently drop the line.
+    const preview = await previewImportAction(
+      null,
+      previewForm(`${HEADER}\nDressing,1,100,Frying Oil,50,g`),
+    );
+    if (!preview.ok || preview.phase !== 'preview') throw new Error('expected preview');
+
+    const res = await confirmImportAction(
+      null,
+      confirmForm(preview.preview.jobId, [
+        { name: 'frying oil', action: 'link', ingredientId: oil.id },
+      ]),
+    );
+    expect(res).toEqual({ ok: false, code: 'INVALID_INPUT' });
+    expect(await countRecipes('org_a', 'Dressing')).toBe(0);
   });
 });
 

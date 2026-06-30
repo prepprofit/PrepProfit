@@ -6,6 +6,7 @@ import { runInOrg } from '@/lib/db/tenant';
 import type { TenantDb, TenantTx } from '@/lib/db/tenant';
 import { ingredients, recipes } from '@/lib/db/schema';
 import { createImportJob } from '@/lib/data/import-jobs';
+import { createIngredient } from '@/lib/data/ingredients';
 import type { ImportRecipePayload } from '@/lib/import/types';
 
 /**
@@ -125,6 +126,14 @@ async function countRecipes(org: string, name: string): Promise<number> {
   return rows.length;
 }
 
+async function countIngredients(org: string, name: string): Promise<number> {
+  const rows = await h.db
+    .select()
+    .from(ingredients)
+    .where(and(eq(ingredients.organizationId, org), eq(ingredients.name, name)));
+  return rows.length;
+}
+
 describe('recipe_photo confirm — reuses the 4.6 path', () => {
   it('creates the recipe + new unpriced ingredient and is idempotent', async () => {
     const jobId = await stagePhotoJob('org_a', photoPayload('Photo Cake'));
@@ -159,7 +168,7 @@ describe('recipe_photo confirm — reuses the 4.6 path', () => {
     expect(row?.notes).toBe(method);
   });
 
-  it('rejects a forged resolution (link to a non-offered id) and writes nothing', async () => {
+  it('rejects a link to a non-existent ingredient id and writes nothing', async () => {
     const jobId = await stagePhotoJob('org_a', photoPayload('Forged Photo'));
     const forged = await confirmImportAction(
       null,
@@ -167,6 +176,42 @@ describe('recipe_photo confirm — reuses the 4.6 path', () => {
     );
     expect(forged).toEqual({ ok: false, code: 'INVALID_INPUT' });
     expect(await countRecipes('org_a', 'Forged Photo')).toBe(0);
+  });
+
+  it('links a NEW name to an ACTIVE same-org ingredient via inline search (no duplicate)', async () => {
+    const breadFlour = await createIngredient(h.db, 'org_a', {
+      name: 'Bread Flour',
+      dimension: 'weight',
+      priceCents: 120,
+    });
+    const flourBefore = await countIngredients('org_a', 'Flour');
+    const jobId = await stagePhotoJob('org_a', photoPayload('Inline Linked Photo'));
+
+    const res = await confirmImportAction(
+      null,
+      confirmForm(jobId, [{ name: 'flour', action: 'link', ingredientId: breadFlour.id }]),
+    );
+    expect(res).toMatchObject({ ok: true, phase: 'committed', created: 1 });
+    expect(await countRecipes('org_a', 'Inline Linked Photo')).toBe(1);
+    // Linked the line to the existing ingredient → no new "Flour" row was created.
+    expect(await countIngredients('org_a', 'Flour')).toBe(flourBefore);
+  });
+
+  it('rejects a link whose dimension conflicts with the line and writes nothing', async () => {
+    const milk = await createIngredient(h.db, 'org_a', {
+      name: 'Milk',
+      dimension: 'volume',
+      priceCents: 100,
+    });
+    // The flour line is weight; linking it to a volume ingredient must fail atomically.
+    const jobId = await stagePhotoJob('org_a', photoPayload('Mismatch Photo'));
+
+    const res = await confirmImportAction(
+      null,
+      confirmForm(jobId, [{ name: 'flour', action: 'link', ingredientId: milk.id }]),
+    );
+    expect(res).toEqual({ ok: false, code: 'INVALID_INPUT' });
+    expect(await countRecipes('org_a', 'Mismatch Photo')).toBe(0);
   });
 
   it('blocks confirm with PLAN_LIMIT_REACHED when the recipe cap is hit', async () => {
