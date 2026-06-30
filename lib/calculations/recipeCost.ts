@@ -59,6 +59,52 @@ export function lineCostCents(line: RecipeCostLine): number {
   return (line.priceCents * line.quantity) / CANONICAL_PER_PRICE_UNIT[line.dimension];
 }
 
+/**
+ * Cost per kilogram of finished batch, in integer cents — the manager-only batch
+ * metric (Recipe-editor parity, D2). Pure: no formatting, no I/O.
+ *
+ *   costPerKgCents = round(totalCostCents * 1000 / yieldWeightGrams)
+ *
+ * Returns `null` (renders as "—") when it can't be computed honestly: a missing,
+ * zero, negative or non-finite yield weight, or a non-finite total cost. A `null`
+ * here is the signal to hide the tile, never a "free" 0.
+ */
+export function costPerKgCents(
+  totalCostCents: number,
+  yieldWeightGrams: number | null | undefined,
+): number | null {
+  if (yieldWeightGrams == null || !Number.isFinite(yieldWeightGrams) || yieldWeightGrams <= 0) {
+    return null;
+  }
+  if (!Number.isFinite(totalCostCents)) return null;
+  return Math.round((totalCostCents * 1000) / yieldWeightGrams);
+}
+
+/**
+ * Cost of a target finished weight scaled from the batch, in integer cents — the
+ * per-preset cost preview (Recipe-editor parity, D3). Scales the EXACT batch total
+ * by the weight factor and rounds ONCE (never re-rounds from cost/kg):
+ *
+ *   presetCostCents = round(totalCostCents * targetWeightGrams / yieldWeightGrams)
+ *
+ * Returns `null` when the base/target weight or total cost is missing, zero,
+ * negative or non-finite.
+ */
+export function presetCostCents(
+  totalCostCents: number,
+  yieldWeightGrams: number | null | undefined,
+  targetWeightGrams: number | null | undefined,
+): number | null {
+  if (yieldWeightGrams == null || !Number.isFinite(yieldWeightGrams) || yieldWeightGrams <= 0) {
+    return null;
+  }
+  if (targetWeightGrams == null || !Number.isFinite(targetWeightGrams) || targetWeightGrams <= 0) {
+    return null;
+  }
+  if (!Number.isFinite(totalCostCents)) return null;
+  return Math.round((totalCostCents * targetWeightGrams) / yieldWeightGrams);
+}
+
 export function recipeCost(input: RecipeCostInput): RecipeCost {
   const rawIngredientCost = input.lines.reduce(
     (sum, line) => sum + lineCostCents(line),

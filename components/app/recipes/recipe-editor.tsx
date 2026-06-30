@@ -10,12 +10,17 @@ import {
   type MeasurementSystem,
   type Unit,
   displayUnitsFor,
+  formatQuantity,
   fromCanonical,
   pickDisplayUnit,
   toCanonical,
   unitLabel,
 } from '@/lib/units';
-import { lineCostCents, recipeCost } from '@/lib/calculations/recipeCost';
+import {
+  costPerKgCents,
+  lineCostCents,
+  recipeCost,
+} from '@/lib/calculations/recipeCost';
 import {
   type MarginLight,
   marginPercent,
@@ -121,6 +126,7 @@ export function RecipeEditor({
   const t = useTranslations('recipes');
   const tDim = useTranslations('dimensions');
   const tCard = useTranslations('recipes.card');
+  const tSummary = useTranslations('recipes.summary');
   const tFolders = useTranslations('recipes.folders');
   const tCommon = useTranslations('common');
   const actionError = useActionError();
@@ -259,6 +265,20 @@ export function RecipeEditor({
   const suggested = cost
     ? suggestedPriceCents(cost.costPerPortionCents, TARGET_MARGIN)
     : 0;
+
+  // Live batch yield weight in canonical grams (null when blank/non-positive) — the
+  // summary strip's weight tile (both roles) and, for managers, the cost/kg tile
+  // read from this. Cost/kg needs a positive weight AND a manager cost, else null.
+  const yieldWeightGramsLive = (() => {
+    const text = form.yieldWeightText.trim();
+    const n = Number(text);
+    return text === '' || !(n > 0)
+      ? null
+      : Math.round(toCanonical(n, yieldWeightUnit) * 100) / 100;
+  })();
+  const perKgCents = cost
+    ? costPerKgCents(cost.totalCostCents, yieldWeightGramsLive)
+    : null;
 
   const availableIngredients = ingredients.filter(
     (i) => !lines.some((l) => l.ingredientId === i.id),
@@ -484,6 +504,33 @@ export function RecipeEditor({
           {error}
         </div>
       )}
+
+      {/* Batch summary strip — compact operational tiles. Weight shows for both
+          roles; live batch cost and cost/kg are FINANCIAL, managers only (D2). */}
+      <div
+        className={`grid grid-cols-2 gap-3 ${cost ? 'sm:grid-cols-3' : 'sm:grid-cols-1'}`}
+      >
+        <Tile
+          label={tSummary('weight')}
+          value={
+            yieldWeightGramsLive == null
+              ? '—'
+              : formatQuantity(yieldWeightGramsLive, 'weight', measurementSystem)
+          }
+        />
+        {cost && (
+          <>
+            <Tile
+              label={tSummary('batchCost')}
+              value={formatMoney(cost.totalCostCents, currency)}
+            />
+            <Tile
+              label={tSummary('costPerKg')}
+              value={perKgCents == null ? '—' : formatMoney(perKgCents, currency)}
+            />
+          </>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Ingredients */}
@@ -890,6 +937,20 @@ export function RecipeEditor({
         onConfirm={confirmDelete}
         onCancel={() => setConfirmOpen(false)}
       />
+    </div>
+  );
+}
+
+/** Compact dashboard-style metric tile for the batch summary strip. */
+function Tile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface px-4 py-3">
+      <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-1 font-display text-lg font-semibold tabular-nums text-foreground">
+        {value}
+      </div>
     </div>
   );
 }

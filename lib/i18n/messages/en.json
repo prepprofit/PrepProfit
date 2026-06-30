@@ -676,6 +676,11 @@
       "notes": "Method, allergens, plating…",
       "yieldWeight": "e.g. 1.2"
     },
+    "summary": {
+      "weight": "Batch weight",
+      "batchCost": "Batch cost",
+      "costPerKg": "Cost / kg"
+    },
     "fields": {
       "name": "Recipe name",
       "folder": "Folder",

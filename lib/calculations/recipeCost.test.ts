@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  costPerKgCents,
   lineCostCents,
+  presetCostCents,
   recipeCost,
   type RecipeCostInput,
   type RecipeCostLine,
@@ -79,5 +81,52 @@ describe('recipeCost', () => {
     expect(cost.ingredientCostCents).toBe(0);
     expect(cost.totalCostCents).toBe(0);
     expect(cost.costPerPortionCents).toBe(0);
+  });
+});
+
+describe('costPerKgCents', () => {
+  it('returns null for missing/zero/negative weight', () => {
+    expect(costPerKgCents(1000, null)).toBeNull();
+    expect(costPerKgCents(1000, undefined)).toBeNull();
+    expect(costPerKgCents(1000, 0)).toBeNull();
+    expect(costPerKgCents(1000, -500)).toBeNull();
+  });
+
+  it('returns null for non-finite weight or total cost', () => {
+    expect(costPerKgCents(1000, Number.NaN)).toBeNull();
+    expect(costPerKgCents(1000, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(costPerKgCents(Number.NaN, 1000)).toBeNull();
+    expect(costPerKgCents(Number.POSITIVE_INFINITY, 1000)).toBeNull();
+  });
+
+  it('computes cents per kg with a single final round', () => {
+    // 1170c batch over 2340g → 500.0c/kg
+    expect(costPerKgCents(1170, 2340)).toBe(500);
+    // 1000c over 750g → 1333.33…c/kg → 1333
+    expect(costPerKgCents(1000, 750)).toBe(1333);
+  });
+
+  it('handles large in-domain values', () => {
+    // 100_000_000c over 99_999_999.99g ≈ 1000.00c/kg
+    expect(costPerKgCents(100_000_000, 99_999_999.99)).toBe(1000);
+  });
+});
+
+describe('presetCostCents', () => {
+  it('returns null when base/target weight or cost is missing or non-positive', () => {
+    expect(presetCostCents(1000, null, 500)).toBeNull();
+    expect(presetCostCents(1000, 1000, null)).toBeNull();
+    expect(presetCostCents(1000, 0, 500)).toBeNull();
+    expect(presetCostCents(1000, 1000, 0)).toBeNull();
+    expect(presetCostCents(1000, 1000, -1)).toBeNull();
+    expect(presetCostCents(Number.NaN, 1000, 500)).toBeNull();
+  });
+
+  it('scales the batch total by the exact factor and rounds once', () => {
+    // half the batch weight → half the cost
+    expect(presetCostCents(1170, 2340, 1170)).toBe(585);
+    // round once, not from a pre-rounded cost/kg:
+    // 1000c * 333g / 750g = 444.0 → 444 (cost/kg would lose precision)
+    expect(presetCostCents(1000, 750, 333)).toBe(444);
   });
 });
