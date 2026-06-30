@@ -18,6 +18,7 @@ import {
 import {
   deriveScale,
   scaleMoneyCents,
+  sumPresetBasketGrams,
   type RecipeScaleResult,
 } from '@/lib/calculations/recipeScale';
 import { RECIPE_SCALE_PORTIONS_MAX } from '@/lib/validation/recipe-scale';
@@ -115,6 +116,9 @@ export function RecipeScalePanel({
     () => weightUnits[0] ?? 'g',
   );
   const [weightText, setWeightText] = React.useState('');
+  // Preset basket: how many of each preset to make, keyed by preset id (text while
+  // typing). A blank/0/invalid entry contributes nothing — an unfilled row is ignored.
+  const [presetQty, setPresetQty] = React.useState<Record<string, string>>({});
   // A recipe with no batch yield weight has nothing to scale a target weight from.
   const canScaleByWeight = yieldWeightGrams != null && yieldWeightGrams > 0;
 
@@ -137,6 +141,18 @@ export function RecipeScalePanel({
       setAnchorText(String(round4(fromCanonical(line.quantity, unit))));
     }
   };
+
+  // Preset basket → one canonical target weight. The loose custom-weight field is
+  // expressed in the org's weight unit; each preset row contributes weight × quantity.
+  const customWeightGrams =
+    weightText.trim() === '' ? 0 : toCanonical(Number(weightText), weightUnit);
+  const targetTotalGrams = sumPresetBasketGrams(
+    presets.map((p) => ({
+      targetWeightGrams: p.targetWeightGrams,
+      quantity: Number(presetQty[p.id] ?? ''),
+    })),
+    customWeightGrams,
+  );
 
   // Derive the scale from the active mode. An empty input is "no result yet" (not an
   // error); a present-but-invalid input surfaces a localized error.
@@ -165,16 +181,18 @@ export function RecipeScalePanel({
       );
     }
   } else {
-    // weight: factor = targetWeightGrams / yield_weight_grams. A missing base weight
-    // surfaces invalid_yield via deriveScale; an empty input is "no result yet".
-    hasInput = weightText.trim() !== '';
+    // weight: factor = targetWeightGrams / yield_weight_grams. The target is the preset
+    // basket (Σ preset weight × quantity) plus the loose custom weight, all in canonical
+    // grams. A missing base weight surfaces invalid_yield via deriveScale; a zero/empty
+    // total is "no result yet".
+    hasInput = targetTotalGrams > 0;
     if (hasInput) {
       result = deriveScale(
         yieldPortions,
         {
           kind: 'yieldWeight',
           baseWeightGrams: yieldWeightGrams ?? 0,
-          targetWeightGrams: toCanonical(Number(weightText), weightUnit),
+          targetWeightGrams: targetTotalGrams,
         },
         lineQuantities,
       );
@@ -201,6 +219,8 @@ export function RecipeScalePanel({
   const reset = () => {
     setMode('portions');
     setTargetText(String(yieldPortions));
+    setWeightText('');
+    setPresetQty({});
   };
 
   // Clicking a preset switches to weight mode and fills the target with the preset's
@@ -279,15 +299,70 @@ export function RecipeScalePanel({
             />
           </label>
         ) : mode === 'weight' ? (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
+            {/* Preset basket: enter how many of each size to make. */}
+            {presets.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium text-foreground">
+                    {t('presetBasketLabel')}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {t('presetBasketHint')}
+                  </span>
+                </div>
+                <ul className="flex flex-col gap-2">
+                  {presets.map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                        {p.name}
+                      </span>
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {t('eachWeight', {
+                          weight: formatQuantity(
+                            p.targetWeightGrams,
+                            'weight',
+                            measurementSystem,
+                          ),
+                        })}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => scaleToPreset(p)}
+                      >
+                        {t('scaleToPreset', { name: p.name })}
+                      </Button>
+                      <Input
+                        aria-label={t('presetQuantity')}
+                        inputMode="decimal"
+                        className="w-20"
+                        placeholder="0"
+                        value={presetQty[p.id] ?? ''}
+                        onChange={(e) =>
+                          setPresetQty((prev) => ({ ...prev, [p.id]: e.target.value }))
+                        }
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Loose custom weight, added on top of the basket. */}
             <div className="flex items-end gap-1.5">
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-foreground">
-                  {t('targetWeight')}
+                  {t('customWeight')}
                 </span>
                 <Input
                   inputMode="decimal"
                   className="w-28"
+                  placeholder="0"
                   value={weightText}
                   onChange={(e) => setWeightText(e.target.value)}
                 />
@@ -306,24 +381,14 @@ export function RecipeScalePanel({
                 ))}
               </Select>
             </div>
-            {presets.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-foreground">
-                  {t('presetsLabel')}
+
+            {/* Combined target weight readout (basket + custom). */}
+            {targetTotalGrams > 0 && (
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">{t('targetTotalWeight')}</span>
+                <span className="font-medium tabular-nums text-foreground">
+                  {formatQuantity(targetTotalGrams, 'weight', measurementSystem)}
                 </span>
-                <div className="flex flex-wrap gap-2">
-                  {presets.map((p) => (
-                    <Button
-                      key={p.id}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => scaleToPreset(p)}
-                    >
-                      {t('scaleToPreset', { name: p.name })}
-                    </Button>
-                  ))}
-                </div>
               </div>
             )}
           </div>

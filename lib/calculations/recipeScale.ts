@@ -45,6 +45,34 @@ function isPositiveFinite(n: number): boolean {
   return Number.isFinite(n) && n > 0;
 }
 
+/** One preset line in a scaling basket: a per-unit target weight and a count. */
+export type PresetBasketLine = {
+  /** Canonical per-unit target finished weight (grams). */
+  targetWeightGrams: number;
+  /** How many of this preset to make (whole or fractional; ≤ 0 / NaN counts as 0). */
+  quantity: number;
+};
+
+/**
+ * Sum a kitchen-preset basket plus an optional loose weight into ONE canonical target
+ * weight (grams), the way the reference Kitchen Scale composes a batch. Each line
+ * contributes `targetWeightGrams × quantity`; a non-positive/non-finite quantity or
+ * per-unit weight contributes 0 (an unfilled row is simply ignored, never an error).
+ * `extraGrams` is the loose "custom total weight" added on top (same forgiving rule).
+ * Returns 0 when nothing is entered — callers treat that as "no result yet".
+ */
+export function sumPresetBasketGrams(
+  lines: readonly PresetBasketLine[],
+  extraGrams = 0,
+): number {
+  const contribution = (n: number) => (Number.isFinite(n) && n > 0 ? n : 0);
+  let total = contribution(extraGrams);
+  for (const line of lines) {
+    total += contribution(line.targetWeightGrams) * contribution(line.quantity);
+  }
+  return total;
+}
+
 /** Round a canonical quantity once to 2 decimals (the numeric(10,2) boundary). */
 export function roundCanonical(value: number): number {
   return Math.round(value * 100) / 100;

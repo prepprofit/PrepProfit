@@ -5,7 +5,54 @@ import {
   roundCanonical,
   scaleLineQuantity,
   scaleMoneyCents,
+  sumPresetBasketGrams,
 } from './recipeScale';
+
+describe('sumPresetBasketGrams — preset basket composition', () => {
+  it('sums each preset weight × quantity', () => {
+    expect(
+      sumPresetBasketGrams([
+        { targetWeightGrams: 60, quantity: 3 },
+        { targetWeightGrams: 140, quantity: 2 },
+      ]),
+    ).toBe(60 * 3 + 140 * 2);
+  });
+
+  it('adds the loose custom weight on top', () => {
+    expect(
+      sumPresetBasketGrams([{ targetWeightGrams: 60, quantity: 2 }], 1200),
+    ).toBe(120 + 1200);
+  });
+
+  it('treats unfilled / non-positive / non-finite quantities as zero', () => {
+    expect(
+      sumPresetBasketGrams([
+        { targetWeightGrams: 60, quantity: 0 },
+        { targetWeightGrams: 140, quantity: -2 },
+        { targetWeightGrams: 200, quantity: Number.NaN },
+        { targetWeightGrams: 80, quantity: 1 },
+      ]),
+    ).toBe(80);
+  });
+
+  it('ignores lines with a non-positive per-unit weight', () => {
+    expect(
+      sumPresetBasketGrams([
+        { targetWeightGrams: 0, quantity: 5 },
+        { targetWeightGrams: -10, quantity: 5 },
+      ]),
+    ).toBe(0);
+  });
+
+  it('returns 0 for an empty basket with no custom weight', () => {
+    expect(sumPresetBasketGrams([])).toBe(0);
+    expect(sumPresetBasketGrams([], Number.NaN)).toBe(0);
+  });
+
+  it('supports fractional quantities', () => {
+    expect(sumPresetBasketGrams([{ targetWeightGrams: 100, quantity: 1.5 }])).toBe(150);
+  });
+});
 
 describe('deriveScale — target portions mode', () => {
   it('4 → 20 portions gives factor 5', () => {
