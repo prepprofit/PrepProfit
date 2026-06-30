@@ -1189,6 +1189,21 @@
       "title": "Low stock",
       "empty": "Everything is well stocked."
     },
+    "profitLeaks": {
+      "title": "Profit leaks",
+      "empty": "Your margins look healthy — nothing below the {target}% target right now.",
+      "summary": {
+        "critical": "{count, plural, =0 {0 critical} one {# critical} other {# critical}}",
+        "belowTarget": "{count, plural, =0 {0 below {target}% target} one {# below {target}% target} other {# below {target}% target}}",
+        "unpriced": "{count, plural, =0 {0 unpriced} one {# unpriced ingredient} other {# unpriced ingredients}}"
+      },
+      "finding": {
+        "belowMargin": "{name} — {margin}% margin (target {target}%)",
+        "unpricedRecipe": "{name} needs a price — used in {count, plural, one {# recipe} other {# recipes}}",
+        "unpricedMenu": "{name} needs a price — affects {count, plural, one {# menu} other {# menus}}",
+        "pending": "{name} has a pending price change — affects {count, plural, one {# item} other {# items}}"
+      }
+    },
     "analytics": {
       "title": "Analytics",
       "incomeVsExpenses": "Income vs expenses",

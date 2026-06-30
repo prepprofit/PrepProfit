@@ -53,6 +53,21 @@ import {
   LowStockCard,
   type LowStockItem,
 } from '@/components/app/dashboard/low-stock-card';
+import {
+  ProfitLeaksCard,
+  type ProfitLeakRow,
+  type ProfitLeakStat,
+} from '@/components/app/dashboard/profit-leaks-card';
+import { loadProfitLeaks } from '@/lib/data/profit-leaks';
+import type { ProfitLeakFinding } from '@/lib/calculations/profit-leaks';
+import { MARGIN_THRESHOLDS } from '@/lib/calculations/margin';
+
+/** Where a finding's "open" link points — recipe/menu detail, or the ingredient list. */
+function leakHref(finding: ProfitLeakFinding): string {
+  if (finding.entityType === 'recipe') return `/recipes/${finding.entityId}`;
+  if (finding.entityType === 'menu') return `/menus/${finding.entityId}`;
+  return '/ingredients';
+}
 
 const shortMonth = (month: number, locale: string) =>
   new Date(2000, month - 1, 1).toLocaleDateString(locale, { month: 'short' });
@@ -117,6 +132,7 @@ export default async function DashboardPage({
   const t = await getTranslations('dashboard');
   const tFin = await getTranslations('finance.dashboard');
   const tCat = await getTranslations('finance.categories');
+  const tLeaks = await getTranslations('dashboard.profitLeaks');
   const organizationId = await getOrgId();
   // The dashboard is a manager cockpit — financial figures throughout (and the
   // operational KPIs are derived from recipe cost/price). Kitchen staff don't see
@@ -147,10 +163,14 @@ export default async function DashboardPage({
   const periodOptions = buildPeriodOptions(currentKey, locale);
 
   // Recipes + ingredients are operational (no financial figures) — both roles.
-  const { recipes, ingredients } = await withOrg(organizationId, async (tx) => ({
-    recipes: await listRecipesWithLines(tx, organizationId),
-    ingredients: await listIngredients(tx, organizationId),
-  }));
+  const { recipes, ingredients, profitLeaks } = await withOrg(
+    organizationId,
+    async (tx) => ({
+      recipes: await listRecipesWithLines(tx, organizationId),
+      ingredients: await listIngredients(tx, organizationId),
+      profitLeaks: await loadProfitLeaks(tx, organizationId),
+    }),
+  );
 
   const input: DashboardRecipeInput[] = recipes.map(({ recipe, lines }) => ({
     id: recipe.id,
@@ -264,6 +284,72 @@ export default async function DashboardPage({
           { month: 'short', year: 'numeric' },
         );
 
+  // Profit leaks — deterministic margin-risk findings (Sprint 1). The page is
+  // manager-only (kitchen is redirected above), so these financial findings and
+  // their card are never exposed to kitchen.
+  const target = MARGIN_THRESHOLDS.green;
+  const leakLabel = (f: ProfitLeakFinding): string => {
+    switch (f.type) {
+      case 'RECIPE_BELOW_TARGET_MARGIN':
+      case 'MENU_BELOW_TARGET_MARGIN':
+        return tLeaks('finding.belowMargin', {
+          name: f.entityName,
+          margin: f.currentMarginPercent ?? 0,
+          target: f.targetMarginPercent ?? target,
+        });
+      case 'UNPRICED_INGREDIENT_IN_ACTIVE_RECIPE':
+        return tLeaks('finding.unpricedRecipe', {
+          name: f.entityName,
+          count: f.affectedEntityIds.length,
+        });
+      case 'UNPRICED_INGREDIENT_IN_ACTIVE_MENU':
+        return tLeaks('finding.unpricedMenu', {
+          name: f.entityName,
+          count: f.affectedEntityIds.length,
+        });
+      case 'PENDING_PRICE_CHANGE_IMPACT':
+        return tLeaks('finding.pending', {
+          name: f.entityName,
+          count: f.affectedEntityIds.length,
+        });
+    }
+  };
+  const leakStats: ProfitLeakStat[] = [
+    {
+      label: tLeaks('summary.critical', {
+        count: profitLeaks.filter((f) => f.severity === 'critical').length,
+      }),
+      tone: 'critical',
+    },
+    {
+      label: tLeaks('summary.belowTarget', {
+        count: profitLeaks.filter(
+          (f) =>
+            f.type === 'RECIPE_BELOW_TARGET_MARGIN' ||
+            f.type === 'MENU_BELOW_TARGET_MARGIN',
+        ).length,
+        target,
+      }),
+      tone: 'warning',
+    },
+    {
+      label: tLeaks('summary.unpriced', {
+        count: new Set(
+          profitLeaks
+            .filter((f) => f.type.startsWith('UNPRICED_'))
+            .map((f) => f.entityId),
+        ).size,
+      }),
+      tone: 'muted',
+    },
+  ];
+  const leakRows: ProfitLeakRow[] = profitLeaks.slice(0, 5).map((f) => ({
+    id: f.fingerprint,
+    severity: f.severity,
+    href: leakHref(f),
+    label: leakLabel(f),
+  }));
+
   const revenue = finance
     ? moneyDelta(finance.revenueComparison, 'up', periodLabel, periodLabel)
     : null;
@@ -347,6 +433,14 @@ export default async function DashboardPage({
 
       {/* Bento grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {finance && (
+          <ProfitLeaksCard
+            title={tLeaks('title')}
+            emptyLabel={tLeaks('empty', { target })}
+            stats={leakStats}
+            rows={leakRows}
+          />
+        )}
         {finance && (
           <DashboardChartCard
             data={finance.monthly}
