@@ -309,6 +309,67 @@ export const recipeIngredients = pgTable(
 );
 
 /**
+ * Kitchen presets (Recipe-editor parity). A named TARGET FINISHED WEIGHT (e.g.
+ * "18cm Cake", "Individual portion") that scales the recipe in one click:
+ * `factor = target_weight_grams / recipes.yield_weight_grams` (derive-on-read — no
+ * scaled lines are ever stored). OPERATIONAL config: both manager and kitchen
+ * manage name + weight; the per-preset COST preview is derived manager-side only,
+ * never stored here and never shipped to kitchen.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard org_isolation
+ * RLS. The composite (org, recipe_id) FK is ON DELETE cascade: presets die with the
+ * recipe on full purge. `target_weight_grams` is canonical grams (numeric(10,2),
+ * `mode: 'number'` like recipes.yield_weight_grams) with a DB CHECK `> 0`. Per-recipe
+ * case-insensitive name uniqueness via a functional unique index; `sort_order` gives
+ * a stable manual order. `unique (org, id)` is the FK target other tables would use.
+ */
+export const recipePresets = pgTable(
+  'recipe_presets',
+  {
+    id: id(),
+    organizationId: orgId(),
+    recipeId: text('recipe_id').notNull(),
+    name: text('name').notNull(),
+    // Target finished weight in canonical grams; strictly positive (CHECK below).
+    targetWeightGrams: numeric('target_weight_grams', {
+      precision: 10,
+      scale: 2,
+      mode: 'number',
+    }).notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('recipe_presets_org_idx').on(t.organizationId),
+    // Serves per-recipe listing in manual order.
+    index('recipe_presets_org_recipe_sort_idx').on(
+      t.organizationId,
+      t.recipeId,
+      t.sortOrder,
+    ),
+    // FK target for the composite (organization_id, id) reference.
+    unique('recipe_presets_org_id_key').on(t.organizationId, t.id),
+    // One preset name per recipe, case-insensitive (rename/create surface the violation).
+    uniqueIndex('recipe_presets_org_recipe_name_key').on(
+      t.organizationId,
+      t.recipeId,
+      sql`lower(${t.name})`,
+    ),
+    check('recipe_presets_target_weight_chk', sql`${t.targetWeightGrams} > 0`),
+    check('recipe_presets_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    // Composite FK forces the preset to share THIS recipe's organization_id — a
+    // preset can never attach to another tenant's recipe. ON DELETE cascade: purging
+    // a recipe takes its presets with it.
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_presets_recipe_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
  * Allergen tags on an ingredient (Sprint 9). One row per (ingredient, allergen)
  * with a `presence` level (certainty, NOT severity). The recipe rollup derives
  * its allergens from these (lib/calculations/allergens.ts). OPERATIONAL data —
@@ -2603,6 +2664,8 @@ export type RecipeFolder = InferSelectModel<typeof recipeFolders>;
 export type NewRecipeFolder = InferInsertModel<typeof recipeFolders>;
 export type RecipeIngredient = InferSelectModel<typeof recipeIngredients>;
 export type NewRecipeIngredient = InferInsertModel<typeof recipeIngredients>;
+export type RecipePreset = InferSelectModel<typeof recipePresets>;
+export type NewRecipePreset = InferInsertModel<typeof recipePresets>;
 export type IngredientAllergen = InferSelectModel<typeof ingredientAllergens>;
 export type NewIngredientAllergen = InferInsertModel<typeof ingredientAllergens>;
 export type RecipeAllergenOverride = InferSelectModel<typeof recipeAllergenOverrides>;
@@ -2691,6 +2754,8 @@ export const businessTables = [
   'recipe_folders',
   'recipes',
   'recipe_ingredients',
+  // Kitchen presets (Recipe-editor parity) — standard org_isolation RLS.
+  'recipe_presets',
   // Allergen tags + recipe overrides (Sprint 9) — standard org_isolation RLS.
   'ingredient_allergens',
   'recipe_allergen_overrides',

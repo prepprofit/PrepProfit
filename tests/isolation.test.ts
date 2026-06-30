@@ -7,6 +7,7 @@ import {
   organizationSettings,
   recipes,
   recipeIngredients,
+  recipePresets,
 } from '@/lib/db/schema';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
@@ -421,5 +422,120 @@ describe('Sprint 3 entities — org isolation (customers, invoices, payroll)', (
     } finally {
       await s3Db.execute(sql.raw('RESET ROLE;'));
     }
+  });
+});
+
+describe('recipe_presets — org isolation + cross-org integrity (Recipe-editor parity)', () => {
+  let pClient: PGlite;
+  let pDb: TenantDb;
+  let recipeA: string;
+  let recipeB: string;
+  let presetAId: string;
+
+  beforeAll(async () => {
+    const test = await createTestDb();
+    pClient = test.client;
+    pDb = test.db as unknown as TenantDb;
+
+    // Seed a recipe + preset per org as superuser (bypasses RLS).
+    const [rA] = await pDb
+      .insert(recipes)
+      .values({ organizationId: ORG_A, name: 'Preset recipe A' })
+      .returning();
+    const [rB] = await pDb
+      .insert(recipes)
+      .values({ organizationId: ORG_B, name: 'Preset recipe B' })
+      .returning();
+    recipeA = rA!.id;
+    recipeB = rB!.id;
+
+    const [pA] = await pDb
+      .insert(recipePresets)
+      .values({
+        organizationId: ORG_A,
+        recipeId: recipeA,
+        name: 'A preset',
+        targetWeightGrams: 1000,
+      })
+      .returning();
+    presetAId = pA!.id;
+    await pDb.insert(recipePresets).values({
+      organizationId: ORG_B,
+      recipeId: recipeB,
+      name: 'B preset',
+      targetWeightGrams: 2000,
+    });
+  });
+
+  afterAll(async () => {
+    await pClient.close();
+  });
+
+  it('rejects a preset that links to another org\'s recipe (composite FK)', async () => {
+    // An org A preset pointing at org B's recipe has no matching composite parent
+    // row, so the DB itself rejects the cross-tenant link.
+    await expect(
+      pDb.insert(recipePresets).values({
+        organizationId: ORG_A,
+        recipeId: recipeB,
+        name: 'Smuggled link',
+        targetWeightGrams: 100,
+      }),
+    ).rejects.toThrow();
+  });
+
+  describe('with RLS enforced (non-privileged role)', () => {
+    beforeAll(async () => {
+      await pDb.execute(sql.raw('SET ROLE tenant_app;'));
+    });
+    afterAll(async () => {
+      await pDb.execute(sql.raw('RESET ROLE;'));
+    });
+
+    it('SELECT only returns the active org\'s presets', async () => {
+      const orgs = await runInOrg(pDb, ORG_A, async (tx) =>
+        (
+          await tx
+            .select({ org: recipePresets.organizationId })
+            .from(recipePresets)
+        ).map((r) => r.org),
+      );
+      expect(orgs.length).toBeGreaterThan(0);
+      expect(orgs.every((o) => o === ORG_A)).toBe(true);
+    });
+
+    it('rejects an INSERT carrying another org id (WITH CHECK)', async () => {
+      await expect(
+        runInOrg(pDb, ORG_A, (tx) =>
+          tx.insert(recipePresets).values({
+            organizationId: ORG_B,
+            recipeId: recipeB,
+            name: 'Smuggled',
+            targetWeightGrams: 100,
+          }),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('rejects re-tagging a preset to another org via UPDATE (WITH CHECK)', async () => {
+      await expect(
+        runInOrg(pDb, ORG_A, (tx) =>
+          tx
+            .update(recipePresets)
+            .set({ organizationId: ORG_B })
+            .where(eq(recipePresets.id, presetAId)),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("a DELETE cannot reach another org's preset (USING hides it → 0 rows)", async () => {
+      const deleted = await runInOrg(pDb, ORG_A, (tx) =>
+        tx
+          .delete(recipePresets)
+          .where(eq(recipePresets.organizationId, ORG_B))
+          .returning({ id: recipePresets.id }),
+      );
+      expect(deleted).toHaveLength(0);
+    });
   });
 });

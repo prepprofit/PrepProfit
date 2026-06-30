@@ -246,6 +246,13 @@
       "when": 1782804761167,
       "tag": "0034_bumpy_joseph",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1782807314824,
+      "tag": "0035_awesome_banshee",
+      "breakpoints": true
     }
   ]
 }
