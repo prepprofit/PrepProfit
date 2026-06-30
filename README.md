@@ -27,6 +27,13 @@ The core product (Sprints 0–5) is built and in production: billing, document/P
 generation, transactional email, deterministic imports, reviewed AI photo recipe
 extraction, and launch operations are all shipped. See [PLANO.md](PLANO.md).
 
+The current focus is the **AI margin-protection** track — turning the financial data already
+in the product into proactive, chef-friendly insight. The guiding principle is deterministic
+first: the math that produces a money number is always pure and tested, and AI is used only to
+*read messy inputs* (invoices, photos) and to *explain* findings — never to invent a margin,
+a cost, or a price. See the roadmap below and
+[the implementation plan](docs/prepprofit_ai_implementation_plan_senior_revised.md).
+
 ## Product modules
 
 | # | Module | Current scope |
@@ -44,6 +51,7 @@ extraction, and launch operations are all shipped. See [PLANO.md](PLANO.md).
 | 11 | AI photo extraction | Reviewed recipe drafts from photos (Gemini): no-loss editable workbench, supplier-pack inference, never auto-priced |
 | 12 | Global search | Typo-tolerant search across allowed entities with RBAC |
 | 13 | Tasks | Kitchen operations task lists |
+| 14 | Profit Leak Detector | Deterministic dashboard surfacing recipes, menus, and ingredients hurting margin right now — manager-only, no LLM |
 
 Backlog (not scheduled until prioritized): advanced multi-image/OCR extraction, saved
 reports, recurring checklists, and persisted recipe scaling. See [PLANO.md](PLANO.md).
@@ -159,6 +167,35 @@ Required production checks:
 
 Also shipped outside the numbered sprints: a kitchen-ops module set (suppliers, menus,
 productions, sales, purchase orders) and live recipe batch scaling.
+
+### AI margin-protection track (current focus)
+
+Positioning: *AI margin protection for small kitchens.* Value-ordered, deterministic-first.
+Full detail in [the implementation plan](docs/prepprofit_ai_implementation_plan_senior_revised.md).
+
+| # | Sprint | User-visible value | Status |
+|---|--------|--------------------|--------|
+| 1 | Profit Leak Detector (no LLM) | Surfaces recipes, menus, and ingredients hurting margin right now | ✅ Shipped |
+| 2 | Supplier Invoice Reader | Upload an invoice; AI turns lines into reviewed price *observations* (never approved costs) | Next |
+| 3 | Invoice → Profit Impact Loop | Shows which recipes/menus fall under margin after a cost change | Planned |
+| 4 | AI Explanations + Profit Insight Inbox | Explains deterministic findings in chef-friendly language | Planned |
+| 5 | Menu Engineer | Classifies items by popularity and profitability | Planned |
+| 6 | Daily Close Summary | Explains posted sales and food-cost anomalies | Planned |
+| 7 | Prep / Reorder Planner | Suggests prep and reorder tasks from recipes and stock | Planned |
+| 8 | Weekly CFO Report → chat | Premium management layer over trusted insights | Planned |
+
+**Sprint 1 — Profit Leak Detector** is live: a pure, tested detection engine
+([`lib/calculations/profit-leaks.ts`](lib/calculations/profit-leaks.ts)) reusing the existing
+cost/margin/menu modules, an org-scoped loader ([`lib/data/profit-leaks.ts`](lib/data/profit-leaks.ts)),
+and a manager-only dashboard card. It detects below-target recipe and menu margins, unpriced
+ingredients in active recipes/menus, and pending-price impact — with hard honesty rules: an
+unpriced line suppresses any margin claim, and an incomplete menu never shows a fake margin.
+
+Non-negotiable rules for every sprint in this track:
+
+- AI is never the source of financial truth — deterministic math first, AI only reads inputs or explains.
+- Human review before any write; AI output is staged, validated with Zod, and confirmed by a manager.
+- Financial AI is manager-only; raw invoice/image/model content is never logged.
 
 ---
 
