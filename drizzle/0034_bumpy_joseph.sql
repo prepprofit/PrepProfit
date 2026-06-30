@@ -1,0 +1,1 @@
+ALTER TABLE "recipes" ADD COLUMN "yield_weight_grams" numeric(10, 2);

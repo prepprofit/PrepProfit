@@ -65,6 +65,8 @@ export async function createRecipeAction(
           folderId: parsedKitchen!.data.folderId ?? null,
           yieldPortions: parsedKitchen!.data.yieldPortions,
           yieldPercentage: parsedKitchen!.data.yieldPercentage,
+          // Operational physical data — kitchen sets the batch weight, never money.
+          yieldWeightGrams: parsedKitchen!.data.yieldWeightGrams ?? null,
           laborCostCents: 0,
           energyCostCents: 0,
           packagingCostCents: 0,
@@ -111,6 +113,8 @@ export async function updateRecipeAction(
         folderId: parsed.data.folderId ?? null,
         yieldPortions: parsed.data.yieldPortions,
         yieldPercentage: parsed.data.yieldPercentage,
+        // Operational physical data — kitchen sets the batch weight, never money.
+        yieldWeightGrams: parsed.data.yieldWeightGrams ?? null,
         // Preserve all money verbatim — a kitchen edit is non-financial.
         laborCostCents: current.laborCostCents,
         energyCostCents: current.energyCostCents,

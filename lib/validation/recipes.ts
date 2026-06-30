@@ -13,6 +13,20 @@ const cents = z.number().int().min(0).max(100_000_000);
  */
 export const RECIPE_NOTES_MAX_LENGTH = 2000;
 
+/**
+ * Usable finished batch weight, in canonical grams. OPERATIONAL physical data (not
+ * money), so it appears in BOTH the manager and kitchen schemas. NULL = not set; the
+ * editor converts a blank input to `null` before submit. `numeric(10,2)` domain →
+ * max 99_999_999.99; must be finite + strictly positive when present.
+ */
+const yieldWeightGrams = z
+  .number()
+  .finite()
+  .positive()
+  .max(99_999_999.99)
+  .nullable()
+  .optional();
+
 export const recipeSchema = z.object({
   name: z.string().trim().min(1).max(160),
   // Folder this recipe is filed under; null/omitted = "No folder".
@@ -20,6 +34,7 @@ export const recipeSchema = z.object({
   yieldPortions: z.number().int().min(1).max(1_000_000),
   // Usable yield after loss, as a percentage.
   yieldPercentage: z.number().int().min(1).max(100),
+  yieldWeightGrams,
   laborCostCents: cents,
   energyCostCents: cents,
   packagingCostCents: cents,
@@ -48,6 +63,8 @@ export const kitchenRecipeSchema = z.object({
   folderId: z.string().min(1).nullable().optional(),
   yieldPortions: z.number().int().min(1).max(1_000_000),
   yieldPercentage: z.number().int().min(1).max(100),
+  // Operational physical data — kitchen edits the batch weight (no money exposed).
+  yieldWeightGrams,
   notes: z
     .string()
     .trim()

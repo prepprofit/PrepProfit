@@ -219,6 +219,19 @@ export const recipes = pgTable(
     yieldPortions: integer('yield_portions').notNull().default(1),
     // Usable yield after trim/loss, as a percentage (100 = no loss).
     yieldPercentage: integer('yield_percentage').notNull().default(100),
+    // Usable finished batch/output weight for the recipe as currently written, in
+    // canonical grams (Recipe-editor parity). OPERATIONAL physical data — both
+    // manager and kitchen edit it, like yield portions/percentage; it carries no
+    // money. NULL = not set: existing recipes stay valid and we never infer it from
+    // ingredient lines. It anchors manager-only cost/kg and kitchen target-weight
+    // presets. `mode: 'number'` (unlike the g/ml `quantity` columns, which stay
+    // string-mode): a Zod-validated `z.number()` flows straight to/from the typed
+    // column with no string juggling, and a 2-decimal value ≤ 1e8 is exact in a JS number.
+    yieldWeightGrams: numeric('yield_weight_grams', {
+      precision: 10,
+      scale: 2,
+      mode: 'number',
+    }),
     // Hidden per-recipe costs beyond ingredients, in integer cents (CLAUDE.md).
     laborCostCents: integer('labor_cost_cents').notNull().default(0),
     energyCostCents: integer('energy_cost_cents').notNull().default(0),

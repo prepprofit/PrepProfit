@@ -673,13 +673,16 @@
     },
     "placeholders": {
       "name": "e.g. Sourdough loaf",
-      "notes": "Method, allergens, plating…"
+      "notes": "Method, allergens, plating…",
+      "yieldWeight": "e.g. 1.2"
     },
     "fields": {
       "name": "Recipe name",
       "folder": "Folder",
       "yieldPortions": "Portions (yield)",
       "yieldPercentage": "Usable yield (%)",
+      "yieldWeight": "Batch yield weight",
+      "yieldWeightUnit": "Batch yield weight unit",
       "labor": "Labor cost",
       "energy": "Energy cost",
       "packaging": "Packaging cost",

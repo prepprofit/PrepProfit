@@ -138,10 +138,25 @@ export function RecipeEditor({
     [measurementSystem],
   );
 
+  // Batch yield weight is stored canonically (grams) but edited in the org's
+  // weight units. Pick the friendliest unit for the stored value; an unset weight
+  // (NULL) starts blank with the system's smallest weight unit selected.
+  const initialWeightUnit = pickDisplayUnit(
+    recipe.yieldWeightGrams ?? 0,
+    'weight',
+    measurementSystem,
+  );
+  const [yieldWeightUnit, setYieldWeightUnit] =
+    React.useState<Unit>(initialWeightUnit);
+
   const [form, setForm] = React.useState({
     name: recipe.name,
     yieldPortions: String(recipe.yieldPortions),
     yieldPercentage: String(recipe.yieldPercentage),
+    yieldWeightText:
+      recipe.yieldWeightGrams != null
+        ? numberToText(fromCanonical(recipe.yieldWeightGrams, initialWeightUnit))
+        : '',
     // Money is only loaded/edited by managers; kitchen never holds these values.
     laborText: canSeeCosts ? centsToAmountInput(recipe.laborCostCents ?? 0) : '',
     energyText: canSeeCosts ? centsToAmountInput(recipe.energyCostCents ?? 0) : '',
@@ -210,6 +225,18 @@ export function RecipeEditor({
     setHeaderDirty(true);
   };
 
+  // Changing the weight unit re-expresses the current entry in the new unit (the
+  // canonical grams stay the same), mirroring the per-line unit switch.
+  const onChangeWeightUnit = (unit: Unit) => {
+    const text = form.yieldWeightText.trim();
+    const canonical = text === '' ? null : toCanonical(Number(text) || 0, yieldWeightUnit);
+    setYieldWeightUnit(unit);
+    setField({
+      yieldWeightText:
+        canonical == null ? '' : numberToText(fromCanonical(canonical, unit)),
+    });
+  };
+
   // --- live cost & margin (managers only — kitchen sees no money) ---
   const cost = canSeeCosts
     ? recipeCost({
@@ -245,6 +272,14 @@ export function RecipeEditor({
       return;
     }
     setError(null);
+    // Blank, zero or non-positive weight → null ("not set"), keeping cost/kg and
+    // presets honest rather than tripping the positive-number validation.
+    const weightText = form.yieldWeightText.trim();
+    const weightNum = Number(weightText);
+    const yieldWeightGrams =
+      weightText === '' || !(weightNum > 0)
+        ? null
+        : Math.round(toCanonical(weightNum, yieldWeightUnit) * 100) / 100;
     const base = {
       name,
       yieldPortions: Math.max(1, Math.round(Number(form.yieldPortions) || 1)),
@@ -252,6 +287,7 @@ export function RecipeEditor({
         100,
         Math.max(1, Math.round(Number(form.yieldPercentage) || 100)),
       ),
+      yieldWeightGrams,
       notes: form.notes.trim() === '' ? null : form.notes.trim(),
     };
     // Kitchen sends operational fields only — never a cost or selling price.
@@ -678,6 +714,32 @@ export function RecipeEditor({
                   disabled={pending}
                   onChange={(e) => setField({ yieldPercentage: e.target.value })}
                 />
+              </Field>
+              {/* Batch yield weight — OPERATIONAL physical data, both roles edit it.
+                  Stored canonically (g); entered in the org's weight units. */}
+              <Field label={t('fields.yieldWeight')}>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    inputMode="decimal"
+                    placeholder={t('placeholders.yieldWeight')}
+                    value={form.yieldWeightText}
+                    disabled={pending}
+                    onChange={(e) => setField({ yieldWeightText: e.target.value })}
+                  />
+                  <Select
+                    aria-label={t('fields.yieldWeightUnit')}
+                    className="w-24"
+                    value={yieldWeightUnit}
+                    disabled={pending}
+                    onChange={(e) => onChangeWeightUnit(e.target.value as Unit)}
+                  >
+                    {displayUnitsFor('weight', measurementSystem).map((u) => (
+                      <option key={u} value={u}>
+                        {unitOptionLabel(u)}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
               </Field>
               {/* Hidden costs are financial — managers only (Sprint F4). */}
               {canSeeCosts && (
