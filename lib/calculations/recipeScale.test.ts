@@ -113,6 +113,96 @@ describe('deriveScale — anchor ingredient mode', () => {
   });
 });
 
+describe('deriveScale — yield-weight (preset) mode', () => {
+  it('scales by target finished weight: 1000 g → 1500 g gives factor 1.5', () => {
+    const r = deriveScale(
+      4,
+      { kind: 'yieldWeight', baseWeightGrams: 1000, targetWeightGrams: 1500 },
+      [500, 200],
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.factor).toBe(1.5);
+    expect(r.scaledPortions).toBe(6);
+  });
+
+  it('factor of exactly 1 is identity (same target as base)', () => {
+    const r = deriveScale(8, {
+      kind: 'yieldWeight',
+      baseWeightGrams: 1200,
+      targetWeightGrams: 1200,
+    });
+    expect(r).toEqual({ ok: true, factor: 1, scaledPortions: 8 });
+  });
+
+  it('can produce fractional portions', () => {
+    const r = deriveScale(4, {
+      kind: 'yieldWeight',
+      baseWeightGrams: 1000,
+      targetWeightGrams: 250,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.factor).toBe(0.25);
+    expect(r.scaledPortions).toBe(1);
+  });
+
+  it('rejects a missing/zero/negative base weight as invalid_yield', () => {
+    for (const base of [0, -100]) {
+      expect(
+        deriveScale(4, {
+          kind: 'yieldWeight',
+          baseWeightGrams: base,
+          targetWeightGrams: 500,
+        }),
+      ).toEqual({ ok: false, reason: 'invalid_yield' });
+    }
+  });
+
+  it('rejects a non-finite base weight as invalid_yield', () => {
+    expect(
+      deriveScale(4, {
+        kind: 'yieldWeight',
+        baseWeightGrams: Number.NaN,
+        targetWeightGrams: 500,
+      }),
+    ).toEqual({ ok: false, reason: 'invalid_yield' });
+    expect(
+      deriveScale(4, {
+        kind: 'yieldWeight',
+        baseWeightGrams: Number.POSITIVE_INFINITY,
+        targetWeightGrams: 500,
+      }),
+    ).toEqual({ ok: false, reason: 'invalid_yield' });
+  });
+
+  it('rejects a target weight ≤ 0 or non-finite as invalid_target', () => {
+    expect(
+      deriveScale(4, {
+        kind: 'yieldWeight',
+        baseWeightGrams: 1000,
+        targetWeightGrams: 0,
+      }),
+    ).toEqual({ ok: false, reason: 'invalid_target' });
+    expect(
+      deriveScale(4, {
+        kind: 'yieldWeight',
+        baseWeightGrams: 1000,
+        targetWeightGrams: Number.NaN,
+      }),
+    ).toEqual({ ok: false, reason: 'invalid_target' });
+  });
+
+  it('still applies the overflow guard on scaled lines', () => {
+    const r = deriveScale(
+      4,
+      { kind: 'yieldWeight', baseWeightGrams: 1000, targetWeightGrams: 2000 }, // factor 2
+      [RECIPE_SCALE_QUANTITY_MAX],
+    );
+    expect(r).toEqual({ ok: false, reason: 'overflow' });
+  });
+});
+
 describe('deriveScale — overflow guard', () => {
   it('rejects a scaled line above RECIPE_SCALE_QUANTITY_MAX', () => {
     const r = deriveScale(

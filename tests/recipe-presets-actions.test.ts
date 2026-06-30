@@ -4,7 +4,7 @@ import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import { runInOrg } from '@/lib/db/tenant';
 import type { TenantDb, TenantTx } from '@/lib/db/tenant';
-import { auditLog, recipePresets } from '@/lib/db/schema';
+import { auditLog } from '@/lib/db/schema';
 import { createRecipe, softDeleteRecipe } from '@/lib/data/recipes';
 import { addRecipePreset } from '@/lib/data/recipe-presets';
 import { MAX_RECIPE_PRESETS } from '@/lib/validation/recipe-presets';

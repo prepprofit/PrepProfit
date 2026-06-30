@@ -194,6 +194,9 @@ export function RecipeEditor({
   const [lines, setLines] = React.useState<Line[]>(() =>
     initialLines.map(makeLine),
   );
+  // Canonical preset list — owned here so the management section (RecipePresets) and
+  // the scale panel's "scale to {name}" buttons stay in sync after any preset edit.
+  const [presets, setPresets] = React.useState<EditorPreset[]>(initialPresets);
   const [newIngredientId, setNewIngredientId] = React.useState('');
   const [newValueText, setNewValueText] = React.useState('');
   const [newUnit, setNewUnit] = React.useState<Unit>('g');
@@ -1030,6 +1033,12 @@ export function RecipeEditor({
         canSeeCosts={canSeeCosts}
         batchTotalCents={cost ? cost.totalCostCents : null}
         exportDisabled={pending || headerDirty || linesDirty}
+        presets={presets.map((p) => ({
+          id: p.id,
+          name: p.name,
+          targetWeightGrams: p.targetWeightGrams,
+        }))}
+        yieldWeightGrams={yieldWeightGramsLive}
       />
 
       {/* Kitchen presets — OPERATIONAL config, both roles manage name + weight; the
@@ -1037,7 +1046,8 @@ export function RecipeEditor({
           total + yield weight (never loaded from the server). */}
       <RecipePresets
         recipeId={recipe.id}
-        initialPresets={initialPresets}
+        presets={presets}
+        onPresetsChange={setPresets}
         measurementSystem={measurementSystem}
         canSeeCosts={canSeeCosts}
         currency={currency}

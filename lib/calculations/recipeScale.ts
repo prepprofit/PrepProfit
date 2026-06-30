@@ -21,7 +21,12 @@ export type RecipeScaleMode =
   | { kind: 'portions'; targetPortions: number }
   /** User pinned one line to a target amount (in canonical units):
    *  `factor = targetCanonical / anchorLineQuantity`. */
-  | { kind: 'anchor'; anchorLineQuantity: number; targetCanonical: number };
+  | { kind: 'anchor'; anchorLineQuantity: number; targetCanonical: number }
+  /** User scaled to a TARGET FINISHED WEIGHT (kitchen presets, Recipe-editor
+   *  parity): `factor = targetWeightGrams / baseWeightGrams`. Both are canonical
+   *  grams; `baseWeightGrams` is the recipe's `yield_weight_grams` and must be set
+   *  (a recipe with no batch yield weight has nothing to scale from → invalid_yield). */
+  | { kind: 'yieldWeight'; baseWeightGrams: number; targetWeightGrams: number };
 
 export type RecipeScaleResult =
   | { ok: true; factor: number; scaledPortions: number }
@@ -76,7 +81,7 @@ export function deriveScale(
       return { ok: false, reason: 'invalid_target' };
     }
     factor = mode.targetPortions / yieldPortions;
-  } else {
+  } else if (mode.kind === 'anchor') {
     if (
       !isPositiveFinite(mode.anchorLineQuantity) ||
       !isPositiveFinite(mode.targetCanonical)
@@ -84,6 +89,16 @@ export function deriveScale(
       return { ok: false, reason: 'invalid_anchor' };
     }
     factor = mode.targetCanonical / mode.anchorLineQuantity;
+  } else {
+    // yieldWeight: a missing/zero base weight means the recipe has no usable batch
+    // size to scale from (invalid_yield); a bad target is invalid_target.
+    if (!isPositiveFinite(mode.baseWeightGrams)) {
+      return { ok: false, reason: 'invalid_yield' };
+    }
+    if (!isPositiveFinite(mode.targetWeightGrams)) {
+      return { ok: false, reason: 'invalid_target' };
+    }
+    factor = mode.targetWeightGrams / mode.baseWeightGrams;
   }
 
   if (!isPositiveFinite(factor)) {

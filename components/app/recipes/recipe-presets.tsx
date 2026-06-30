@@ -61,7 +61,8 @@ function unitOptionLabel(unit: Unit): string {
  */
 export function RecipePresets({
   recipeId,
-  initialPresets,
+  presets,
+  onPresetsChange,
   measurementSystem,
   canSeeCosts,
   currency,
@@ -69,7 +70,10 @@ export function RecipePresets({
   yieldWeightGrams,
 }: {
   recipeId: string;
-  initialPresets: EditorPreset[];
+  /** Canonical preset list (owned by the editor so the scale panel stays in sync). */
+  presets: EditorPreset[];
+  /** Update the editor's canonical list after a successful mutation. */
+  onPresetsChange: React.Dispatch<React.SetStateAction<EditorPreset[]>>;
   measurementSystem: MeasurementSystem;
   /** Manager only: render the per-preset estimated-cost column. */
   canSeeCosts: boolean;
@@ -95,9 +99,14 @@ export function RecipePresets({
     [measurementSystem],
   );
 
-  const [rows, setRows] = React.useState<Row[]>(() =>
-    initialPresets.map(makeRow),
-  );
+  // Rows are the editable view of the canonical `presets` prop. Re-derive whenever
+  // the canonical list changes (only after a successful mutation — the prop's array
+  // reference is stable across unrelated editor re-renders), so the scale-panel
+  // buttons and this list never drift. In-progress typing lives only in row state.
+  const [rows, setRows] = React.useState<Row[]>(() => presets.map(makeRow));
+  React.useEffect(() => {
+    setRows(presets.map(makeRow));
+  }, [presets, makeRow]);
   const [newName, setNewName] = React.useState('');
   const [newWeightText, setNewWeightText] = React.useState('');
   const [newUnit, setNewUnit] = React.useState<Unit>(
@@ -174,10 +183,12 @@ export function RecipePresets({
         targetWeightGrams,
       });
       if (result.ok) {
-        setRowField(id, {
-          name: result.data.name,
-          targetWeightGrams: result.data.targetWeightGrams,
-        });
+        const { name: savedName, targetWeightGrams: savedWeight } = result.data;
+        onPresetsChange((prev) =>
+          prev.map((p) =>
+            p.id === id ? { ...p, name: savedName, targetWeightGrams: savedWeight } : p,
+          ),
+        );
         flashSaved(id);
       } else {
         setError(actionError(result.code));
@@ -204,7 +215,13 @@ export function RecipePresets({
         targetWeightGrams,
       });
       if (result.ok) {
-        setRows((prev) => [...prev, makeRow(result.data)]);
+        const created: EditorPreset = {
+          id: result.data.id,
+          name: result.data.name,
+          targetWeightGrams: result.data.targetWeightGrams,
+          sortOrder: result.data.sortOrder,
+        };
+        onPresetsChange((prev) => [...prev, created]);
         setNewName('');
         setNewWeightText('');
       } else {
@@ -218,29 +235,30 @@ export function RecipePresets({
     startTransition(async () => {
       const result = await removeRecipePresetAction(recipeId, id);
       if (result.ok) {
-        setRows((prev) => prev.filter((r) => r.id !== id));
+        onPresetsChange((prev) => prev.filter((p) => p.id !== id));
       } else {
         setError(actionError(result.code));
       }
     });
   };
 
-  // Optimistic reorder: apply locally, persist as one atomic batch, restore on failure.
+  // Optimistic reorder on the canonical list, persisted as one atomic batch; restore
+  // the previous order on failure. The rows effect re-derives from the new order.
   const movePreset = (index: number, direction: -1 | 1) => {
     const target = index + direction;
-    if (target < 0 || target >= rows.length) return;
-    const previous = rows;
-    const next = rows.slice();
+    if (target < 0 || target >= presets.length) return;
+    const previous = presets;
+    const next = presets.slice();
     const [moved] = next.splice(index, 1);
     next.splice(target, 0, moved!);
-    setRows(next);
+    onPresetsChange(next);
     setError(null);
     startTransition(async () => {
       const result = await reorderRecipePresetsAction(recipeId, {
-        orderedPresetIds: next.map((r) => r.id),
+        orderedPresetIds: next.map((p) => p.id),
       });
       if (!result.ok) {
-        setRows(previous);
+        onPresetsChange(previous);
         setError(actionError(result.code));
       }
     });

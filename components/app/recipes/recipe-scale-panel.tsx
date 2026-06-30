@@ -42,7 +42,15 @@ export type ScalePanelLine = {
   quantity: number;
 };
 
-type Mode = 'portions' | 'anchor';
+/** A kitchen preset the panel can scale to (operational fields only, no cost). */
+export type ScalePreset = {
+  id: string;
+  name: string;
+  /** Canonical target finished weight (grams). */
+  targetWeightGrams: number;
+};
+
+type Mode = 'portions' | 'anchor' | 'weight';
 
 function round4(n: number): number {
   return Math.round(n * 10000) / 10000;
@@ -73,6 +81,8 @@ export function RecipeScalePanel({
   canSeeCosts,
   batchTotalCents,
   exportDisabled,
+  presets,
+  yieldWeightGrams,
 }: {
   recipeId: string;
   yieldPortions: number;
@@ -84,6 +94,10 @@ export function RecipeScalePanel({
   batchTotalCents: number | null;
   /** True while header/line edits are dirty or a save is pending. */
   exportDisabled: boolean;
+  /** Kitchen presets to scale to (target finished weights). */
+  presets: ScalePreset[];
+  /** Live batch yield weight in canonical grams; null = not set (no weight scaling). */
+  yieldWeightGrams: number | null;
 }) {
   const t = useTranslations('recipes.scale');
 
@@ -92,9 +106,26 @@ export function RecipeScalePanel({
   const [anchorLineId, setAnchorLineId] = React.useState(lines[0]?.id ?? '');
   const [anchorUnit, setAnchorUnit] = React.useState<Unit>('g');
   const [anchorText, setAnchorText] = React.useState('');
+  // Weight mode (target finished weight): entered in the org's weight units.
+  const weightUnits = React.useMemo(
+    () => displayUnitsFor('weight', measurementSystem),
+    [measurementSystem],
+  );
+  const [weightUnit, setWeightUnit] = React.useState<Unit>(
+    () => weightUnits[0] ?? 'g',
+  );
+  const [weightText, setWeightText] = React.useState('');
+  // A recipe with no batch yield weight has nothing to scale a target weight from.
+  const canScaleByWeight = yieldWeightGrams != null && yieldWeightGrams > 0;
 
   const lineQuantities = React.useMemo(() => lines.map((l) => l.quantity), [lines]);
   const anchorLine = lines.find((l) => l.id === anchorLineId);
+
+  // If the batch yield weight is cleared while weight mode is active, fall back to
+  // the always-available portions mode (the weight tab is disabled in that state).
+  React.useEffect(() => {
+    if (!canScaleByWeight && mode === 'weight') setMode('portions');
+  }, [canScaleByWeight, mode]);
 
   // Default the anchor amount/unit to the line's current value when it is selected.
   const selectAnchorLine = (id: string) => {
@@ -120,7 +151,7 @@ export function RecipeScalePanel({
         lineQuantities,
       );
     }
-  } else {
+  } else if (mode === 'anchor') {
     hasInput = anchorLine !== undefined && anchorText.trim() !== '';
     if (hasInput && anchorLine) {
       result = deriveScale(
@@ -129,6 +160,21 @@ export function RecipeScalePanel({
           kind: 'anchor',
           anchorLineQuantity: anchorLine.quantity,
           targetCanonical: toCanonical(Number(anchorText), anchorUnit),
+        },
+        lineQuantities,
+      );
+    }
+  } else {
+    // weight: factor = targetWeightGrams / yield_weight_grams. A missing base weight
+    // surfaces invalid_yield via deriveScale; an empty input is "no result yet".
+    hasInput = weightText.trim() !== '';
+    if (hasInput) {
+      result = deriveScale(
+        yieldPortions,
+        {
+          kind: 'yieldWeight',
+          baseWeightGrams: yieldWeightGrams ?? 0,
+          targetWeightGrams: toCanonical(Number(weightText), weightUnit),
         },
         lineQuantities,
       );
@@ -155,6 +201,16 @@ export function RecipeScalePanel({
   const reset = () => {
     setMode('portions');
     setTargetText(String(yieldPortions));
+  };
+
+  // Clicking a preset switches to weight mode and fills the target with the preset's
+  // weight (expressed in the friendliest weight unit). Derivation then flows exactly
+  // like a typed target weight, so the result list + export use the same path.
+  const scaleToPreset = (preset: ScalePreset) => {
+    const unit = pickDisplayUnit(preset.targetWeightGrams, 'weight', measurementSystem);
+    setMode('weight');
+    setWeightUnit(unit);
+    setWeightText(String(round4(fromCanonical(preset.targetWeightGrams, unit))));
   };
 
   return (
@@ -192,7 +248,22 @@ export function RecipeScalePanel({
             >
               {t('modeAnchor')}
             </button>
+            <button
+              type="button"
+              onClick={() => setMode('weight')}
+              disabled={!canScaleByWeight}
+              className={`rounded-md px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${
+                mode === 'weight'
+                  ? 'bg-surface-2 font-medium text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t('modeWeight')}
+            </button>
           </div>
+          {!canScaleByWeight && (
+            <p className="text-xs text-muted-foreground">{t('needsYieldWeight')}</p>
+          )}
         </div>
 
         {/* Inputs */}
@@ -207,6 +278,55 @@ export function RecipeScalePanel({
               onChange={(e) => setTargetText(e.target.value)}
             />
           </label>
+        ) : mode === 'weight' ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-end gap-1.5">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-foreground">
+                  {t('targetWeight')}
+                </span>
+                <Input
+                  inputMode="decimal"
+                  className="w-28"
+                  value={weightText}
+                  onChange={(e) => setWeightText(e.target.value)}
+                />
+              </label>
+              <Select
+                aria-label={t('targetWeightUnit')}
+                className="w-24"
+                value={weightUnit}
+                disabled={weightUnits.length <= 1}
+                onChange={(e) => setWeightUnit(e.target.value as Unit)}
+              >
+                {weightUnits.map((u) => (
+                  <option key={u} value={u}>
+                    {unitOptionLabel(u)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {presets.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-foreground">
+                  {t('presetsLabel')}
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {presets.map((p) => (
+                    <Button
+                      key={p.id}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => scaleToPreset(p)}
+                    >
+                      {t('scaleToPreset', { name: p.name })}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
             <label className="flex flex-col gap-1.5">
