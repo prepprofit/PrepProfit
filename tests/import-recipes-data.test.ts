@@ -205,10 +205,13 @@ describe('applyRecipeImport — creation, dedupe, cost honesty', () => {
       ['water', { action: 'create' }],
     ]);
 
-    const created = await runInOrg(db, ORG_B, (tx) =>
+    const applied = await runInOrg(db, ORG_B, (tx) =>
       applyRecipeImport(tx, ORG_B, result.payload, choices),
     );
-    expect(created).toBe(1);
+    expect(applied.created).toBe(1);
+    expect(applied.recipeIds).toHaveLength(1);
+    // Both lines created a new unpriced ingredient.
+    expect(applied.newIngredientCount).toBe(2);
 
     const rye = await db
       .select()
@@ -254,7 +257,11 @@ describe('applyRecipeImport — creation, dedupe, cost honesty', () => {
       ['tomato', { action: 'link', ingredientId: tomato.id }],
       ['tomatoes', { action: 'link', ingredientId: tomato.id }],
     ]);
-    await runInOrg(db, ORG_B, (tx) => applyRecipeImport(tx, ORG_B, result.payload, choices));
+    const applied = await runInOrg(db, ORG_B, (tx) =>
+      applyRecipeImport(tx, ORG_B, result.payload, choices),
+    );
+    // Both names link to the existing tomato — nothing new is created.
+    expect(applied.newIngredientCount).toBe(0);
 
     const recipe = await db
       .select()

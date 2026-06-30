@@ -139,7 +139,18 @@ describe('recipe_photo confirm — reuses the 4.6 path', () => {
     const jobId = await stagePhotoJob('org_a', photoPayload('Photo Cake'));
 
     const first = await confirmImportAction(null, confirmForm(jobId, [{ name: 'flour', action: 'create' }]));
-    expect(first).toMatchObject({ ok: true, phase: 'committed', entity: 'recipe_photo', created: 1 });
+    expect(first).toMatchObject({
+      ok: true,
+      phase: 'committed',
+      entity: 'recipe_photo',
+      created: 1,
+      // Finish screen: the single created recipe is linkable; one new unpriced ingredient.
+      newIngredientCount: 1,
+    });
+    expect(first).toMatchObject({ ok: true });
+    if (first.ok && first.phase === 'committed') {
+      expect(typeof first.recipeId).toBe('string');
+    }
     expect(await countRecipes('org_a', 'Photo Cake')).toBe(1);
 
     const flour = await h.db
@@ -191,7 +202,7 @@ describe('recipe_photo confirm — reuses the 4.6 path', () => {
       null,
       confirmForm(jobId, [{ name: 'flour', action: 'link', ingredientId: breadFlour.id }]),
     );
-    expect(res).toMatchObject({ ok: true, phase: 'committed', created: 1 });
+    expect(res).toMatchObject({ ok: true, phase: 'committed', created: 1, newIngredientCount: 0 });
     expect(await countRecipes('org_a', 'Inline Linked Photo')).toBe(1);
     // Linked the line to the existing ingredient → no new "Flour" row was created.
     expect(await countIngredients('org_a', 'Flour')).toBe(flourBefore);

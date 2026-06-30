@@ -309,14 +309,17 @@ export type ResolvedChoice =
  * within a recipe (two source names can resolve to one ingredient — the
  * recipe_ingredients unique key is per ingredient). A line whose dimension does
  * not match its resolved ingredient is skipped (defense; plan already dropped the
- * exact case). Returns the number of recipes created.
+ * exact case). Returns the number of recipes created, the ids of those recipes (for
+ * the post-import "view recipe" jump), and how many NEW unpriced ingredients were
+ * created (so the UI can nudge the chef to set prices — vision/import prices are
+ * never trusted, so these land at priceCents 0 / needsPricing true).
  */
 export async function applyRecipeImport(
   db: TenantClient,
   organizationId: string,
   payload: ImportRecipePayload,
   choices: Map<string, ResolvedChoice>,
-): Promise<number> {
+): Promise<{ created: number; recipeIds: string[]; newIngredientCount: number }> {
   // First occurrence of each name → display + dimension, for creating new rows.
   const nameMeta = new Map<string, { displayName: string; dimension: 'weight' | 'volume' | 'count' }>();
   for (const recipe of payload.recipes) {
@@ -332,6 +335,7 @@ export async function applyRecipeImport(
 
   const idByName = new Map<string, string>();
   const dimById = new Map<string, 'weight' | 'volume' | 'count'>();
+  let newIngredientCount = 0;
 
   // Load dimensions of all linked (existing) ingredients in one query.
   const linkedIds = [...choices.values()]
@@ -371,9 +375,11 @@ export async function applyRecipeImport(
     if (!row) throw new Error('Failed to create ingredient during recipe import.');
     idByName.set(name, row.id);
     dimById.set(row.id, meta.dimension);
+    newIngredientCount += 1;
   }
 
   let created = 0;
+  const recipeIds: string[] = [];
   for (const recipe of payload.recipes) {
     const row = await createRecipe(db, organizationId, {
       name: recipe.name,
@@ -402,9 +408,10 @@ export async function applyRecipeImport(
         sortOrder: sortById.get(ingredientId) ?? 0,
       });
     }
+    recipeIds.push(row.id);
     created += 1;
   }
-  return created;
+  return { created, recipeIds, newIngredientCount };
 }
 
 /**

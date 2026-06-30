@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useActionState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
   Camera,
@@ -10,6 +11,7 @@ import {
   Plus,
   Trash2,
   RotateCcw,
+  ArrowRight,
   Image as ImageIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -235,18 +237,58 @@ function PhotoFlow({
   }
 
   if (committed) {
+    // The recipe name is still in client state (preview is not cleared on commit),
+    // so the finish screen can name what it created without a server round-trip.
+    const createdName = preview?.recipePayload.recipes[0]?.name?.trim() ?? null;
+    const headline =
+      !committed.alreadyCommitted && createdName
+        ? t('committed.createdNamed', { name: createdName })
+        : committed.alreadyCommitted
+          ? t('committed.already')
+          : t('committed.created', { count: committed.created });
+    const newIngredients = committed.newIngredientCount ?? 0;
+
     return (
       <Card>
-        <CardContent className="flex flex-col items-start gap-3 py-6">
-          <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-600">
-            <CheckCircle2 className="size-5" />
-            {committed.alreadyCommitted
-              ? t('committed.already')
-              : t('committed.created', { count: committed.created })}
-          </p>
-          <Button variant="outline" onClick={onStartOver}>
-            {t('startOver')}
-          </Button>
+        <CardContent className="flex flex-col gap-5 py-6">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/15">
+              <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400" />
+            </span>
+            <p className="text-base font-semibold text-foreground">{headline}</p>
+          </div>
+
+          {/* Vision/import prices are never trusted, so new ingredients land unpriced —
+              nudge the chef to set prices so the recipe cost is honest. */}
+          {newIngredients > 0 && (
+            <div className="flex flex-col items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+              <p className="inline-flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
+                <AlertTriangle className="size-4" />
+                {t('committed.newIngredients', { count: newIngredients })}
+              </p>
+              <Link
+                href="/ingredients"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-800 underline-offset-2 hover:underline dark:text-amber-200"
+              >
+                {t('committed.reviewIngredients')}
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            {committed.recipeId && (
+              <Button asChild>
+                <Link href={`/recipes/${committed.recipeId}`}>
+                  {t('committed.viewRecipe')}
+                  <ArrowRight className="size-4" />
+                </Link>
+              </Button>
+            )}
+            <Button variant="outline" onClick={onStartOver}>
+              {t('committed.importAnother')}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );

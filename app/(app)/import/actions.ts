@@ -91,7 +91,18 @@ export type ImportPreview = {
 
 export type ImportActionState =
   | { ok: true; phase: 'preview'; preview: ImportPreview }
-  | { ok: true; phase: 'committed'; entity: ImportEntity; created: number; alreadyCommitted: boolean }
+  | {
+      ok: true;
+      phase: 'committed';
+      entity: ImportEntity;
+      created: number;
+      alreadyCommitted: boolean;
+      // Recipe-only post-import affordances (Sprint 4.7 finish screen): the single
+      // created recipe's id (null when 0 or many were created) and how many NEW
+      // unpriced ingredients the import added. Absent for ingredient/transaction/sales.
+      recipeId?: string | null;
+      newIngredientCount?: number;
+    }
   | { ok: false; code: ActionErrorCode };
 
 const fail = (code: ActionErrorCode): ImportActionState => ({ ok: false, code });
@@ -313,6 +324,9 @@ export async function confirmImportAction(
       // Zod, scoped to the job's entity, before inserting.
       const stored = job.normalizedRows ?? [];
       let created = 0;
+      // Recipe-only extras for the finish screen (stay empty for other entities).
+      let recipeIds: string[] = [];
+      let newIngredientCount = 0;
       if (job.entity === 'ingredients') {
         const valid = z.array(importIngredientRecordSchema).safeParse(stored);
         if (!valid.success) return { kind: 'invalid' as const };
@@ -369,7 +383,10 @@ export async function confirmImportAction(
           if (!allowed) return { kind: 'plan_limit' as const };
         }
 
-        created = await applyRecipeImport(tx, organizationId, payload, built.choices);
+        const applied = await applyRecipeImport(tx, organizationId, payload, built.choices);
+        created = applied.created;
+        recipeIds = applied.recipeIds;
+        newIngredientCount = applied.newIngredientCount;
       } else {
         // Defense: an unrecognized entity is never applied.
         return { kind: 'invalid' as const };
@@ -382,7 +399,7 @@ export async function confirmImportAction(
         entityId: jobId,
         metadata: { entity: job.entity, created },
       });
-      return { kind: 'ok' as const, entity: job.entity, created };
+      return { kind: 'ok' as const, entity: job.entity, created, recipeIds, newIngredientCount };
     });
 
     if (outcome.kind === 'not_found') return fail('NOT_FOUND');
@@ -405,6 +422,14 @@ export async function confirmImportAction(
       entity: outcome.entity,
       created: outcome.created,
       alreadyCommitted: outcome.kind === 'already',
+      // Only a freshly-applied single recipe gets a "view recipe" link; a re-confirm
+      // ('already') and multi-recipe spreadsheet imports leave recipeId null.
+      ...(outcome.kind === 'ok'
+        ? {
+            recipeId: outcome.recipeIds.length === 1 ? outcome.recipeIds[0] : null,
+            newIngredientCount: outcome.newIngredientCount,
+          }
+        : {}),
     };
   } catch (err) {
     // A category that vanished between preview and confirm → composite FK

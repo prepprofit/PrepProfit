@@ -578,7 +578,12 @@
       },
       "committed": {
         "created": "Created {count, plural, one {# recipe} other {# recipes}}.",
-        "already": "This draft was already imported. Nothing new was added."
+        "createdNamed": "“{name}” is ready.",
+        "already": "This draft was already imported. Nothing new was added.",
+        "viewRecipe": "View recipe",
+        "importAnother": "Import another recipe",
+        "newIngredients": "We added {count, plural, one {# new ingredient} other {# new ingredients}} without a price. Set prices so your recipe cost stays accurate.",
+        "reviewIngredients": "Review ingredients"
       },
       "flags": {
         "low_confidence": "Some values were read with low confidence — double-check them.",
