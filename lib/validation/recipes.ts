@@ -87,3 +87,28 @@ export const recipeLineUpdateSchema = z.object({
   quantity: z.number().min(0).max(100_000_000),
   sortOrder: z.number().int().min(0).optional(),
 });
+
+/** Upper bound on lines reordered in one call — far above any real recipe. */
+export const MAX_REORDER_LINES = 1000;
+
+/**
+ * Reorder payload: the recipe's line ids in their new order. The data layer does
+ * the authoritative exact-set check against the locked current lines; here we only
+ * bound the array and reject DUPLICATE ids (a duplicate is INVALID_INPUT, never
+ * silently accepted). The ids are opaque — no org or recipe data is in the payload.
+ */
+export const reorderRecipeIngredientsSchema = z
+  .object({
+    orderedLineIds: z
+      .array(z.string().trim().min(1))
+      .min(1)
+      .max(MAX_REORDER_LINES),
+  })
+  .refine(
+    (v) => new Set(v.orderedLineIds).size === v.orderedLineIds.length,
+    { message: 'Duplicate line ids are not allowed.', path: ['orderedLineIds'] },
+  );
+
+export type ReorderRecipeIngredientsInput = z.infer<
+  typeof reorderRecipeIngredientsSchema
+>;

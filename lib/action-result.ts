@@ -19,6 +19,10 @@ export type ActionErrorCode =
   // a real conflict, never silently deduped.
   | 'IDEMPOTENCY_CONFLICT'
   | 'RECIPE_HAS_TRASHED_INGREDIENTS'
+  // The recipe's ingredient lines changed between page load and a reorder drop
+  // (a line was added/removed concurrently, or the payload didn't match) — reload
+  // and retry. No write happened.
+  | 'RECIPE_LINES_CHANGED'
   | 'INGREDIENT_IN_TRASHED_RECIPE'
   | 'CATEGORY_IN_USE'
   // An issued/paid/void invoice was edited or trashed — only drafts are mutable.

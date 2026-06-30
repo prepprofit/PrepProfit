@@ -45,6 +45,7 @@
     "INSUFFICIENT_STOCK": "That stock-out is larger than the quantity on hand. Recount the stock or enter a smaller amount.",
     "IDEMPOTENCY_CONFLICT": "This stock change conflicts with one already recorded. Refresh and try again.",
     "RECIPE_HAS_TRASHED_INGREDIENTS": "This recipe uses ingredients that are also in the trash. Restore those ingredients first.",
+    "RECIPE_LINES_CHANGED": "The recipe ingredients changed. Reload and try again.",
     "INGREDIENT_IN_TRASHED_RECIPE": "This ingredient is still part of a trashed recipe. Delete that recipe permanently first.",
     "CATEGORY_IN_USE": "This category is used by one or more transactions, so it can't be deleted. Reassign or remove those transactions first.",
     "INVOICE_LOCKED": "This invoice has already been issued, so it can no longer be edited or deleted. Void it instead.",
@@ -727,7 +728,10 @@
       "add": "Add",
       "select": "Select an ingredient…",
       "allAdded": "All ingredients added",
-      "empty": "No ingredients yet. Add one below."
+      "empty": "No ingredients yet. Add one below.",
+      "reorder": "Drag to reorder",
+      "moveUp": "Move ingredient up",
+      "moveDown": "Move ingredient down"
     },
     "parameters": {
       "title": "Parameters"

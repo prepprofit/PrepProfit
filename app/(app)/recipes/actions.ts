@@ -20,6 +20,7 @@ import { assertPlanLimit } from '@/lib/entitlements';
 import {
   addRecipeIngredient,
   removeRecipeIngredient,
+  reorderRecipeIngredients,
   updateRecipeIngredient,
 } from '@/lib/data/recipe-ingredients';
 import {
@@ -27,6 +28,7 @@ import {
   recipeLineSchema,
   recipeLineUpdateSchema,
   recipeSchema,
+  reorderRecipeIngredientsSchema,
 } from '@/lib/validation/recipes';
 import type { ActionResult } from '@/lib/action-result';
 import type { Recipe } from '@/lib/db/schema';
@@ -198,6 +200,31 @@ export async function updateRecipeIngredientAction(
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateRecipe(recipeId);
   return { ok: true, data: undefined };
+}
+
+/**
+ * Reorders a recipe's ingredient lines (presentation/order metadata only — both
+ * roles, no money, deliberately unaudited per the parity plan D6). A stale set
+ * (concurrent add/remove, or a mismatched payload) maps to RECIPE_LINES_CHANGED so
+ * the client can restore + ask the user to reload; nothing is written in that case.
+ */
+export async function reorderRecipeIngredientsAction(
+  recipeId: string,
+  input: unknown,
+): Promise<ActionResult<{ count: number }>> {
+  const parsed = reorderRecipeIngredientsSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  const outcome = await withOrg(organizationId, (tx) =>
+    reorderRecipeIngredients(tx, organizationId, recipeId, parsed.data.orderedLineIds),
+  );
+  if (outcome.status === 'not_found') return { ok: false, code: 'NOT_FOUND' };
+  if (outcome.status === 'stale') {
+    return { ok: false, code: 'RECIPE_LINES_CHANGED' };
+  }
+  revalidateRecipe(recipeId);
+  return { ok: true, data: { count: outcome.count } };
 }
 
 export async function removeRecipeIngredientAction(

@@ -4,7 +4,16 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ArrowLeft, Check, FileText, Plus, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  GripVertical,
+  Plus,
+  Trash2,
+} from 'lucide-react';
 import type { Ingredient, Recipe, RecipeFolder } from '@/lib/db/schema';
 import {
   type MeasurementSystem,
@@ -48,6 +57,7 @@ import {
   addRecipeIngredientAction,
   deleteRecipeAction,
   removeRecipeIngredientAction,
+  reorderRecipeIngredientsAction,
   updateRecipeAction,
   updateRecipeIngredientAction,
 } from '@/app/(app)/recipes/actions';
@@ -401,6 +411,50 @@ export function RecipeEditor({
     });
   };
 
+  // --- reorder lines ---
+  // Both roles may reorder (presentation metadata, no money). Optimistic: apply the
+  // new order locally, persist as one atomic batch, and on failure restore the
+  // snapshot + surface the error. Export stays gated while the write is in flight.
+  const dragIndex = React.useRef<number | null>(null);
+
+  const commitReorder = (next: Line[]) => {
+    const previous = lines;
+    setLines(next);
+    setLinesDirty(true);
+    setError(null);
+    startTransition(async () => {
+      const result = await reorderRecipeIngredientsAction(recipe.id, {
+        orderedLineIds: next.map((l) => l.id),
+      });
+      if (result.ok) {
+        setLinesDirty(false);
+      } else {
+        setLines(previous);
+        setLinesDirty(false);
+        setError(actionError(result.code));
+      }
+    });
+  };
+
+  const moveLine = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= lines.length) return;
+    const next = lines.slice();
+    const [moved] = next.splice(index, 1);
+    next.splice(target, 0, moved!);
+    commitReorder(next);
+  };
+
+  const onDropOnRow = (index: number) => {
+    const from = dragIndex.current;
+    dragIndex.current = null;
+    if (from === null || from === index) return;
+    const next = lines.slice();
+    const [moved] = next.splice(from, 1);
+    next.splice(index, 0, moved!);
+    commitReorder(next);
+  };
+
   const onSelectNewIngredient = (id: string) => {
     setNewIngredientId(id);
     const ing = ingredients.find((i) => i.id === id);
@@ -543,6 +597,10 @@ export function RecipeEditor({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    {/* Reorder controls (drag grip + move up/down). */}
+                    <th className="w-20 pb-2">
+                      <span className="sr-only">{t('ingredients.reorder')}</span>
+                    </th>
                     <th className="pb-2">{t('ingredients.name')}</th>
                     <th className="pb-2">{t('ingredients.quantity')}</th>
                     {canSeeCosts && (
@@ -555,14 +613,14 @@ export function RecipeEditor({
                   {lines.length === 0 && (
                     <tr>
                       <td
-                        colSpan={canSeeCosts ? 4 : 3}
+                        colSpan={canSeeCosts ? 5 : 4}
                         className="py-6 text-center text-sm text-muted-foreground"
                       >
                         {t('ingredients.empty')}
                       </td>
                     </tr>
                   )}
-                  {lines.map((line) => {
+                  {lines.map((line, idx) => {
                     const units = displayUnitsFor(
                       line.ingredient.dimension,
                       measurementSystem,
@@ -580,7 +638,48 @@ export function RecipeEditor({
                       <tr
                         key={line.id}
                         className="border-b border-border last:border-0"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => onDropOnRow(idx)}
                       >
+                        <td className="py-2 pr-2">
+                          <div className="flex items-center gap-0.5">
+                            <span
+                              draggable={!pending}
+                              onDragStart={() => {
+                                dragIndex.current = idx;
+                              }}
+                              onDragEnd={() => {
+                                dragIndex.current = null;
+                              }}
+                              aria-hidden
+                              className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                            >
+                              <GripVertical className="size-4" />
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="size-7 p-0"
+                              aria-label={t('ingredients.moveUp')}
+                              disabled={pending || idx === 0}
+                              onClick={() => moveLine(idx, -1)}
+                            >
+                              <ChevronUp className="size-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="size-7 p-0"
+                              aria-label={t('ingredients.moveDown')}
+                              disabled={pending || idx === lines.length - 1}
+                              onClick={() => moveLine(idx, 1)}
+                            >
+                              <ChevronDown className="size-4" />
+                            </Button>
+                          </div>
+                        </td>
                         <td className="py-2 pr-2">
                           <span className="font-medium text-foreground">
                             {line.ingredient.name}

@@ -7,10 +7,15 @@ import {
   lockActiveIngredient,
   softDeleteIngredient,
 } from '@/lib/data/ingredients';
-import { createRecipe, softDeleteRecipe } from '@/lib/data/recipes';
+import {
+  createRecipe,
+  getRecipeWithIngredients,
+  softDeleteRecipe,
+} from '@/lib/data/recipes';
 import {
   addRecipeIngredient,
   removeRecipeIngredient,
+  reorderRecipeIngredients,
   updateRecipeIngredient,
 } from '@/lib/data/recipe-ingredients';
 
@@ -151,6 +156,101 @@ describe('updateRecipeIngredient / removeRecipeIngredient — active-parent guar
       await updateRecipeIngredient(db, ORG, other.id, lineId, { quantity: 5 }),
     ).toBeNull();
     expect(await removeRecipeIngredient(db, ORG, other.id, lineId)).toBe(false);
+  });
+});
+
+/**
+ * Batch reorder: atomic renumber inside one transaction, gated by an EXACT-set
+ * check against the locked current lines. A mismatch (foreign/partial/duplicate id,
+ * or a concurrent add/remove) returns `stale` and writes NOTHING; a trashed parent
+ * returns `not_found`. Both roles use the same path (no money is touched).
+ */
+describe('reorderRecipeIngredients', () => {
+  async function seedThreeLines(recipeName: string) {
+    const recipe = await createRecipe(db, ORG, { name: recipeName });
+    const lineIds: string[] = [];
+    for (const name of ['A', 'B', 'C']) {
+      const ingredient = await createIngredient(db, ORG, {
+        name: `${recipeName}-${name}`,
+        dimension: 'weight',
+        priceCents: 100,
+      });
+      const added = await addRecipeIngredient(db, ORG, {
+        recipeId: recipe.id,
+        ingredientId: ingredient.id,
+        quantity: 100,
+        sortOrder: lineIds.length,
+      });
+      if (!added.ok) throw new Error('seed: failed to add line');
+      lineIds.push(added.row.id);
+    }
+    return { recipeId: recipe.id, lineIds };
+  }
+
+  async function currentOrder(recipeId: string): Promise<string[]> {
+    const data = await getRecipeWithIngredients(db, ORG, recipeId);
+    return (data?.lines ?? []).map((l) => l.id);
+  }
+
+  it('renumbers to an exact new order and the order survives a reload', async () => {
+    const { recipeId, lineIds } = await seedThreeLines('Reorder ok');
+    const [a, b, c] = lineIds;
+    const reversed = [c!, b!, a!];
+
+    const outcome = await reorderRecipeIngredients(db, ORG, recipeId, reversed);
+    expect(outcome).toEqual({ status: 'ok', count: 3 });
+    // getRecipeWithIngredients orders by sort_order, so the reload reflects the new order.
+    expect(await currentOrder(recipeId)).toEqual(reversed);
+  });
+
+  it('returns stale (no writes) when a FOREIGN id is in the payload', async () => {
+    const { recipeId, lineIds } = await seedThreeLines('Reorder foreign');
+    const before = await currentOrder(recipeId);
+
+    const outcome = await reorderRecipeIngredients(db, ORG, recipeId, [
+      lineIds[0]!,
+      lineIds[1]!,
+      'line_does_not_exist',
+    ]);
+    expect(outcome).toEqual({ status: 'stale' });
+    expect(await currentOrder(recipeId)).toEqual(before);
+  });
+
+  it('returns stale (no writes) for a PARTIAL id set', async () => {
+    const { recipeId, lineIds } = await seedThreeLines('Reorder partial');
+    const before = await currentOrder(recipeId);
+
+    const outcome = await reorderRecipeIngredients(db, ORG, recipeId, [
+      lineIds[0]!,
+      lineIds[1]!,
+    ]);
+    expect(outcome).toEqual({ status: 'stale' });
+    expect(await currentOrder(recipeId)).toEqual(before);
+  });
+
+  it('returns stale for a DUPLICATE id payload (defense in depth)', async () => {
+    const { recipeId, lineIds } = await seedThreeLines('Reorder dup');
+    const before = await currentOrder(recipeId);
+
+    const outcome = await reorderRecipeIngredients(db, ORG, recipeId, [
+      lineIds[0]!,
+      lineIds[0]!,
+      lineIds[1]!,
+    ]);
+    expect(outcome).toEqual({ status: 'stale' });
+    expect(await currentOrder(recipeId)).toEqual(before);
+  });
+
+  it('returns not_found when the parent recipe is TRASHED', async () => {
+    const { recipeId, lineIds } = await seedThreeLines('Reorder trashed');
+    await softDeleteRecipe(db, ORG, recipeId);
+
+    const outcome = await reorderRecipeIngredients(db, ORG, recipeId, [
+      lineIds[2]!,
+      lineIds[1]!,
+      lineIds[0]!,
+    ]);
+    expect(outcome).toEqual({ status: 'not_found' });
   });
 });
 

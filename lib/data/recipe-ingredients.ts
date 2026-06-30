@@ -126,6 +126,82 @@ export async function updateRecipeIngredient(
   return row ?? null;
 }
 
+export type ReorderRecipeIngredientsOutcome =
+  | { status: 'ok'; count: number }
+  | { status: 'not_found' }
+  | { status: 'stale' };
+
+/**
+ * Atomically renumber a recipe's lines to `orderedLineIds` (index → `sort_order`).
+ * Runs inside the caller's `withOrg` transaction so the lock + check + writes are
+ * one RLS-scoped unit. A dedicated batch function (not N client calls) so there is
+ * no partial-persist failure mode and one revalidation.
+ *
+ * 1. Parent recipe must be ACTIVE and in this org (else `not_found`).
+ * 2. Lock the recipe's current lines `FOR UPDATE` in deterministic id order, so a
+ *    concurrent add/remove serializes behind us (and two reorders can't deadlock).
+ * 3. Require an EXACT set match between the locked current ids and the requested
+ *    ids — same size, every requested id present, no duplicates. Anything else
+ *    (partial payload, foreign/removed id, a line added/removed since page load)
+ *    returns `stale` and writes nothing.
+ * 4. Renumber sequentially.
+ */
+export async function reorderRecipeIngredients(
+  db: TenantClient,
+  organizationId: string,
+  recipeId: string,
+  orderedLineIds: string[],
+): Promise<ReorderRecipeIngredientsOutcome> {
+  const [recipe] = await db
+    .select({ id: recipes.id })
+    .from(recipes)
+    .where(
+      and(
+        eq(recipes.organizationId, organizationId),
+        eq(recipes.id, recipeId),
+        isNull(recipes.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!recipe) return { status: 'not_found' };
+
+  const current = await db
+    .select({ id: recipeIngredients.id })
+    .from(recipeIngredients)
+    .where(
+      and(
+        eq(recipeIngredients.organizationId, organizationId),
+        eq(recipeIngredients.recipeId, recipeId),
+      ),
+    )
+    .orderBy(recipeIngredients.id)
+    .for('update');
+
+  // Exact-set check (defends against duplicates too, so it is correct even if a
+  // caller bypasses the Zod boundary).
+  const requested = new Set(orderedLineIds);
+  if (requested.size !== orderedLineIds.length) return { status: 'stale' };
+  const currentIds = new Set(current.map((r) => r.id));
+  if (requested.size !== currentIds.size) return { status: 'stale' };
+  for (const lineId of requested) {
+    if (!currentIds.has(lineId)) return { status: 'stale' };
+  }
+
+  for (let i = 0; i < orderedLineIds.length; i += 1) {
+    await db
+      .update(recipeIngredients)
+      .set({ sortOrder: i })
+      .where(
+        and(
+          eq(recipeIngredients.organizationId, organizationId),
+          eq(recipeIngredients.recipeId, recipeId),
+          eq(recipeIngredients.id, orderedLineIds[i]!),
+        ),
+      );
+  }
+  return { status: 'ok', count: orderedLineIds.length };
+}
+
 /** Returns true iff a line was actually removed (active same-org recipe, matching id). */
 export async function removeRecipeIngredient(
   db: TenantClient,
