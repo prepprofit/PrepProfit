@@ -23,6 +23,13 @@ export type ActionErrorCode =
   // (a line was added/removed concurrently, or the payload didn't match) — reload
   // and retry. No write happened.
   | 'RECIPE_LINES_CHANGED'
+  // The recipe's presets changed between page load and a reorder drop (a preset was
+  // added/removed concurrently, or the payload didn't match) — reload and retry.
+  // No write happened (Recipe-editor parity).
+  | 'RECIPE_PRESETS_CHANGED'
+  // The recipe reached its per-recipe preset cap (MAX_RECIPE_PRESETS) — remove one
+  // before adding another (Recipe-editor parity).
+  | 'RECIPE_PRESET_LIMIT_REACHED'
   | 'INGREDIENT_IN_TRASHED_RECIPE'
   | 'CATEGORY_IN_USE'
   // An issued/paid/void invoice was edited or trashed — only drafts are mutable.

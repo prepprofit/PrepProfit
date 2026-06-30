@@ -150,6 +150,14 @@ export type AuditAction =
   // quantity, the threshold value, or any note text.
   | 'inventory.movement'
   | 'inventory.thresholdSet'
+  // Kitchen presets (Recipe-editor parity, kitchen OR manager — operational config
+  // that drives printed prep output, so it is audited unlike ingredient reorder).
+  // `.create/.update/.delete/.reorder` = preset lifecycle. metadata = preset id +
+  // changed-field names + count only — NEVER the preset name or weight value.
+  | 'recipePreset.create'
+  | 'recipePreset.update'
+  | 'recipePreset.delete'
+  | 'recipePreset.reorder'
   // Org settings
   | 'settings.update'
   // Sensitive exports / generated documents

@@ -39,13 +39,15 @@
   "actionErrors": {
     "INVALID_INPUT": "Please check the values and try again.",
     "NOT_FOUND": "That item could not be found. It may have been removed.",
-    "DUPLICATE_NAME": "A folder with that name already exists.",
+    "DUPLICATE_NAME": "Something with that name already exists.",
     "ALREADY_IN_RECIPE": "That ingredient is already in this recipe.",
     "INGREDIENT_IN_USE": "This ingredient is used by an active recipe, so it can't be moved to the trash. Remove it from those recipes first.",
     "INSUFFICIENT_STOCK": "That stock-out is larger than the quantity on hand. Recount the stock or enter a smaller amount.",
     "IDEMPOTENCY_CONFLICT": "This stock change conflicts with one already recorded. Refresh and try again.",
     "RECIPE_HAS_TRASHED_INGREDIENTS": "This recipe uses ingredients that are also in the trash. Restore those ingredients first.",
     "RECIPE_LINES_CHANGED": "The recipe ingredients changed. Reload and try again.",
+    "RECIPE_PRESETS_CHANGED": "The presets changed. Reload and try again.",
+    "RECIPE_PRESET_LIMIT_REACHED": "You've reached the preset limit for this recipe. Remove one before adding another.",
     "INGREDIENT_IN_TRASHED_RECIPE": "This ingredient is still part of a trashed recipe. Delete that recipe permanently first.",
     "CATEGORY_IN_USE": "This category is used by one or more transactions, so it can't be deleted. Reassign or remove those transactions first.",
     "INVOICE_LOCKED": "This invoice has already been issued, so it can no longer be edited or deleted. Void it instead.",
@@ -670,6 +672,24 @@
         "invalid_yield": "This recipe has no usable batch size to scale from.",
         "invalid_factor": "That scale isn't valid.",
         "overflow": "That batch is too large — try a smaller target."
+      }
+    },
+    "presets": {
+      "title": "Kitchen presets",
+      "description": "Named target weights (e.g. “18cm cake”) you can scale to in one click.",
+      "name": "Preset name",
+      "namePlaceholder": "e.g. 18cm cake",
+      "targetWeight": "Target weight",
+      "estimatedCost": "Est. cost",
+      "add": "Add preset",
+      "remove": "Remove preset",
+      "moveUp": "Move preset up",
+      "moveDown": "Move preset down",
+      "empty": "No presets yet. Add a target weight below.",
+      "needsYieldWeight": "Set a batch yield weight above to scale to a preset.",
+      "errors": {
+        "nameRequired": "Give the preset a name.",
+        "weightRequired": "Enter a target weight greater than zero."
       }
     },
     "placeholders": {

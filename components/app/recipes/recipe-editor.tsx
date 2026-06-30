@@ -64,6 +64,10 @@ import {
 import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { RecipeScalePanel } from '@/components/app/recipes/recipe-scale-panel';
+import {
+  RecipePresets,
+  type EditorPreset,
+} from '@/components/app/recipes/recipe-presets';
 
 /** Target gross margin used for the suggested price. */
 const TARGET_MARGIN = 70;
@@ -119,6 +123,7 @@ export function RecipeEditor({
   canSeeCosts,
   recipe,
   initialLines,
+  initialPresets,
   ingredients,
   folders,
   currency,
@@ -128,6 +133,7 @@ export function RecipeEditor({
   canSeeCosts: boolean;
   recipe: EditorRecipe;
   initialLines: EditorLineBase[];
+  initialPresets: EditorPreset[];
   ingredients: IngredientOption[];
   folders: RecipeFolder[];
   currency: string;
@@ -1024,6 +1030,19 @@ export function RecipeEditor({
         canSeeCosts={canSeeCosts}
         batchTotalCents={cost ? cost.totalCostCents : null}
         exportDisabled={pending || headerDirty || linesDirty}
+      />
+
+      {/* Kitchen presets — OPERATIONAL config, both roles manage name + weight; the
+          per-preset cost preview is derived manager-side only from the live batch
+          total + yield weight (never loaded from the server). */}
+      <RecipePresets
+        recipeId={recipe.id}
+        initialPresets={initialPresets}
+        measurementSystem={measurementSystem}
+        canSeeCosts={canSeeCosts}
+        currency={currency}
+        batchTotalCents={cost ? cost.totalCostCents : null}
+        yieldWeightGrams={yieldWeightGramsLive}
       />
 
       <ConfirmDialog

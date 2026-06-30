@@ -7,6 +7,7 @@ import {
 } from '@/lib/data/recipes';
 import { listIngredients, toKitchenIngredient } from '@/lib/data/ingredients';
 import { listFolders } from '@/lib/data/recipe-folders';
+import { listRecipePresets } from '@/lib/data/recipe-presets';
 import { loadRecipeAllergenRollup } from '@/lib/data/allergens';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { RecipeEditor } from '@/components/app/recipes/recipe-editor';
@@ -21,10 +22,13 @@ export default async function RecipeEditorPage({
   const { id } = await params;
   const organizationId = await getOrgId();
 
-  const [data, ingredientRows, folders, allergenRollup, settings, role] =
+  const [data, presets, ingredientRows, folders, allergenRollup, settings, role] =
     await Promise.all([
       withOrg(organizationId, (tx) =>
         getRecipeWithIngredients(tx, organizationId, id),
+      ),
+      withOrg(organizationId, (tx) =>
+        listRecipePresets(tx, organizationId, id),
       ),
       withOrg(organizationId, (tx) => listIngredients(tx, organizationId)),
       withOrg(organizationId, (tx) => listFolders(tx, organizationId)),
@@ -36,6 +40,15 @@ export default async function RecipeEditorPage({
     ]);
 
   if (!data) notFound();
+
+  // Presets are OPERATIONAL-only — both roles get { id, name, targetWeightGrams,
+  // sortOrder }; no cost is loaded from the server (managers derive previews client-side).
+  const presetProps = presets.map((p) => ({
+    id: p.id,
+    name: p.name,
+    targetWeightGrams: p.targetWeightGrams,
+    sortOrder: p.sortOrder,
+  }));
 
   // Kitchen sees the operational recipe only — BOTH money-bearing sources (the
   // recipe + its lines, and the ingredient picker) are stripped server-side.
@@ -51,6 +64,7 @@ export default async function RecipeEditorPage({
         canSeeCosts={canSeeCosts}
         recipe={view.recipe}
         initialLines={view.lines}
+        initialPresets={presetProps}
         ingredients={ingredients}
         folders={folders}
         currency={settings.currency}
