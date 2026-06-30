@@ -30,6 +30,11 @@ import type { ActionErrorCode } from '@/lib/action-result';
 // The Gemini SDK + neon-serverless Pool need Node; an upload is never cached.
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// The Gemini vision call is a 15–20s round-trip (plus a short retry budget), which
+// overruns Vercel's default function timeout (10s on Hobby) — the platform would kill
+// the request mid-extraction and the user sees a generic failure. Raise the ceiling to
+// 60s, the Hobby maximum (also valid on Pro/Enterprise, whose caps are higher).
+export const maxDuration = 60;
 
 /**
  * Coarse, PII-free latency bucket for product analytics (improvement plan Phase 5 /
