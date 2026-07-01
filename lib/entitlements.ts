@@ -68,6 +68,21 @@ export const SUPPLIER_INVOICE_MONTHLY_LIMIT = {
   business: 200,
 } as const satisfies Record<PlanTier, number>;
 
+/**
+ * Monthly AI profit-leak explanation allowance per tier (Sprint 4, AI margin roadmap).
+ * App-enforced (counted in `ai_operation_attempts`, feature `profit_leak_explanation`),
+ * NOT a Clerk feature — like the other AI features, explanations are a universal
+ * differentiator metered by quota, not gated behind a paid flag. Starter gets a real
+ * trial allowance (10/mo, matching photo extraction, plan §14 "limited"); paid tiers
+ * get more. Counted per-ORGANIZATION per calendar month. Tunable here without a deploy
+ * of the gating logic.
+ */
+export const PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT = {
+  starter: 10,
+  pro: 100,
+  business: 500,
+} as const satisfies Record<PlanTier, number>;
+
 /* -------------------------------------------------------------------------- */
 /* Pure helpers (no Clerk I/O) — unit-testable without mocks.                 */
 /* -------------------------------------------------------------------------- */
@@ -251,4 +266,18 @@ export async function supplierInvoiceMonthlyLimit(): Promise<{
 }> {
   const tier = await getPlanTier();
   return { limit: SUPPLIER_INVOICE_MONTHLY_LIMIT[tier], tier };
+}
+
+/**
+ * The active org's monthly AI profit-leak explanation allowance (Sprint 4), read
+ * fail-closed (`starter`). The explain action compares it against the count of this
+ * month's reserved attempts inside `withOrg` and returns `USAGE_LIMIT_REACHED` when the
+ * next call would exceed it.
+ */
+export async function profitLeakExplanationMonthlyLimit(): Promise<{
+  limit: number;
+  tier: PlanTier;
+}> {
+  const tier = await getPlanTier();
+  return { limit: PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT[tier], tier };
 }

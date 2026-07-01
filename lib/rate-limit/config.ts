@@ -43,6 +43,12 @@ export const RATE_LIMITS = {
   // it gets a small per-minute budget. Burst/abuse control; the monthly per-plan cap
   // (counted in ai_operation_attempts) is the separate quota control.
   supplierInvoiceExtract: { limit: 5, windowMs: MINUTE },
+  // AI profit-leak explanation (Sprint 4, AI margin roadmap). Interactive text call to
+  // a paid provider — lighter than a vision upload, so a slightly higher per-minute
+  // budget than `aiExtraction`, but still burst/abuse control. The monthly per-plan cap
+  // (counted in ai_operation_attempts, feature profit_leak_explanation) is the separate
+  // quota control. Per org+user.
+  aiExplain: { limit: 10, windowMs: MINUTE },
   // Email-outbox cron worker (Sprint 8a). Like `cronPurge`, keyed by a hash of the
   // cron auth header (the worker is org-less at entry). Generous ceiling — only
   // abusive retries should trip it; legitimate Vercel Cron fires on a schedule.

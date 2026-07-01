@@ -19,11 +19,13 @@ vi.mock('@clerk/nextjs/server', () => ({
 import {
   PLAN_LIMITS,
   AI_EXTRACTION_MONTHLY_LIMIT,
+  PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT,
   isWithinLimit,
   getPlanTier,
   canUseFeature,
   requireFeature,
   assertPlanLimit,
+  profitLeakExplanationMonthlyLimit,
 } from '@/lib/entitlements';
 
 /** Point `auth()` at a fake `has`, or make it throw / omit `has`. */
@@ -73,6 +75,24 @@ describe('AI_EXTRACTION_MONTHLY_LIMIT (universal feature, quota-metered)', () =>
     expect(AI_EXTRACTION_MONTHLY_LIMIT.starter).toBe(10);
     expect(AI_EXTRACTION_MONTHLY_LIMIT.pro).toBe(100);
     expect(AI_EXTRACTION_MONTHLY_LIMIT.business).toBe(500);
+  });
+});
+
+describe('PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT (universal feature, quota-metered)', () => {
+  it('gives every tier a monthly allowance, matching photo extraction on Starter', () => {
+    expect(PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT.starter).toBe(10);
+    expect(PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT.pro).toBe(100);
+    expect(PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT.business).toBe(500);
+  });
+
+  it('resolves the active tier allowance, fail-closed to starter when auth() throws', async () => {
+    setHas(({ plan }) => plan === 'business');
+    expect(await profitLeakExplanationMonthlyLimit()).toEqual({ limit: 500, tier: 'business' });
+
+    h.auth = async () => {
+      throw new Error('clerk down');
+    };
+    expect(await profitLeakExplanationMonthlyLimit()).toEqual({ limit: 10, tier: 'starter' });
   });
 });
 

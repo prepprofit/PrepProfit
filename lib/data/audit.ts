@@ -214,6 +214,16 @@ export type AuditAction =
   | 'ai.invoiceExtractFailed'
   | 'invoiceImport.apply'
   | 'invoiceImport.void'
+  // Profit Insight Inbox (Sprint 4, AI margin roadmap, manager-only). `ai.profitLeakExplain`
+  // = a finding was explained by AI (attempt `succeeded`); `ai.profitLeakExplainFailed` =
+  // the provider/validation failed (a `failed` attempt was recorded); `profitInsight.dismiss`
+  // / `profitInsight.restore` = a manager hid/unhid a finding. metadata holds only
+  // provider/model/token COUNTS, the finding type + risk level, and ids — NEVER entity
+  // names or the explanation prose.
+  | 'ai.profitLeakExplain'
+  | 'ai.profitLeakExplainFailed'
+  | 'profitInsight.dismiss'
+  | 'profitInsight.restore'
   // GDPR account lifecycle (Sprint 5e). `account.export` = a manager downloaded the
   // full org data bundle (metadata = row count only, never the data). `account.
   // deletionRequest` / `account.deletionCancel` = a manager asked to erase / undid
