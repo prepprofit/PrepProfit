@@ -101,30 +101,34 @@ describe('createInvoiceImport (pre-matching + status)', () => {
 
 describe('applyInvoiceImport (PENDING observations only — the safety contract)', () => {
   it('raises pending_price_cents + writes source=import history, never touches price_cents', async () => {
-    const ingId = await seedButter(ORG_A, 500);
+    // A dedicated org (like the other cases below) so the single seeded Butter is the
+    // unambiguous exact match — ORG_A is shared and already carries a Butter from the
+    // pre-matching describe, which would make resolveIngredient match a DIFFERENT row.
+    const org = 'org_inv_apply';
+    const ingId = await seedButter(org, 500);
     const draft = mapInvoiceExtractionToDraft(extraction('EUR'));
-    const { importId } = await runInOrg(db, ORG_A, (tx) =>
-      createInvoiceImport(tx, ORG_A, { actorUserId: 'u', aiAttemptId: null, draft }),
+    const { importId } = await runInOrg(db, org, (tx) =>
+      createInvoiceImport(tx, org, { actorUserId: 'u', aiAttemptId: null, draft }),
     );
 
-    const res = await runInOrg(db, ORG_A, (tx) =>
-      applyInvoiceImport(tx, ORG_A, 'u', importId, 'EUR'),
+    const res = await runInOrg(db, org, (tx) =>
+      applyInvoiceImport(tx, org, 'u', importId, 'EUR'),
     );
     expect(res.status).toBe('ok');
     if (res.status === 'ok') expect(res.applied).toBe(1);
 
-    const ing = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, ingId));
-    // Approved cost is UNTOUCHED; a pending observation is raised.
+    const ing = await runInOrg(db, org, (tx) => getIngredientById(tx, org, ingId));
+    // Approved cost is UNTOUCHED; a pending observation is raised. 5 kg @ 970c → 194 c/kg.
     expect(ing!.priceCents).toBe(500);
-    expect(ing!.pendingPriceCents).not.toBeNull();
+    expect(ing!.pendingPriceCents).toBe(194);
 
-    const history = await runInOrg(db, ORG_A, (tx) =>
+    const history = await runInOrg(db, org, (tx) =>
       tx
         .select()
         .from(ingredientPriceHistory)
         .where(
           and(
-            eq(ingredientPriceHistory.organizationId, ORG_A),
+            eq(ingredientPriceHistory.organizationId, org),
             eq(ingredientPriceHistory.ingredientId, ingId),
           ),
         ),
@@ -134,8 +138,8 @@ describe('applyInvoiceImport (PENDING observations only — the safety contract)
     expect(history[0]!.accepted).toBe(false);
 
     // Idempotent: the import is now `applied`, so re-apply is refused.
-    const again = await runInOrg(db, ORG_A, (tx) =>
-      applyInvoiceImport(tx, ORG_A, 'u', importId, 'EUR'),
+    const again = await runInOrg(db, org, (tx) =>
+      applyInvoiceImport(tx, org, 'u', importId, 'EUR'),
     );
     expect(again.status).toBe('not_editable');
   });
