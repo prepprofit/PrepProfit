@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
@@ -30,9 +31,10 @@ import {
   Trash2,
   PanelLeftClose,
   PanelLeftOpen,
+  ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
-import { navGroups, type NavKey } from '@/lib/nav';
+import { navGroups, type NavKey, type NavGroupKey } from '@/lib/nav';
 import { clerkAppearance } from '@/lib/clerk-appearance';
 import { cn } from '@/lib/utils';
 
@@ -116,6 +118,63 @@ export function Sidebar({
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
+  const activeGroupKey =
+    groups.find((group) => group.items.some((item) => isActive(item.href)))
+      ?.key ?? null;
+
+  // Collapsible groups (expanded rail only — the icon rail keeps every item
+  // visible). `null` until hydrated so SSR + first CSR render match the server's
+  // all-open output and avoid a mismatch; an effect then restores the stored
+  // preference (or defaults to just the active group open).
+  const [openGroups, setOpenGroups] = React.useState<Set<NavGroupKey> | null>(
+    null,
+  );
+
+  React.useEffect(() => {
+    const stored = localStorage.getItem('pp-sidebar-groups');
+    if (stored) {
+      try {
+        setOpenGroups(new Set(JSON.parse(stored) as NavGroupKey[]));
+        return;
+      } catch {
+        // Corrupt value — fall through to the active-group default.
+      }
+    }
+    setOpenGroups(new Set(activeGroupKey ? [activeGroupKey] : []));
+    // Run once on mount; navigation is handled by the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Opening the group that owns the freshly-navigated route keeps the active
+  // link visible without disturbing the user's other manual toggles.
+  const prevPathname = React.useRef(pathname);
+  React.useEffect(() => {
+    if (prevPathname.current === pathname) return;
+    prevPathname.current = pathname;
+    if (!activeGroupKey) return;
+    setOpenGroups((prev) => {
+      if (prev === null || prev.has(activeGroupKey)) return prev;
+      const next = new Set(prev).add(activeGroupKey);
+      localStorage.setItem('pp-sidebar-groups', JSON.stringify([...next]));
+      return next;
+    });
+  }, [pathname, activeGroupKey]);
+
+  const isGroupOpen = (key: NavGroupKey) =>
+    openGroups === null || openGroups.has(key);
+
+  const toggleGroup = (key: NavGroupKey) => {
+    setOpenGroups((prev) => {
+      const base =
+        prev ?? new Set(groups.map((group) => group.key as NavGroupKey));
+      const next = new Set(base);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      localStorage.setItem('pp-sidebar-groups', JSON.stringify([...next]));
+      return next;
+    });
+  };
+
   // The bottom section holds manager-only links (Trash/Settings) and the org
   // switcher (expanded only). Skip it entirely when it would be empty — a
   // kitchen user on the collapsed rail — so no stray divider line shows.
@@ -175,16 +234,33 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-2">
-        {groups.map((group) => (
+        {groups.map((group) => {
+          // The icon rail keeps every item visible (divider only); the expanded
+          // rail collapses non-open groups behind their header.
+          const open = collapsed || isGroupOpen(group.key);
+          return (
           <div key={group.key} className="flex flex-col gap-1">
             {collapsed ? (
               <div className="mx-3 mb-1 border-t border-border" aria-hidden />
             ) : (
-              <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {tGroups(group.key)}
-              </p>
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.key)}
+                aria-expanded={open}
+                className="flex items-center justify-between gap-2 rounded-md px-3 pb-1 pt-0.5 text-xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span>{tGroups(group.key)}</span>
+                <ChevronDown
+                  className={cn(
+                    'size-3.5 shrink-0 transition-transform',
+                    !open && '-rotate-90',
+                  )}
+                  aria-hidden
+                />
+              </button>
             )}
-            {group.items.map(({ key, href }) => {
+            {open &&
+            group.items.map(({ key, href }) => {
               const Icon = icons[key];
               const active = isActive(href);
               return (
@@ -209,7 +285,8 @@ export function Sidebar({
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       {showFooter && (
