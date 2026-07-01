@@ -46,12 +46,17 @@ export function ProfitLeaksCard({
   emptyLabel,
   stats,
   rows,
+  viewAllHref,
+  viewAllLabel,
   className,
 }: {
   title: string;
   emptyLabel: string;
   stats: ProfitLeakStat[];
   rows: ProfitLeakRow[];
+  /** When set, a footer link into the full Profit Insight Inbox (Sprint 4). */
+  viewAllHref?: string;
+  viewAllLabel?: string;
   className?: string;
 }) {
   return (
@@ -89,6 +94,15 @@ export function ProfitLeaksCard({
                 </Link>
               ))}
             </div>
+            {viewAllHref && viewAllLabel && (
+              <Link
+                href={viewAllHref}
+                className="mt-auto inline-flex items-center gap-1 pt-1 text-sm font-medium text-accent-700 hover:underline dark:text-accent-300"
+              >
+                {viewAllLabel}
+                <ArrowRight className="size-3.5" aria-hidden />
+              </Link>
+            )}
           </>
         )}
       </CardContent>

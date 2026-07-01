@@ -65,6 +65,8 @@
     "USAGE_LIMIT_REACHED": "You've used all of this month's AI allowance on your plan. It resets next month, or upgrade for more.",
     "AI_INVOICE_FAILED": "We couldn't read that invoice. Try a clearer scan or photo, or enter the prices manually.",
     "AI_INVOICE_BUSY": "The invoice scanner is busy right now. Please wait a moment and try again — your file is fine.",
+    "AI_EXPLAIN_FAILED": "We couldn't generate an explanation right now. The finding is still shown — try again in a moment.",
+    "AI_EXPLAIN_BUSY": "The explainer is busy right now. Please wait a moment and try again — the finding is still shown.",
     "INVOICE_CURRENCY_MISMATCH": "This invoice's currency doesn't match your organization's currency, so it can't be applied. Set the matching currency first.",
     "INVOICE_IMPORT_NOT_EDITABLE": "This invoice import has already been applied or discarded and can no longer be changed.",
     "INVOICE_IMPORT_EMPTY": "Match at least one line to an ingredient (with a pack size, unit, and price) before applying.",
@@ -133,6 +135,7 @@
     "inventory": "Inventory",
     "tasks": "Tasks",
     "financials": "Financials",
+    "insights": "Insights",
     "transactions": "Transactions",
     "sales": "Sales",
     "breakEven": "Break-even",
@@ -1316,6 +1319,7 @@
     },
     "profitLeaks": {
       "title": "Profit leaks",
+      "viewInbox": "Open Profit Insight Inbox",
       "empty": "Your margins look healthy — nothing below the {target}% target right now.",
       "summary": {
         "critical": "{count, plural, =0 {0 critical} one {# critical} other {# critical}}",
@@ -1357,6 +1361,22 @@
         "title": "Cash flow",
         "subtitle": "Income vs expenses"
       }
+    }
+  },
+  "insights": {
+    "title": "Profit Insight Inbox",
+    "subtitle": "Margin risks PrepProfit found in your recipes and menus. Ask AI to explain any one, or dismiss the ones you've handled.",
+    "activeHeading": "{count, plural, =0 {No open insights} one {# open insight} other {# open insights}}",
+    "dismissedHeading": "{count, plural, one {# dismissed} other {# dismissed}}",
+    "empty": "Your margins look healthy — nothing below the {target}% target right now.",
+    "explain": "Explain",
+    "explainAgain": "Re-explain",
+    "dismiss": "Dismiss",
+    "restore": "Restore",
+    "riskLevel": {
+      "low": "Low risk",
+      "medium": "Medium risk",
+      "high": "High risk"
     }
   },
   "finance": {

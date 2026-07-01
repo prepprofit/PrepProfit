@@ -59,15 +59,8 @@ import {
   type ProfitLeakStat,
 } from '@/components/app/dashboard/profit-leaks-card';
 import { loadProfitLeaks } from '@/lib/data/profit-leaks';
-import type { ProfitLeakFinding } from '@/lib/calculations/profit-leaks';
 import { MARGIN_THRESHOLDS } from '@/lib/calculations/margin';
-
-/** Where a finding's "open" link points — recipe/menu detail, or the ingredient list. */
-function leakHref(finding: ProfitLeakFinding): string {
-  if (finding.entityType === 'recipe') return `/recipes/${finding.entityId}`;
-  if (finding.entityType === 'menu') return `/menus/${finding.entityId}`;
-  return '/ingredients';
-}
+import { leakHref, leakLabel } from '@/lib/profit-leaks/labels';
 
 const shortMonth = (month: number, locale: string) =>
   new Date(2000, month - 1, 1).toLocaleDateString(locale, { month: 'short' });
@@ -288,32 +281,6 @@ export default async function DashboardPage({
   // manager-only (kitchen is redirected above), so these financial findings and
   // their card are never exposed to kitchen.
   const target = MARGIN_THRESHOLDS.green;
-  const leakLabel = (f: ProfitLeakFinding): string => {
-    switch (f.type) {
-      case 'RECIPE_BELOW_TARGET_MARGIN':
-      case 'MENU_BELOW_TARGET_MARGIN':
-        return tLeaks('finding.belowMargin', {
-          name: f.entityName,
-          margin: f.currentMarginPercent ?? 0,
-          target: f.targetMarginPercent ?? target,
-        });
-      case 'UNPRICED_INGREDIENT_IN_ACTIVE_RECIPE':
-        return tLeaks('finding.unpricedRecipe', {
-          name: f.entityName,
-          count: f.affectedEntityIds.length,
-        });
-      case 'UNPRICED_INGREDIENT_IN_ACTIVE_MENU':
-        return tLeaks('finding.unpricedMenu', {
-          name: f.entityName,
-          count: f.affectedEntityIds.length,
-        });
-      case 'PENDING_PRICE_CHANGE_IMPACT':
-        return tLeaks('finding.pending', {
-          name: f.entityName,
-          count: f.affectedEntityIds.length,
-        });
-    }
-  };
   const leakStats: ProfitLeakStat[] = [
     {
       label: tLeaks('summary.critical', {
@@ -347,7 +314,7 @@ export default async function DashboardPage({
     id: f.fingerprint,
     severity: f.severity,
     href: leakHref(f),
-    label: leakLabel(f),
+    label: leakLabel(f, target, (key, values) => tLeaks(key, values)),
   }));
 
   const revenue = finance
@@ -439,6 +406,8 @@ export default async function DashboardPage({
             emptyLabel={tLeaks('empty', { target })}
             stats={leakStats}
             rows={leakRows}
+            viewAllHref="/insights"
+            viewAllLabel={tLeaks('viewInbox')}
           />
         )}
         {finance && (
