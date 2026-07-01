@@ -1,11 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getOrgId, isManager } from '@/lib/auth';
-import { withOrg } from '@/lib/db';
+import { getOrgId, getUserId, isManager } from '@/lib/auth';
+import { getDb, withOrg } from '@/lib/db';
 import { isUniqueViolation } from '@/lib/db/errors';
-import { unexpected } from '@/lib/observability';
-import { requireFeature } from '@/lib/entitlements';
+import { enforceRateLimit } from '@/lib/rate-limit';
+import { logError, unexpected } from '@/lib/observability';
+import { dailyCloseSummaryMonthlyLimit, requireFeature } from '@/lib/entitlements';
+import { getOrgSettings } from '@/lib/data/org-settings';
 import { MovementError } from '@/lib/data/inventory';
 import {
   createSale,
@@ -15,6 +17,24 @@ import {
   voidSale,
   type SaleLineInput,
 } from '@/lib/data/sales';
+import { loadDailyCloseInsights } from '@/lib/data/daily-close-insights';
+import {
+  createOperationAttempt,
+  markOperationSucceeded,
+  markOperationFailed,
+  countReservedOperations,
+  lockMonthlyOperationQuota,
+  monthStartUtc,
+} from '@/lib/data/ai-operation-attempts';
+import {
+  getDailyCloseSummarizer,
+  buildDailyCloseSummaryFacts,
+  DailyCloseSummaryError,
+  DAILY_CLOSE_SUMMARY_MODEL,
+  DAILY_CLOSE_SUMMARY_PROVIDER,
+  type DailyCloseSummary,
+} from '@/lib/ai/daily-close-summary';
+import { computeCostMicros } from '@/lib/ai/pricing';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
   createSaleSchema,
@@ -295,5 +315,136 @@ export async function voidSaleAction(
       return { ok: false, code: movementErrorCode(err.reason) };
     }
     return unexpected('voidSaleAction', err, organizationId);
+  }
+}
+
+const SUMMARY_FEATURE = 'daily_close_summary' as const;
+
+export type DailyCloseSummaryResult = { summary: DailyCloseSummary };
+
+/**
+ * Summarize a POSTED daily close with AI (Sprint 6, AI margin roadmap). Manager-only +
+ * `invoices`-gated (the same guard as the rest of the sales module). Order (all before any
+ * provider call): RBAC/entitlement → rate limit → load the deterministic insights
+ * (NOT_FOUND when the sale is missing/draft/void/cross-org, so a non-postable close never
+ * reaches the provider) → monthly usage cap (race-safe). The provider is then called
+ * OUTSIDE any DB transaction and its output validated inside the summarizer; the attempt is
+ * flipped to `succeeded` with usage/cost and audited. A provider failure records a `failed`
+ * attempt and returns a stable code while the deterministic close figures stay visible.
+ *
+ * There is NO cache table (Sprint 6 ships no migration): every call spends one quota slot,
+ * so the client keeps the returned summary and only re-summarizes on an explicit action.
+ */
+export async function summarizeDailyCloseAction(
+  saleId: string,
+): Promise<ActionResult<DailyCloseSummaryResult>> {
+  const denied = await guard();
+  if (denied) return { ok: false, code: denied };
+  if (typeof saleId !== 'string' || saleId.length === 0) {
+    return { ok: false, code: 'INVALID_INPUT' };
+  }
+
+  const organizationId = await getOrgId();
+  const userId = await getUserId();
+
+  // Burst/abuse control before any org work (the monthly cap is the quota control).
+  const limit = await enforceRateLimit(getDb(), 'aiDailyClose', `${organizationId}:${userId}`);
+  if (!limit.allowed) return { ok: false, code: 'RATE_LIMITED' };
+
+  // A summary can only exist for a real POSTED close: the loader returns null for a
+  // draft/void/cross-org/missing sale, so those never reach the provider.
+  const [insights, settings] = await Promise.all([
+    withOrg(organizationId, (tx) => loadDailyCloseInsights(tx, organizationId, saleId)),
+    getOrgSettings(),
+  ]);
+  if (!insights) return { ok: false, code: 'NOT_FOUND' };
+
+  // Monthly usage cap (race-safe): a (org, feature, month) advisory lock serializes the
+  // check; the pending attempt is created in the same tx + lock so check and reservation
+  // commit together.
+  const { limit: monthlyLimit } = await dailyCloseSummaryMonthlyLimit();
+  const now = new Date();
+  const monthStart = monthStartUtc(now);
+  const gate = await withOrg(organizationId, async (tx) => {
+    await lockMonthlyOperationQuota(tx, organizationId, SUMMARY_FEATURE, monthStart);
+    const used = await countReservedOperations(tx, organizationId, SUMMARY_FEATURE, monthStart, now);
+    if (used >= monthlyLimit) return { capped: true as const };
+    const attempt = await createOperationAttempt(tx, organizationId, {
+      actorUserId: userId,
+      feature: SUMMARY_FEATURE,
+      provider: DAILY_CLOSE_SUMMARY_PROVIDER,
+      model: DAILY_CLOSE_SUMMARY_MODEL,
+    });
+    return { capped: false as const, attemptId: attempt.id };
+  });
+  if (gate.capped) return { ok: false, code: 'USAGE_LIMIT_REACHED' };
+  const attemptId = gate.attemptId;
+
+  const actor = await auditActor();
+  const facts = buildDailyCloseSummaryFacts(insights, settings.currency);
+
+  // Provider call OUTSIDE any DB transaction. Output is validated inside the summarizer.
+  let result;
+  try {
+    result = await getDailyCloseSummarizer().summarize(facts);
+  } catch (err) {
+    const busy = err instanceof DailyCloseSummaryError && err.retryable;
+    const code = busy ? 'AI_SUMMARY_BUSY' : 'AI_SUMMARY_FAILED';
+    const eventId = logError({ action: 'summarizeDailyClose', orgId: organizationId }, err);
+    await withOrg(organizationId, async (tx) => {
+      await markOperationFailed(tx, organizationId, attemptId, { errorCode: code });
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'ai.dailyCloseSummaryFailed',
+        entityType: 'aiOperationAttempt',
+        entityId: attemptId,
+        metadata: {
+          provider: DAILY_CLOSE_SUMMARY_PROVIDER,
+          reason: busy
+            ? 'overloaded'
+            : err instanceof DailyCloseSummaryError
+              ? 'provider'
+              : 'unexpected',
+          eventId,
+        },
+      });
+    }).catch(() => undefined);
+    return { ok: false, code };
+  }
+
+  try {
+    await withOrg(organizationId, async (tx) => {
+      await markOperationSucceeded(tx, organizationId, attemptId, {
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        costMicros: computeCostMicros({
+          model: result.model,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+        }),
+        qualityFlags: [],
+        resultType: 'sale',
+        resultId: saleId,
+      });
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'ai.dailyCloseSummary',
+        entityType: 'sale',
+        entityId: saleId,
+        // Descriptors + provider metadata only — never amounts, item names or raw prose.
+        metadata: {
+          provider: result.provider,
+          model: result.model,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          riskLevel: result.summary.riskLevel,
+          attempts: result.attempts ?? 1,
+        },
+      });
+    });
+    return { ok: true, data: { summary: result.summary } };
+  } catch (err) {
+    await withOrg(organizationId, (tx) =>
+      markOperationFailed(tx, organizationId, attemptId, { errorCode: 'AI_SUMMARY_FAILED' }),
+    ).catch(() => undefined);
+    return unexpected('summarizeDailyCloseAction', err, organizationId);
   }
 }

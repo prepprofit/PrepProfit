@@ -224,6 +224,13 @@ export type AuditAction =
   | 'ai.profitLeakExplainFailed'
   | 'profitInsight.dismiss'
   | 'profitInsight.restore'
+  // Daily Close Summary (Sprint 6, AI margin roadmap, manager-only). `ai.dailyCloseSummary`
+  // = a posted close was summarized by AI (attempt `succeeded`); `ai.dailyCloseSummaryFailed`
+  // = the provider/validation failed (a `failed` attempt was recorded). metadata holds only
+  // provider/model/token COUNTS, the risk level, and the sale id — NEVER amounts, item
+  // names, or the summary prose.
+  | 'ai.dailyCloseSummary'
+  | 'ai.dailyCloseSummaryFailed'
   // GDPR account lifecycle (Sprint 5e). `account.export` = a manager downloaded the
   // full org data bundle (metadata = row count only, never the data). `account.
   // deletionRequest` / `account.deletionCancel` = a manager asked to erase / undid

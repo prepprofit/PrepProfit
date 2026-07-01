@@ -83,6 +83,21 @@ export const PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT = {
   business: 500,
 } as const satisfies Record<PlanTier, number>;
 
+/**
+ * Monthly AI Daily Close Summary allowance per tier (Sprint 6, AI margin roadmap).
+ * App-enforced (counted in `ai_operation_attempts`, feature `daily_close_summary`), NOT a
+ * Clerk feature. UNLIKE the other AI features, the free Starter gets 0 here (plan §14: the
+ * daily-close summary is a paid-tier operator tool, and Starter can't reach a posted close
+ * anyway — the sales module is `invoices`-gated). Pro/Business get real allowances.
+ * Counted per-ORGANIZATION per calendar month. Tunable here without a deploy of the gating
+ * logic.
+ */
+export const DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT = {
+  starter: 0,
+  pro: 30,
+  business: 500,
+} as const satisfies Record<PlanTier, number>;
+
 /* -------------------------------------------------------------------------- */
 /* Pure helpers (no Clerk I/O) — unit-testable without mocks.                 */
 /* -------------------------------------------------------------------------- */
@@ -280,4 +295,18 @@ export async function profitLeakExplanationMonthlyLimit(): Promise<{
 }> {
   const tier = await getPlanTier();
   return { limit: PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT[tier], tier };
+}
+
+/**
+ * The active org's monthly AI Daily Close Summary allowance (Sprint 6), read fail-closed
+ * (`starter` ⇒ 0). The summarize action compares it against the count of this month's
+ * reserved attempts inside `withOrg` and returns `USAGE_LIMIT_REACHED` when the next call
+ * would exceed it.
+ */
+export async function dailyCloseSummaryMonthlyLimit(): Promise<{
+  limit: number;
+  tier: PlanTier;
+}> {
+  const tier = await getPlanTier();
+  return { limit: DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT[tier], tier };
 }

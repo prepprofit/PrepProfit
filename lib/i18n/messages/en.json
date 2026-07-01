@@ -67,6 +67,8 @@
     "AI_INVOICE_BUSY": "The invoice scanner is busy right now. Please wait a moment and try again — your file is fine.",
     "AI_EXPLAIN_FAILED": "We couldn't generate an explanation right now. The finding is still shown — try again in a moment.",
     "AI_EXPLAIN_BUSY": "The explainer is busy right now. Please wait a moment and try again — the finding is still shown.",
+    "AI_SUMMARY_FAILED": "We couldn't generate a summary right now. Your close's figures are still shown — try again in a moment.",
+    "AI_SUMMARY_BUSY": "The summarizer is busy right now. Please wait a moment and try again — your close's figures are still shown.",
     "INVOICE_CURRENCY_MISMATCH": "This invoice's currency doesn't match your organization's currency, so it can't be applied. Set the matching currency first.",
     "INVOICE_IMPORT_NOT_EDITABLE": "This invoice import has already been applied or discarded and can no longer be changed.",
     "INVOICE_IMPORT_EMPTY": "Match at least one line to an ingredient (with a pack size, unit, and price) before applying.",
@@ -257,6 +259,18 @@
       "title": "Stock consumed",
       "none": "No stock was consumed.",
       "financialOnly": "Stock was not posted for this date (financial-only mode)."
+    },
+    "summary": {
+      "title": "AI daily summary",
+      "empty": "Ask AI to summarize this day's sales, food cost and any standout items.",
+      "generate": "Summarize this day",
+      "refresh": "Refresh",
+      "disclaimer": "AI summary of figures PrepProfit already calculated — always double-check before acting.",
+      "riskLevel": {
+        "low": "Looks healthy",
+        "medium": "Worth a look",
+        "high": "Needs attention"
+      }
     },
     "errors": {
       "noLines": "Add at least one line before saving."

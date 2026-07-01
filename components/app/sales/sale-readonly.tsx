@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DailyCloseSummaryCard } from '@/components/app/sales/daily-close-summary-card';
 import { voidSaleAction } from '@/app/(app)/sales/actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
 
@@ -92,6 +93,8 @@ export function SaleReadonly({
           {t('voidedNote', { count: sale.consumptions.length })}
         </p>
       )}
+
+      {sale.status === 'posted' && <DailyCloseSummaryCard saleId={sale.id} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
