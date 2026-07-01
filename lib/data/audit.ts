@@ -203,6 +203,17 @@ export type AuditAction =
   | 'ai.extract'
   | 'ai.stage'
   | 'ai.extractFailed'
+  // Supplier Invoice Reader (Sprint 2, AI margin roadmap, manager-only). `ai.invoiceExtract`
+  // = an invoice was extracted into a draft import (attempt `succeeded`);
+  // `ai.invoiceExtractFailed` = the provider/validation failed (a `failed` attempt was
+  // recorded); `invoiceImport.apply` = approved lines were recorded as pending price
+  // observations; `invoiceImport.void` = a draft import was discarded. metadata holds
+  // only provider/model/token/line/observation COUNTS + ids — NEVER the document, raw
+  // line text, prices tied to a person, or supplier contact details.
+  | 'ai.invoiceExtract'
+  | 'ai.invoiceExtractFailed'
+  | 'invoiceImport.apply'
+  | 'invoiceImport.void'
   // GDPR account lifecycle (Sprint 5e). `account.export` = a manager downloaded the
   // full org data bundle (metadata = row count only, never the data). `account.
   // deletionRequest` / `account.deletionCancel` = a manager asked to erase / undid

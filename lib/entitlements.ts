@@ -53,6 +53,21 @@ export const AI_EXTRACTION_MONTHLY_LIMIT = {
   business: 500,
 } as const satisfies Record<PlanTier, number>;
 
+/**
+ * Monthly Supplier Invoice Reader allowance per tier (Sprint 2, AI margin roadmap).
+ * App-enforced (counted in `ai_operation_attempts`, feature
+ * `supplier_invoice_extraction`), NOT a Clerk feature — like photo extraction, AI is
+ * a universal differentiator metered by quota, not gated behind a paid flag. Starter
+ * gets a small TRIAL allowance (3/mo, plan §14) so every tier can try it; paid tiers
+ * get more. Counted per-ORGANIZATION per calendar month. Tunable here without a deploy
+ * of the gating logic.
+ */
+export const SUPPLIER_INVOICE_MONTHLY_LIMIT = {
+  starter: 3,
+  pro: 30,
+  business: 200,
+} as const satisfies Record<PlanTier, number>;
+
 /* -------------------------------------------------------------------------- */
 /* Pure helpers (no Clerk I/O) — unit-testable without mocks.                 */
 /* -------------------------------------------------------------------------- */
@@ -222,4 +237,18 @@ export async function aiExtractionMonthlyLimit(): Promise<{
 }> {
   const tier = await getPlanTier();
   return { limit: AI_EXTRACTION_MONTHLY_LIMIT[tier], tier };
+}
+
+/**
+ * The active org's monthly Supplier Invoice Reader allowance (Sprint 2), read
+ * fail-closed (`starter`). The upload route compares it against the count of this
+ * month's reserved attempts inside `withOrg` and returns `USAGE_LIMIT_REACHED` when
+ * the next call would exceed it.
+ */
+export async function supplierInvoiceMonthlyLimit(): Promise<{
+  limit: number;
+  tier: PlanTier;
+}> {
+  const tier = await getPlanTier();
+  return { limit: SUPPLIER_INVOICE_MONTHLY_LIMIT[tier], tier };
 }

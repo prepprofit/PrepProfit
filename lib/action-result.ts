@@ -60,7 +60,23 @@ export type ActionErrorCode =
   // is told to retry in a moment, not to take a clearer photo. Nothing is staged.
   | 'AI_EXTRACTION_BUSY'
   // The org reached its monthly AI-extraction allowance for the plan (Sprint 4.7).
+  // Also used for the Supplier Invoice Reader monthly cap (Sprint 2, AI margin roadmap).
   | 'USAGE_LIMIT_REACHED'
+  // The AI provider failed or returned unusable output while reading a supplier
+  // invoice (Sprint 2, AI margin roadmap). The document is discarded; nothing staged.
+  | 'AI_INVOICE_FAILED'
+  // The AI provider was TRANSIENTLY overloaded reading a supplier invoice and stayed
+  // busy through retries (Sprint 2) — retry in a moment, not a document problem.
+  | 'AI_INVOICE_BUSY'
+  // A supplier invoice import was applied while its currency differs from the org
+  // currency (Sprint 2, D6) — MVP requires a match; no silent gross/net mixing.
+  | 'INVOICE_CURRENCY_MISMATCH'
+  // Tried to edit/apply/void a supplier invoice import that is not a `draft`
+  // (Sprint 2) — applied/void imports are terminal history.
+  | 'INVOICE_IMPORT_NOT_EDITABLE'
+  // Tried to apply a supplier invoice import with no `ready` (matched + complete)
+  // lines (Sprint 2) — resolve at least one line first.
+  | 'INVOICE_IMPORT_EMPTY'
   // A recipe allergen override tried to lower/remove a presence — overrides may only
   // ADD or ESCALATE (Sprint 9). The derived allergens are never suppressible.
   | 'ALLERGEN_CANNOT_DOWNGRADE'

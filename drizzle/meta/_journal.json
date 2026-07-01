@@ -253,6 +253,13 @@
       "when": 1782807314824,
       "tag": "0035_awesome_banshee",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1782887759602,
+      "tag": "0036_romantic_rogue",
+      "breakpoints": true
     }
   ]
 }

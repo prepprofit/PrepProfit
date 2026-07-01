@@ -22,6 +22,13 @@ import type {
   ImportRowIssue,
 } from '@/lib/import/types';
 import type { AiExtractionStatus, AiQualityFlag } from '@/lib/ai/types';
+import type {
+  AiOperationStatus,
+  AiOperationFeature,
+  SupplierInvoiceImportStatus,
+  SupplierInvoiceLineStatus,
+  SupplierInvoiceLineIssueCode,
+} from '@/lib/ai/operation-types';
 import { ALLERGEN_SLUGS, PRESENCE_VALUES } from '@/lib/allergens/catalog';
 
 // The 14-slug + 2-presence whitelists as SQL string literals, so the DB CHECK
@@ -2624,6 +2631,226 @@ export const aiExtractionAttempts = pgTable(
 );
 
 /**
+ * Generic provider-backed AI operation ledger (Sprint 2, AI margin roadmap — D1).
+ * One row per metered AI call for any NEW feature (Supplier Invoice Reader is the
+ * first). Written `pending` BEFORE the provider call, flipped to `succeeded` or
+ * `failed` (with an `error_code`). It is the observability + USAGE-METERING ledger:
+ * the monthly cap per FEATURE counts `succeeded` (+ in-flight `pending`) rows for the
+ * org in the current month, inside the upload route's `withOrg`.
+ *
+ * DELIBERATELY separate from `ai_extraction_attempts` (the Sprint 4.7 photo ledger),
+ * which stays untouched (D1: avoid a risky migration of the working photo import).
+ *
+ * RULE #1: carries `organization_id`, is in `businessTables` (standard `org_isolation`
+ * RLS). `result_type`/`result_id` are a GENERIC, polymorphic provenance pointer to
+ * what the operation produced (e.g. a `supplier_invoice_import` row) — nullable, NO
+ * FK (the target table varies by feature; RLS + org scoping is the guard, same
+ * precedent as `ingredient_price_history.ingredient_supplier_id`). Stores ONLY
+ * non-sensitive metadata (provider/model/status, token counts, quality-flag codes,
+ * an error code) — NEVER document bytes or raw model prose.
+ */
+export const aiOperationAttempts = pgTable(
+  'ai_operation_attempts',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // The Clerk user who ran the operation (never null — operations are authenticated).
+    actorUserId: text('actor_user_id').notNull(),
+    feature: text('feature', {
+      enum: [
+        'supplier_invoice_extraction',
+        'profit_leak_explanation',
+        'menu_engineering_explanation',
+        'daily_close_summary',
+        'prep_reorder_plan_summary',
+        'kitchen_cfo_report',
+      ],
+    })
+      .$type<AiOperationFeature>()
+      .notNull(),
+    status: text('status', { enum: ['pending', 'succeeded', 'failed'] })
+      .$type<AiOperationStatus>()
+      .notNull()
+      .default('pending'),
+    // Vendor + pinned model id, for traceability.
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    // Provider token usage, when reported (NULL otherwise). Cost observability only.
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    // Estimated provider cost in micros; NULL when not computed. Provider spend
+    // metadata, NOT tenant money.
+    costMicros: integer('cost_micros'),
+    // Derived, stable quality-flag codes (feature-specific). Never raw model prose.
+    qualityFlags: jsonb('quality_flags').$type<string[]>(),
+    // Stable ActionErrorCode/reason on a failed attempt (NULL when succeeded).
+    errorCode: text('error_code'),
+    // Generic provenance pointer to what this operation produced (nullable, no FK).
+    resultType: text('result_type'),
+    resultId: text('result_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('ai_operation_attempts_org_idx').on(t.organizationId),
+    // Serves the per-feature monthly usage count: rows per (org, feature), newest-first.
+    index('ai_operation_attempts_org_feature_created_idx').on(
+      t.organizationId,
+      t.feature,
+      t.createdAt,
+    ),
+    // Backs the composite (org, id) FK from `supplier_invoice_imports.ai_attempt_id`.
+    unique('ai_operation_attempts_org_id_key').on(t.organizationId, t.id),
+  ],
+);
+
+/**
+ * Supplier invoice import — header (Sprint 2). A manager uploads an invoice
+ * (image/PDF); the model extraction becomes a `draft` the manager reviews. Applying
+ * turns approved lines into PENDING price observations (never approved-cost changes;
+ * see supplier_invoice_import_lines). MVP applies straight from `draft` → `applied`;
+ * `void` discards. Dedicated tables (not `import_jobs`) because invoice review is
+ * line-level + match-heavy (D2).
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard `org_isolation`
+ * RLS. Composite FKs force same-tenant links to the supplier + the AI attempt.
+ * Contact/PII is never stored here; `supplier_name_raw` is the short name string the
+ * model read (in GDPR export/deletion scope).
+ */
+export const supplierInvoiceImports = pgTable(
+  'supplier_invoice_imports',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // The Clerk user who uploaded the invoice (never null — uploads are authenticated).
+    actorUserId: text('actor_user_id').notNull(),
+    // Matched supplier (NULL until matched / created at apply). Composite FK below.
+    supplierId: text('supplier_id'),
+    // The supplier name the model read (short, review-only). NULL when unreadable.
+    supplierNameRaw: text('supplier_name_raw'),
+    // Invoice header fields the model read — informational, stored as text (never
+    // trusted for math). NULL when unreadable.
+    invoiceNumber: text('invoice_number'),
+    invoiceDate: text('invoice_date'),
+    // ISO-4217 currency the model read; MUST equal the org currency to apply (D6).
+    currencyCode: text('currency_code'),
+    status: text('status', {
+      enum: ['draft', 'staged', 'applied', 'void'],
+    })
+      .$type<SupplierInvoiceImportStatus>()
+      .notNull()
+      .default('draft'),
+    // The AI operation attempt that produced this import (usage/cost trail). Composite
+    // FK below so an import can only reference THIS org's attempt.
+    aiAttemptId: text('ai_attempt_id'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('supplier_invoice_imports_org_idx').on(t.organizationId),
+    index('supplier_invoice_imports_org_status_idx').on(
+      t.organizationId,
+      t.status,
+    ),
+    // FK target for the lines' composite (org, import_id).
+    unique('supplier_invoice_imports_org_id_key').on(t.organizationId, t.id),
+    // Same-tenant supplier link; suppliers are archived not deleted, so restrict never
+    // blocks in practice. NULL supplier_id rows skip the FK (MATCH SIMPLE).
+    foreignKey({
+      columns: [t.organizationId, t.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+      name: 'supplier_invoice_imports_supplier_fk',
+    }).onDelete('restrict'),
+    // Same-tenant AI-attempt link; attempts are never hard-deleted.
+    foreignKey({
+      columns: [t.organizationId, t.aiAttemptId],
+      foreignColumns: [aiOperationAttempts.organizationId, aiOperationAttempts.id],
+      name: 'supplier_invoice_imports_attempt_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * Supplier invoice import — line (Sprint 2). One extracted invoice line the manager
+ * reviews/edits/matches. Applying a `ready` line records a `source='import'`
+ * `ingredient_price_history` observation for `matched_ingredient_id` and raises that
+ * ingredient's `pending_price_cents` — it NEVER touches `price_cents`.
+ *
+ * `matched_ingredient_id` is nullable + NO FK: the match is re-validated at apply
+ * time under `withOrg` (RLS + a FOR UPDATE lock on the ingredient), the same
+ * precedent as `import_jobs` storing resolutions without an FK. Money is integer
+ * cents; `quantity_value`/`pack_size_value` are physical amounts (numeric, not
+ * money); `confidence` is the model's per-line certainty in [0,1]. `raw_text` /
+ * `item_name_raw` are short customer content — review-only, in GDPR scope, never
+ * logged/audited.
+ */
+export const supplierInvoiceImportLines = pgTable(
+  'supplier_invoice_import_lines',
+  {
+    id: id(),
+    organizationId: orgId(),
+    importId: text('import_id').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    // The full source line as transcribed — review display only, never logged/audited.
+    rawText: text('raw_text'),
+    // The item name the model read (review + resolver input).
+    itemNameRaw: text('item_name_raw').notNull(),
+    // The ingredient this line was matched to (nullable; re-validated at apply).
+    matchedIngredientId: text('matched_ingredient_id'),
+    // Physical amounts the model read (numeric, NOT money). NULL when unreadable.
+    quantityValue: numeric('quantity_value', { precision: 12, scale: 2 }),
+    quantityUnit: text('quantity_unit'),
+    packSizeValue: numeric('pack_size_value', { precision: 12, scale: 2 }),
+    packSizeUnit: text('pack_size_unit'),
+    // Prices the model read (integer cents). NULL when unreadable.
+    unitPriceCents: integer('unit_price_cents'),
+    lineTotalCents: integer('line_total_cents'),
+    // The per-priced-unit cost derived at apply (integer cents); NULL until derived.
+    derivedPriceCents: integer('derived_price_cents'),
+    // The model's per-line certainty in [0,1].
+    confidence: numeric('confidence', { precision: 4, scale: 3 }),
+    status: text('status', {
+      enum: ['ready', 'needs_review', 'ignored', 'applied'],
+    })
+      .$type<SupplierInvoiceLineStatus>()
+      .notNull()
+      .default('needs_review'),
+    // Stable review issue codes (localized client-side). Never PII.
+    issues: jsonb('issues').$type<SupplierInvoiceLineIssueCode[]>(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('supplier_invoice_import_lines_org_idx').on(t.organizationId),
+    index('supplier_invoice_import_lines_org_import_idx').on(
+      t.organizationId,
+      t.importId,
+    ),
+    // Money integrity: non-negative prices when present.
+    check(
+      'supplier_invoice_import_lines_unit_price_chk',
+      sql`${t.unitPriceCents} is null or ${t.unitPriceCents} >= 0`,
+    ),
+    check(
+      'supplier_invoice_import_lines_line_total_chk',
+      sql`${t.lineTotalCents} is null or ${t.lineTotalCents} >= 0`,
+    ),
+    check(
+      'supplier_invoice_import_lines_derived_price_chk',
+      sql`${t.derivedPriceCents} is null or ${t.derivedPriceCents} >= 0`,
+    ),
+    // Lines die with their import header (same-tenant composite FK).
+    foreignKey({
+      columns: [t.organizationId, t.importId],
+      foreignColumns: [
+        supplierInvoiceImports.organizationId,
+        supplierInvoiceImports.id,
+      ],
+      name: 'supplier_invoice_import_lines_import_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
  * Rate-limit buckets (Sprint 3.1). INFRA table — DELIBERATELY NOT a business table:
  * it carries no `organization_id` and is NOT in `businessTables`, so it gets NO RLS.
  * This is the one documented exception to RULE #1 (CLAUDE.md "rate limiting"): the
@@ -2733,6 +2960,16 @@ export type ImportJob = InferSelectModel<typeof importJobs>;
 export type NewImportJob = InferInsertModel<typeof importJobs>;
 export type AiExtractionAttempt = InferSelectModel<typeof aiExtractionAttempts>;
 export type NewAiExtractionAttempt = InferInsertModel<typeof aiExtractionAttempts>;
+export type AiOperationAttempt = InferSelectModel<typeof aiOperationAttempts>;
+export type NewAiOperationAttempt = InferInsertModel<typeof aiOperationAttempts>;
+export type SupplierInvoiceImport = InferSelectModel<typeof supplierInvoiceImports>;
+export type NewSupplierInvoiceImport = InferInsertModel<typeof supplierInvoiceImports>;
+export type SupplierInvoiceImportLine = InferSelectModel<
+  typeof supplierInvoiceImportLines
+>;
+export type NewSupplierInvoiceImportLine = InferInsertModel<
+  typeof supplierInvoiceImportLines
+>;
 export type RateLimitRow = InferSelectModel<typeof rateLimits>;
 export type Sale = InferSelectModel<typeof sales>;
 export type NewSale = InferInsertModel<typeof sales>;
@@ -2808,6 +3045,13 @@ export const businessTables = [
   // AI extraction attempts (Sprint 4.7) — observability + usage metering, standard
   // org_isolation RLS.
   'ai_extraction_attempts',
+  // Generic AI operation ledger (Sprint 2, AI margin roadmap) — observability +
+  // per-feature usage metering, standard org_isolation RLS.
+  'ai_operation_attempts',
+  // Supplier invoice imports + their lines (Sprint 2) — staged review of an uploaded
+  // invoice; apply records pending price observations only. Standard org_isolation RLS.
+  'supplier_invoice_imports',
+  'supplier_invoice_import_lines',
   // Kitchen task lists + their tasks (Sprint 6) — standard org_isolation RLS.
   // Money-free operational data.
   'task_lists',
