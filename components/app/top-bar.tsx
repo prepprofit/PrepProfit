@@ -5,7 +5,15 @@ import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import * as React from 'react';
 import { UserButton } from '@clerk/nextjs';
-import { Bell, Menu, Search } from 'lucide-react';
+import {
+  Bell,
+  Menu,
+  Search,
+  Settings,
+  CreditCard,
+  Upload,
+  Trash2,
+} from 'lucide-react';
 import { navItems } from '@/lib/nav';
 import { clerkAppearance } from '@/lib/clerk-appearance';
 import { ThemeToggle } from './theme-toggle';
@@ -16,9 +24,15 @@ const iconButton =
 export function TopBar({
   onMenuClick,
   onSearchClick,
+  canSeeFinance = true,
 }: {
   onMenuClick: () => void;
   onSearchClick: () => void;
+  /**
+   * Manager-only gate. The account/admin links (Settings, Billing, Import,
+   * Trash) live in the user-button menu; each route is still server-enforced.
+   */
+  canSeeFinance?: boolean;
 }) {
   const pathname = usePathname();
   const t = useTranslations('nav');
@@ -88,7 +102,34 @@ export function TopBar({
             aria-hidden
           />
         </button>
-        <UserButton appearance={clerkAppearance(resolvedTheme === 'dark')} />
+        <UserButton appearance={clerkAppearance(resolvedTheme === 'dark')}>
+          {/* Account/admin links relocated from the sidebar footer — manager-only
+              (each route is still enforced server-side). */}
+          {canSeeFinance && (
+            <UserButton.MenuItems>
+              <UserButton.Link
+                label={t('settings')}
+                labelIcon={<Settings className="size-4" />}
+                href="/settings"
+              />
+              <UserButton.Link
+                label={t('billing')}
+                labelIcon={<CreditCard className="size-4" />}
+                href="/billing"
+              />
+              <UserButton.Link
+                label={t('import')}
+                labelIcon={<Upload className="size-4" />}
+                href="/import"
+              />
+              <UserButton.Link
+                label={t('trash')}
+                labelIcon={<Trash2 className="size-4" />}
+                href="/trash"
+              />
+            </UserButton.MenuItems>
+          )}
+        </UserButton>
       </div>
     </header>
   );

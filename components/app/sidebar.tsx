@@ -25,10 +25,6 @@ import {
   Truck,
   ClipboardList,
   ShoppingCart,
-  Settings,
-  CreditCard,
-  Upload,
-  Trash2,
   PanelLeftClose,
   PanelLeftOpen,
   ChevronDown,
@@ -175,10 +171,10 @@ export function Sidebar({
     });
   };
 
-  // The bottom section holds manager-only links (Trash/Settings) and the org
-  // switcher (expanded only). Skip it entirely when it would be empty — a
-  // kitchen user on the collapsed rail — so no stray divider line shows.
-  const showFooter = canSeeFinance || !collapsed;
+  // The bottom section now holds only the org switcher (expanded rail only —
+  // the account/admin links moved to the top-bar user menu). Skip it on the
+  // collapsed rail so no stray divider line shows.
+  const showFooter = !collapsed;
 
   return (
     <aside
@@ -291,70 +287,14 @@ export function Sidebar({
 
       {showFooter && (
         <div className="flex flex-col gap-2 border-t border-border p-3">
-          {/* Trash is manager-only (financial records + destructive purges); the
-              server enforces it on the page + every action, this just hides it. */}
-          {canSeeFinance && (
-            <Link
-              href="/trash"
-              onClick={onNavigate}
-              aria-current={isActive('/trash') ? 'page' : undefined}
-              title={collapsed ? t('trash') : undefined}
-              className={navRowClass(isActive('/trash'), collapsed)}
-            >
-              <Trash2 className="size-4 shrink-0" />
-              {!collapsed && t('trash')}
-            </Link>
-          )}
-          {/* Plans & billing — subscription/entitlements (Sprint 4). Manager-only;
-              the page + Clerk checkout require org-admin too. */}
-          {canSeeFinance && (
-            <Link
-              href="/billing"
-              onClick={onNavigate}
-              aria-current={isActive('/billing') ? 'page' : undefined}
-              title={collapsed ? t('billing') : undefined}
-              className={navRowClass(isActive('/billing'), collapsed)}
-            >
-              <CreditCard className="size-4 shrink-0" />
-              {!collapsed && t('billing')}
-            </Link>
-          )}
-          {/* Deterministic import (Sprint 4.5) — creates ingredients/transactions
-              from a file; manager-only, the server enforces the page + actions. */}
-          {canSeeFinance && (
-            <Link
-              href="/import"
-              onClick={onNavigate}
-              aria-current={isActive('/import') ? 'page' : undefined}
-              title={collapsed ? t('import') : undefined}
-              className={navRowClass(isActive('/import'), collapsed)}
-            >
-              <Upload className="size-4 shrink-0" />
-              {!collapsed && t('import')}
-            </Link>
-          )}
-          {/* Settings edits org-wide config (currency, measurement system) — a
-              manager concern; the server must enforce it too (see settings page). */}
-          {canSeeFinance && (
-            <Link
-              href="/settings"
-              onClick={onNavigate}
-              aria-current={isActive('/settings') ? 'page' : undefined}
-              title={collapsed ? t('settings') : undefined}
-              className={navRowClass(isActive('/settings'), collapsed)}
-            >
-              <Settings className="size-4 shrink-0" />
-              {!collapsed && t('settings')}
-            </Link>
-          )}
-          {!collapsed && (
-            <OrganizationSwitcher
-              hidePersonal
-              afterCreateOrganizationUrl="/dashboard"
-              afterSelectOrganizationUrl="/dashboard"
-              appearance={clerkAppearance(resolvedTheme === 'dark')}
-            />
-          )}
+          {/* Account/admin links (Trash, Billing, Import, Settings) live in the
+              top-bar user menu now; the footer keeps only the org switcher. */}
+          <OrganizationSwitcher
+            hidePersonal
+            afterCreateOrganizationUrl="/dashboard"
+            afterSelectOrganizationUrl="/dashboard"
+            appearance={clerkAppearance(resolvedTheme === 'dark')}
+          />
         </div>
       )}
     </aside>
