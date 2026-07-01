@@ -5,15 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import * as React from 'react';
 import { UserButton } from '@clerk/nextjs';
-import {
-  Bell,
-  Menu,
-  Search,
-  Settings,
-  CreditCard,
-  Upload,
-  Trash2,
-} from 'lucide-react';
+import { Bell, Menu, Search, Settings, CreditCard } from 'lucide-react';
 import { navItems } from '@/lib/nav';
 import { clerkAppearance } from '@/lib/clerk-appearance';
 import { ThemeToggle } from './theme-toggle';
@@ -116,16 +108,6 @@ export function TopBar({
                 label={t('billing')}
                 labelIcon={<CreditCard className="size-4" />}
                 href="/billing"
-              />
-              <UserButton.Link
-                label={t('import')}
-                labelIcon={<Upload className="size-4" />}
-                href="/import"
-              />
-              <UserButton.Link
-                label={t('trash')}
-                labelIcon={<Trash2 className="size-4" />}
-                href="/trash"
               />
             </UserButton.MenuItems>
           )}

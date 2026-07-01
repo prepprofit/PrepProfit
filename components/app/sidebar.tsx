@@ -25,6 +25,8 @@ import {
   Truck,
   ClipboardList,
   ShoppingCart,
+  Upload,
+  Trash2,
   PanelLeftClose,
   PanelLeftOpen,
   ChevronDown,
@@ -171,10 +173,10 @@ export function Sidebar({
     });
   };
 
-  // The bottom section now holds only the org switcher (expanded rail only —
-  // the account/admin links moved to the top-bar user menu). Skip it on the
-  // collapsed rail so no stray divider line shows.
-  const showFooter = !collapsed;
+  // The bottom section holds manager-only links (Trash/Import) and the org
+  // switcher (expanded only). Skip it entirely when it would be empty — a
+  // kitchen user on the collapsed rail — so no stray divider line shows.
+  const showFooter = canSeeFinance || !collapsed;
 
   return (
     <aside
@@ -287,14 +289,43 @@ export function Sidebar({
 
       {showFooter && (
         <div className="flex flex-col gap-2 border-t border-border p-3">
-          {/* Account/admin links (Trash, Billing, Import, Settings) live in the
-              top-bar user menu now; the footer keeps only the org switcher. */}
-          <OrganizationSwitcher
-            hidePersonal
-            afterCreateOrganizationUrl="/dashboard"
-            afterSelectOrganizationUrl="/dashboard"
-            appearance={clerkAppearance(resolvedTheme === 'dark')}
-          />
+          {/* Settings + Plans & billing live in the top-bar user menu; Trash and
+              Import stay here. Trash is manager-only (financial records +
+              destructive purges); the server enforces the page + every action. */}
+          {canSeeFinance && (
+            <Link
+              href="/trash"
+              onClick={onNavigate}
+              aria-current={isActive('/trash') ? 'page' : undefined}
+              title={collapsed ? t('trash') : undefined}
+              className={navRowClass(isActive('/trash'), collapsed)}
+            >
+              <Trash2 className="size-4 shrink-0" />
+              {!collapsed && t('trash')}
+            </Link>
+          )}
+          {/* Deterministic import (Sprint 4.5) — creates ingredients/transactions
+              from a file; manager-only, the server enforces the page + actions. */}
+          {canSeeFinance && (
+            <Link
+              href="/import"
+              onClick={onNavigate}
+              aria-current={isActive('/import') ? 'page' : undefined}
+              title={collapsed ? t('import') : undefined}
+              className={navRowClass(isActive('/import'), collapsed)}
+            >
+              <Upload className="size-4 shrink-0" />
+              {!collapsed && t('import')}
+            </Link>
+          )}
+          {!collapsed && (
+            <OrganizationSwitcher
+              hidePersonal
+              afterCreateOrganizationUrl="/dashboard"
+              afterSelectOrganizationUrl="/dashboard"
+              appearance={clerkAppearance(resolvedTheme === 'dark')}
+            />
+          )}
         </div>
       )}
     </aside>
