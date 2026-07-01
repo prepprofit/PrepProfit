@@ -294,6 +294,11 @@ The billing webhook (`/api/webhooks/clerk`, slice 4c) requires
 
 Vercel does not run database migrations automatically.
 
+Note: `next build` fetches Roboto/Outfit from Google Fonts (`next/font/google`),
+so the build environment needs outbound network access to `fonts.googleapis.com`
+/ `fonts.gstatic.com`. In a restricted-egress CI, either allowlist those hosts or
+vendor the fonts with `next/font/local`.
+
 ## Useful commands
 
 | Action | Command |

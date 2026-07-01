@@ -190,6 +190,75 @@ comparação constant-time, e `npm audit --omit=dev` retorna 0 vulnerabilidades.
 1. `1223cc9` — `fix(rls): org-scope invoice-import line status updates in
    applyInvoiceImport` (LOW-1).
 
+## Adendo (2026-07-02) — disposição do relatório de auditoria do dev
+
+Um segundo relatório (`prelaunch-audit-report.md`, dev externo, 2026-07-01, sobre
+o zip `PrepProfit-main (36)`) foi verificado achado a achado contra o código
+atual da `main`:
+
+| # | Achado do dev | Veredito | Ação |
+|---|---|---|---|
+| 1 | P1 — billing/pricing/entitlements inconsistentes | **Parcialmente válido** | Docs corrigidos + teste de regressão (abaixo) |
+| 2 | P1 — `CLERK_WEBHOOK_SIGNING_SECRET` fora do `.env.example` | **Válido** | Corrigido |
+| 3 | P2 — size check pós-parse nos uploads | **Válido** | Corrigido (pré-check de `Content-Length`) |
+| 4 | P2 — 4 vulns moderate no npm | **Válido, risco aceito** | Triagem documentada (abaixo) |
+| 5 | P2 — SSRF/DNS-rebinding residual no logo fetch | **Conhecido/deliberado** | Deferido (recomendação) |
+| 6 | P2 — CSP Report-Only | **Já dispositionado** (REC-1 acima) | Deferido (ação do owner em prod) |
+| 7 | P3 — E2E/checkout smoke opt-in | **Válido, ops** | Deferido (exige secrets de staging — owner) |
+| 8 | P3 — build depende do Google Fonts | **Válido, baixo risco** | Documentado no SETUP.md; vendoring deferido |
+
+**#1 — o que era real e o que não era.** A "inconsistência de moeda"
+(`clerk/billing.json` em USD vs copy em EUR) é um placeholder de dev
+DOCUMENTADO (CLAUDE.md: o gateway dev do Clerk só aceita USD; o prod cobra
+€29/€79 em EUR) — não é bug. Real era o doc stale: SETUP.md listava cap de 50
+receitas (vivo: 10), preço $99 (vivo: $79/€79) e um feature Clerk `ai_extraction`
+que foi removido de propósito (AI é universal, medida só por quota mensal
+app-side). SETUP.md corrigido; PLANO.md anotado (registros históricos de sprint
+ganharam nota "superseded" em vez de reescrever história); novo
+`tests/billing-catalogue.test.ts` trava `clerk/billing.json` ↔
+`lib/entitlements.ts` ↔ copy público de pricing (4 asserts) para nunca mais
+driftarem em silêncio. Commit `0ed8b4c`.
+
+**#2.** `.env.example` ganhou o bloco `CLERK_WEBHOOK_SIGNING_SECRET` (obrigatório
+em prod — sem ele todo evento Clerk é rejeitado com 400) e o SETUP.md deixou de
+dizer "not used until slice 4c lands" (4c está no ar). Commit `0ed8b4c`.
+
+**#3.** Novo guard `declaredBodyExceeds` (`lib/validation/request-size.ts`):
+as rotas de upload AI (photo, photo/stage, supplier invoice) agora respondem 413
+a um `Content-Length` declarado acima do cap ANTES de bufferizar o corpo.
+Header ausente/malformado segue para o parser de propósito: o cap de corpo da
+plataforma (Vercel ~4.5 MB) e os validadores de bytes pós-parse continuam sendo
+o limite autoritativo — o guard é fast-fail, não a fronteira de segurança.
+Testes: unit (5 casos) + 413 nas duas rotas. Commit `74fa58f`.
+
+**#4 — triagem das 4 moderates.** As quatro são UMA cadeia devDependency:
+`esbuild <=0.24.2` ← `@esbuild-kit/core-utils` ← `@esbuild-kit/esm-loader` ←
+`drizzle-kit` (GHSA-67mh-4wv8-2f99). Não alcançável em produção: o advisory é
+sobre o DEV SERVER do esbuild (que o drizzle-kit nem executa — usa esbuild só
+para carregar config na CLI local de migração), drizzle-kit não entra no bundle
+e `npm audit --omit=dev` = **0 vulnerabilidades**. Não há fix upstream:
+drizzle-kit já está na última versão (0.31.10) e o `npm audit fix --force`
+faria DOWNGRADE para 0.18.1. Disposição: **risco aceito**. Recomendação:
+manter o CI em `--audit-level=high` para deps de prod (mudar para `moderate`
+falharia permanentemente nesta cadeia sem fix); revisitar quando o drizzle-kit
+trocar o loader.
+
+**#5.** O risco residual TOCTOU/DNS-rebinding em `lib/documents/logo.ts` é
+deliberado e documentado no próprio arquivo (pinning de IP quebraria SNI/cert);
+os 6 controles ativos (https-only, lookup + blocklist de IP privado, sem
+redirect, cap de 2 MB streamed, timeout 3s, allowlist de content-type) limitam o
+blast radius a um GET cego que só "vaza" se a resposta for image/*. Fix real =
+trocar URL remota por upload de arquivo em storage controlado (feature change,
+fora do escopo cirúrgico). Fica como recomendação de produto.
+
+**#7.** A infra E2E existe (`.github/workflows/ci.yml`, job gated por
+`RUN_E2E == 'true'` + secrets `E2E_*`); ligá-la exige instância Clerk de staging
+e usuários seed — ação do owner antes do launch pago, junto com um checkout real
+de staging por plano (verificar moeda/valor/webhook/entitlement resultante).
+
+**#8.** Nota adicionada ao SETUP.md §8: o build precisa de egress para Google
+Fonts; vendoring via `next/font/local` só se builds offline virarem requisito.
+
 ## Resultado do gate
 
 `npm run lint && npm run typecheck && npm test && npm run build` — **VERDE**
@@ -200,3 +269,7 @@ comparação constant-time, e `npm audit --omit=dev` retorna 0 vulnerabilidades.
 - Testes: **158 arquivos / 1395 passed, 30 skipped** (skips são os testes
   opt-in de Postgres real, como sempre)
 - Build: compilado com sucesso, 32/32 páginas geradas
+
+Re-rodado após o adendo (fixes F1/F2/F3 do relatório do dev + 3 arquivos de
+teste novos/estendidos): verde novamente — resultado registrado no commit do
+adendo.
