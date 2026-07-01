@@ -433,7 +433,12 @@ export async function applyInvoiceImport(
       await db
         .update(supplierInvoiceImportLines)
         .set({ status: 'needs_review' })
-        .where(eq(supplierInvoiceImportLines.id, line.id));
+        .where(
+          and(
+            eq(supplierInvoiceImportLines.organizationId, organizationId),
+            eq(supplierInvoiceImportLines.id, line.id),
+          ),
+        );
       skipped++;
       continue;
     }
@@ -451,7 +456,12 @@ export async function applyInvoiceImport(
       await db
         .update(supplierInvoiceImportLines)
         .set({ status: 'needs_review', matchedIngredientId: null })
-        .where(eq(supplierInvoiceImportLines.id, line.id));
+        .where(
+          and(
+            eq(supplierInvoiceImportLines.organizationId, organizationId),
+            eq(supplierInvoiceImportLines.id, line.id),
+          ),
+        );
       skipped++;
       continue;
     }
@@ -459,7 +469,12 @@ export async function applyInvoiceImport(
     await db
       .update(supplierInvoiceImportLines)
       .set({ status: 'applied', derivedPriceCents: result.derivedPriceCents })
-      .where(eq(supplierInvoiceImportLines.id, line.id));
+      .where(
+        and(
+          eq(supplierInvoiceImportLines.organizationId, organizationId),
+          eq(supplierInvoiceImportLines.id, line.id),
+        ),
+      );
     applied++;
   }
 
