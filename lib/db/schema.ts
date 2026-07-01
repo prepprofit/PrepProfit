@@ -28,6 +28,7 @@ import type {
   SupplierInvoiceImportStatus,
   SupplierInvoiceLineStatus,
   SupplierInvoiceLineIssueCode,
+  ProfitLeakExplanationData,
 } from '@/lib/ai/operation-types';
 import { ALLERGEN_SLUGS, PRESENCE_VALUES } from '@/lib/allergens/catalog';
 
@@ -2851,6 +2852,52 @@ export const supplierInvoiceImportLines = pgTable(
 );
 
 /**
+ * Profit insight — one deterministic profit-leak finding's AI/triage state (Sprint 4,
+ * AI margin roadmap). Keyed by the finding's stable `fingerprint`: findings themselves
+ * are RECOMPUTED on every read from the live catalogue (never stored), so this table
+ * holds only the *sidecar* state a finding can accumulate — the cached AI explanation
+ * (so re-opening never re-calls the paid provider) and a `dismissed_at` triage flag.
+ *
+ * The explanation can only ever exist for a real finding (the action re-derives the
+ * finding by fingerprint before writing here), and a missing row simply means "not yet
+ * explained / not dismissed" — a failed or quota-blocked AI call leaves no row and the
+ * finding still surfaces. NARROW by design (plan §9): NOT a broad `ai_insights` table.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard `org_isolation`
+ * RLS. The producing AI attempt is linked from `ai_operation_attempts` via its generic
+ * `result_type='profit_insight'` / `result_id` pointer (no FK needed here). No PII:
+ * `entity_name`-style raw text is NOT stored — only ids, the finding type, and the
+ * model's bounded explanation prose.
+ */
+export const profitInsights = pgTable(
+  'profit_insights',
+  {
+    id: id(),
+    organizationId: orgId(),
+    // Stable de-dup key from the deterministic finding (lib/calculations/profit-leaks).
+    fingerprint: text('fingerprint').notNull(),
+    // Finding descriptors, stored so a dismissed finding can be listed without re-derive.
+    findingType: text('finding_type').notNull(),
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id').notNull(),
+    // The cached, schema-validated AI explanation (NULL until explained). Bounded prose
+    // + a risk label — never a computed money figure.
+    explanation: jsonb('explanation').$type<ProfitLeakExplanationData>(),
+    // The model id that produced the cached explanation (NULL until explained).
+    explanationModel: text('explanation_model'),
+    // Set when the manager dismisses the finding; NULL = active. Restoring nulls it.
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('profit_insights_org_idx').on(t.organizationId),
+    // One sidecar row per (org, finding). Backs the upsert on explain/dismiss.
+    unique('profit_insights_org_fingerprint_key').on(t.organizationId, t.fingerprint),
+  ],
+);
+
+/**
  * Rate-limit buckets (Sprint 3.1). INFRA table — DELIBERATELY NOT a business table:
  * it carries no `organization_id` and is NOT in `businessTables`, so it gets NO RLS.
  * This is the one documented exception to RULE #1 (CLAUDE.md "rate limiting"): the
@@ -2970,6 +3017,8 @@ export type SupplierInvoiceImportLine = InferSelectModel<
 export type NewSupplierInvoiceImportLine = InferInsertModel<
   typeof supplierInvoiceImportLines
 >;
+export type ProfitInsight = InferSelectModel<typeof profitInsights>;
+export type NewProfitInsight = InferInsertModel<typeof profitInsights>;
 export type RateLimitRow = InferSelectModel<typeof rateLimits>;
 export type Sale = InferSelectModel<typeof sales>;
 export type NewSale = InferInsertModel<typeof sales>;
@@ -3052,6 +3101,9 @@ export const businessTables = [
   // invoice; apply records pending price observations only. Standard org_isolation RLS.
   'supplier_invoice_imports',
   'supplier_invoice_import_lines',
+  // Profit-insight sidecar state (Sprint 4, AI margin roadmap) — cached AI explanation
+  // + dismiss flag per deterministic finding. Standard org_isolation RLS.
+  'profit_insights',
   // Kitchen task lists + their tasks (Sprint 6) — standard org_isolation RLS.
   // Money-free operational data.
   'task_lists',

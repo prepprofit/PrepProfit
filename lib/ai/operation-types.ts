@@ -74,6 +74,22 @@ export type SupplierInvoiceLineStatus =
  * Stable, machine issue codes for why an invoice line is `needs_review`. Localized
  * client-side (`suppliers.invoices.import.lineIssues.<code>`), never raw model prose.
  */
+/**
+ * The persisted AI explanation shape (Sprint 4, AI margin roadmap). Kept here — in the
+ * dependency-free types module — so `lib/db/schema.ts` can `$type` the `profit_insights.
+ * explanation` jsonb column WITHOUT importing the Gemini SDK / zod from
+ * `lib/ai/profit-leak-explanation.ts`. That module's `ProfitLeakExplanation`
+ * (`z.infer` of the runtime schema) is the untrusted-input validator and is structurally
+ * identical to this — the runtime schema stays the source of truth for validation, this
+ * is only the storage type.
+ */
+export type ProfitLeakExplanationData = {
+  headline: string;
+  explanation: string;
+  actionLabel: string;
+  riskLevel: 'low' | 'medium' | 'high';
+};
+
 export const SUPPLIER_INVOICE_LINE_ISSUE_CODES = [
   // No usable quantity (or it could not be parsed to a positive number).
   'MISSING_QUANTITY',

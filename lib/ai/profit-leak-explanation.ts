@@ -9,6 +9,7 @@ import {
 import { z } from 'zod';
 import { aiEnv } from '@/lib/env';
 import type { ExplanationFacts } from '@/lib/calculations/explanation-facts';
+import type { ProfitLeakExplanationData } from './operation-types';
 
 /**
  * Profit-leak AI explanation provider seam (Sprint 4, AI margin roadmap).
@@ -60,6 +61,18 @@ export const profitLeakExplanationSchema = z.object({
   riskLevel: z.enum(['low', 'medium', 'high']),
 });
 export type ProfitLeakExplanation = z.infer<typeof profitLeakExplanationSchema>;
+
+/**
+ * Compile-time guard: the validated shape MUST stay structurally identical to the
+ * dependency-free storage type used by the `profit_insights.explanation` column. If
+ * either side changes, this line stops compiling.
+ */
+type _AssertExplanationStorageInSync = [
+  ProfitLeakExplanation extends ProfitLeakExplanationData ? true : never,
+  ProfitLeakExplanationData extends ProfitLeakExplanation ? true : never,
+];
+const _explanationStorageInSync: _AssertExplanationStorageInSync = [true, true];
+void _explanationStorageInSync;
 
 /**
  * The Gemini structured-output (`responseSchema`) mirror of the Zod schema. Kept
