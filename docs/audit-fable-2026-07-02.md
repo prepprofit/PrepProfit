@@ -192,4 +192,11 @@ comparação constant-time, e `npm audit --omit=dev` retorna 0 vulnerabilidades.
 
 ## Resultado do gate
 
-(pendente — preenchido ao final)
+`npm run lint && npm run typecheck && npm test && npm run build` — **VERDE**
+(exit 0), rodado no fim da auditoria com o fix LOW-1 aplicado:
+
+- Lint: pass
+- Typecheck: pass
+- Testes: **158 arquivos / 1395 passed, 30 skipped** (skips são os testes
+  opt-in de Postgres real, como sempre)
+- Build: compilado com sucesso, 32/32 páginas geradas
