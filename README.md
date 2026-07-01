@@ -180,7 +180,7 @@ Full detail in [the implementation plan](docs/prepprofit_ai_implementation_plan_
 | 3 | Invoice → Profit Impact Loop | Shows which recipes/menus fall under margin after a cost change | ✅ Shipped |
 | 4 | AI Explanations + Profit Insight Inbox | Explains deterministic findings in chef-friendly language | ✅ Shipped |
 | 5 | Menu Engineer | Classifies items by popularity and profitability | ✅ Shipped |
-| 6 | Daily Close Summary | Explains posted sales and food-cost anomalies | Planned |
+| 6 | Daily Close Summary | Explains posted sales and food-cost anomalies | ✅ Shipped |
 | 7 | Prep / Reorder Planner | Suggests prep and reorder tasks from recipes and stock | Planned |
 | 8 | Weekly CFO Report → chat | Premium management layer over trusted insights | Planned |
 
@@ -200,6 +200,17 @@ margin in cents (profitability) — never a global magic number. An org-scoped l
 posted-sale volume (draft/void excluded), and a manager-only page renders the matrix. The same
 honesty rules hold: an item with no selling price or an unavailable cost is set aside as *needs
 pricing*, never given a fabricated margin. No LLM call.
+
+**Sprint 6 — Daily Close Summary** is live: a pure, tested fact engine
+([`lib/calculations/daily-close-insights.ts`](lib/calculations/daily-close-insights.ts)) that
+distils a *posted* daily close into deterministic facts — estimated food cost (over net),
+top sellers, below-target sellers, missing-cost items, and variance versus comparable same-weekday
+closes. An org-scoped loader ([`lib/data/daily-close-insights.ts`](lib/data/daily-close-insights.ts))
+resolves current catalogue cost (a draft/void close yields nothing), and a manager-only card on the
+close calls Gemini through a thin seam
+([`lib/ai/daily-close-summary.ts`](lib/ai/daily-close-summary.ts)) that only *summarizes* those
+figures — it never computes food cost, and it flags the food cost as partial whenever an item is
+still unpriced. Quota-metered per plan, cost recorded on every call.
 
 Non-negotiable rules for every sprint in this track:
 
