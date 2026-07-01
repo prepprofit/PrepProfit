@@ -390,15 +390,16 @@ Product note:
 - This is post-MVP expansion unless beta feedback proves tasks are needed for launch.
 - Tasks are operational, not financial. Both manager and kitchen can read and complete tasks.
 
-Tasks:
+Tasks: (SHIPPED — verified in code 2026-07-02 during the Fable audit; all seven
+items are present and covered by the green gate, they were simply never ticked.)
 
-- [ ] `task_lists` and `tasks` tables, composite FKs, RLS, migration guard, isolation tests.
-- [ ] Data layer and Server Actions for list/task CRUD, toggle, assign, reorder, reset, duplicate, soft-delete, restore, purge.
-- [ ] Integrations: low-stock ingredient to reorder task; recipe to prep tasks.
-- [ ] Extend trash/purge paths so purged recipes/ingredients null task source links first.
-- [ ] Register tasks in global search for both roles.
-- [ ] `/tasks` UI: list rail, task rows, status checkbox, assignee, due date, reorder, empty states, keyboard and mobile support.
-- [ ] Tests for org isolation, RBAC, status toggle, assignment, reorder, soft-delete/restore, purge-null-link, reset/duplicate, integrations, and search registration.
+- [x] `task_lists` and `tasks` tables, composite FKs, RLS, migration guard, isolation tests. (`lib/db/schema.ts`, `tests/tasks.test.ts`.)
+- [x] Data layer and Server Actions for list/task CRUD, toggle, assign, reorder, reset, duplicate, soft-delete, restore, purge. (`lib/data/tasks.ts`, `app/(app)/tasks/actions.ts`.)
+- [x] Integrations: low-stock ingredient to reorder task; recipe to prep tasks. (`createReorderTaskFromIngredient` / `createPrepTaskFromRecipe` in `lib/data/tasks.ts`.)
+- [x] Extend trash/purge paths so purged recipes/ingredients null task source links first. (`lib/data/trash.ts` nulls `sourceRecipeId` / `sourceIngredientId` before delete.)
+- [x] Register tasks in global search for both roles. (`lib/search/queries.ts` — money-free task-list rows.)
+- [x] `/tasks` UI: list rail, task rows, status checkbox, assignee, due date, reorder, empty states, keyboard and mobile support. (`app/(app)/tasks/page.tsx`.)
+- [x] Tests for org isolation, RBAC, status toggle, assignment, reorder, soft-delete/restore, purge-null-link, reset/duplicate, integrations, and search registration. (`tests/tasks.test.ts`.)
 
 Acceptance criteria:
 

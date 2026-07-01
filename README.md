@@ -163,7 +163,7 @@ Required production checks:
 - [x] Sprint 4.6 - Recipe import and ingredient resolver
 - [x] Sprint 4.7 - AI photo recipe extraction (Gemini), with a 20-photo eval gate
 - [x] Sprint 5 - Launch readiness and beta operations
-- [ ] Sprint 6 - Kitchen operations tasks, if prioritized by beta feedback
+- [x] Sprint 6 - Kitchen operations tasks (prep/reorder/checklist lists, both roles)
 
 Also shipped outside the numbered sprints: a kitchen-ops module set (suppliers, menus,
 productions, sales, purchase orders) and live recipe batch scaling.
