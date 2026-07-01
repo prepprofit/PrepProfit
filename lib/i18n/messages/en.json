@@ -136,6 +136,7 @@
     "tasks": "Tasks",
     "financials": "Financials",
     "insights": "Insights",
+    "menuEngineering": "Menu Engineering",
     "transactions": "Transactions",
     "sales": "Sales",
     "breakEven": "Break-even",
@@ -1377,6 +1378,36 @@
       "low": "Low risk",
       "medium": "Medium risk",
       "high": "High risk"
+    }
+  },
+  "menuEngineering": {
+    "title": "Menu Engineering",
+    "subtitle": "Every sold item ranked by how popular and how profitable it is, so you know what to promote, reprice, fix or drop.",
+    "period": {
+      "last7": "Last 7 days",
+      "last30": "Last 30 days",
+      "last90": "Last 90 days",
+      "range": "{from} to {to}"
+    },
+    "empty": "No posted sales in this period yet. Once you close sales, PrepProfit ranks your menu items here.",
+    "splitCaption": "Split relative to this period: popularity above {units} units sold, profit above {amount} margin per unit.",
+    "cell": "{units} sold · {margin}% · {contribution}/unit",
+    "quadrantEmpty": "None in this period.",
+    "quadrant": {
+      "star": { "title": "Stars", "action": "Popular and profitable — keep and promote." },
+      "puzzle": { "title": "Puzzles", "action": "Profitable but overlooked — boost their visibility." },
+      "workhorse": { "title": "Workhorses", "action": "Popular but thin — reprice or cut cost." },
+      "dog": { "title": "Dogs", "action": "Unpopular and thin — remove or reformulate." }
+    },
+    "kind": {
+      "recipe": "Recipe",
+      "menu": "Menu"
+    },
+    "needsPricing": {
+      "title": "Needs pricing",
+      "hint": "These sold in the period but can't be scored until their pricing is fixed.",
+      "missingPrice": "No selling price",
+      "missingCost": "Ingredient needs pricing"
     }
   },
   "finance": {

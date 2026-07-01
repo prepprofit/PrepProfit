@@ -29,6 +29,9 @@ export const navGroups = [
       // Profit Insight Inbox (Sprint 4, AI margin roadmap) — manager-only margin-risk
       // triage with AI explanations; finance group so kitchen hides it (server enforces).
       { key: 'insights', href: '/insights' },
+      // Menu Engineering (Sprint 5, AI margin roadmap) — manager-only star/puzzle/
+      // workhorse/dog matrix over cost + posted sales; finance group so kitchen hides it.
+      { key: 'menuEngineering', href: '/menus/engineering' },
       { key: 'transactions', href: '/transactions' },
       // Daily-close sales (Sprint 12a) — manager-only financial data; lives in the
       // finance group so the kitchen-role sidebar hides it (server enforces too).
