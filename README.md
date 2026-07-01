@@ -176,10 +176,10 @@ Full detail in [the implementation plan](docs/prepprofit_ai_implementation_plan_
 | # | Sprint | User-visible value | Status |
 |---|--------|--------------------|--------|
 | 1 | Profit Leak Detector (no LLM) | Surfaces recipes, menus, and ingredients hurting margin right now | ✅ Shipped |
-| 2 | Supplier Invoice Reader | Upload an invoice; AI turns lines into reviewed price *observations* (never approved costs) | Next |
-| 3 | Invoice → Profit Impact Loop | Shows which recipes/menus fall under margin after a cost change | Planned |
-| 4 | AI Explanations + Profit Insight Inbox | Explains deterministic findings in chef-friendly language | Planned |
-| 5 | Menu Engineer | Classifies items by popularity and profitability | Planned |
+| 2 | Supplier Invoice Reader | Upload an invoice; AI turns lines into reviewed price *observations* (never approved costs) | ✅ Shipped |
+| 3 | Invoice → Profit Impact Loop | Shows which recipes/menus fall under margin after a cost change | ✅ Shipped |
+| 4 | AI Explanations + Profit Insight Inbox | Explains deterministic findings in chef-friendly language | ✅ Shipped |
+| 5 | Menu Engineer | Classifies items by popularity and profitability | ✅ Shipped |
 | 6 | Daily Close Summary | Explains posted sales and food-cost anomalies | Planned |
 | 7 | Prep / Reorder Planner | Suggests prep and reorder tasks from recipes and stock | Planned |
 | 8 | Weekly CFO Report → chat | Premium management layer over trusted insights | Planned |
@@ -190,6 +190,16 @@ cost/margin/menu modules, an org-scoped loader ([`lib/data/profit-leaks.ts`](lib
 and a manager-only dashboard card. It detects below-target recipe and menu margins, unpriced
 ingredients in active recipes/menus, and pending-price impact — with hard honesty rules: an
 unpriced line suppresses any margin claim, and an incomplete menu never shows a fake margin.
+
+**Sprint 5 — Menu Engineer** is live: a pure, tested classifier
+([`lib/calculations/menu-engineering.ts`](lib/calculations/menu-engineering.ts)) that drops each
+sold item into the classic star / puzzle / workhorse / dog matrix. Both axes are relative to the
+org's own sales in the period — average units sold (popularity) and average per-unit contribution
+margin in cents (profitability) — never a global magic number. An org-scoped loader
+([`lib/data/menu-engineering.ts`](lib/data/menu-engineering.ts)) joins current catalogue cost with
+posted-sale volume (draft/void excluded), and a manager-only page renders the matrix. The same
+honesty rules hold: an item with no selling price or an unavailable cost is set aside as *needs
+pricing*, never given a fabricated margin. No LLM call.
 
 Non-negotiable rules for every sprint in this track:
 
