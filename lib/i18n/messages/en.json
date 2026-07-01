@@ -562,6 +562,28 @@
           "NO_INGREDIENT_MATCH": "Not matched to an ingredient",
           "PACK_UNIT_MISMATCH": "Pack unit doesn't match the ingredient"
         }
+      },
+      "impact": {
+        "title": "Profit impact",
+        "subtitle": "If you accept these pending costs, here is what changes. Approved costs and prices stay the same until you accept.",
+        "empty": "No cost changes to review from this invoice.",
+        "summary": {
+          "ingredients": "{count, plural, =0 {No cost changes} one {# ingredient cost changed} other {# ingredient costs changed}}",
+          "recipes": "{count, plural, =0 {No recipes affected} one {# recipe affected} other {# recipes affected}}",
+          "menus": "{count, plural, =0 {No menus affected} one {# menu affected} other {# menus affected}}",
+          "belowTarget": "{count, plural, one {# below the {target}% target} other {# below the {target}% target}}"
+        },
+        "changesHeading": "Cost changes",
+        "newlyPriced": "New cost",
+        "accept": "Accept new cost",
+        "accepting": "Accepting…",
+        "recipesHeading": "Affected recipes",
+        "menusHeading": "Affected menus",
+        "projected": "projected",
+        "belowBadge": "Below {target}% target",
+        "crossesBadge": "Newly below target",
+        "suggested": "Suggest {amount}",
+        "marginNa": "—"
       }
     }
   },
