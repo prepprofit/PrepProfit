@@ -24,7 +24,11 @@ import { computeCostMicros } from '@/lib/ai/pricing';
 import { mapExtractionToPhotoDraft } from '@/lib/ai/photo-draft';
 import { applySupplierPacks, isUnresolvedPackDescriptor } from '@/lib/ai/supplier-pack-resolve';
 import { loadSupplierPacksByIngredientName } from '@/lib/data/ingredient-suppliers';
-import { validateImageUpload } from '@/lib/ai/image';
+import { MAX_IMAGE_BYTES, validateImageUpload } from '@/lib/ai/image';
+import {
+  declaredBodyExceeds,
+  MULTIPART_OVERHEAD_BYTES,
+} from '@/lib/validation/request-size';
 import type { ActionErrorCode } from '@/lib/action-result';
 
 // The Gemini SDK + neon-serverless Pool need Node; an upload is never cached.
@@ -78,6 +82,12 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const limit = await enforceRateLimit(getDb(), 'aiExtraction', `${organizationId}:${userId}`);
   if (!limit.allowed) return fail('RATE_LIMITED', 429);
+
+  // Fast-fail an honestly-declared oversized body BEFORE buffering it (audit F3);
+  // the post-parse byte validator below stays the authoritative limit.
+  if (declaredBodyExceeds(req, MAX_IMAGE_BYTES + MULTIPART_OVERHEAD_BYTES)) {
+    return fail('INVALID_INPUT', 413);
+  }
 
   // Read the multipart body and validate the image from its BYTES (not the declared
   // mime). Anything not a JPEG/PNG/WebP — including a renamed PDF — is rejected here.

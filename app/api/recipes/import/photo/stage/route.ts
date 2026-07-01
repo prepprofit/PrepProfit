@@ -10,6 +10,7 @@ import { getExtractionAttempt, linkAttemptToImportJob } from '@/lib/data/ai-extr
 import { normalizePhotoDraftForImport } from '@/lib/ai/photo-draft';
 import { parseQuantityText } from '@/lib/units/quantity';
 import { stagePhotoDraftSchema, type StagePhotoDraftInput } from '@/lib/ai/photo-draft-schema';
+import { declaredBodyExceeds } from '@/lib/validation/request-size';
 import { IMPORT_JOB_TTL_MS } from '@/lib/validation/import';
 import type { PhotoDraftLine, PhotoExtractionDraft, PhotoExtractionPreview } from '@/lib/ai/types';
 import type { ActionErrorCode } from '@/lib/action-result';
@@ -52,6 +53,9 @@ function stageQuantityValue(line: StagePhotoDraftInput['recipe']['lines'][number
   return line.quantityValue ?? null;
 }
 
+/** Pre-parse cap for the edited-draft JSON body (audit F3) — bounded text only. */
+const MAX_STAGE_BODY_BYTES = 1024 * 1024;
+
 export async function POST(req: Request): Promise<NextResponse> {
   if (!(await isManager())) return fail('FORBIDDEN', 403);
 
@@ -60,6 +64,12 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const limit = await enforceRateLimit(getDb(), 'import', `${organizationId}:${userId}`);
   if (!limit.allowed) return fail('RATE_LIMITED', 429);
+
+  // Fast-fail an honestly-declared oversized body BEFORE buffering it (audit F3).
+  // An edited photo draft is bounded text; 1 MB is far above any real draft.
+  if (declaredBodyExceeds(req, MAX_STAGE_BODY_BYTES)) {
+    return fail('INVALID_INPUT', 413);
+  }
 
   let body: unknown;
   try {

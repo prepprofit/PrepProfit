@@ -22,7 +22,11 @@ import {
 import { computeCostMicros } from '@/lib/ai/pricing';
 import { mapInvoiceExtractionToDraft } from '@/lib/ai/invoice-draft';
 import { createInvoiceImport } from '@/lib/data/supplier-invoice-imports';
-import { validateDocumentUpload } from '@/lib/ai/document-upload';
+import { MAX_DOCUMENT_BYTES, validateDocumentUpload } from '@/lib/ai/document-upload';
+import {
+  declaredBodyExceeds,
+  MULTIPART_OVERHEAD_BYTES,
+} from '@/lib/validation/request-size';
 import type { ActionErrorCode } from '@/lib/action-result';
 
 // The Gemini SDK + neon-serverless Pool need Node; an upload is never cached.
@@ -64,6 +68,12 @@ export async function POST(req: Request): Promise<NextResponse> {
     `${organizationId}:${userId}`,
   );
   if (!limit.allowed) return fail('RATE_LIMITED', 429);
+
+  // Fast-fail an honestly-declared oversized body BEFORE buffering it (audit F3);
+  // the post-parse byte validator below stays the authoritative limit.
+  if (declaredBodyExceeds(req, MAX_DOCUMENT_BYTES + MULTIPART_OVERHEAD_BYTES)) {
+    return fail('INVALID_INPUT', 413);
+  }
 
   // Read the multipart body and validate the document from its BYTES (image or PDF).
   let bytes: Buffer;

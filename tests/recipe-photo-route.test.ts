@@ -213,6 +213,33 @@ describe('POST /api/recipes/import/photo — image validation', () => {
     const res = await POST(request());
     expect(res.status).toBe(400);
   });
+
+  it('rejects an oversized declared Content-Length with 413 BEFORE reading the body (audit F3)', async () => {
+    const res = await POST(
+      new Request('http://test/api/recipes/import/photo', {
+        method: 'POST',
+        headers: { 'content-length': String(9 * 1024 * 1024) }, // > 8 MB cap + overhead
+        body: new Uint8Array(1),
+      }),
+    );
+    expect(res.status).toBe(413);
+  });
+});
+
+describe('POST /api/recipes/import/photo/stage — body-size gate', () => {
+  it('rejects an oversized declared Content-Length with 413 BEFORE parsing JSON (audit F3)', async () => {
+    const res = await stagePOST(
+      new Request('http://test/api/recipes/import/photo/stage', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': String(2 * 1024 * 1024), // > 1 MB draft cap
+        },
+        body: '{}',
+      }),
+    );
+    expect(res.status).toBe(413);
+  });
 });
 
 describe('POST /api/recipes/import/photo — monthly usage cap', () => {
