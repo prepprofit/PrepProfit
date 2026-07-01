@@ -158,7 +158,9 @@ Optional (Playwright E2E smoke, Sprint 5b):
 Required when billing webhooks are enabled (Sprint 4c):
 
 - `CLERK_WEBHOOK_SIGNING_SECRET` - from Clerk Dashboard → Webhooks; verifies the
-  billing webhook (`/api/webhooks/clerk`). Not used until slice 4c lands.
+  billing/org-lifecycle webhook (`/api/webhooks/clerk`). REQUIRED in production —
+  without it every Clerk event (subscription mirror, org lifecycle, billing emails)
+  is rejected with 400.
 
 Optional (product analytics, Sprint 5c):
 
@@ -257,15 +259,21 @@ The catalogue (Starter = the auto-created `free_org` baseline; `pro` / `business
 
 | Tier | Plan slug | Recipes (app cap) | Features (`has({ feature })`) |
 |------|-----------|-------------------|-------------------------------|
-| Starter | `free_org` | 50 | — (modules 1–3 only) |
-| Pro | `pro` | unlimited | `invoices`, `break_even`, `ai_extraction` |
+| Starter | `free_org` | 10 | — (operational modules) |
+| Pro | `pro` | unlimited | `invoices`, `break_even` |
 | Business | `business` | unlimited | + `payroll`, `advanced_documents` |
+
+AI photo extraction is deliberately **NOT** a Clerk feature: it is universal
+(every tier, free included) and metered only by the per-org monthly quota in
+`AI_EXTRACTION_MONTHLY_LIMIT` (`lib/entitlements.ts`: Starter 10 / Pro 100 /
+Business 500).
 
 Notes:
 
-- **Currency**: Clerk's dev gateway only accepts `usd`; the listed prices ($29 / $99) are
-  **placeholders** — adjust in `clerk/billing.json` (or the Dashboard) before launch. The app's
-  own money display currency (EUR, org settings) is unrelated to the subscription currency.
+- **Currency**: Clerk's dev gateway only accepts `usd`; the committed `clerk/billing.json`
+  amounts ($29 / $79) are **dev placeholders** — the production Clerk instance charges
+  €29 / €79 in EUR (matching the public pricing copy). The app's own money display
+  currency (EUR, org settings) is unrelated to the subscription currency.
 - **Recipe cap** (and seat limits) are enforced in the app (`lib/entitlements.ts`), keyed by the
   detected plan tier; entitlements read **fail-closed** (unknown state → Starter). Clerk's
   billing config has no per-plan seat field, so seat caps stay informational app-side until
@@ -273,8 +281,8 @@ Notes:
 - **Production**: connect a Stripe account once (Dashboard → Billing → Settings), then apply
   `clerk/billing.json` to the prod instance with `--instance prod`. Dev needs no Stripe account.
 
-Slice 4c will add the billing webhook (`/api/webhooks/clerk`) requiring
-`CLERK_WEBHOOK_SIGNING_SECRET`.
+The billing webhook (`/api/webhooks/clerk`, slice 4c) requires
+`CLERK_WEBHOOK_SIGNING_SECRET` (see section 3).
 
 ## 8. Deployment on Vercel
 

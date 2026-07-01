@@ -200,17 +200,17 @@ Goal: paid plans are real controls, not UI decoration.
 
 Decisions to lock before coding:
 
-- Plan mapping remains: Starter = modules 1-3 and 50 recipes; Pro = modules 1-4 plus invoices; Business = all modules including payroll and advanced docs.
+- Plan mapping remains: Starter = modules 1-3 and 50 recipes; Pro = modules 1-4 plus invoices; Business = all modules including payroll and advanced docs. *(Superseded by the later billing update: Starter cap is now 10 recipes — the live mapping is CLAUDE.md "Subscription plans" + `lib/entitlements.ts`.)*
 - Entitlements are checked with a central server helper. Do not scatter raw Clerk `has()` calls through actions.
 - If entitlement state cannot be determined, deny paid features fail-closed.
 
 Tasks:
 
 - [x] Enable Clerk Billing for B2B organization plans and connect Stripe. (Slice 4a in dev; Stripe connected + catalogue live in PROD with `organization_enabled: true`.)
-- [x] Create Starter / Pro / Business plans and features in Clerk. (Catalogue version-controlled at `clerk/billing.json`; identical slugs live in dev AND prod: plans `free_org`/`pro`/`business`, features `invoices`/`break_even`/`payroll`/`advanced_documents`/`ai_extraction`.)
+- [x] Create Starter / Pro / Business plans and features in Clerk. (Catalogue version-controlled at `clerk/billing.json`; identical slugs live in dev AND prod: plans `free_org`/`pro`/`business`, features `invoices`/`break_even`/`payroll`/`advanced_documents`. *The `ai_extraction` Clerk feature was later removed: AI extraction is universal, metered only by the app-side monthly quota in `lib/entitlements.ts`.*)
 - [x] Add `lib/entitlements.ts`: `requireFeature`, `canUseFeature`, `assertPlanLimit`. (Slice 4a — fail-closed over `auth().has()`.)
 - [x] Add `/pricing` with Clerk PricingTable and an in-app billing/settings page. (Slice 4a — manager-only `/pricing` + `/billing`.)
-- [x] Enforce Starter limits server-side: 1 user and 50 recipes. Imports and forged actions must not bypass limits. (Slice 4b — recipe cap via `assertPlanLimit`; feature gates via `requireFeature` after RBAC; 402 on download routes.)
+- [x] Enforce Starter limits server-side: 1 user and 50 recipes. Imports and forged actions must not bypass limits. (Slice 4b — recipe cap via `assertPlanLimit`; feature gates via `requireFeature` after RBAC; 402 on download routes. *Cap later lowered to 10 recipes in the billing update — live value in `PLAN_LIMITS`.*)
 - [x] Add post-signup onboarding: create org, choose plan, short setup tour. (Slice 4d — guided `/onboarding` flow: business-identity setup, plan selection via `<PricingTable>`, short module tour; gated once from `/dashboard` for a not-yet-onboarded manager via the set-once `organization_settings.onboarded_at` column, migration **0015**. Org defaults are also seeded eagerly on the `organization.created` webhook. PROD: run `npm run db:migrate` (0015) against prod Neon.)
 - [x] Add verified Clerk/Stripe webhooks for subscription changes, member removal, and org lifecycle. (Slice 4c — `verifyWebhook` route `/api/webhooks/clerk` + `subscriptions` mirror, migration **0014** prod-applied. Remaining OPS only: create the PROD Svix endpoint `https://www.prepprofit.com/api/webhooks/clerk` and set `CLERK_WEBHOOK_SIGNING_SECRET` in Vercel — not a blocker; the mirror is read-only observability and eager-seed has lazy fallback.)
 - [x] Add custom Owner role/lifecycle rules so customers cannot accidentally self-delete an org unless explicitly allowed. (Slice 4e — solved more simply than the original custom-role plan: Clerk's instance setting `organization_settings.admin_delete_enabled = false`, applied to BOTH dev AND prod, disables org self-deletion for all admins independent of role permissions. No system user / custom `org:owner` role needed.)
@@ -350,7 +350,7 @@ Production notes (deploy checklist):
 - **Migration 0018** (`ai_extraction_attempts` + `import_jobs` unique `(organization_id, id)`): apply to prod Neon via `npm run db:migrate`. Journal `when` `1781946749470` > 0017's `1781904288429`, so the migrate-guard passes. The `recipe_photo` entity and `photo` job format are TS-only (no DB CHECK, confirmed by `db:generate`).
 - **`GEMINI_API_KEY`**: set in Vercel (Production) — validated lazily by `aiEnv()`; a missing/invalid key surfaces as `AI_EXTRACTION_FAILED`, never crashes other pages. Never logged.
 - **Model**: pinned in `RECIPE_EXTRACTION_MODEL` (`lib/ai/recipe-extraction.ts`); Gemini 3.5 Flash (Stable). Re-confirm the exact id at deploy; swapping is a one-line change.
-- **Caps**: monthly usage is Pro 50 / Business 300 (`AI_EXTRACTION_MONTHLY_LIMIT` in `lib/entitlements.ts`) — tunable without redeploying the gating logic. The `aiExtraction` rate bucket is 5/min.
+- **Caps**: monthly usage was Pro 50 / Business 300 at ship time (`AI_EXTRACTION_MONTHLY_LIMIT` in `lib/entitlements.ts`) — tunable without redeploying the gating logic; *later raised to Starter 10 / Pro 100 / Business 500 in the billing update (AI became universal, all tiers)*. The `aiExtraction` rate bucket is 5/min.
 
 ---
 
