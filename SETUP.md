@@ -81,15 +81,25 @@ Required when emailing documents is enabled (Sprint 3.5C):
 - `RESEND_FROM_EMAIL` - the verified sender address, **bare email only** (e.g. `documents@yourdomain.com`). Do not include a display name here.
 - `RESEND_FROM_NAME` (optional) - sender display name recipients see; composed into the `From` header as `Name <address>`. Defaults to `PrepProfit`.
 - `RESEND_REPLY_TO` (optional) - reply-to address; set on outbound mail when present.
+- `APP_URL` (optional) - absolute base URL of the app (e.g. `https://www.prepprofit.com`), used
+  only to build absolute links/assets in emails (the "Open the full report" CTA, etc.). Must be
+  `https://` in production; `http://localhost:3000` is accepted in development. Read lazily via
+  `emailAppUrl()` and never load-bearing — when unset or invalid, emails render a logo-less
+  header and omit any CTA that needs an absolute link. Preview React Email templates locally
+  with the `emails/` directory if you add the `react-email` dev CLI.
 
 These are validated lazily (`emailEnv()` in `lib/env.ts`): the rest of the app runs without
 them, and only the email send path requires them. A missing key surfaces as the stable
-`EMAIL_FAILED` action error, never a leaked secret.
+`EMAIL_FAILED` action error, never a leaked secret. All email bodies are React Email templates
+(`emails/`) rendered to HTML + a plain-text fallback via `renderEmail()` (`lib/email/render.tsx`).
 
 The same `RESEND_*` config also powers the Sprint 5d lifecycle emails — a welcome email on
 organization creation and a daily low-stock digest (to the org's business email) from the
-purge cron. These are best-effort: when Resend is unconfigured they are skipped silently
-(`isEmailConfigured()`), never erroring.
+purge cron — and the opt-in **weekly CFO report** email. The CFO digest is a manager-only
+Notifications toggle in `/settings` (default OFF), enqueued Mondays by `/api/cron/cfo-report`
+and delivered to the org's `businessEmail` by the `/api/cron/process-email-outbox` worker; it
+is deterministic and never spends an AI quota. These are best-effort: when Resend is
+unconfigured they are skipped silently (`isEmailConfigured()`), never erroring.
 
 Required when AI photo recipe extraction is enabled (Sprint 4.7):
 

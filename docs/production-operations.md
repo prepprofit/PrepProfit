@@ -21,6 +21,8 @@ Set in Vercel → Project → Settings → Environment Variables (Production sco
 | `CLERK_WEBHOOK_SIGNING_SECRET` | Verify `/api/webhooks/clerk` | From Clerk → Webhooks. |
 | `CRON_SECRET` | Authorize the purge cron | `openssl rand -hex 32`. |
 | `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | Document + lifecycle email | Optional feature; `RESEND_FROM_NAME`/`RESEND_REPLY_TO` optional. |
+| `APP_URL` | Absolute base URL for email links/assets | Optional; `https://` in prod (localhost allowed in dev). Missing/invalid → emails render logo-less + omit CTAs. Never load-bearing. |
+| `AI_COST_REPORT_EMAIL` | Weekly AI-spend report recipient | Optional; unset → the report cron skips quietly. |
 | `GEMINI_API_KEY` | AI photo extraction | Optional; missing → `AI_EXTRACTION_FAILED`. |
 | `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` | Error monitoring (5a) | Optional, fail-open. |
 | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Source-map upload (5a) | Build-time only. |
@@ -38,14 +40,27 @@ add a feature var to `serverEnvSchema`. Secrets are never logged.
 - Apply to prod: `DATABASE_URL=<prod-pooled> npm run db:migrate` (idempotently re-applies RLS).
 - **Verify after deploy**: confirm `drizzle.__drizzle_migrations` max `created_at` matches the
   newest migration, and spot-check the new columns/tables + that RLS is `enabled + forced`.
-- Current head: **0033** (migrated + verified in prod 2026-06-24). RLS is `enabled + forced`
-  on every business table at this head.
+- Current head: **0038** (adds `organization_settings.weekly_cfo_report_email_enabled` and
+  extends the `email_outbox` `document_type` CHECK to include `cfo_report`; apply with
+  `npm run db:migrate`). RLS is `enabled + forced` on every business table at this head.
 
 ## Scheduled jobs
 
 - **Daily purge cron** → `GET /api/cron/purge-trash`, authorized by `CRON_SECRET` (Vercel Cron
   sends it as a Bearer token). Also emits the Sprint 5d low-stock digest when email is
   configured. Verify the Vercel Cron schedule exists and a manual hit returns `200` `{ ok: true }`.
+- **Weekly CFO report enqueue** → `GET /api/cron/cfo-report` (Vercel Cron, Mon `04:00 UTC`).
+  Queues one deterministic `cfo_report` row in `email_outbox` per opted-in, paid, business-email
+  org that has data. Deterministic only — it NEVER calls an AI provider. Idempotent per week via
+  the outbox unique `(organization_id, dedup_key)`. Opt-in is the manager-only Notifications
+  toggle in `/settings` (default OFF); the digest is sent to the org's `businessEmail`.
+- **Email-outbox worker** → `GET /api/cron/process-email-outbox` (daily `04:30 UTC`, after the
+  CFO enqueue). Delivers queued purchase-order and `cfo_report` rows with at-least-once +
+  provider-dedup semantics; a row with a `provider_message_id` is never resent. Requires
+  `RESEND_*`; skips quietly when email is unconfigured.
+- **Weekly AI-spend report** → `GET /api/cron/ai-cost-report` (Mon `06:00 UTC`). Emails
+  `AI_COST_REPORT_EMAIL` a per-org Gemini spend digest; skips quietly if the recipient or email
+  is unconfigured.
 
 ## Backups & recovery (Neon)
 
