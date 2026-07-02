@@ -27,6 +27,7 @@ import {
   type SubscriptionItemInput,
 } from '@/lib/data/subscriptions';
 import { logError } from '@/lib/observability';
+import { computeTrialEndsAt } from '@/lib/entitlements';
 
 /**
  * Clerk webhook endpoint (Sprint 4c). Receives billing + org-lifecycle events and
@@ -245,6 +246,19 @@ export async function POST(req: NextRequest): Promise<Response> {
           entityId: orgId,
           metadata: { eventType: evt.type },
         });
+      });
+
+      // Reverse trial (pricing 4-tier plan, Slice 3): stamp the org with a 14-day
+      // full-access deadline derived from the org's OWN created_at (immutable, not
+      // processing time), so a Svix retry recomputes the identical value. The session
+      // token projects this into the `org_trial_ends_at` claim, giving request-time
+      // gating the deadline with zero DB reads. This is intentionally NOT wrapped in
+      // try/catch: a failure must bubble to the outer 500 so Svix retries — an org
+      // that silently missed its trial stamp would never get the trial.
+      const trialEndsAt = computeTrialEndsAt(evt.data.created_at);
+      const client = await clerkClient();
+      await client.organizations.updateOrganizationMetadata(orgId, {
+        publicMetadata: { trial_ends_at: trialEndsAt.toISOString() },
       });
 
       // Best-effort welcome email (Sprint 5d) to the creating admin. Guarded by

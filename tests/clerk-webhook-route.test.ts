@@ -29,11 +29,26 @@ const h = vi.hoisted(() => ({
   throwVerify: false,
 }));
 
+/** Captures the reverse-trial metadata write (organization.created, Slice 3). */
+const clerkMock = vi.hoisted(() => ({
+  updateOrganizationMetadata: vi.fn(
+    async (_orgId: string, _params: { publicMetadata: Record<string, unknown> }) => ({}),
+  ),
+}));
+
 vi.mock('@clerk/nextjs/webhooks', () => ({
   verifyWebhook: vi.fn(async () => {
     if (h.throwVerify) throw new Error('signature verification failed');
     return h.event;
   }),
+}));
+
+vi.mock('@clerk/nextjs/server', () => ({
+  clerkClient: vi.fn(async () => ({
+    organizations: {
+      updateOrganizationMetadata: clerkMock.updateOrganizationMetadata,
+    },
+  })),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -201,7 +216,11 @@ describe('POST /api/webhooks/clerk', () => {
     const res = await post({
       type: 'organization.created',
       object: 'event',
-      data: { id: NEW_ORG, object: 'organization' },
+      data: {
+        id: NEW_ORG,
+        object: 'organization',
+        created_at: Date.parse('2026-06-20T00:00:00Z'),
+      },
     });
     expect(res.status).toBe(200);
 
@@ -225,6 +244,45 @@ describe('POST /api/webhooks/clerk', () => {
     expect(settings[0]?.onboardedAt).toBeNull();
 
     expect(await audits(NEW_ORG, 'organization.create')).toHaveLength(1);
+  });
+
+  it('stamps a 14-day reverse trial from the org created_at (idempotent on retry)', async () => {
+    const TRIAL_ORG = 'org_trial';
+    const createdAt = Date.parse('2026-06-20T00:00:00Z');
+    const expectedEnd = new Date(createdAt + 14 * 24 * 60 * 60 * 1000).toISOString();
+    const event = {
+      type: 'organization.created',
+      object: 'event',
+      data: { id: TRIAL_ORG, object: 'organization', created_at: createdAt },
+    };
+
+    clerkMock.updateOrganizationMetadata.mockClear();
+    expect((await post(event)).status).toBe(200);
+    expect(clerkMock.updateOrganizationMetadata).toHaveBeenCalledWith(TRIAL_ORG, {
+      publicMetadata: { trial_ends_at: expectedEnd },
+    });
+
+    // A Svix retry of the SAME delivery recomputes the identical deadline (derived
+    // from the immutable created_at, not processing time).
+    expect((await post(event)).status).toBe(200);
+    expect(clerkMock.updateOrganizationMetadata).toHaveBeenLastCalledWith(TRIAL_ORG, {
+      publicMetadata: { trial_ends_at: expectedEnd },
+    });
+  });
+
+  it('returns 500 (Svix will retry) when the trial-metadata write fails', async () => {
+    const FAIL_ORG = 'org_trial_fail';
+    clerkMock.updateOrganizationMetadata.mockRejectedValueOnce(new Error('clerk 5xx'));
+    const res = await post({
+      type: 'organization.created',
+      object: 'event',
+      data: {
+        id: FAIL_ORG,
+        object: 'organization',
+        created_at: Date.parse('2026-06-20T00:00:00Z'),
+      },
+    });
+    expect(res.status).toBe(500);
   });
 
   it('marks the org onboarded on a paid subscription (escapes the onboarding loop)', async () => {

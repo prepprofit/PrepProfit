@@ -7,9 +7,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  * (`starter`) and paid features are denied — never the reverse.
  */
 type HasFn = (params: { plan?: string; feature?: string }) => boolean;
+type SessionClaims = { org_trial_ends_at?: string };
 
 const h = vi.hoisted(() => ({
-  auth: null as null | (() => Promise<{ has?: HasFn; orgId?: string }>),
+  auth: null as
+    | null
+    | (() => Promise<{ has?: HasFn; orgId?: string; sessionClaims?: SessionClaims }>),
 }));
 
 vi.mock('@clerk/nextjs/server', () => ({
@@ -20,11 +23,15 @@ import {
   PLAN_LIMITS,
   AI_EXTRACTION_MONTHLY_LIMIT,
   PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT,
+  REVERSE_TRIAL_DAYS,
   isWithinLimit,
   getPlanTier,
+  getEffectiveEntitlementState,
   canUseFeature,
   requireFeature,
   assertPlanLimit,
+  computeTrialEndsAt,
+  parseTrialEndsAt,
   profitLeakExplanationMonthlyLimit,
 } from '@/lib/entitlements';
 
@@ -40,6 +47,21 @@ function setHas(fn: HasFn) {
 function setAuth(fn: HasFn, orgId: string) {
   h.auth = async () => ({ has: fn, orgId });
 }
+
+/**
+ * Point `auth()` at an org with an `org_trial_ends_at` session claim (reverse trial),
+ * optionally also carrying a real paid plan via `has` (defaults to no plan).
+ */
+function setTrial(claimIso: string | undefined, has: HasFn = () => false) {
+  h.auth = async () => ({
+    has,
+    orgId: 'org_test',
+    sessionClaims: claimIso ? { org_trial_ends_at: claimIso } : {},
+  });
+}
+
+const future = () => new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+const past = () => new Date(Date.now() - 1000).toISOString();
 
 afterEach(() => {
   h.auth = null;
@@ -195,6 +217,95 @@ describe('comped orgs (COMPED_ORG_IDS allowlist)', () => {
     setAuth(() => false, OPERATOR);
     expect(await getPlanTier()).toBe('starter');
     expect(await canUseFeature('invoices')).toBe(false);
+  });
+});
+
+describe('reverse trial (pure helpers)', () => {
+  it('computeTrialEndsAt adds exactly the trial window to created_at', () => {
+    const created = Date.parse('2026-06-20T00:00:00Z');
+    expect(computeTrialEndsAt(created).toISOString()).toBe('2026-07-04T00:00:00.000Z');
+    expect(REVERSE_TRIAL_DAYS).toBe(14);
+  });
+
+  it('parseTrialEndsAt tolerates ISO strings, epoch numbers, and numeric strings', () => {
+    expect(parseTrialEndsAt('2026-07-04T00:00:00.000Z')).toEqual(
+      new Date('2026-07-04T00:00:00.000Z'),
+    );
+    expect(parseTrialEndsAt(1000)).toEqual(new Date(1000));
+    expect(parseTrialEndsAt('1000')).toEqual(new Date(1000));
+  });
+
+  it('parseTrialEndsAt fail-closes to null on absent/malformed values', () => {
+    expect(parseTrialEndsAt(undefined)).toBeNull();
+    expect(parseTrialEndsAt(null)).toBeNull();
+    expect(parseTrialEndsAt('')).toBeNull();
+    expect(parseTrialEndsAt('   ')).toBeNull();
+    expect(parseTrialEndsAt('not-a-date')).toBeNull();
+    expect(parseTrialEndsAt(NaN)).toBeNull();
+    expect(parseTrialEndsAt(Infinity)).toBeNull();
+  });
+});
+
+describe('reverse trial (request-time override)', () => {
+  it('grants Business tier + every feature while the trial is active', async () => {
+    setTrial(future());
+    expect(await getPlanTier()).toBe('business');
+    expect(await canUseFeature('invoices')).toBe(true);
+    expect(await canUseFeature('payroll')).toBe(true);
+    expect(await canUseFeature('advanced_documents')).toBe(true);
+    const state = await getEffectiveEntitlementState();
+    expect(state.source).toBe('trial');
+    expect(state.tier).toBe('business');
+    expect(state.trialEndsAt).toBeInstanceOf(Date);
+  });
+
+  it('falls back to Starter/free once the trial has expired', async () => {
+    setTrial(past());
+    expect(await getPlanTier()).toBe('starter');
+    expect(await canUseFeature('invoices')).toBe(false);
+    const state = await getEffectiveEntitlementState();
+    expect(state.source).toBe('free');
+    // The deadline is still surfaced so /billing can show "trial ended".
+    expect(state.trialEndsAt).toBeInstanceOf(Date);
+  });
+
+  it('never stacks on a real paid plan — the paid plan wins', async () => {
+    // Org has an active trial claim AND a real Pro subscription (plan + its features).
+    setTrial(
+      future(),
+      ({ plan, feature }) =>
+        plan === 'pro' || feature === 'invoices' || feature === 'break_even',
+    );
+    expect(await getPlanTier()).toBe('pro');
+    // Pro does not include payroll; the trial must NOT re-open it.
+    expect(await canUseFeature('payroll')).toBe(false);
+    expect(await canUseFeature('invoices')).toBe(true);
+    const state = await getEffectiveEntitlementState();
+    expect(state.source).toBe('paid');
+    expect(state.trialEndsAt).toBeNull();
+  });
+
+  it('grants no trial when the claim is absent or malformed', async () => {
+    setTrial(undefined);
+    expect(await getPlanTier()).toBe('starter');
+    expect(await canUseFeature('invoices')).toBe(false);
+
+    setTrial('not-a-date');
+    expect(await getPlanTier()).toBe('starter');
+  });
+
+  it('grants no trial with no active org, even with a claim present', async () => {
+    h.auth = async () => ({ has: () => false, sessionClaims: { org_trial_ends_at: future() } });
+    expect(await getPlanTier()).toBe('starter');
+    expect((await getEffectiveEntitlementState()).source).toBe('free');
+  });
+
+  it('comped orgs stay Business/comped regardless of any trial claim', async () => {
+    process.env.COMPED_ORG_IDS = 'org_test';
+    setTrial(past());
+    expect(await getPlanTier()).toBe('business');
+    expect(await canUseFeature('payroll')).toBe(true);
+    expect((await getEffectiveEntitlementState()).source).toBe('comped');
   });
 });
 

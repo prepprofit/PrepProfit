@@ -138,6 +138,53 @@ export const WEEKLY_CFO_REPORT_MONTHLY_LIMIT = {
 } as const satisfies Record<PlanTier, number>;
 
 /* -------------------------------------------------------------------------- */
+/* Reverse trial — every NEW org gets full (Business) access for a window, then */
+/* falls back to Free unless it subscribes. Pure, I/O-free primitives.          */
+/* -------------------------------------------------------------------------- */
+
+/** Length of the reverse trial, in days. New org → Business access for this long. */
+export const REVERSE_TRIAL_DAYS = 14;
+
+/**
+ * Where an effective entitlement came from — drives billing/UI copy so a trial is
+ * never shown as a paid subscription:
+ *   - `paid`   real Clerk org subscription (solo/pro/business).
+ *   - `trial`  reverse trial active (no paid plan yet, within the window).
+ *   - `comped` operator/internal comp (COMPED_ORG_IDS).
+ *   - `free`   Starter baseline (no plan, no active trial).
+ */
+export type EntitlementSource = 'paid' | 'trial' | 'comped' | 'free';
+
+/** Resolved, request-time entitlement state for the active org. */
+export type EffectiveEntitlementState = {
+  tier: PlanTier;
+  source: EntitlementSource;
+  /** Reverse-trial deadline when known (source `trial`, or `free` after expiry). */
+  trialEndsAt: Date | null;
+};
+
+/** The reverse-trial deadline for an org created at `createdAtMs` (epoch ms). */
+export function computeTrialEndsAt(createdAtMs: number): Date {
+  return new Date(createdAtMs + REVERSE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Parse the `org_trial_ends_at` session claim into a Date, tolerating the shapes it
+ * can arrive as (ISO string, or an epoch-ms number/numeric-string). Any absent,
+ * malformed, or non-finite value → `null` (no trial) — fail-closed, never a crash.
+ */
+export function parseTrialEndsAt(claim: unknown): Date | null {
+  if (typeof claim === 'number') {
+    return Number.isFinite(claim) ? new Date(claim) : null;
+  }
+  if (typeof claim !== 'string' || claim.trim() === '') return null;
+  // Numeric string → epoch ms; otherwise an ISO/date string.
+  const asNumber = Number(claim);
+  const ms = Number.isFinite(asNumber) ? asNumber : Date.parse(claim);
+  return Number.isFinite(ms) ? new Date(ms) : null;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Pure helpers (no Clerk I/O) — unit-testable without mocks.                 */
 /* -------------------------------------------------------------------------- */
 
@@ -236,37 +283,97 @@ function compedOrgIds(): Set<string> {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The active org's plan tier, highest first. Fail-closed: any error or an
- * indeterminate state resolves to `starter` (the most restrictive tier).
+ * The ONE request-time entitlement resolution. Reads Clerk once and returns both the
+ * resolved {@link EffectiveEntitlementState} and a `featureAllowed` predicate, so
+ * `getPlanTier`, `getEffectiveEntitlementState`, and `canUseFeature` all agree.
+ *
+ * Precedence (fail-closed at every step; any throw → Starter/free, deny all):
+ *   1. COMPED org            → Business, all features (`comped`).
+ *   2. Real paid org plan    → that tier, Clerk `has({ feature })` (`paid`).
+ *   3. Reverse trial active  → Business, all features (`trial`).
+ *   4. Otherwise             → Starter, Clerk `has` (which is false) (`free`).
+ *
+ * Zero extra I/O: the trial deadline is read from the `org_trial_ends_at` session
+ * claim (projected from org metadata), never the DB. The trial NEVER stacks on a
+ * paid plan — a real subscription resolves at step 2, before the trial is checked.
  */
-export async function getPlanTier(): Promise<PlanTier> {
+async function resolveEntitlementContext(): Promise<{
+  state: EffectiveEntitlementState;
+  featureAllowed: (feature: Feature) => boolean;
+}> {
   try {
-    const { has, orgId } = await auth();
-    // Operator/internal comp: a listed org is treated as Business.
-    if (orgId && compedOrgIds().has(orgId)) return 'business';
-    // Require an active org before any plan check — org plans are org-payer, so
-    // without an org there is no org subscription to read, and `has({ plan })` must
-    // never resolve a personal (user-payer) subscription into an org tier.
-    if (!orgId || typeof has !== 'function') return 'starter';
-    if (has({ plan: 'business' })) return 'business';
-    if (has({ plan: 'pro' })) return 'pro';
-    if (has({ plan: 'solo' })) return 'solo';
-    return 'starter';
+    const { has, orgId, sessionClaims } = await auth();
+    // 1. Operator/internal comp: a listed org is Business with every feature.
+    if (orgId && compedOrgIds().has(orgId)) {
+      return {
+        state: { tier: 'business', source: 'comped', trialEndsAt: null },
+        featureAllowed: () => true,
+      };
+    }
+    const hasFn = typeof has === 'function' ? has : null;
+    // 2. Real paid tier. Require an active org — org plans are org-payer, so without
+    // an org there is no org subscription, and `has({ plan })` must never resolve a
+    // personal (user-payer) subscription into an org tier.
+    let realTier: PlanTier = 'starter';
+    if (orgId && hasFn) {
+      if (hasFn({ plan: 'business' })) realTier = 'business';
+      else if (hasFn({ plan: 'pro' })) realTier = 'pro';
+      else if (hasFn({ plan: 'solo' })) realTier = 'solo';
+    }
+    if (realTier !== 'starter') {
+      return {
+        state: { tier: realTier, source: 'paid', trialEndsAt: null },
+        featureAllowed: (feature) => (hasFn ? hasFn({ feature }) === true : false),
+      };
+    }
+    // 3. Reverse trial: no paid plan, but still inside the window → full Business.
+    const trialEndsAt = orgId
+      ? parseTrialEndsAt(sessionClaims?.org_trial_ends_at)
+      : null;
+    if (trialEndsAt && Date.now() < trialEndsAt.getTime()) {
+      return {
+        state: { tier: 'business', source: 'trial', trialEndsAt },
+        featureAllowed: () => true,
+      };
+    }
+    // 4. Free baseline (trialEndsAt kept for "trial expired" display when present).
+    return {
+      state: { tier: 'starter', source: 'free', trialEndsAt },
+      featureAllowed: (feature) => (hasFn ? hasFn({ feature }) === true : false),
+    };
   } catch {
-    return 'starter';
+    return {
+      state: { tier: 'starter', source: 'free', trialEndsAt: null },
+      featureAllowed: () => false,
+    };
   }
 }
 
-/** Whether the active org's plan includes `feature`. Fail-closed to `false`. */
+/**
+ * The active org's EFFECTIVE entitlement state (tier + source + trial deadline).
+ * Use this where the SOURCE matters — e.g. `/billing` must show "Business trial"
+ * rather than a paid "Business" subscription. Fail-closed to Starter/free.
+ */
+export async function getEffectiveEntitlementState(): Promise<EffectiveEntitlementState> {
+  return (await resolveEntitlementContext()).state;
+}
+
+/**
+ * The active org's effective plan tier, highest first. Fail-closed: any error or an
+ * indeterminate state resolves to `starter`. During an active reverse trial this
+ * returns `business` (the trial grants full access); a real paid plan always wins.
+ */
+export async function getPlanTier(): Promise<PlanTier> {
+  return (await resolveEntitlementContext()).state.tier;
+}
+
+/**
+ * Whether the active org may use `feature`. Fail-closed to `false`. Comped orgs and
+ * orgs in an active reverse trial get every feature; otherwise this reads Clerk
+ * `has({ feature })` for the real paid plan.
+ */
 export async function canUseFeature(feature: Feature): Promise<boolean> {
-  try {
-    const { has, orgId } = await auth();
-    // Operator/internal comp: a listed org has every feature.
-    if (orgId && compedOrgIds().has(orgId)) return true;
-    return typeof has === 'function' ? has({ feature }) === true : false;
-  } catch {
-    return false;
-  }
+  return (await resolveEntitlementContext()).featureAllowed(feature);
 }
 
 /**
