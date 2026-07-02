@@ -140,7 +140,10 @@ export function Sidebar({
         // Corrupt value — fall through to the active-group default.
       }
     }
-    setOpenGroups(new Set(activeGroupKey ? [activeGroupKey] : []));
+    // No stored preference yet: open every group so a first-time user sees the
+    // whole app up front (discovery beats tidiness). Collapsing is opt-in and
+    // the choice is then persisted below.
+    setOpenGroups(new Set(groups.map((group) => group.key as NavGroupKey)));
     // Run once on mount; navigation is handled by the effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -247,16 +250,25 @@ export function Sidebar({
                 type="button"
                 onClick={() => toggleGroup(group.key)}
                 aria-expanded={open}
-                className="flex items-center justify-between gap-2 rounded-md px-3 pb-1 pt-0.5 text-xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group/header flex items-center justify-between gap-2 rounded-md px-3 py-1 text-xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span>{tGroups(group.key)}</span>
-                <ChevronDown
-                  className={cn(
-                    'size-3.5 shrink-0 transition-transform',
-                    !open && '-rotate-90',
+                <span className="flex items-center gap-1.5">
+                  {/* When the group is collapsed, surface the item count so the
+                      header reads as "there's content in here", not a dead row. */}
+                  {!open && (
+                    <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-surface-2 px-1 text-[10px] font-semibold leading-none tabular-nums text-muted-foreground group-hover/header:bg-surface">
+                      {group.items.length}
+                    </span>
                   )}
-                  aria-hidden
-                />
+                  <ChevronDown
+                    className={cn(
+                      'size-3.5 shrink-0 transition-transform',
+                      !open && '-rotate-90',
+                    )}
+                    aria-hidden
+                  />
+                </span>
               </button>
             )}
             {open &&
