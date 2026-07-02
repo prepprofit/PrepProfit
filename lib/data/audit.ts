@@ -123,6 +123,10 @@ export type AuditAction =
   | 'task.delete'
   | 'task.complete'
   | 'task.reopen'
+  // Prep/Reorder Planner bulk task creation (Sprint 7, manager-only). One event per
+  // create call; metadata = list id + created/prep/reorder/skipped COUNTS only, never
+  // recipe/ingredient names.
+  | 'taskList.prepPlanTasks'
   | 'task.assign'
   // Daily-close sales (Sprint 12a, manager-only). `.create/.update/.delete` = draft
   // lifecycle; `.post` = draft→posted (single protected income row + idempotent stock
@@ -231,6 +235,13 @@ export type AuditAction =
   // names, or the summary prose.
   | 'ai.dailyCloseSummary'
   | 'ai.dailyCloseSummaryFailed'
+  // Prep/Reorder Plan Summary (Sprint 7, AI margin roadmap). `ai.prepPlanSummary` = a plan
+  // was summarized by AI (attempt `succeeded`); `ai.prepPlanSummaryFailed` = the provider/
+  // validation failed (a `failed` attempt was recorded). metadata holds only provider/model/
+  // token COUNTS, the supply-risk level, and the attempt id — NEVER quantities, item names,
+  // or the summary prose. The plan carries no money.
+  | 'ai.prepPlanSummary'
+  | 'ai.prepPlanSummaryFailed'
   // GDPR account lifecycle (Sprint 5e). `account.export` = a manager downloaded the
   // full org data bundle (metadata = row count only, never the data). `account.
   // deletionRequest` / `account.deletionCancel` = a manager asked to erase / undid

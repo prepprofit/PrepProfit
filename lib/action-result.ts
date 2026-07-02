@@ -80,6 +80,12 @@ export type ActionErrorCode =
   // The AI provider was TRANSIENTLY overloaded summarizing a close and stayed busy through
   // retries (Sprint 6) — retry in a moment. The close figures still surface.
   | 'AI_SUMMARY_BUSY'
+  // The AI provider failed or returned unusable output while summarizing a prep/reorder
+  // plan (Sprint 7, AI margin roadmap). The deterministic plan still surfaces.
+  | 'AI_PREP_PLAN_FAILED'
+  // The AI provider was TRANSIENTLY overloaded summarizing a plan and stayed busy through
+  // retries (Sprint 7) — retry in a moment. The plan still surfaces.
+  | 'AI_PREP_PLAN_BUSY'
   // A supplier invoice import was applied while its currency differs from the org
   // currency (Sprint 2, D6) — MVP requires a match; no silent gross/net mixing.
   | 'INVOICE_CURRENCY_MISMATCH'

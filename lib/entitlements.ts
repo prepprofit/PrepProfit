@@ -98,6 +98,21 @@ export const DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT = {
   business: 500,
 } as const satisfies Record<PlanTier, number>;
 
+/**
+ * Monthly AI Prep/Reorder Plan Summary allowance per tier (Sprint 7, AI margin roadmap).
+ * App-enforced (counted in `ai_operation_attempts`, feature `prep_reorder_plan_summary`),
+ * NOT a Clerk feature. The DETERMINISTIC planner itself is universal operational value (all
+ * tiers, both roles, money-free) — only the optional AI *formatting* is metered. Per the
+ * roadmap tier matrix (plan §14 "no / limited / full"), the free Starter gets 0 AI
+ * summaries; Pro/Business get real allowances. Counted per-ORGANIZATION per calendar month.
+ * Tunable here without a deploy of the gating logic.
+ */
+export const PREP_PLAN_SUMMARY_MONTHLY_LIMIT = {
+  starter: 0,
+  pro: 30,
+  business: 500,
+} as const satisfies Record<PlanTier, number>;
+
 /* -------------------------------------------------------------------------- */
 /* Pure helpers (no Clerk I/O) — unit-testable without mocks.                 */
 /* -------------------------------------------------------------------------- */
@@ -309,4 +324,18 @@ export async function dailyCloseSummaryMonthlyLimit(): Promise<{
 }> {
   const tier = await getPlanTier();
   return { limit: DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT[tier], tier };
+}
+
+/**
+ * The active org's monthly AI Prep/Reorder Plan Summary allowance (Sprint 7), read
+ * fail-closed (`starter` ⇒ 0). The summarize action compares it against the count of this
+ * month's reserved attempts inside `withOrg` and returns `USAGE_LIMIT_REACHED` when the next
+ * call would exceed it.
+ */
+export async function prepPlanSummaryMonthlyLimit(): Promise<{
+  limit: number;
+  tier: PlanTier;
+}> {
+  const tier = await getPlanTier();
+  return { limit: PREP_PLAN_SUMMARY_MONTHLY_LIMIT[tier], tier };
 }

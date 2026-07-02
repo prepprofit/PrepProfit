@@ -69,6 +69,8 @@
     "AI_EXPLAIN_BUSY": "The explainer is busy right now. Please wait a moment and try again — the finding is still shown.",
     "AI_SUMMARY_FAILED": "We couldn't generate a summary right now. Your close's figures are still shown — try again in a moment.",
     "AI_SUMMARY_BUSY": "The summarizer is busy right now. Please wait a moment and try again — your close's figures are still shown.",
+    "AI_PREP_PLAN_FAILED": "We couldn't write up the plan right now. Your prep and reorder figures are still shown — try again in a moment.",
+    "AI_PREP_PLAN_BUSY": "The planner is busy right now. Please wait a moment and try again — your plan figures are still shown.",
     "INVOICE_CURRENCY_MISMATCH": "This invoice's currency doesn't match your organization's currency, so it can't be applied. Set the matching currency first.",
     "INVOICE_IMPORT_NOT_EDITABLE": "This invoice import has already been applied or discarded and can no longer be changed.",
     "INVOICE_IMPORT_EMPTY": "Match at least one line to an ingredient (with a pack size, unit, and price) before applying.",
