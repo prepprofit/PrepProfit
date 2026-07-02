@@ -49,6 +49,7 @@ const messages = JSON.parse(
   marketing: {
     pricing: {
       free: { price: string; f2: string; f4: string };
+      solo: { price: string; priceYear: string; f1: string; f4: string };
       pro: { price: string; f1: string; f4: string };
       business: { price: string; f4: string };
     };
@@ -99,9 +100,12 @@ describe('billing catalogue ↔ entitlements ↔ public pricing consistency', ()
     expect(catalogue.billing.plans.solo!.amount).toBe(1900);
     expect(catalogue.billing.plans.pro!.amount).toBe(2900);
     expect(catalogue.billing.plans.business!.amount).toBe(7900);
+    expect(pricing.solo.price).toBe('€19');
     expect(pricing.pro.price).toBe('€29');
     expect(pricing.business.price).toBe('€79');
     expect(pricing.free.price).toBe('€0');
+    // Yearly = 2 months free (Decision D): €19 × 10 = €190.
+    expect(pricing.solo.priceYear).toBe('€190');
   });
 
   it('public copy matches the enforced caps (recipes, seats, AI quota)', () => {
@@ -111,6 +115,11 @@ describe('billing catalogue ↔ entitlements ↔ public pricing consistency', ()
     expect(pricing.free.f2).toContain('10');
     expect(AI_EXTRACTION_MONTHLY_LIMIT.starter).toBe(10);
     expect(pricing.free.f4).toContain('10');
+    // Solo: 1 seat, AI 40/mo.
+    expect(PLAN_LIMITS.solo.seats).toBe(1);
+    expect(pricing.solo.f1).toContain('1');
+    expect(AI_EXTRACTION_MONTHLY_LIMIT.solo).toBe(40);
+    expect(pricing.solo.f4).toContain('40');
     // Pro: 5 seats, AI 100/mo.
     expect(PLAN_LIMITS.pro.seats).toBe(5);
     expect(pricing.pro.f1).toContain('5');

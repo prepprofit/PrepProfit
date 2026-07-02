@@ -107,19 +107,34 @@ Planned additions must land only in their sprint:
 Numeric caps live in `PLAN_LIMITS` / `AI_EXTRACTION_MONTHLY_LIMIT` (`lib/entitlements.ts`);
 Clerk features gate the paid modules. AI photo extraction is the product differentiator,
 so it is UNIVERSAL (every tier, free included) and metered ONLY by a per-org monthly
-quota — it is deliberately NOT a Clerk feature flag.
+quota — it is deliberately NOT a Clerk feature flag. There are FOUR tiers:
 
 - Free (Starter): 1 user, up to 10 recipes, all operational modules (recipes,
   ingredients, menus, suppliers, inventory, productions, sales, tasks, allergens, POs),
   and AI extraction at 10/month.
-- Pro (€29/mo): 5 users, unlimited recipes, everything in Free plus invoices and
-  break-even, AI extraction at 100/month.
+- Solo (€19/mo): 1 user, unlimited recipes, everything in Free plus break-even,
+  AI extraction at 40/month. (`break_even` starts at Solo, not Pro.)
+- Pro (€29/mo): 5 users, unlimited recipes, everything in Solo plus invoices,
+  AI extraction at 100/month.
 - Business (€79/mo): unlimited users, everything in Pro plus payroll and advanced
   document/report workflows, AI extraction at 500/month.
 
-Entitlements are enforced server-side (`requireFeature` / `assertPlanLimit`), fail-closed
-to Starter. UI hiding is never enough. The committed Clerk catalogue is `clerk/billing.json`
-(dev currency is USD placeholder; the €29/€79 prices are set in Clerk prod with EUR).
+Feature ladder: `break_even` (Solo+), `invoices` (Pro+), `payroll` +
+`advanced_documents` (Business). The full AI-quota ladder per tier lives in the
+`Record<PlanTier, number>` maps in `lib/entitlements.ts`.
+
+Reverse trial: every NEW org gets Business-level access (all features + Business AI
+quotas) for 14 days, then falls back to Free unless it subscribes. It is stamped as
+`publicMetadata.trial_ends_at` on `organization.created` (webhook) and read at
+request time from the `org_trial_ends_at` session claim — zero DB I/O.
+`getEffectiveEntitlementState()` resolves `{ tier, source, trialEndsAt }` with
+precedence comped > paid > trial > free; the trial NEVER stacks on a real paid plan.
+The paid plans carry NO Clerk free trial (the reverse trial is the only trial).
+
+Entitlements are enforced server-side (`requireFeature` / `assertPlanLimit` /
+`canUseFeature`), fail-closed to Starter. UI hiding is never enough. The committed
+Clerk catalogue is `clerk/billing.json` (dev currency is USD placeholder; the
+€19/€29/€79 prices are set in Clerk prod with EUR).
 
 ## Workflow
 

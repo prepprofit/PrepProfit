@@ -22,7 +22,11 @@ vi.mock('@clerk/nextjs/server', () => ({
 import {
   PLAN_LIMITS,
   AI_EXTRACTION_MONTHLY_LIMIT,
+  SUPPLIER_INVOICE_MONTHLY_LIMIT,
   PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT,
+  DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT,
+  PREP_PLAN_SUMMARY_MONTHLY_LIMIT,
+  WEEKLY_CFO_REPORT_MONTHLY_LIMIT,
   REVERSE_TRIAL_DAYS,
   isWithinLimit,
   getPlanTier,
@@ -168,6 +172,61 @@ describe('getPlanTier', () => {
   it('fail-closes to starter when has is unavailable', async () => {
     h.auth = async () => ({});
     expect(await getPlanTier()).toBe('starter');
+  });
+});
+
+describe('Solo tier — feature matrix + caps (pricing 4-tier plan §2)', () => {
+  /** A realistic Solo `has`: the `solo` plan and ONLY the `break_even` feature. */
+  const soloHas: HasFn = ({ plan, feature }) =>
+    plan === 'solo' || feature === 'break_even';
+
+  it('resolves to the solo tier with break_even but nothing higher', async () => {
+    setHas(soloHas);
+    expect(await getPlanTier()).toBe('solo');
+    expect(await canUseFeature('break_even')).toBe(true);
+    // Solo must NOT unlock Pro/Business modules.
+    expect(await canUseFeature('invoices')).toBe(false);
+    expect(await requireFeature('invoices')).toBe('UPGRADE_REQUIRED');
+    expect(await canUseFeature('payroll')).toBe(false);
+    expect(await canUseFeature('advanced_documents')).toBe(false);
+    expect((await getEffectiveEntitlementState()).source).toBe('paid');
+  });
+
+  it('caps: 1 seat, unlimited recipes', async () => {
+    setHas(soloHas);
+    expect(await assertPlanLimit('recipes', 100_000)).toEqual({
+      allowed: true,
+      limit: Infinity,
+      tier: 'solo',
+    });
+    expect(await assertPlanLimit('seats', 1)).toEqual({
+      allowed: false,
+      limit: 1,
+      tier: 'solo',
+    });
+  });
+
+  it('sits on the Free<Solo<Pro<Business AI quota ladder (§2.3)', () => {
+    expect(AI_EXTRACTION_MONTHLY_LIMIT.solo).toBe(40);
+    expect(SUPPLIER_INVOICE_MONTHLY_LIMIT.solo).toBe(12);
+    expect(PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT.solo).toBe(40);
+    // No sales module on Solo → no daily close → 0 is consistent, not a punishment.
+    expect(DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT.solo).toBe(0);
+    expect(PREP_PLAN_SUMMARY_MONTHLY_LIMIT.solo).toBe(15);
+    expect(WEEKLY_CFO_REPORT_MONTHLY_LIMIT.solo).toBe(4);
+    // Each quota is strictly ordered Free ≤ Solo ≤ Pro ≤ Business.
+    for (const q of [
+      AI_EXTRACTION_MONTHLY_LIMIT,
+      SUPPLIER_INVOICE_MONTHLY_LIMIT,
+      PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT,
+      DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT,
+      PREP_PLAN_SUMMARY_MONTHLY_LIMIT,
+      WEEKLY_CFO_REPORT_MONTHLY_LIMIT,
+    ]) {
+      expect(q.starter).toBeLessThanOrEqual(q.solo);
+      expect(q.solo).toBeLessThanOrEqual(q.pro);
+      expect(q.pro).toBeLessThanOrEqual(q.business);
+    }
   });
 });
 

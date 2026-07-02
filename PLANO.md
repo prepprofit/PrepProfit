@@ -36,6 +36,7 @@ Completed (continued):
 Completed (continued):
 
 - [x] Sprint 5 - launch readiness and beta operations (sliced 5a-5g: Sentry observability, Playwright E2E smoke + Dependabot/`npm audit`, PostHog analytics, welcome + low-stock lifecycle emails, GDPR export + deletion-request + retention docs, a11y/mobile review, ops runbook + public landing page). Migration 0019 (5e). Next = Sprint 6 (kitchen tasks) unless beta feedback reprioritizes.
+- [~] Pricing 4-tier + reverse trial (`docs/pricing-4-tier-plan.md`) - add the **Solo** (€19) tier between Free and Pro (4 tiers total; `break_even` drops to Solo+), rebalance the AI-quota ladder, and introduce a 14-day **reverse trial** (every new org = Business access, then Free). Slices 1-5 DONE on `main` (entitlements core, Clerk catalogue + `solo` plan with paid trials removed, reverse-trial webhook/claim/gating, 4-column pricing UI + copy, enforcement tests + docs). No DB migration (trial lives in Clerk org metadata + session claim). **OWNER-PENDING:** Clerk dev/prod `solo` plan + seat limits + session-token `org_trial_ends_at` template (Slice 7 rollout); Slice 6 (trial-ending reminder cron) optional/fast-follow. Live mapping: CLAUDE.md "Subscription plans" + `lib/entitlements.ts`.
 
 ---
 
