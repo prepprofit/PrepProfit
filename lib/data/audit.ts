@@ -179,6 +179,11 @@ export type AuditAction =
   // AFTER the provider accepts; metadata is documentType + provider message id
   // only (never the recipient address, amounts, or names).
   | 'document.email'
+  // Weekly CFO report emailed by the outbox worker (React Email migration) — written
+  // only AFTER the provider accepts; system actor. metadata is weekTo + provider
+  // message id + non-sensitive section COUNTS only (never the recipient, item names,
+  // amounts, or any AI prose — the automated email is deterministic, no AI).
+  | 'report.cfoEmail'
   // Billing webhooks (Sprint 4c, `system` actor — Clerk delivers them, no user).
   // `subscription.update` = the subscription mirror moved to a new plan/status;
   // `subscription.lapse` = a downgrade signal (past_due / org deleted);

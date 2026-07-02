@@ -180,6 +180,35 @@ export async function markOutboxFailed(
 }
 
 /**
+ * Terminally CANCEL a single claimed row (React Email migration). Used by the CFO
+ * delivery path when, at send time, the org has opted out of the weekly report or
+ * cleared its business email — there is nothing to deliver, and this is NOT a
+ * failure to retry. Guarded by `claimToken` (like {@link markOutboxSent}) so a stale
+ * worker cannot cancel a row another worker re-claimed, and by the unsent guard so a
+ * row that already sent is never touched. Returns true if this worker still owned it.
+ */
+export async function markOutboxCancelled(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+  claimToken: string,
+): Promise<boolean> {
+  const [row] = await db
+    .update(emailOutbox)
+    .set({ status: 'cancelled', leaseUntil: null, claimToken: null })
+    .where(
+      and(
+        eq(emailOutbox.organizationId, organizationId),
+        eq(emailOutbox.id, id),
+        eq(emailOutbox.claimToken, claimToken),
+        isNull(emailOutbox.providerMessageId),
+      ),
+    )
+    .returning({ id: emailOutbox.id });
+  return Boolean(row);
+}
+
+/**
  * Cancel any un-sent outbox rows for a document (used when a PO is cancelled before
  * its send email left). A row that already has `provider_message_id` is left alone —
  * the email is gone, so the caller enqueues a separate cancellation notice instead.

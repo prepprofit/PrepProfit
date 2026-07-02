@@ -36,6 +36,7 @@ vi.mock('@/lib/cron-auth', () => ({
 vi.mock('@/lib/env', () => ({
   serverEnv: () => ({ CRON_SECRET: 'secret' }),
   isEmailConfigured: () => h.emailOn,
+  emailAppUrl: () => null,
 }));
 
 vi.mock('@/lib/rate-limit', () => ({
