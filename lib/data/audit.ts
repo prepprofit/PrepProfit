@@ -242,6 +242,13 @@ export type AuditAction =
   // or the summary prose. The plan carries no money.
   | 'ai.prepPlanSummary'
   | 'ai.prepPlanSummaryFailed'
+  // Weekly CFO Report (Sprint 8, AI margin roadmap, manager-only). `ai.cfoReport` = the
+  // weekly report was written up by AI (attempt `succeeded`); `ai.cfoReportFailed` = the
+  // provider/validation failed (a `failed` attempt was recorded). metadata holds only
+  // provider/model/token COUNTS, the risk level, the week-ending date, and the attempt id —
+  // NEVER amounts, item names, or the report prose.
+  | 'ai.cfoReport'
+  | 'ai.cfoReportFailed'
   // GDPR account lifecycle (Sprint 5e). `account.export` = a manager downloaded the
   // full org data bundle (metadata = row count only, never the data). `account.
   // deletionRequest` / `account.deletionCancel` = a manager asked to erase / undid

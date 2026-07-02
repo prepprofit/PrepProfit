@@ -113,6 +113,21 @@ export const PREP_PLAN_SUMMARY_MONTHLY_LIMIT = {
   business: 500,
 } as const satisfies Record<PlanTier, number>;
 
+/**
+ * Monthly AI Weekly CFO Report allowance per tier (Sprint 8, AI margin roadmap).
+ * App-enforced (counted in `ai_operation_attempts`, feature `kitchen_cfo_report`), NOT a
+ * Clerk feature. The DETERMINISTIC report itself is a manager-only management view of the
+ * insight modules; only the premium AI *write-up* is metered. Per the roadmap tier matrix
+ * (plan §14 "no / monthly / weekly"), the free Starter gets 0; Pro can run it roughly monthly
+ * (with room for retries); Business can run it weekly. Counted per-ORGANIZATION per calendar
+ * month. Tunable here without a deploy of the gating logic.
+ */
+export const WEEKLY_CFO_REPORT_MONTHLY_LIMIT = {
+  starter: 0,
+  pro: 4,
+  business: 30,
+} as const satisfies Record<PlanTier, number>;
+
 /* -------------------------------------------------------------------------- */
 /* Pure helpers (no Clerk I/O) — unit-testable without mocks.                 */
 /* -------------------------------------------------------------------------- */
@@ -338,4 +353,18 @@ export async function prepPlanSummaryMonthlyLimit(): Promise<{
 }> {
   const tier = await getPlanTier();
   return { limit: PREP_PLAN_SUMMARY_MONTHLY_LIMIT[tier], tier };
+}
+
+/**
+ * The active org's monthly AI Weekly CFO Report allowance (Sprint 8), read fail-closed
+ * (`starter` ⇒ 0). The summarize action compares it against the count of this month's
+ * reserved attempts inside `withOrg` and returns `USAGE_LIMIT_REACHED` when the next call
+ * would exceed it.
+ */
+export async function weeklyCfoReportMonthlyLimit(): Promise<{
+  limit: number;
+  tier: PlanTier;
+}> {
+  const tier = await getPlanTier();
+  return { limit: WEEKLY_CFO_REPORT_MONTHLY_LIMIT[tier], tier };
 }

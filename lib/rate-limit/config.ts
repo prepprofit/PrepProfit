@@ -59,6 +59,11 @@ export const RATE_LIMITS = {
   // per-plan cap (counted in ai_operation_attempts, feature prep_reorder_plan_summary) is the
   // separate quota control. Per org+user.
   aiPrepPlan: { limit: 10, windowMs: MINUTE },
+  // AI weekly CFO report (Sprint 8, AI margin roadmap). Interactive text call to a paid
+  // provider, like `aiDailyClose`/`aiPrepPlan` — burst/abuse control only; the monthly
+  // per-plan cap (counted in ai_operation_attempts, feature kitchen_cfo_report) is the
+  // separate quota control. Per org+user.
+  aiCfoReport: { limit: 10, windowMs: MINUTE },
   // Email-outbox cron worker (Sprint 8a). Like `cronPurge`, keyed by a hash of the
   // cron auth header (the worker is org-less at entry). Generous ceiling — only
   // abusive retries should trip it; legitimate Vercel Cron fires on a schedule.
