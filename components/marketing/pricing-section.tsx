@@ -5,7 +5,7 @@ import {
   type PricingPlan,
 } from '@/components/marketing/pricing-cards';
 
-const PLAN_KEYS = ['free', 'pro', 'business'] as const;
+const PLAN_KEYS = ['free', 'solo', 'pro', 'business'] as const;
 const FEATURE_KEYS = ['f1', 'f2', 'f3', 'f4'] as const;
 
 export async function PricingSection() {

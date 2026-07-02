@@ -86,7 +86,7 @@ export function PricingCards({
         </div>
       </Reveal>
 
-      <div className="mt-12 grid items-start gap-6 lg:grid-cols-3">
+      <div className="mt-12 grid items-start gap-6 sm:grid-cols-2 xl:grid-cols-4">
         {plans.map((plan, i) => {
           const price = yearly ? plan.priceYear : plan.priceMonth;
           const unit = yearly ? labels.perYear : labels.perMonth;
@@ -98,7 +98,7 @@ export function PricingCards({
                   plan.filled &&
                     'border-transparent bg-gradient-to-br from-accent-600 to-accent-700 text-white shadow-xl',
                   plan.popular &&
-                    'border-accent-500/40 shadow-xl ring-1 ring-accent-500/30 lg:-mt-4 lg:pb-11',
+                    'border-accent-500/40 shadow-xl ring-1 ring-accent-500/30 xl:-mt-4 xl:pb-11',
                 )}
               >
                 {plan.popular && (

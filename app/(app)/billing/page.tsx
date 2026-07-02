@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getFormatter, getTranslations } from 'next-intl/server';
 import { ArrowRight } from 'lucide-react';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
-import { getPlanTier, PLAN_LIMITS } from '@/lib/entitlements';
+import { getEffectiveEntitlementState, PLAN_LIMITS } from '@/lib/entitlements';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { NoAccess } from '@/components/app/no-access';
@@ -23,12 +24,24 @@ export default async function BillingPage() {
     return <NoAccess />;
   }
 
-  const tier = await getPlanTier();
+  const { tier, source, trialEndsAt } = await getEffectiveEntitlementState();
   const limits = PLAN_LIMITS[tier];
   const recipes =
     limits.recipes === Infinity ? t('recipesUnlimited') : String(limits.recipes);
   const seats =
     limits.seats === Infinity ? t('seatsUnlimited') : String(limits.seats);
+
+  // During the reverse trial, getPlanTier resolves to `business` — but this is a
+  // TRIAL, not a paid subscription, so never present it as one. Show "Business
+  // trial" + the end date; a real paid plan keeps the plain tier name.
+  const onTrial = source === 'trial';
+  const planLabel = onTrial ? t('trial.activeName', { plan: t(`tier.${tier}`) }) : t(`tier.${tier}`);
+  const format = await getFormatter();
+  const trialNote = onTrial && trialEndsAt
+    ? t('trial.endsOn', { date: format.dateTime(trialEndsAt, { dateStyle: 'long' }) })
+    : source === 'free' && trialEndsAt
+      ? t('trial.ended')
+      : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -41,9 +54,15 @@ export default async function BillingPage() {
               <span className="text-xs uppercase tracking-wide text-muted-foreground">
                 {t('currentPlan')}
               </span>
-              <span className="font-display text-xl font-semibold text-foreground">
-                {t(`tier.${tier}`)}
+              <span className="flex items-center gap-2">
+                <span className="font-display text-xl font-semibold text-foreground">
+                  {planLabel}
+                </span>
+                {onTrial && <Badge variant="accent">{t('trial.badge')}</Badge>}
               </span>
+              {trialNote && (
+                <span className="text-xs text-muted-foreground">{trialNote}</span>
+              )}
             </div>
             <Button asChild size="sm">
               <Link href="/pricing">
