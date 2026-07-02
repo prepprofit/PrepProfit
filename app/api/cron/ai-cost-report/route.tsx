@@ -7,6 +7,9 @@ import { isCronAuthorized } from '@/lib/cron-auth';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { serverEnv, isEmailConfigured, aiCostReportRecipient } from '@/lib/env';
 import { getEmailSender } from '@/lib/email/resend';
+import { renderEmail } from '@/lib/email/render';
+import { emailChrome } from '@/lib/email/chrome';
+import { AiCostReportEmail } from '@/emails/AiCostReportEmail';
 import { formatCostMicrosUsd } from '@/lib/ai/pricing';
 import { RECIPE_EXTRACTION_MODEL } from '@/lib/ai/recipe-extraction';
 import { logError } from '@/lib/observability';
@@ -86,15 +89,45 @@ export async function GET(req: Request): Promise<NextResponse> {
   }
 
   const t = await getTranslations('aiCostReport');
+  const chrome = await emailChrome();
   const period = `${since.toISOString().slice(0, 10)} – ${now.toISOString().slice(0, 10)}`;
   const subject = t('subject', { period });
-  const html = renderReportHtml(t, { period, total, perOrg });
+  const avgMicros = total.count > 0 ? Math.round(total.costMicros / total.count) : null;
+  const { html, text } = await renderEmail(
+    <AiCostReportEmail
+      {...chrome}
+      preview={subject}
+      heading={t('heading')}
+      periodLabel={t('period', { period })}
+      totals={[
+        { label: t('totalSpend'), value: formatCostMicrosUsd(total.costMicros), emphasize: true },
+        { label: t('extractions'), value: num(total.count) },
+        { label: t('avgPerCall'), value: formatCostMicrosUsd(avgMicros) },
+        { label: t('inputTokens'), value: num(total.inputTokens) },
+        { label: t('outputTokens'), value: num(total.outputTokens) },
+      ]}
+      byOrgTitle={t('byOrg')}
+      orgHeader={{
+        name: t('orgColumn'),
+        count: t('extractions'),
+        spend: t('totalSpend'),
+      }}
+      orgRows={perOrg.map((o) => ({
+        name: o.name,
+        count: num(o.summary.count),
+        spend: formatCostMicrosUsd(o.summary.costMicros),
+      }))}
+      emptyText={t('noOrgActivity')}
+      notes={[t('model', { model: RECIPE_EXTRACTION_MODEL }), t('estimateNote')]}
+    />,
+  );
 
   try {
     await getEmailSender().send({
       to: recipient,
       subject,
       html,
+      text,
       attachments: [],
       // One report per UTC day the cron fires — a Vercel retry of the same run won't
       // double-send.
@@ -108,72 +141,4 @@ export async function GET(req: Request): Promise<NextResponse> {
   return NextResponse.json({ ok: true, orgs: perOrg.length, extractions: total.count });
 }
 
-type ReportData = {
-  period: string;
-  total: ExtractionCostSummary;
-  perOrg: { name: string; summary: ExtractionCostSummary }[];
-};
-
-/** Escape a value for safe interpolation into the report HTML (org names are user data). */
-function esc(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 const num = (n: number): string => n.toLocaleString('en-US');
-
-/** Build the digest HTML. Plain, inline-styled table — robust across mail clients. */
-function renderReportHtml(
-  t: Awaited<ReturnType<typeof getTranslations>>,
-  data: ReportData,
-): string {
-  const { total, perOrg, period } = data;
-  const avgMicros = total.count > 0 ? Math.round(total.costMicros / total.count) : null;
-
-  const orgRows =
-    perOrg.length === 0
-      ? `<tr><td colspan="3" style="padding:8px;color:#64748b">${esc(t('noOrgActivity'))}</td></tr>`
-      : perOrg
-          .map(
-            (o) => `<tr>
-              <td style="padding:8px;border-top:1px solid #e2e8f0">${esc(o.name)}</td>
-              <td style="padding:8px;border-top:1px solid #e2e8f0;text-align:right">${num(o.summary.count)}</td>
-              <td style="padding:8px;border-top:1px solid #e2e8f0;text-align:right">${esc(formatCostMicrosUsd(o.summary.costMicros))}</td>
-            </tr>`,
-          )
-          .join('');
-
-  return `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a;max-width:640px">
-    <h2 style="margin:0 0 4px">${esc(t('heading'))}</h2>
-    <p style="margin:0 0 16px;color:#64748b">${esc(t('period', { period }))}</p>
-
-    <table style="border-collapse:collapse;width:100%;margin-bottom:8px">
-      <tr><td style="padding:6px 8px;color:#64748b">${esc(t('totalSpend'))}</td>
-          <td style="padding:6px 8px;text-align:right;font-weight:600">${esc(formatCostMicrosUsd(total.costMicros))}</td></tr>
-      <tr><td style="padding:6px 8px;color:#64748b">${esc(t('extractions'))}</td>
-          <td style="padding:6px 8px;text-align:right">${num(total.count)}</td></tr>
-      <tr><td style="padding:6px 8px;color:#64748b">${esc(t('avgPerCall'))}</td>
-          <td style="padding:6px 8px;text-align:right">${esc(formatCostMicrosUsd(avgMicros))}</td></tr>
-      <tr><td style="padding:6px 8px;color:#64748b">${esc(t('inputTokens'))}</td>
-          <td style="padding:6px 8px;text-align:right">${num(total.inputTokens)}</td></tr>
-      <tr><td style="padding:6px 8px;color:#64748b">${esc(t('outputTokens'))}</td>
-          <td style="padding:6px 8px;text-align:right">${num(total.outputTokens)}</td></tr>
-    </table>
-
-    <h3 style="margin:16px 0 4px">${esc(t('byOrg'))}</h3>
-    <table style="border-collapse:collapse;width:100%">
-      <tr>
-        <th style="padding:8px;text-align:left;color:#64748b;font-weight:500">${esc(t('orgColumn'))}</th>
-        <th style="padding:8px;text-align:right;color:#64748b;font-weight:500">${esc(t('extractions'))}</th>
-        <th style="padding:8px;text-align:right;color:#64748b;font-weight:500">${esc(t('totalSpend'))}</th>
-      </tr>
-      ${orgRows}
-    </table>
-
-    <p style="margin:16px 0 0;font-size:12px;color:#94a3b8">${esc(t('model', { model: RECIPE_EXTRACTION_MODEL }))}</p>
-    <p style="margin:4px 0 0;font-size:12px;color:#94a3b8">${esc(t('estimateNote'))}</p>
-  </div>`;
-}
