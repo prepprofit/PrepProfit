@@ -182,7 +182,7 @@ Full detail in [the implementation plan](docs/prepprofit_ai_implementation_plan_
 | 5 | Menu Engineer | Classifies items by popularity and profitability | ✅ Shipped |
 | 6 | Daily Close Summary | Explains posted sales and food-cost anomalies | ✅ Shipped |
 | 7 | Prep / Reorder Planner | Suggests prep and reorder tasks from recipes and stock | ✅ Shipped |
-| 8 | Weekly CFO Report → chat | Premium management layer over trusted insights | Planned |
+| 8 | Weekly CFO Report | Premium management layer over trusted insights | ✅ Shipped |
 
 **Sprint 1 — Profit Leak Detector** is live: a pure, tested detection engine
 ([`lib/calculations/profit-leaks.ts`](lib/calculations/profit-leaks.ts)) reusing the existing
@@ -224,6 +224,18 @@ reorder-anchored tasks (duplicate-safe, manager-only) via the existing task sour
 optional Gemini seam ([`lib/ai/prep-plan-summary.ts`](lib/ai/prep-plan-summary.ts)) only *formats*
 the plan in kitchen-friendly prose — never a price, never an invented quantity. Because the plan
 carries no money, the planner is available to both roles; the AI write-up is quota-metered per plan.
+
+**Sprint 8 — Weekly CFO Report** is live: a pure, tested assembler
+([`lib/calculations/cfo-report.ts`](lib/calculations/cfo-report.ts)) that turns a week of trusted
+inputs into a manager's brief — revenue and food-cost trends versus the prior week, the biggest
+deterministic margin leaks and reprice candidates, pending supplier price changes, low stock, and
+*explicit* confidence notes for whatever limits the numbers. It never reports a trend off a missing
+baseline. An org-scoped loader ([`lib/data/cfo-report.ts`](lib/data/cfo-report.ts)) buckets two weeks
+of posted sales, resolves current catalogue cost (so food cost is honest-or-partial), and reads
+price observations and the stock ledger. A manager-only page renders the report; an optional Gemini
+seam ([`lib/ai/cfo-report.ts`](lib/ai/cfo-report.ts)) only *narrates* those figures — never a
+computed number. Quota-metered per plan (Starter none), cost recorded on every call. This closes the
+AI margin-protection track.
 
 Non-negotiable rules for every sprint in this track:
 

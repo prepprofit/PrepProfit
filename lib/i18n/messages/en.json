@@ -71,6 +71,8 @@
     "AI_SUMMARY_BUSY": "The summarizer is busy right now. Please wait a moment and try again — your close's figures are still shown.",
     "AI_PREP_PLAN_FAILED": "We couldn't write up the plan right now. Your prep and reorder figures are still shown — try again in a moment.",
     "AI_PREP_PLAN_BUSY": "The planner is busy right now. Please wait a moment and try again — your plan figures are still shown.",
+    "AI_CFO_REPORT_FAILED": "We couldn't write up the report right now. Your figures are still shown — try again in a moment.",
+    "AI_CFO_REPORT_BUSY": "The report writer is busy right now. Please wait a moment and try again — your figures are still shown.",
     "INVOICE_CURRENCY_MISMATCH": "This invoice's currency doesn't match your organization's currency, so it can't be applied. Set the matching currency first.",
     "INVOICE_IMPORT_NOT_EDITABLE": "This invoice import has already been applied or discarded and can no longer be changed.",
     "INVOICE_IMPORT_EMPTY": "Match at least one line to an ingredient (with a pack size, unit, and price) before applying.",
@@ -141,6 +143,7 @@
     "financials": "Financials",
     "insights": "Insights",
     "menuEngineering": "Menu Engineering",
+    "cfoReport": "Weekly CFO report",
     "transactions": "Transactions",
     "sales": "Sales",
     "breakEven": "Break-even",
@@ -1486,6 +1489,65 @@
       "hint": "These sold in the period but can't be scored until their pricing is fixed.",
       "missingPrice": "No selling price",
       "missingCost": "Ingredient needs pricing"
+    }
+  },
+  "cfoReport": {
+    "title": "Weekly CFO report",
+    "subtitle": "Your week at a glance — revenue and food-cost trends, the biggest margin leaks, supplier price changes and low stock, with an optional AI write-up.",
+    "period": {
+      "thisWeek": "This week",
+      "lastWeek": "Last week",
+      "range": "{from} to {to}"
+    },
+    "empty": "Nothing to report for this week yet. Once you close sales and price your recipes, your weekly report appears here.",
+    "open": "Open",
+    "revenue": {
+      "title": "Revenue",
+      "priorWeek": "Prior week: {amount}",
+      "net": "Net of tax: {amount}"
+    },
+    "foodCost": {
+      "title": "Food cost",
+      "priorWeek": "Prior week: {percent}%",
+      "noPrior": "No prior week to compare.",
+      "partial": "Partial — some sold items aren't priced yet."
+    },
+    "leaks": {
+      "title": "Biggest margin leaks"
+    },
+    "reprice": {
+      "title": "Items to reprice",
+      "margin": "{margin}% margin",
+      "suggested": "Suggested: {price}"
+    },
+    "supplierChanges": {
+      "title": "Supplier price changes"
+    },
+    "lowStock": {
+      "title": "Low stock",
+      "onHand": "{onHand} on hand · reorder at {threshold}"
+    },
+    "confidence": {
+      "title": "What limits this report",
+      "code": {
+        "NO_SALES_THIS_WEEK": "No posted sales this week, so there are no revenue or food-cost figures.",
+        "NO_PRIOR_WEEK_BASELINE": "No sales in the prior week, so trends have no baseline to compare against.",
+        "PARTIAL_FOOD_COST": "Some sold items aren't priced, so the food cost is partial.",
+        "UNPRICED_INGREDIENTS": "{count} ingredient(s) used in active recipes still need a price.",
+        "INCOMPLETE_MENUS": "{count} menu(s) can't be fully costed because a component is missing or trashed."
+      }
+    },
+    "summary": {
+      "title": "AI write-up",
+      "generate": "Write up the week",
+      "refresh": "Rewrite",
+      "empty": "Get a short, plain-language CFO brief of this week's numbers. Uses one of your monthly AI reports.",
+      "disclaimer": "AI-written from the figures above. Always double-check before acting.",
+      "riskLevel": {
+        "low": "Low priority",
+        "medium": "Worth a look",
+        "high": "Needs attention"
+      }
     }
   },
   "finance": {
