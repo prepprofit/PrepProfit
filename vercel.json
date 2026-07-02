@@ -6,6 +6,10 @@
       "schedule": "0 4 * * *"
     },
     {
+      "path": "/api/cron/cfo-report",
+      "schedule": "0 4 * * 1"
+    },
+    {
       "path": "/api/cron/process-email-outbox",
       "schedule": "30 4 * * *"
     },

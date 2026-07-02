@@ -53,6 +53,7 @@ export default async function OnboardingPage() {
               ? null
               : String(bpsToPercent(settings.defaultTaxRateBps)),
           stockControlStartDate: settings.stockControlStartDate,
+          weeklyCfoReportEmailEnabled: settings.weeklyCfoReportEmailEnabled,
         }}
       />
     </div>

@@ -118,3 +118,36 @@ describe('orgSettingsSchema — fiscal config (F5)', () => {
     expect(parse({ stockControlStartDate: 'nope' }).success).toBe(false);
   });
 });
+
+/**
+ * Weekly CFO report email opt-in. Defaults OFF, coerces the HTML checkbox value,
+ * and cannot be enabled without a destination business email (defense-in-depth
+ * alongside the UI, which disables the toggle until an email is saved).
+ */
+describe('orgSettingsSchema — weekly CFO report toggle', () => {
+  const parse = (overrides: Record<string, unknown>) =>
+    orgSettingsSchema.safeParse({ ...base, ...overrides });
+
+  it('defaults to false when the checkbox is absent', () => {
+    const res = parse({});
+    expect(res.success && res.data.weeklyCfoReportEmailEnabled).toBe(false);
+  });
+
+  it("coerces the checkbox 'on' to true when a business email is present", () => {
+    const res = parse({
+      businessEmail: 'owner@padaria.pt',
+      weeklyCfoReportEmailEnabled: 'on',
+    });
+    expect(res.success && res.data.weeklyCfoReportEmailEnabled).toBe(true);
+  });
+
+  it('rejects enabling the report without a business email', () => {
+    const res = parse({ weeklyCfoReportEmailEnabled: 'on' });
+    expect(res.success).toBe(false);
+  });
+
+  it('allows the toggle OFF with no business email', () => {
+    const res = parse({ weeklyCfoReportEmailEnabled: null });
+    expect(res.success && res.data.weeklyCfoReportEmailEnabled).toBe(false);
+  });
+});

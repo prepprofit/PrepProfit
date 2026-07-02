@@ -47,6 +47,7 @@ export default async function SettingsPage() {
               ? null
               : String(bpsToPercent(settings.defaultTaxRateBps)),
           stockControlStartDate: settings.stockControlStartDate,
+          weeklyCfoReportEmailEnabled: settings.weeklyCfoReportEmailEnabled,
         }}
       />
 

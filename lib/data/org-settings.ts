@@ -29,6 +29,8 @@ export type OrgSettingsValues = {
   defaultTaxRateBps: number | null;
   /** Financial-only mode start date 'YYYY-MM-DD' (Sprint F5); null = always moves stock. */
   stockControlStartDate: string | null;
+  /** Weekly CFO report email opt-in (default OFF); the enqueue cron reads this. */
+  weeklyCfoReportEmailEnabled: boolean;
   /** Set-once onboarding completion marker (Sprint 4d); null = not onboarded. */
   onboardedAt: Date | null;
 };
@@ -44,6 +46,7 @@ export const DEFAULT_ORG_SETTINGS: OrgSettingsValues = {
   businessLogoUrl: null,
   defaultTaxRateBps: null,
   stockControlStartDate: null,
+  weeklyCfoReportEmailEnabled: false,
   onboardedAt: null,
 };
 

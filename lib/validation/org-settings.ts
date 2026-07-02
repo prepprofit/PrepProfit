@@ -127,6 +127,27 @@ export const orgSettingsSchema = z.object({
     (v) => (v == null || v === '' ? null : v),
     dateStringSchema.nullable(),
   ),
-});
+  // Weekly CFO report email opt-in. From an HTML checkbox: 'on' when ticked, absent
+  // (null) when not; anything truthy coerces to true, everything else to false.
+  weeklyCfoReportEmailEnabled: z
+    .preprocess(
+      (v) => v === 'on' || v === true || v === 'true',
+      z.boolean(),
+    )
+    .default(false),
+})
+  // The digest is a financial report — refuse to enable it without a destination.
+  // A blank `business_email` with the toggle ON is INVALID_INPUT (the UI also
+  // disables the toggle until an email is saved), so we never queue a report we
+  // cannot address.
+  .superRefine((val, ctx) => {
+    if (val.weeklyCfoReportEmailEnabled && val.businessEmail === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['weeklyCfoReportEmailEnabled'],
+        message: 'Set a business email before enabling the weekly report.',
+      });
+    }
+  });
 
 export type OrgSettingsInput = z.infer<typeof orgSettingsSchema>;

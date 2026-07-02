@@ -16,7 +16,9 @@ export const OUTBOX_LEASE_MS = 60_000;
 const BACKOFF_BASE_MS = 60_000;
 
 export type EnqueueEmailInput = {
-  documentType: 'purchase_order';
+  /** Widened for the weekly CFO digest (React Email migration); PO remains the other type. */
+  documentType: 'purchase_order' | 'cfo_report';
+  /** For `cfo_report`, this is the week-ending 'YYYY-MM-DD' (no PO row exists). */
   documentId: string;
   toEmail: string;
   subject: string | null;

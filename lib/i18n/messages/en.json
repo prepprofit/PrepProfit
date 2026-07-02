@@ -1053,6 +1053,15 @@
       "logoUrlPlaceholder": "https://",
       "logoUrlHelp": "Must be a public https:// image URL. It appears in the invoice header."
     },
+    "notifications": {
+      "title": "Notifications",
+      "description": "Choose which automated emails this organization receives.",
+      "cfoReport": {
+        "label": "Weekly CFO report email",
+        "help": "A deterministic weekly digest — revenue and food-cost trends, margin leaks, supplier price changes and low stock — sent every Monday to {email}. Available on Pro and Business plans.",
+        "needsEmail": "Add and save a business email above to enable the weekly report."
+      }
+    },
     "save": "Save settings",
     "saved": "Settings saved.",
     "privacy": {
@@ -2437,6 +2446,9 @@
     "body": "Please find attached purchase order {number} from {seller}. The order details are in the attached PDF.",
     "cancelSubject": "Purchase order {number} cancelled",
     "cancelBody": "Purchase order {number} has been cancelled. Please disregard the earlier order."
+  },
+  "cfoReportEmail": {
+    "subject": "Your weekly CFO report ({period})"
   },
   "aiCostReport": {
     "subject": "PrepProfit — AI spend report ({period})",

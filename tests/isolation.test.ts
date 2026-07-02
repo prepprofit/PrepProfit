@@ -94,6 +94,7 @@ beforeAll(async () => {
     businessLogoUrl: null,
     defaultTaxRateBps: null,
     stockControlStartDate: null,
+    weeklyCfoReportEmailEnabled: false,
   });
   await upsertOrgSettings(db, ORG_B, {
     currency: 'USD',
@@ -105,6 +106,7 @@ beforeAll(async () => {
     businessLogoUrl: null,
     defaultTaxRateBps: null,
     stockControlStartDate: null,
+    weeklyCfoReportEmailEnabled: false,
   });
 });
 

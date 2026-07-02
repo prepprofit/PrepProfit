@@ -105,6 +105,14 @@ export const organizationSettings = pgTable('organization_settings', {
   // Evaluated AT POSTING TIME ONLY (lib/finance/stock-control.ts): changing it
   // later does NOT recalc or reverse movements already posted.
   stockControlStartDate: date('stock_control_start_date', { mode: 'string' }),
+  // Weekly CFO report email opt-in (React Email migration). When TRUE and a
+  // `business_email` is set and the org is on a paid tier, the weekly enqueue cron
+  // queues ONE deterministic CFO digest to `business_email`. Default OFF for every
+  // existing and new org; a manager-only toggle in /settings flips it. The email is
+  // the deterministic report only — it never spends an AI quota unit.
+  weeklyCfoReportEmailEnabled: boolean('weekly_cfo_report_email_enabled')
+    .notNull()
+    .default(false),
   // Set-once timestamp marking when the org's manager completed the post-signup
   // onboarding flow (Sprint 4d). NULL = not onboarded yet → the /dashboard gate
   // sends a manager to /onboarding. Never reset (markOnboarded only sets it when
@@ -2205,7 +2213,7 @@ export const emailOutbox = pgTable(
     check('email_outbox_max_attempts_chk', sql`${t.maxAttempts} > 0`),
     check(
       'email_outbox_document_type_chk',
-      sql`${t.documentType} in ('purchase_order')`,
+      sql`${t.documentType} in ('purchase_order', 'cfo_report')`,
     ),
   ],
 );

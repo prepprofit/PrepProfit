@@ -35,6 +35,7 @@ export async function updateOrgSettingsAction(
     // The tax rate is entered as a percentage; Zod converts it to basis points.
     defaultTaxRateBps: formData.get('defaultTaxRatePercent'),
     stockControlStartDate: formData.get('stockControlStartDate'),
+    weeklyCfoReportEmailEnabled: formData.get('weeklyCfoReportEmailEnabled'),
   });
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
@@ -62,6 +63,8 @@ export async function updateOrgSettingsAction(
         // Not PII — a rate and a flag.
         defaultTaxRateBps: parsed.data.defaultTaxRateBps,
         stockControlStartDateSet: parsed.data.stockControlStartDate !== null,
+        // Notifications: the opt-in boolean only, never the email address.
+        weeklyCfoReportEmailEnabled: parsed.data.weeklyCfoReportEmailEnabled,
       },
     });
   });

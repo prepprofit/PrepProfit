@@ -30,6 +30,8 @@ export type SettingsFormValues = {
   defaultTaxRatePercent: string | null;
   /** Financial-only mode start date 'YYYY-MM-DD'. */
   stockControlStartDate: string | null;
+  /** Weekly CFO report email opt-in (default OFF). */
+  weeklyCfoReportEmailEnabled: boolean;
 };
 
 /**
@@ -47,6 +49,9 @@ export function SettingsForm({ settings }: { settings: SettingsFormValues }) {
     updateOrgSettingsAction,
     null,
   );
+  // The weekly-report toggle can only be enabled once a destination address is
+  // saved; the server also rejects ON without an email (defense-in-depth).
+  const hasBusinessEmail = Boolean(settings.businessEmail?.trim());
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
@@ -189,6 +194,34 @@ export function SettingsForm({ settings }: { settings: SettingsFormValues }) {
             />
             <p className="text-xs text-muted-foreground">{t('business.logoUrlHelp')}</p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('notifications.title')}</CardTitle>
+          <CardDescription>{t('notifications.description')}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              name="weeklyCfoReportEmailEnabled"
+              defaultChecked={settings.weeklyCfoReportEmailEnabled}
+              disabled={!hasBusinessEmail}
+              className="mt-0.5 size-4 shrink-0 accent-accent-700 disabled:opacity-50"
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium text-foreground">
+                {t('notifications.cfoReport.label')}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {hasBusinessEmail
+                  ? t('notifications.cfoReport.help', { email: settings.businessEmail! })
+                  : t('notifications.cfoReport.needsEmail')}
+              </span>
+            </span>
+          </label>
         </CardContent>
       </Card>
 
