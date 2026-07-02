@@ -29,10 +29,16 @@ const h = vi.hoisted(() => ({
   throwVerify: false,
 }));
 
-/** Captures the reverse-trial metadata write (organization.created, Slice 3). */
+/**
+ * Captures the reverse-trial metadata write (organization.created, Slice 3) and the
+ * per-org seat-cap sync (subscription.*, seat guard).
+ */
 const clerkMock = vi.hoisted(() => ({
   updateOrganizationMetadata: vi.fn(
     async (_orgId: string, _params: { publicMetadata: Record<string, unknown> }) => ({}),
+  ),
+  updateOrganization: vi.fn(
+    async (_orgId: string, _params: { maxAllowedMemberships: number }) => ({}),
   ),
 }));
 
@@ -47,6 +53,7 @@ vi.mock('@clerk/nextjs/server', () => ({
   clerkClient: vi.fn(async () => ({
     organizations: {
       updateOrganizationMetadata: clerkMock.updateOrganizationMetadata,
+      updateOrganization: clerkMock.updateOrganization,
     },
   })),
 }));
@@ -166,6 +173,11 @@ describe('POST /api/webhooks/clerk', () => {
     expect(rows[0]?.currentPeriodEnd).toEqual(new Date('2026-07-10T00:00:00Z'));
 
     expect(await audits(ORG_A, 'subscription.update')).toHaveLength(1);
+
+    // Seat cap synced to Clerk: Business = unlimited (0 sentinel).
+    expect(clerkMock.updateOrganization).toHaveBeenCalledWith(ORG_A, {
+      maxAllowedMemberships: 0,
+    });
 
     // Nothing leaked into ORG_B.
     expect(await mirror(ORG_B)).toHaveLength(0);
@@ -302,6 +314,11 @@ describe('POST /api/webhooks/clerk', () => {
     const rows = await settings(ORG_PAID);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.onboardedAt).toBeInstanceOf(Date);
+
+    // Pro caps seats at 5 in Clerk.
+    expect(clerkMock.updateOrganization).toHaveBeenCalledWith(ORG_PAID, {
+      maxAllowedMemberships: 5,
+    });
   });
 
   it('does NOT mark onboarded for a starter (free) subscription', async () => {

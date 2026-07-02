@@ -29,6 +29,7 @@ import {
   WEEKLY_CFO_REPORT_MONTHLY_LIMIT,
   REVERSE_TRIAL_DAYS,
   TRIAL_REMINDER_DAYS_BEFORE,
+  clerkSeatLimit,
   isWithinLimit,
   getPlanTier,
   getEffectiveEntitlementState,
@@ -102,6 +103,13 @@ describe('isWithinLimit (pure)', () => {
     expect(PLAN_LIMITS.solo.recipes).toBe(Infinity);
     expect(isWithinLimit('solo', 'recipes', 1_000_000)).toBe(true);
     expect(isWithinLimit('solo', 'seats', 1)).toBe(false);
+  });
+
+  it('maps seat caps to Clerk max_allowed_memberships (Infinity → 0 sentinel)', () => {
+    expect(clerkSeatLimit('starter')).toBe(1);
+    expect(clerkSeatLimit('solo')).toBe(1);
+    expect(clerkSeatLimit('pro')).toBe(5);
+    expect(clerkSeatLimit('business')).toBe(0);
   });
 });
 

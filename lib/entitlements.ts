@@ -41,6 +41,20 @@ export const PLAN_LIMITS = {
 export type PlanLimitKind = keyof (typeof PLAN_LIMITS)[PlanTier];
 
 /**
+ * A tier's seat cap expressed the way Clerk's per-organization
+ * `max_allowed_memberships` wants it: a positive integer, or `0` for unlimited
+ * (Clerk's sentinel). The billing webhook pushes this onto each org so Clerk itself
+ * blocks over-cap invites — the only place seats become real enforcement (they are
+ * NOT enforced app-side; the app has no invite flow of its own). Free/trial orgs are
+ * intentionally left unmanaged (no subscription event), so this only ever runs for a
+ * resolved paid/cancelled subscription.
+ */
+export function clerkSeatLimit(tier: PlanTier): number {
+  const seats = PLAN_LIMITS[tier].seats;
+  return seats === Infinity ? 0 : seats;
+}
+
+/**
  * Monthly AI photo-extraction allowance per tier. App-enforced (counted in
  * `ai_extraction_attempts`), NOT a Clerk feature: AI is available on EVERY tier
  * (the free differentiator), so this quota — not a feature flag — is the only thing

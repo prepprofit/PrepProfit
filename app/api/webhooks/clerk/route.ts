@@ -27,7 +27,7 @@ import {
   type SubscriptionItemInput,
 } from '@/lib/data/subscriptions';
 import { logError } from '@/lib/observability';
-import { computeTrialEndsAt } from '@/lib/entitlements';
+import { clerkSeatLimit, computeTrialEndsAt } from '@/lib/entitlements';
 
 /**
  * Clerk webhook endpoint (Sprint 4c). Receives billing + org-lifecycle events and
@@ -181,6 +181,19 @@ export async function POST(req: NextRequest): Promise<Response> {
           };
         },
       );
+
+      // Sync the org's Clerk seat cap to its resolved plan so Clerk itself blocks
+      // over-cap invites (Pro = 5, Business = unlimited; a cancellation back to
+      // starter clamps to 1 — Clerk keeps existing members, only blocks NEW ones).
+      // Best-effort like the billing email: a failure here must never 5xx the
+      // webhook (which would retry the whole delivery); the next event re-syncs.
+      try {
+        await (await clerkClient()).organizations.updateOrganization(orgId, {
+          maxAllowedMemberships: clerkSeatLimit(plan),
+        });
+      } catch (err) {
+        logError({ action: 'clerkWebhook.seatSync', orgId }, err);
+      }
 
       // Best-effort billing email (mirrors the welcome-email guard): never let a
       // send/lookup failure 5xx the webhook, which would make Svix retry the whole
