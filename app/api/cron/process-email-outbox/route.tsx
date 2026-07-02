@@ -17,6 +17,9 @@ import { isCronAuthorized } from '@/lib/cron-auth';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { serverEnv, isEmailConfigured } from '@/lib/env';
 import { getEmailSender, type EmailSender } from '@/lib/email/resend';
+import { renderEmail } from '@/lib/email/render';
+import { emailChrome } from '@/lib/email/chrome';
+import { PurchaseOrderEmail } from '@/emails/PurchaseOrderEmail';
 import {
   buildPurchaseOrderDocumentData,
   purchaseOrderDocumentFilename,
@@ -64,6 +67,7 @@ export async function GET(req: Request): Promise<NextResponse> {
   const tDoc = await getTranslations('purchaseOrderDocument');
   const tEmail = await getTranslations('purchaseOrderEmail');
   const labels = buildPurchaseOrderLabels(tDoc);
+  const chrome = await emailChrome();
 
   let offset = 0;
   let processed = 0;
@@ -90,6 +94,7 @@ export async function GET(req: Request): Promise<NextResponse> {
           sender,
           labels,
           tEmail,
+          chrome,
         });
         if (outcome === 'sent') sent += 1;
         else failed += 1;
@@ -107,6 +112,7 @@ type DeliverDeps = {
   sender: EmailSender;
   labels: ReturnType<typeof buildPurchaseOrderLabels>;
   tEmail: Awaited<ReturnType<typeof getTranslations>>;
+  chrome: Awaited<ReturnType<typeof emailChrome>>;
 };
 
 /** Deliver one claimed outbox row; returns 'sent' | 'failed'. Never throws. */
@@ -149,9 +155,17 @@ async function deliverRow(
     const subject = isCancel
       ? deps.tEmail('cancelSubject', { number })
       : deps.tEmail('subject', { number });
-    const html = isCancel
+    const body = isCancel
       ? deps.tEmail('cancelBody', { number })
       : deps.tEmail('body', { number, seller: data.seller.name });
+    const { html, text } = await renderEmail(
+      <PurchaseOrderEmail
+        {...deps.chrome}
+        preview={subject}
+        heading={subject}
+        body={body}
+      />,
+    );
 
     const attachments = isCancel
       ? []
@@ -166,6 +180,7 @@ async function deliverRow(
       to: row.toEmail,
       subject,
       html,
+      text,
       attachments,
       // Provider-side dedup: a crash after accept but before markOutboxSent does
       // not double-send when this row is reclaimed and retried.

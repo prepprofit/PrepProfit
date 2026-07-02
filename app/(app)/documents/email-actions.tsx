@@ -7,6 +7,9 @@ import { writeAuditEvent } from '@/lib/data/audit';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { renderDocumentForEmail } from '@/lib/documents/render';
 import { getEmailSender } from '@/lib/email/resend';
+import { renderEmail } from '@/lib/email/render';
+import { emailChrome } from '@/lib/email/chrome';
+import { DocumentEmail } from '@/emails/DocumentEmail';
 import { logError } from '@/lib/observability';
 import {
   documentEmailSchema,
@@ -51,8 +54,16 @@ export async function emailDocumentAction(
   if (!rendered) return { ok: false, code: 'NOT_FOUND' };
 
   const t = await getTranslations('documentEmail');
+  const chrome = await emailChrome();
   const subject = t(`subject.${parsed.data.documentType}`, { name: rendered.displayName });
-  const html = `<p>${t('body', { name: rendered.displayName })}</p>`;
+  const { html, text } = await renderEmail(
+    <DocumentEmail
+      {...chrome}
+      preview={subject}
+      heading={subject}
+      body={t('body', { name: rendered.displayName })}
+    />,
+  );
 
   let messageId: string;
   try {
@@ -60,6 +71,7 @@ export async function emailDocumentAction(
       to: parsed.data.recipient,
       subject,
       html,
+      text,
       attachments: [{ filename: rendered.filename, content: rendered.pdf }],
     });
     messageId = result.id;
