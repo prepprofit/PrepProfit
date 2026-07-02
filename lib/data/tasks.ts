@@ -1009,6 +1009,173 @@ export async function createPrepTaskFromRecipe(
   return { status: 'ok', task };
 }
 
+// ── Prep/Reorder Planner bulk task creation (Sprint 7, L4 / D7) ───────────────
+
+/** What to turn into anchored tasks — recipe ids → prep, ingredient ids → reorder. */
+export type PrepPlanTaskSelection = {
+  prepRecipeIds: string[];
+  reorderIngredientIds: string[];
+};
+
+export type CreatePrepPlanTasksResult =
+  | { status: 'not_found' }
+  | { status: 'not_editable' }
+  | {
+      status: 'ok';
+      created: { id: string; sourceKind: 'prep' | 'reorder' }[];
+      /** Requested anchors already present in the list (duplicate prevention). */
+      skippedDuplicate: number;
+      /** Requested ids that are missing/trashed/cross-org. */
+      skippedInvalid: number;
+      /** Valid, non-duplicate anchors dropped because the list hit its cap. */
+      skippedCap: number;
+    };
+
+/**
+ * Create prep (recipe-anchored) and reorder (ingredient-anchored) tasks from a reviewed
+ * Prep/Reorder Plan, in ONE transaction (manager-only at the action layer). MONEY-FREE —
+ * only names are snapshotted into titles. Locks the parent ACTIVE list, then:
+ *   - DUPLICATE PREVENTION (plan §12 acceptance): a recipe/ingredient already anchored by
+ *     ANY task in this list is skipped, and a requested id repeated in the same call is
+ *     de-duped too;
+ *   - VALIDITY: an id that is not an active same-org recipe/ingredient is skipped;
+ *   - CAP: the per-list cap is respected — once it fills, the rest are reported as
+ *     `skippedCap` rather than overflowing.
+ * Prep tasks are created before reorder tasks; within each, input order is preserved.
+ */
+export async function createTasksFromPrepPlan(
+  db: TenantClient,
+  organizationId: string,
+  listId: string,
+  selection: PrepPlanTaskSelection,
+): Promise<CreatePrepPlanTasksResult> {
+  const parent = await lockParentList(db, organizationId, listId);
+  if (parent.status === 'not_found') return { status: 'not_found' };
+  if (parent.status === 'not_editable') return { status: 'not_editable' };
+
+  // Existing anchors in this list → the duplicate-prevention set.
+  const existing = await db
+    .select({
+      sourceRecipeId: tasks.sourceRecipeId,
+      sourceIngredientId: tasks.sourceIngredientId,
+    })
+    .from(tasks)
+    .where(
+      and(eq(tasks.organizationId, organizationId), eq(tasks.taskListId, listId)),
+    );
+  const existingRecipeIds = new Set(
+    existing.map((r) => r.sourceRecipeId).filter((v): v is string => v !== null),
+  );
+  const existingIngredientIds = new Set(
+    existing.map((r) => r.sourceIngredientId).filter((v): v is string => v !== null),
+  );
+
+  const uniqueRecipeIds = [...new Set(selection.prepRecipeIds)];
+  const uniqueIngredientIds = [...new Set(selection.reorderIngredientIds)];
+
+  // Resolve names of the ACTIVE same-org recipes/ingredients (validity + title snapshot).
+  const recipeRows =
+    uniqueRecipeIds.length === 0
+      ? []
+      : await db
+          .select({ id: recipes.id, name: recipes.name })
+          .from(recipes)
+          .where(
+            and(
+              eq(recipes.organizationId, organizationId),
+              isNull(recipes.deletedAt),
+              inArray(recipes.id, uniqueRecipeIds),
+            ),
+          );
+  const ingredientRows =
+    uniqueIngredientIds.length === 0
+      ? []
+      : await db
+          .select({ id: ingredients.id, name: ingredients.name })
+          .from(ingredients)
+          .where(
+            and(
+              eq(ingredients.organizationId, organizationId),
+              isNull(ingredients.deletedAt),
+              inArray(ingredients.id, uniqueIngredientIds),
+            ),
+          );
+  const recipeNameById = new Map(recipeRows.map((r) => [r.id, r.name]));
+  const ingredientNameById = new Map(ingredientRows.map((r) => [r.id, r.name]));
+
+  type Candidate = {
+    sourceKind: 'prep' | 'reorder';
+    title: string;
+    sourceRecipeId: string | null;
+    sourceIngredientId: string | null;
+  };
+  const candidates: Candidate[] = [];
+  let skippedDuplicate = 0;
+  let skippedInvalid = 0;
+
+  for (const id of uniqueRecipeIds) {
+    const name = recipeNameById.get(id);
+    if (name === undefined) {
+      skippedInvalid += 1;
+    } else if (existingRecipeIds.has(id)) {
+      skippedDuplicate += 1;
+    } else {
+      candidates.push({
+        sourceKind: 'prep',
+        title: name,
+        sourceRecipeId: id,
+        sourceIngredientId: null,
+      });
+    }
+  }
+  for (const id of uniqueIngredientIds) {
+    const name = ingredientNameById.get(id);
+    if (name === undefined) {
+      skippedInvalid += 1;
+    } else if (existingIngredientIds.has(id)) {
+      skippedDuplicate += 1;
+    } else {
+      candidates.push({
+        sourceKind: 'reorder',
+        title: name,
+        sourceRecipeId: null,
+        sourceIngredientId: id,
+      });
+    }
+  }
+
+  // Respect the per-list cap — fill up to the remaining room, report the rest.
+  const currentCount = await countTasksInList(db, organizationId, listId);
+  const room = Math.max(0, MAX_TASKS_PER_LIST - currentCount);
+  const toCreate = candidates.slice(0, room);
+  const skippedCap = candidates.length - toCreate.length;
+
+  const created: { id: string; sourceKind: 'prep' | 'reorder' }[] = [];
+  if (toCreate.length > 0) {
+    const baseOrder = await nextTaskSortOrder(db, organizationId, listId);
+    const rows = await db
+      .insert(tasks)
+      .values(
+        toCreate.map((c, index) => ({
+          organizationId,
+          taskListId: listId,
+          title: c.title,
+          sourceKind: c.sourceKind,
+          sourceRecipeId: c.sourceRecipeId,
+          sourceIngredientId: c.sourceIngredientId,
+          sortOrder: baseOrder + index,
+        })),
+      )
+      .returning({ id: tasks.id });
+    for (let i = 0; i < rows.length; i++) {
+      created.push({ id: rows[i]!.id, sourceKind: toCreate[i]!.sourceKind });
+    }
+    await touchList(db, organizationId, listId);
+  }
+
+  return { status: 'ok', created, skippedDuplicate, skippedInvalid, skippedCap };
+}
+
 // ── Trash-purge unlink helpers (L4 / D3) ──────────────────────────────────────
 
 /**
