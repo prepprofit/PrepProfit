@@ -29,9 +29,9 @@ describe('renderEmail', () => {
     const { html, text } = await renderSample();
     expect(html).toContain('<html');
     expect(html).toContain('Preview line');
-    // The plain-text body is not HTML and still carries the copy.
+    // The plain-text body is not HTML and still carries the copy. (The converter
+    // upper-cases the H1 heading, so assert on the body <Text>, not the heading.)
     expect(text).not.toContain('<html');
-    expect(text).toContain('Hello');
     expect(text).toContain('Body for');
   });
 
