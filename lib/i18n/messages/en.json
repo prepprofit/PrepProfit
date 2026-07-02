@@ -1238,6 +1238,7 @@
     "subtitle": "Shared prep, reorder and checklist lists for your kitchen.",
     "empty": "No task lists yet. Create your first list to organize prep and checklists.",
     "new": "New list",
+    "prepPlanner": "Prep planner",
     "create": "Create list",
     "back": "Back to tasks",
     "groups": {
@@ -1293,6 +1294,67 @@
       "noLists": "No task lists yet — create one in Tasks first.",
       "added": "Added to list",
       "add": "Add"
+    }
+  },
+  "prepPlanner": {
+    "title": "Prep & reorder planner",
+    "subtitle": "Tell PrepProfit what you expect to make. It works out what to prep and what to reorder.",
+    "build": "Build plan",
+    "empty": "Nothing to prep for this selection yet. Add recipes or a menu with expected amounts.",
+    "demand": {
+      "title": "Expected demand",
+      "recipes": "Recipes",
+      "menus": "Menus",
+      "noRecipes": "No recipes added yet.",
+      "noMenus": "No menus added yet.",
+      "addRecipe": "Add recipe",
+      "addMenu": "Add menu",
+      "portions": "Portions",
+      "covers": "Covers",
+      "remove": "Remove"
+    },
+    "prep": {
+      "title": "Prep",
+      "portions": "{count} portions",
+      "hasIssues": "This recipe needs attention"
+    },
+    "reorder": {
+      "title": "Reorder",
+      "none": "You have enough stock for this plan.",
+      "short": "{qty} short"
+    },
+    "lowStock": {
+      "title": "Low stock",
+      "projected": "{projected} left (threshold {threshold})"
+    },
+    "issues": {
+      "title": "Needs attention",
+      "code": {
+        "MISSING_YIELD": "Set a yield (portions) on this recipe so it can be scaled.",
+        "MISSING_LINES": "This recipe has no ingredients to prep from.",
+        "DELETED_INGREDIENT": "An ingredient on this recipe is missing or in the trash."
+      }
+    },
+    "summary": {
+      "generate": "Summarize with AI",
+      "refresh": "Refresh summary",
+      "disclaimer": "AI wording only — every quantity above is calculated by PrepProfit.",
+      "risk": {
+        "low": "Low supply risk",
+        "medium": "Watch supply",
+        "high": "High supply risk"
+      }
+    },
+    "tasks": {
+      "title": "Create tasks",
+      "targetList": "Add to list",
+      "create": "Create tasks",
+      "noLists": "Create a task list first, then add prep and reorder tasks here.",
+      "hint": "Adds a prep task per recipe and a reorder task per short ingredient. Recipes that need attention and tasks already on the list are skipped.",
+      "created": "Created {created} task(s). {skipped} skipped."
+    },
+    "entry": {
+      "open": "Prep planner"
     }
   },
   "dashboard": {

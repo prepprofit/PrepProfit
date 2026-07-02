@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { CalendarDays, Copy, Plus, Trash2 } from 'lucide-react';
+import { CalendarDays, Copy, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -88,12 +88,20 @@ export function TasksOverview({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
-        {canManage && !creating && (
-          <Button type="button" onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
-            {t('new')}
+        <div className="flex items-center gap-2">
+          <Button asChild type="button" variant="outline">
+            <Link href="/tasks/ai-prep-planner">
+              <Sparkles className="size-4" />
+              {t('prepPlanner')}
+            </Link>
           </Button>
-        )}
+          {canManage && !creating && (
+            <Button type="button" onClick={() => setCreating(true)}>
+              <Plus className="size-4" />
+              {t('new')}
+            </Button>
+          )}
+        </div>
       </div>
 
       {error && (

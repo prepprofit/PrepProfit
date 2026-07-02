@@ -181,7 +181,7 @@ Full detail in [the implementation plan](docs/prepprofit_ai_implementation_plan_
 | 4 | AI Explanations + Profit Insight Inbox | Explains deterministic findings in chef-friendly language | ✅ Shipped |
 | 5 | Menu Engineer | Classifies items by popularity and profitability | ✅ Shipped |
 | 6 | Daily Close Summary | Explains posted sales and food-cost anomalies | ✅ Shipped |
-| 7 | Prep / Reorder Planner | Suggests prep and reorder tasks from recipes and stock | Planned |
+| 7 | Prep / Reorder Planner | Suggests prep and reorder tasks from recipes and stock | ✅ Shipped |
 | 8 | Weekly CFO Report → chat | Premium management layer over trusted insights | Planned |
 
 **Sprint 1 — Profit Leak Detector** is live: a pure, tested detection engine
@@ -211,6 +211,19 @@ close calls Gemini through a thin seam
 ([`lib/ai/daily-close-summary.ts`](lib/ai/daily-close-summary.ts)) that only *summarizes* those
 figures — it never computes food cost, and it flags the food cost as partial whenever an item is
 still unpriced. Quota-metered per plan, cost recorded on every call.
+
+**Sprint 7 — Prep / Reorder Planner** is live: a pure, tested, *money-free* planner
+([`lib/calculations/prep-reorder-plan.ts`](lib/calculations/prep-reorder-plan.ts)) that scales
+expected demand (recipes × portions and menus × covers) into deterministic prep suggestions and
+loss-adjusted ingredient requirements — using the same scaling as the cost engine — then derives
+reorder shortfalls and low-stock warnings from the inventory ledger. It never fabricates a
+quantity: an un-scalable recipe, a recipe with no lines, or a deleted ingredient is surfaced as an
+issue. An org-scoped loader ([`lib/data/prep-reorder-plan.ts`](lib/data/prep-reorder-plan.ts))
+resolves the demand against the active catalogue and ledger; the reviewed plan turns into prep- and
+reorder-anchored tasks (duplicate-safe, manager-only) via the existing task source anchors. An
+optional Gemini seam ([`lib/ai/prep-plan-summary.ts`](lib/ai/prep-plan-summary.ts)) only *formats*
+the plan in kitchen-friendly prose — never a price, never an invented quantity. Because the plan
+carries no money, the planner is available to both roles; the AI write-up is quota-metered per plan.
 
 Non-negotiable rules for every sprint in this track:
 
