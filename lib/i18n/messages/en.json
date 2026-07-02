@@ -41,6 +41,12 @@
     "footer": {
       "tagline": "PrepProfit — financial clarity for food businesses.",
       "auto": "This is an automated message from your PrepProfit workspace."
+    },
+    "cta": {
+      "openDashboard": "Open your dashboard",
+      "manageBilling": "Manage billing",
+      "reviewStock": "Review low stock",
+      "openReport": "Open the full report"
     }
   },
   "actionErrors": {

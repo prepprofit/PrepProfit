@@ -49,13 +49,17 @@ describe('lowStockSummaryLines', () => {
 });
 
 describe('sendWelcomeEmail', () => {
-  it('sends to the recipient with no attachments', async () => {
+  it('sends rendered HTML + a text fallback to the recipient with no attachments', async () => {
     const { sender, calls } = recordingSender();
     await sendWelcomeEmail(sender, { to: 'chef@example.com', orgName: 'Acme' });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.to).toBe('chef@example.com');
     expect(calls[0]!.subject).toBe('welcome.subject');
     expect(calls[0]!.attachments).toEqual([]);
+    // React Email produced both parts; the text fallback carries the copy.
+    expect(calls[0]!.html).toContain('<html');
+    expect(calls[0]!.text).toBeTruthy();
+    expect(calls[0]!.text).not.toContain('<html');
   });
 });
 
@@ -72,6 +76,8 @@ describe('sendLowStockEmail', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]!.to).toBe('orders@example.com');
     expect(calls[0]!.html).toContain('Butter — 200 g left');
+    // The line also survives into the plain-text fallback.
+    expect(calls[0]!.text).toContain('Butter — 200 g left');
   });
 
   it('escapes HTML in ingredient names', async () => {
