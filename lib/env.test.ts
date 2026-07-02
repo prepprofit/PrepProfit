@@ -139,3 +139,45 @@ describe('emailEnv', () => {
     expect(() => emailEnv()).not.toThrowError(/re_super_secret_value/);
   });
 });
+
+describe('emailAppUrl', () => {
+  afterEach(() => {
+    process.env = { ...ORIGINAL };
+  });
+
+  it('returns null when APP_URL is unset (never throws)', async () => {
+    const { emailAppUrl } = await loadEnv({ APP_URL: undefined });
+    expect(emailAppUrl()).toBeNull();
+  });
+
+  it('accepts an https URL and strips a trailing slash', async () => {
+    const { emailAppUrl } = await loadEnv({ APP_URL: 'https://app.prepprofit.com/' });
+    expect(emailAppUrl()).toBe('https://app.prepprofit.com');
+  });
+
+  it('strips multiple trailing slashes', async () => {
+    const { emailAppUrl } = await loadEnv({ APP_URL: 'https://app.prepprofit.com///' });
+    expect(emailAppUrl()).toBe('https://app.prepprofit.com');
+  });
+
+  it('rejects a non-https URL in production', async () => {
+    const { emailAppUrl } = await loadEnv({
+      APP_URL: 'http://app.prepprofit.com',
+      NODE_ENV: 'production',
+    });
+    expect(emailAppUrl()).toBeNull();
+  });
+
+  it('allows http://localhost outside production', async () => {
+    const { emailAppUrl } = await loadEnv({
+      APP_URL: 'http://localhost:3000',
+      NODE_ENV: 'development',
+    });
+    expect(emailAppUrl()).toBe('http://localhost:3000');
+  });
+
+  it('returns null for a malformed value', async () => {
+    const { emailAppUrl } = await loadEnv({ APP_URL: 'not a url' });
+    expect(emailAppUrl()).toBeNull();
+  });
+});

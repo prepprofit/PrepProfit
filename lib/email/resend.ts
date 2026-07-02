@@ -25,6 +25,13 @@ export type SendEmailInput = {
   to: string;
   subject: string;
   html: string;
+  /**
+   * Plain-text alternative (React Email migration). React Email renders it from
+   * the same template element (lib/email/render.tsx), so every migrated send ships
+   * a text part for accessibility/deliverability. Optional — legacy callers that
+   * only build HTML omit it and Resend sends HTML-only.
+   */
+  text?: string;
   attachments: EmailAttachment[];
   /**
    * Provider-side idempotency key (Sprint 8a outbox). When set, Resend dedups
@@ -62,6 +69,7 @@ export function getEmailSender(): EmailSender {
           to: input.to,
           subject: input.subject,
           html: input.html,
+          ...(input.text ? { text: input.text } : {}),
           attachments: input.attachments.map((a) => ({
             filename: a.filename,
             content: a.content,

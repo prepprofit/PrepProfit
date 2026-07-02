@@ -36,6 +36,13 @@
       "body": "We couldn't process the latest payment for {org} on the {plan} plan, so the subscription is now past due. Please update your payment method on the billing page to keep your plan active. If you've already updated it, you can ignore this message."
     }
   },
+  "email": {
+    "brandName": "PrepProfit",
+    "footer": {
+      "tagline": "PrepProfit — financial clarity for food businesses.",
+      "auto": "This is an automated message from your PrepProfit workspace."
+    }
+  },
   "actionErrors": {
     "INVALID_INPUT": "Please check the values and try again.",
     "NOT_FOUND": "That item could not be found. It may have been removed.",

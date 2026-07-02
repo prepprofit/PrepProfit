@@ -203,6 +203,38 @@ export function aiEnv(): AiEnv {
 }
 
 /**
+ * Public app base URL for absolute email links/assets (React Email migration).
+ * Read only when composing an email — deliberately NOT part of `serverEnvSchema`,
+ * so a missing/invalid value never crashes an unrelated page; the email templates
+ * simply render a logo-less header and omit any CTA that needs an absolute link.
+ *
+ * Validation: an absolute `https://` URL in production; `http://localhost…` is also
+ * accepted in development/tests. The trailing slash is stripped so callers can
+ * append `"/static/emails/logo.png"` or `"/reports/cfo?..."` without doubling it.
+ * Returns `null` (never throws) when unset or invalid.
+ */
+export function emailAppUrl(): string | null {
+  const raw = process.env.APP_URL?.trim();
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  const isLocalhost =
+    url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  const httpsOk = url.protocol === 'https:';
+  const localhostOk =
+    url.protocol === 'http:' &&
+    isLocalhost &&
+    process.env.NODE_ENV !== 'production';
+  if (!httpsOk && !localhostOk) return null;
+  // Strip a single trailing slash (and any accidental extras) from the origin+path.
+  return raw.replace(/\/+$/, '');
+}
+
+/**
  * Asserts the email-sending vars are configured and returns them narrowed. Throws
  * a readable (key-free) error if `RESEND_API_KEY` / `RESEND_FROM_EMAIL` are missing
  * or malformed — the email action maps that to a stable `EMAIL_FAILED` code and

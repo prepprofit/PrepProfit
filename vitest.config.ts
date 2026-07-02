@@ -15,7 +15,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['tests/**/*.test.ts', 'lib/**/*.test.ts'],
+    include: [
+      'tests/**/*.test.{ts,tsx}',
+      'lib/**/*.test.{ts,tsx}',
+      'emails/**/*.test.{ts,tsx}',
+    ],
     exclude: ['node_modules', '.next', '.agents', '.claude'],
     // Each DB test spins up a fresh PGlite instance and runs migrations in a
     // setup hook. With the suite running files in parallel, many instances
