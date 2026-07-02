@@ -28,7 +28,13 @@ type BillingCatalogue = {
     features: Record<string, unknown>;
     plans: Record<
       string,
-      { amount: number; currency: string; features: string[]; payer_type: string }
+      {
+        amount: number;
+        currency: string;
+        features: string[];
+        payer_type: string;
+        free_trial_enabled?: boolean;
+      }
     >;
   };
 };
@@ -60,12 +66,17 @@ describe('billing catalogue ↔ entitlements ↔ public pricing consistency', ()
     expect(catalogueFeatures).not.toContain('ai_extraction');
   });
 
-  it('paid plans exist, are org-payer, and their feature sets nest (business ⊇ pro)', () => {
-    const { pro, business } = catalogue.billing.plans;
+  it('paid plans exist, are org-payer, and their feature sets nest (business ⊇ pro ⊇ solo)', () => {
+    const { solo, pro, business } = catalogue.billing.plans;
+    expect(solo).toBeDefined();
     expect(pro).toBeDefined();
     expect(business).toBeDefined();
+    expect(solo!.payer_type).toBe('org');
     expect(pro!.payer_type).toBe('org');
     expect(business!.payer_type).toBe('org');
+    // Solo ⊆ Pro ⊆ Business: each higher tier keeps every lower tier's features.
+    expect(solo!.features).toEqual(['break_even']);
+    for (const f of solo!.features) expect(pro!.features).toContain(f);
     expect(pro!.features).toEqual(['invoices', 'break_even']);
     for (const f of pro!.features) expect(business!.features).toContain(f);
     expect(business!.features).toEqual(
@@ -77,8 +88,15 @@ describe('billing catalogue ↔ entitlements ↔ public pricing consistency', ()
     }
   });
 
+  it('the reverse trial is the only trial — paid plans disable free_trial (Decision A)', () => {
+    for (const plan of Object.values(catalogue.billing.plans)) {
+      expect(plan.free_trial_enabled ?? false).toBe(false);
+    }
+  });
+
   it('catalogue amounts (dev-usd placeholders) numerically match the EUR pricing copy', () => {
     const { pricing } = messages.marketing;
+    expect(catalogue.billing.plans.solo!.amount).toBe(1900);
     expect(catalogue.billing.plans.pro!.amount).toBe(2900);
     expect(catalogue.billing.plans.business!.amount).toBe(7900);
     expect(pricing.pro.price).toBe('€29');

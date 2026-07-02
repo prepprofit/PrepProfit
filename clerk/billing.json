@@ -24,6 +24,17 @@
       }
     },
     "plans": {
+      "solo": {
+        "name": "Solo",
+        "description": "For a single owner-operator: unlimited recipes, break-even, and a higher monthly AI recipe-extraction quota than Free.",
+        "payer_type": "org",
+        "amount": 1900,
+        "currency": "usd",
+        "is_recurring": true,
+        "publicly_visible": true,
+        "free_trial_enabled": false,
+        "features": ["break_even"]
+      },
       "pro": {
         "name": "Pro",
         "description": "For growing kitchens: unlimited recipes, invoices, break-even, and a higher monthly AI recipe-extraction quota.",
@@ -32,8 +43,7 @@
         "currency": "usd",
         "is_recurring": true,
         "publicly_visible": true,
-        "free_trial_enabled": true,
-        "free_trial_days": 14,
+        "free_trial_enabled": false,
         "features": ["invoices", "break_even"]
       },
       "business": {
@@ -44,8 +54,7 @@
         "currency": "usd",
         "is_recurring": true,
         "publicly_visible": true,
-        "free_trial_enabled": true,
-        "free_trial_days": 14,
+        "free_trial_enabled": false,
         "features": ["invoices", "break_even", "payroll", "advanced_documents"]
       }
     }
