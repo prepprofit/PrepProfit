@@ -169,6 +169,34 @@ export function computeTrialEndsAt(createdAtMs: number): Date {
 }
 
 /**
+ * How many days before the trial ends the reminder cron fires. The reminder is sent
+ * on the SINGLE calendar day when the trial is exactly this many days out, so a daily
+ * cron delivers it at most once (Resend idempotency covers same-day retries).
+ */
+export const TRIAL_REMINDER_DAYS_BEFORE = 3;
+
+/**
+ * Whole UTC-calendar days from `now` until the trial ends (negative once past). Uses
+ * UTC midnights so the result is a stable day count independent of clock time —
+ * Vercel Cron runs in UTC, so the reminder lands on exactly one calendar day.
+ */
+export function trialReminderDaysLeft(end: Date, now: Date): number {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const utcMidnight = (d: Date) =>
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return Math.round((utcMidnight(end) - utcMidnight(now)) / dayMs);
+}
+
+/**
+ * True when an org's reverse trial is due its single reminder today: the deadline is
+ * known and lands exactly {@link TRIAL_REMINDER_DAYS_BEFORE} calendar days out. The
+ * cron additionally checks the org has not already subscribed.
+ */
+export function isTrialReminderDue(end: Date | null, now: Date): boolean {
+  return end != null && trialReminderDaysLeft(end, now) === TRIAL_REMINDER_DAYS_BEFORE;
+}
+
+/**
  * Parse the `org_trial_ends_at` session claim into a Date, tolerating the shapes it
  * can arrive as (ISO string, or an epoch-ms number/numeric-string). Any absent,
  * malformed, or non-finite value → `null` (no trial) — fail-closed, never a crash.

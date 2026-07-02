@@ -35,6 +35,10 @@
     "pastDue": {
       "subject": "Action needed: update your payment method",
       "body": "We couldn't process the latest payment for {org} on the {plan} plan, so the subscription is now past due. Please update your payment method on the billing page to keep your plan active. If you've already updated it, you can ignore this message."
+    },
+    "trialEnding": {
+      "subject": "Your PrepProfit trial ends in {days} days",
+      "body": "Heads up — {org}'s 14-day full-access trial ends in {days} days. Pick a plan to keep invoices, break-even, payroll and the higher AI quotas. If you don't, your workspace simply moves to the Free plan and all your data stays exactly as it is."
     }
   },
   "email": {
@@ -47,7 +51,8 @@
       "openDashboard": "Open your dashboard",
       "manageBilling": "Manage billing",
       "reviewStock": "Review low stock",
-      "openReport": "Open the full report"
+      "openReport": "Open the full report",
+      "viewPlans": "View plans"
     }
   },
   "actionErrors": {

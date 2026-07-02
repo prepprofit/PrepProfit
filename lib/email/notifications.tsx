@@ -167,6 +167,40 @@ export async function sendPaymentPastDueEmail(
 }
 
 /**
+ * Reverse-trial ending reminder, sent by the daily trial-reminder cron on the single
+ * day an org's 14-day full-access trial is {@link TRIAL_REMINDER_DAYS_BEFORE} days
+ * from expiry AND it has not subscribed. `to` is the org's business email (settings)
+ * or its admin's email. Money-free and PII-free: it names the days left and points to
+ * the pricing page. `idempotencyKey` (org + trial deadline) blocks a same-day resend.
+ */
+export async function sendTrialEndingEmail(
+  sender: EmailSender,
+  params: { to: string; orgName: string; daysLeft: number; idempotencyKey: string },
+): Promise<void> {
+  const t = await getTranslations({ locale: 'en', namespace: 'notifications' });
+  const tEmail = await getTranslations({ locale: 'en', namespace: 'email' });
+  const chrome = await emailChrome();
+  const subject = t('trialEnding.subject', { days: params.daysLeft });
+  const { html, text } = await renderEmail(
+    <SubscriptionEmail
+      {...chrome}
+      preview={subject}
+      heading={subject}
+      body={t('trialEnding.body', { org: params.orgName, days: params.daysLeft })}
+      cta={await appCta('/pricing', tEmail('cta.viewPlans'))}
+    />,
+  );
+  await sender.send({
+    to: params.to,
+    subject,
+    html,
+    text,
+    attachments: [],
+    idempotencyKey: params.idempotencyKey,
+  });
+}
+
+/**
  * Low-stock digest emailed by the daily cron when an org has ingredients at/below
  * their threshold. `to` is the org's billing/business email (settings). The body
  * lists the depleted ingredients; no money, no PII.

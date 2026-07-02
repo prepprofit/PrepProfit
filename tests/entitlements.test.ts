@@ -28,6 +28,7 @@ import {
   PREP_PLAN_SUMMARY_MONTHLY_LIMIT,
   WEEKLY_CFO_REPORT_MONTHLY_LIMIT,
   REVERSE_TRIAL_DAYS,
+  TRIAL_REMINDER_DAYS_BEFORE,
   isWithinLimit,
   getPlanTier,
   getEffectiveEntitlementState,
@@ -36,6 +37,8 @@ import {
   assertPlanLimit,
   computeTrialEndsAt,
   parseTrialEndsAt,
+  trialReminderDaysLeft,
+  isTrialReminderDue,
   profitLeakExplanationMonthlyLimit,
 } from '@/lib/entitlements';
 
@@ -302,6 +305,24 @@ describe('reverse trial (pure helpers)', () => {
     expect(parseTrialEndsAt('not-a-date')).toBeNull();
     expect(parseTrialEndsAt(NaN)).toBeNull();
     expect(parseTrialEndsAt(Infinity)).toBeNull();
+  });
+
+  it('trialReminderDaysLeft counts whole UTC calendar days regardless of clock time', () => {
+    const now = new Date('2026-07-03T23:30:00Z');
+    // Same UTC date + 3, even though the end clock time is earlier in the day.
+    expect(trialReminderDaysLeft(new Date('2026-07-06T01:00:00Z'), now)).toBe(3);
+    expect(trialReminderDaysLeft(new Date('2026-07-04T00:00:00Z'), now)).toBe(1);
+    expect(trialReminderDaysLeft(new Date('2026-07-03T05:00:00Z'), now)).toBe(0);
+    expect(trialReminderDaysLeft(new Date('2026-07-02T23:00:00Z'), now)).toBe(-1);
+  });
+
+  it('isTrialReminderDue fires only on the single N-days-out day', () => {
+    const now = new Date('2026-07-03T08:00:00Z');
+    expect(TRIAL_REMINDER_DAYS_BEFORE).toBe(3);
+    expect(isTrialReminderDue(new Date('2026-07-06T20:00:00Z'), now)).toBe(true);
+    expect(isTrialReminderDue(new Date('2026-07-05T20:00:00Z'), now)).toBe(false);
+    expect(isTrialReminderDue(new Date('2026-07-07T20:00:00Z'), now)).toBe(false);
+    expect(isTrialReminderDue(null, now)).toBe(false);
   });
 });
 
