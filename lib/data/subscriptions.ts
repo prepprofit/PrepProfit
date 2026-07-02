@@ -24,6 +24,8 @@ export function planSlugToTier(slug: string | null | undefined): PlanTier {
       return 'business';
     case 'pro':
       return 'pro';
+    case 'solo':
+      return 'solo';
     // 'free_org' and anything unrecognized → the baseline.
     default:
       return 'starter';
@@ -31,7 +33,12 @@ export function planSlugToTier(slug: string | null | undefined): PlanTier {
 }
 
 /** Rank used to pick the HIGHEST active tier when a subscription has many items. */
-const TIER_RANK: Record<PlanTier, number> = { starter: 0, pro: 1, business: 2 };
+const TIER_RANK: Record<PlanTier, number> = {
+  starter: 0,
+  solo: 1,
+  pro: 2,
+  business: 3,
+};
 
 /**
  * Compare two plan tiers by rank: negative if `a` is lower than `b`, positive if

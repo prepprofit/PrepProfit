@@ -28,9 +28,12 @@ import {
   profitLeakExplanationMonthlyLimit,
 } from '@/lib/entitlements';
 
-/** Point `auth()` at a fake `has`, or make it throw / omit `has`. */
+/**
+ * Point `auth()` at a fake `has` with an active org (getPlanTier now requires an
+ * orgId before any plan check, so tests must supply one).
+ */
 function setHas(fn: HasFn) {
-  h.auth = async () => ({ has: fn });
+  h.auth = async () => ({ has: fn, orgId: 'org_test' });
 }
 
 /** Point `auth()` at a fake `has` + an active org id (for comp-allowlist tests). */
@@ -60,12 +63,16 @@ describe('isWithinLimit (pure)', () => {
 
   it('keeps the documented seat caps', () => {
     expect(PLAN_LIMITS.starter.seats).toBe(1);
+    expect(PLAN_LIMITS.solo.seats).toBe(1);
     expect(PLAN_LIMITS.pro.seats).toBe(5);
     expect(PLAN_LIMITS.business.seats).toBe(Infinity);
   });
 
-  it('caps free recipes at 10', () => {
+  it('caps free recipes at 10, but Solo is unlimited on a single seat', () => {
     expect(PLAN_LIMITS.starter.recipes).toBe(10);
+    expect(PLAN_LIMITS.solo.recipes).toBe(Infinity);
+    expect(isWithinLimit('solo', 'recipes', 1_000_000)).toBe(true);
+    expect(isWithinLimit('solo', 'seats', 1)).toBe(false);
   });
 });
 
@@ -73,6 +80,7 @@ describe('AI_EXTRACTION_MONTHLY_LIMIT (universal feature, quota-metered)', () =>
   it('gives every tier — including free Starter — a real monthly allowance', () => {
     // AI is the differentiator: free is NOT zero (it used to be), it is metered.
     expect(AI_EXTRACTION_MONTHLY_LIMIT.starter).toBe(10);
+    expect(AI_EXTRACTION_MONTHLY_LIMIT.solo).toBe(40);
     expect(AI_EXTRACTION_MONTHLY_LIMIT.pro).toBe(100);
     expect(AI_EXTRACTION_MONTHLY_LIMIT.business).toBe(500);
   });
@@ -107,8 +115,24 @@ describe('getPlanTier', () => {
     expect(await getPlanTier()).toBe('pro');
   });
 
+  it('returns solo when only the solo plan is active', async () => {
+    setHas(({ plan }) => plan === 'solo');
+    expect(await getPlanTier()).toBe('solo');
+  });
+
+  it('prefers the higher tier when multiple plans would match', async () => {
+    // Defensive: business outranks pro/solo even if has() answered true for all.
+    setHas(() => true);
+    expect(await getPlanTier()).toBe('business');
+  });
+
   it('returns starter when no paid plan is active', async () => {
     setHas(() => false);
+    expect(await getPlanTier()).toBe('starter');
+  });
+
+  it('fail-closes to starter when there is no active org', async () => {
+    h.auth = async () => ({ has: () => true }); // has() would say yes, but no orgId
     expect(await getPlanTier()).toBe('starter');
   });
 

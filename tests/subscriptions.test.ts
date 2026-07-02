@@ -22,10 +22,12 @@ import {
  */
 
 describe('comparePlanTiers', () => {
-  it('orders starter < pro < business', () => {
-    expect(comparePlanTiers('pro', 'starter')).toBeGreaterThan(0);
+  it('orders starter < solo < pro < business', () => {
+    expect(comparePlanTiers('solo', 'starter')).toBeGreaterThan(0);
+    expect(comparePlanTiers('pro', 'solo')).toBeGreaterThan(0);
     expect(comparePlanTiers('business', 'pro')).toBeGreaterThan(0);
     expect(comparePlanTiers('starter', 'business')).toBeLessThan(0);
+    expect(comparePlanTiers('solo', 'pro')).toBeLessThan(0);
     expect(comparePlanTiers('pro', 'pro')).toBe(0);
   });
 });
@@ -55,6 +57,7 @@ describe('planSlugToTier', () => {
   it('maps known paid slugs and collapses everything else to starter', () => {
     expect(planSlugToTier('business')).toBe('business');
     expect(planSlugToTier('pro')).toBe('pro');
+    expect(planSlugToTier('solo')).toBe('solo');
     expect(planSlugToTier('free_org')).toBe('starter');
     expect(planSlugToTier('something_unknown')).toBe('starter');
     expect(planSlugToTier(null)).toBe('starter');
@@ -77,8 +80,12 @@ describe('resolvePlanTier', () => {
   });
 
   it('picks the highest CURRENT (active/past_due) item', () => {
+    expect(resolvePlanTier([item('active', 'solo')])).toBe('solo');
     expect(resolvePlanTier([item('active', 'pro')])).toBe('pro');
     expect(resolvePlanTier([item('past_due', 'business')])).toBe('business');
+    expect(
+      resolvePlanTier([item('active', 'solo'), item('active', 'pro')]),
+    ).toBe('pro');
     expect(
       resolvePlanTier([item('active', 'pro'), item('active', 'business')]),
     ).toBe('business');

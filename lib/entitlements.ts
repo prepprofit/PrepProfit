@@ -12,9 +12,9 @@ import type { ActionErrorCode } from '@/lib/action-result';
  * tier (`starter`) and deny paid features — never the reverse.
  *
  * Plan/feature slugs are configured in Clerk → Billing (Organization Plans tab):
- *   - Org plans: `pro`, `business`. Starter = the baseline (no plan check).
- *   - Feature slugs: invoices, break_even (Pro+), payroll, advanced_documents
- *     (Business).
+ *   - Org plans: `solo`, `pro`, `business`. Starter = the baseline (no plan check).
+ *   - Feature slugs: break_even (Solo+), invoices (Pro+), payroll,
+ *     advanced_documents (Business).
  * Numeric caps (recipes, seats) are NOT Clerk features — they live in
  * `PLAN_LIMITS` and are enforced in the app layer. AI photo extraction is UNIVERSAL
  * (every tier, including the free Starter): it is the product differentiator, so it
@@ -22,7 +22,7 @@ import type { ActionErrorCode } from '@/lib/action-result';
  * quota in `AI_EXTRACTION_MONTHLY_LIMIT` below.
  */
 
-export type PlanTier = 'starter' | 'pro' | 'business';
+export type PlanTier = 'starter' | 'solo' | 'pro' | 'business';
 
 export type Feature =
   | 'invoices'
@@ -33,6 +33,7 @@ export type Feature =
 /** Numeric limits per tier. `Infinity` = unlimited. */
 export const PLAN_LIMITS = {
   starter: { recipes: 10, seats: 1 },
+  solo: { recipes: Infinity, seats: 1 },
   pro: { recipes: Infinity, seats: 5 },
   business: { recipes: Infinity, seats: Infinity },
 } as const satisfies Record<PlanTier, { recipes: number; seats: number }>;
@@ -49,6 +50,7 @@ export type PlanLimitKind = keyof (typeof PLAN_LIMITS)[PlanTier];
  */
 export const AI_EXTRACTION_MONTHLY_LIMIT = {
   starter: 10,
+  solo: 40,
   pro: 100,
   business: 500,
 } as const satisfies Record<PlanTier, number>;
@@ -64,6 +66,7 @@ export const AI_EXTRACTION_MONTHLY_LIMIT = {
  */
 export const SUPPLIER_INVOICE_MONTHLY_LIMIT = {
   starter: 3,
+  solo: 12,
   pro: 30,
   business: 200,
 } as const satisfies Record<PlanTier, number>;
@@ -79,6 +82,7 @@ export const SUPPLIER_INVOICE_MONTHLY_LIMIT = {
  */
 export const PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT = {
   starter: 10,
+  solo: 40,
   pro: 100,
   business: 500,
 } as const satisfies Record<PlanTier, number>;
@@ -94,6 +98,9 @@ export const PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT = {
  */
 export const DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT = {
   starter: 0,
+  // Solo has no `invoices` module → no sales → no posted daily close, so a 0 quota
+  // is consistent, not a punishment (pricing plan §2.3 note ¹).
+  solo: 0,
   pro: 30,
   business: 500,
 } as const satisfies Record<PlanTier, number>;
@@ -109,6 +116,7 @@ export const DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT = {
  */
 export const PREP_PLAN_SUMMARY_MONTHLY_LIMIT = {
   starter: 0,
+  solo: 15,
   pro: 30,
   business: 500,
 } as const satisfies Record<PlanTier, number>;
@@ -117,14 +125,15 @@ export const PREP_PLAN_SUMMARY_MONTHLY_LIMIT = {
  * Monthly AI Weekly CFO Report allowance per tier (Sprint 8, AI margin roadmap).
  * App-enforced (counted in `ai_operation_attempts`, feature `kitchen_cfo_report`), NOT a
  * Clerk feature. The DETERMINISTIC report itself is a manager-only management view of the
- * insight modules; only the premium AI *write-up* is metered. Per the roadmap tier matrix
- * (plan §14 "no / monthly / weekly"), the free Starter gets 0; Pro can run it roughly monthly
- * (with room for retries); Business can run it weekly. Counted per-ORGANIZATION per calendar
- * month. Tunable here without a deploy of the gating logic.
+ * insight modules; only the premium AI *write-up* is metered. Per the pricing tier matrix
+ * (4-tier plan §2.3), the free Starter gets a small trial allowance (2/mo); Solo a few (4);
+ * Pro roughly monthly with retries (8); Business weekly (30). Counted per-ORGANIZATION per
+ * calendar month. Tunable here without a deploy of the gating logic.
  */
 export const WEEKLY_CFO_REPORT_MONTHLY_LIMIT = {
-  starter: 0,
-  pro: 4,
+  starter: 2,
+  solo: 4,
+  pro: 8,
   business: 30,
 } as const satisfies Record<PlanTier, number>;
 
@@ -235,9 +244,13 @@ export async function getPlanTier(): Promise<PlanTier> {
     const { has, orgId } = await auth();
     // Operator/internal comp: a listed org is treated as Business.
     if (orgId && compedOrgIds().has(orgId)) return 'business';
-    if (typeof has !== 'function') return 'starter';
+    // Require an active org before any plan check — org plans are org-payer, so
+    // without an org there is no org subscription to read, and `has({ plan })` must
+    // never resolve a personal (user-payer) subscription into an org tier.
+    if (!orgId || typeof has !== 'function') return 'starter';
     if (has({ plan: 'business' })) return 'business';
     if (has({ plan: 'pro' })) return 'pro';
+    if (has({ plan: 'solo' })) return 'solo';
     return 'starter';
   } catch {
     return 'starter';
