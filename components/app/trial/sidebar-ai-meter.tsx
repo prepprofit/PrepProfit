@@ -51,6 +51,18 @@ export function SidebarAiMeter({
         )}
       </div>
 
+      {/* Feature name on its own full-width line so long names stay readable
+          (wraps rather than truncating); usage count sits to its right. */}
+      <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
+        <span className="font-medium text-foreground">
+          {tUsage(AI_USAGE_FEATURE_LABEL_KEY[feature.feature])}
+        </span>
+        <span className="shrink-0 tabular-nums">
+          {tUsage('used', { used: feature.used, limit: feature.limit })}
+        </span>
+      </div>
+
+      {/* Arrows flank the bar (not the label), keeping the name full-width. */}
       <div className="flex items-center gap-1.5">
         {many && (
           <button
@@ -63,28 +75,17 @@ export function SidebarAiMeter({
           </button>
         )}
 
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
-            <span className="truncate">
-              {tUsage(AI_USAGE_FEATURE_LABEL_KEY[feature.feature])}
-            </span>
-            <span className="shrink-0 tabular-nums">
-              {tUsage('used', { used: feature.used, limit: feature.limit })}
-            </span>
-          </div>
-
+        <div
+          className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2"
+          role="progressbar"
+          aria-valuenow={feature.used}
+          aria-valuemin={0}
+          aria-valuemax={feature.limit}
+        >
           <div
-            className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2"
-            role="progressbar"
-            aria-valuenow={feature.used}
-            aria-valuemin={0}
-            aria-valuemax={feature.limit}
-          >
-            <div
-              className="h-full rounded-full bg-accent-500"
-              style={{ width: `${feature.percent}%` }}
-            />
-          </div>
+            className="h-full rounded-full bg-accent-500"
+            style={{ width: `${feature.percent}%` }}
+          />
         </div>
 
         {many && (
