@@ -33,7 +33,7 @@ import {
   ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
-import { navGroups, type NavKey, type NavGroupKey } from '@/lib/nav';
+import { navGroups, dashboardItem, type NavKey, type NavGroupKey } from '@/lib/nav';
 import { clerkAppearance } from '@/lib/clerk-appearance';
 import { SidebarAiMeter } from './trial/sidebar-ai-meter';
 import type { SidebarAiMeterView } from '@/lib/data/ai-usage';
@@ -104,21 +104,12 @@ export function Sidebar({
   const tTop = useTranslations('topbar');
   const { resolvedTheme } = useTheme();
 
-  // Kitchen staff lose the Finance + Team groups entirely, and the Dashboard
-  // (a manager cockpit — the server redirects them away from it) is dropped from
-  // the Operations group too.
+  // Kitchen staff lose the Finance + Team groups entirely. The Dashboard (a
+  // manager cockpit — the server redirects them away from it) is a standalone
+  // top-level row, rendered below only when finance is visible.
   const groups = canSeeFinance
     ? navGroups
-    : navGroups
-        .filter((group) => group.key !== 'finance' && group.key !== 'team')
-        .map((group) =>
-          group.key === 'operations'
-            ? {
-                ...group,
-                items: group.items.filter((item) => item.key !== 'dashboard'),
-              }
-            : group,
-        );
+    : navGroups.filter((group) => group.key !== 'finance' && group.key !== 'team');
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
@@ -242,6 +233,35 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-2">
+        {/* Dashboard — standalone top-level row (no group header), manager-only. */}
+        {canSeeFinance && (
+          <div className="flex flex-col gap-1">
+            {(() => {
+              const { key, href } = dashboardItem;
+              const Icon = icons[key];
+              const active = isActive(href);
+              return (
+                <Link
+                  href={href}
+                  onClick={onNavigate}
+                  aria-current={active ? 'page' : undefined}
+                  title={collapsed ? t(key) : undefined}
+                  className={navRowClass(active, collapsed)}
+                >
+                  <Icon
+                    className={cn(
+                      'size-4 shrink-0',
+                      active
+                        ? 'text-white'
+                        : 'text-muted-foreground group-hover:text-accent-700 dark:group-hover:text-accent-300',
+                    )}
+                  />
+                  {!collapsed && t(key)}
+                </Link>
+              );
+            })()}
+          </div>
+        )}
         {groups.map((group) => {
           // The icon rail keeps every item visible (divider only); the expanded
           // rail collapses non-open groups behind their header.

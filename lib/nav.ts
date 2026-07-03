@@ -3,11 +3,17 @@
  * for the sidebar. `key` = i18n key under `nav`; `group.key` = key under
  * `navGroups`. Grouping mirrors DESIGN.md §6.
  */
+/**
+ * Standalone top-level entry, rendered above the grouped modules (no group
+ * header). The Dashboard is a manager cockpit — the server redirects kitchen
+ * users away from it — so the sidebar only shows this row when finance is visible.
+ */
+export const dashboardItem = { key: 'dashboard', href: '/dashboard' } as const;
+
 export const navGroups = [
   {
     key: 'operations',
     items: [
-      { key: 'dashboard', href: '/dashboard' },
       { key: 'recipes', href: '/recipes' },
       // Menus / combos (Sprint 10) — visible to BOTH roles (kitchen sees an
       // operational, money-free view); lives in Operations near Recipes.
@@ -57,10 +63,11 @@ export const navGroups = [
 
 export type NavGroup = (typeof navGroups)[number];
 export type NavGroupKey = NavGroup['key'];
-export type NavItem = NavGroup['items'][number];
+export type NavItem = NavGroup['items'][number] | typeof dashboardItem;
 export type NavKey = NavItem['key'];
 
 /** Flat list — for callers that need every item (icon map, active-title lookup). */
-export const navItems: readonly NavItem[] = navGroups.flatMap(
-  (group): readonly NavItem[] => group.items,
-);
+export const navItems: readonly NavItem[] = [
+  dashboardItem,
+  ...navGroups.flatMap((group): readonly NavItem[] => group.items),
+];
