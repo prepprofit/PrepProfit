@@ -37,8 +37,15 @@
       "body": "We couldn't process the latest payment for {org} on the {plan} plan, so the subscription is now past due. Please update your payment method on the billing page to keep your plan active. If you've already updated it, you can ignore this message."
     },
     "trialEnding": {
-      "subject": "Your PrepProfit trial ends in {days} days",
-      "body": "Heads up — {org}'s 14-day full-access trial ends in {days} days. Pick a plan to keep invoices, break-even, payroll and the higher AI quotas. If you don't, your workspace simply moves to the Free plan and all your data stays exactly as it is."
+      "subject": "{days, plural, one {Your PrepProfit trial ends tomorrow} other {Your PrepProfit trial ends in # days}}",
+      "deadline": "{days, plural, one {# day of full access left} other {# days of full access left}}",
+      "body": "Heads up — {org}'s 14-day full-access trial is ending soon. Pick a plan to keep the paid features you've been using.",
+      "keepTitle": "Pick a plan to keep:",
+      "keep1": "Unlimited recipes and break-even scenarios",
+      "keep2": "Invoices with gap-free numbering",
+      "keep3": "Payroll and advanced document workflows",
+      "keep4": "Higher monthly AI recipe-extraction quotas",
+      "fallback": "No action needed to stay safe — if you do nothing, {org} simply moves to the Free plan and all your data stays exactly as it is."
     }
   },
   "email": {

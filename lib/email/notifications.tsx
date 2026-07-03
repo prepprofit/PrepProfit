@@ -7,6 +7,7 @@ import { WelcomeEmail } from '@/emails/WelcomeEmail';
 import { SubscriptionEmail } from '@/emails/SubscriptionEmail';
 import { PaymentPastDueEmail } from '@/emails/PaymentPastDueEmail';
 import { LowStockEmail } from '@/emails/LowStockEmail';
+import { TrialEndingEmail } from '@/emails/TrialEndingEmail';
 
 /**
  * Lifecycle notification emails (Sprint 5d; React Email migration). Best-effort,
@@ -182,11 +183,20 @@ export async function sendTrialEndingEmail(
   const chrome = await emailChrome();
   const subject = t('trialEnding.subject', { days: params.daysLeft });
   const { html, text } = await renderEmail(
-    <SubscriptionEmail
+    <TrialEndingEmail
       {...chrome}
       preview={subject}
       heading={subject}
-      body={t('trialEnding.body', { org: params.orgName, days: params.daysLeft })}
+      deadline={t('trialEnding.deadline', { days: params.daysLeft })}
+      body={t('trialEnding.body', { org: params.orgName })}
+      keepTitle={t('trialEnding.keepTitle')}
+      keepItems={[
+        t('trialEnding.keep1'),
+        t('trialEnding.keep2'),
+        t('trialEnding.keep3'),
+        t('trialEnding.keep4'),
+      ]}
+      fallback={t('trialEnding.fallback', { org: params.orgName })}
       cta={await appCta('/pricing', tEmail('cta.viewPlans'))}
     />,
   );
