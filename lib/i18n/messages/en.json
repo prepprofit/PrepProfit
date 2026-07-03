@@ -2123,6 +2123,7 @@
     "hero": {
       "eyebrow": "Built for food businesses",
       "headline": "Know what every dish really costs.",
+      "headline2": "Protect every margin.",
       "subhead": "PrepProfit turns your recipes, inventory and sales into one clear view of your margins, so you price with confidence instead of guesswork.",
       "ctaPrimary": "Start free — 14 days of everything",
       "ctaSecondary": "Sign in"
@@ -2184,6 +2185,10 @@
       "ai": {
         "title": "AI photo recipe extraction",
         "body": "Photograph a recipe card and get a costed draft to review. Import ingredients and transactions from CSV or Excel."
+      },
+      "imports": {
+        "title": "Imports & exports",
+        "body": "Start from the data you already have and take it anywhere: CSV, Excel, photo drafts in — clean PDF and XLSX out."
       },
       "security": {
         "title": "Multi-tenant and secure by design",

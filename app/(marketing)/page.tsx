@@ -12,8 +12,8 @@ import {
   Star,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
+import { BackgroundBlur } from '@/components/marketing/ui/background-blur';
 import { AppPreview } from '@/components/marketing/app-preview';
 import { IntroSection } from '@/components/marketing/intro-section';
 import { FeatureCards } from '@/components/marketing/feature-cards';
@@ -48,21 +48,16 @@ export default async function MarketingPage() {
         {/* Hero — centered copy with a full-width product preview below       */}
         {/* ---------------------------------------------------------------- */}
         <section className="relative">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[680px]"
-            style={{
-              background:
-                'radial-gradient(60% 60% at 50% -10%, color-mix(in oklab, var(--color-accent-500) 14%, transparent), transparent)',
-            }}
-          />
-          <div className="mx-auto max-w-7xl px-4 pt-16 sm:px-6 md:pt-24 lg:px-8">
-            <Reveal className="mx-auto flex max-w-3xl flex-col items-center text-center">
-              <Badge variant="accent">{t('hero.eyebrow')}</Badge>
-              <h1 className="mt-6 font-display text-4xl font-bold leading-[1.05] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+          <BackgroundBlur />
+          <div className="mx-auto max-w-7xl px-4 pt-20 sm:px-6 md:pt-32 lg:px-8">
+            <Reveal className="mx-auto flex max-w-4xl flex-col items-center text-center">
+              <h1 className="font-display text-4xl font-bold leading-[1.08] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
                 {t('hero.headline')}
+                <span className="block text-muted-foreground">
+                  {t('hero.headline2')}
+                </span>
               </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+              <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
                 {t('hero.subhead')}
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
