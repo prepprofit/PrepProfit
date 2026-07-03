@@ -41,11 +41,15 @@ import {
   trialReminderDaysLeft,
   isTrialReminderDue,
   profitLeakExplanationMonthlyLimit,
+  dailyCloseSummaryMonthlyLimit,
+  prepPlanSummaryMonthlyLimit,
   aiExtractionMonthlyLimit,
   supplierInvoiceMonthlyLimit,
   weeklyCfoReportMonthlyLimit,
+  allAiMonthlyLimits,
   TRIAL_AI_MONTHLY_CAP,
 } from '@/lib/entitlements';
+import { AI_USAGE_FEATURES } from '@/lib/ai/usage-features';
 
 /**
  * Point `auth()` at a fake `has` with an active org (getPlanTier now requires an
@@ -441,6 +445,91 @@ describe('reverse trial — AI quotas are capped to TRIAL_AI_MONTHLY_CAP', () =>
     expect(await aiExtractionMonthlyLimit()).toEqual({
       limit: AI_EXTRACTION_MONTHLY_LIMIT.starter,
       tier: 'starter',
+    });
+  });
+});
+
+describe('allAiMonthlyLimits (usage meter — all six features from one state)', () => {
+  it('resolves all six metered features, carrying tier + source', async () => {
+    setHas(() => false); // starter / free
+    const all = await allAiMonthlyLimits();
+    // Exactly the registry rows, in registry order.
+    expect(Object.keys(all)).toEqual([...AI_USAGE_FEATURES]);
+    for (const feature of AI_USAGE_FEATURES) {
+      expect(all[feature].tier).toBe('starter');
+      expect(all[feature].source).toBe('free');
+    }
+    // Free baseline allowances match the per-tier tables.
+    expect(all.photo_recipe_extraction.limit).toBe(AI_EXTRACTION_MONTHLY_LIMIT.starter);
+    expect(all.kitchen_cfo_report.limit).toBe(WEEKLY_CFO_REPORT_MONTHLY_LIMIT.starter);
+  });
+
+  it('paid Business returns the full per-feature limits (no clamp)', async () => {
+    setHas(({ plan }) => plan === 'business');
+    const all = await allAiMonthlyLimits();
+    expect(all.photo_recipe_extraction).toEqual({
+      limit: AI_EXTRACTION_MONTHLY_LIMIT.business,
+      tier: 'business',
+      source: 'paid',
+    });
+    expect(all.supplier_invoice_extraction.limit).toBe(
+      SUPPLIER_INVOICE_MONTHLY_LIMIT.business,
+    );
+    expect(all.kitchen_cfo_report.limit).toBe(WEEKLY_CFO_REPORT_MONTHLY_LIMIT.business);
+  });
+
+  it('trial clamps each allowance to the cap, but CFO (30) stays below it', async () => {
+    setTrial(future());
+    const all = await allAiMonthlyLimits();
+    expect(all.photo_recipe_extraction).toEqual({
+      limit: TRIAL_AI_MONTHLY_CAP,
+      tier: 'business',
+      source: 'trial',
+    });
+    expect(all.supplier_invoice_extraction.limit).toBe(TRIAL_AI_MONTHLY_CAP);
+    // CFO Business is 30 < 50, so the clamp never raises it.
+    expect(all.kitchen_cfo_report.limit).toBe(WEEKLY_CFO_REPORT_MONTHLY_LIMIT.business);
+  });
+
+  it('fail-closes to Starter/free when auth() throws', async () => {
+    h.auth = async () => {
+      throw new Error('clerk down');
+    };
+    const all = await allAiMonthlyLimits();
+    expect(all.photo_recipe_extraction).toEqual({
+      limit: AI_EXTRACTION_MONTHLY_LIMIT.starter,
+      tier: 'starter',
+      source: 'free',
+    });
+  });
+
+  it('agrees with the single-feature helpers, which keep the {limit, tier} shape', async () => {
+    setHas(({ plan }) => plan === 'pro');
+    const all = await allAiMonthlyLimits();
+    // Each old helper still returns exactly { limit, tier } — no `source` leaked.
+    expect(await aiExtractionMonthlyLimit()).toEqual({
+      limit: all.photo_recipe_extraction.limit,
+      tier: 'pro',
+    });
+    expect(await supplierInvoiceMonthlyLimit()).toEqual({
+      limit: all.supplier_invoice_extraction.limit,
+      tier: 'pro',
+    });
+    expect(await profitLeakExplanationMonthlyLimit()).toEqual({
+      limit: all.profit_leak_explanation.limit,
+      tier: 'pro',
+    });
+    expect(await dailyCloseSummaryMonthlyLimit()).toEqual({
+      limit: all.daily_close_summary.limit,
+      tier: 'pro',
+    });
+    expect(await prepPlanSummaryMonthlyLimit()).toEqual({
+      limit: all.prep_reorder_plan_summary.limit,
+      tier: 'pro',
+    });
+    expect(await weeklyCfoReportMonthlyLimit()).toEqual({
+      limit: all.kitchen_cfo_report.limit,
+      tier: 'pro',
     });
   });
 });

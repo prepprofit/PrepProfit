@@ -1,5 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import type { ActionErrorCode } from '@/lib/action-result';
+import { AI_USAGE_FEATURES, type AiUsageFeature } from '@/lib/ai/usage-features';
 
 /**
  * Central server-side entitlements (Sprint 4). The ONE place plan/feature access
@@ -474,6 +475,71 @@ export async function aiExtractionMonthlyLimit(): Promise<{
 }
 
 /**
+ * PURE effective-limit resolver: given an already-resolved entitlement state and one
+ * per-tier allowance table, return the effective monthly AI limit. Applies the reverse
+ * trial's anti-farm clamp — while the trial is the source the allowance is
+ * `min(businessQuota, TRIAL_AI_MONTHLY_CAP)`; real paid/comped/free keep the raw tier
+ * value. Shared by the single-feature helpers and {@link allAiMonthlyLimits} so they
+ * can never disagree. No I/O — unit-testable and callable once per resolved state.
+ */
+function resolveAiLimit(
+  state: EffectiveEntitlementState,
+  table: Record<PlanTier, number>,
+): number {
+  const base = table[state.tier];
+  return state.source === 'trial' ? Math.min(base, TRIAL_AI_MONTHLY_CAP) : base;
+}
+
+/**
+ * Per-feature allowance tables for every metered AI feature (usage meter). The one
+ * place `AiUsageFeature` is mapped to its `Record<PlanTier, number>` limit table, so
+ * {@link allAiMonthlyLimits} stays in lock-step with the single-feature helpers below.
+ */
+const AI_USAGE_LIMIT_TABLES: Record<AiUsageFeature, Record<PlanTier, number>> = {
+  photo_recipe_extraction: AI_EXTRACTION_MONTHLY_LIMIT,
+  supplier_invoice_extraction: SUPPLIER_INVOICE_MONTHLY_LIMIT,
+  profit_leak_explanation: PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT,
+  daily_close_summary: DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT,
+  prep_reorder_plan_summary: PREP_PLAN_SUMMARY_MONTHLY_LIMIT,
+  kitchen_cfo_report: WEEKLY_CFO_REPORT_MONTHLY_LIMIT,
+};
+
+/**
+ * One metered AI feature's effective monthly allowance, including the `source` that
+ * produced it (so the usage meter can show a "trial allowance" note without a second
+ * entitlement lookup). Unlike the single-feature helpers this INTENTIONALLY carries
+ * `source`; the old helpers keep their `{ limit, tier }` shape for their existing
+ * callers/tests.
+ */
+export type AiMonthlyLimit = {
+  limit: number;
+  tier: PlanTier;
+  source: EntitlementSource;
+};
+
+/**
+ * Effective monthly allowance for EVERY metered AI feature, resolved from ONE reading
+ * of the effective entitlement state (fail-closed to `starter`/`free`). Applies the
+ * same trial clamp as the single-feature helpers via {@link resolveAiLimit}. Returned
+ * keyed by `AiUsageFeature` so the usage meter can render one row per feature without
+ * six separate Clerk round-trips. `tier`/`source` are the shared effective values.
+ */
+export async function allAiMonthlyLimits(): Promise<
+  Record<AiUsageFeature, AiMonthlyLimit>
+> {
+  const state = await getEffectiveEntitlementState();
+  const out = {} as Record<AiUsageFeature, AiMonthlyLimit>;
+  for (const feature of AI_USAGE_FEATURES) {
+    out[feature] = {
+      limit: resolveAiLimit(state, AI_USAGE_LIMIT_TABLES[feature]),
+      tier: state.tier,
+      source: state.source,
+    };
+  }
+  return out;
+}
+
+/**
  * Shared resolver for every per-tier AI monthly allowance. Reads the effective
  * entitlement state once (fail-closed to `starter`/`free`), returns the tier's
  * allowance — but clamps it to {@link TRIAL_AI_MONTHLY_CAP} while the reverse trial
@@ -484,12 +550,8 @@ export async function aiExtractionMonthlyLimit(): Promise<{
 async function aiMonthlyLimit(
   table: Record<PlanTier, number>,
 ): Promise<{ limit: number; tier: PlanTier }> {
-  const { tier, source } = await getEffectiveEntitlementState();
-  const base = table[tier];
-  return {
-    limit: source === 'trial' ? Math.min(base, TRIAL_AI_MONTHLY_CAP) : base,
-    tier,
-  };
+  const state = await getEffectiveEntitlementState();
+  return { limit: resolveAiLimit(state, table), tier: state.tier };
 }
 
 /**
