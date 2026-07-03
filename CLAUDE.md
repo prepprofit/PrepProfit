@@ -123,8 +123,12 @@ Feature ladder: `break_even` (Solo+), `invoices` (Pro+), `payroll` +
 `advanced_documents` (Business). The full AI-quota ladder per tier lives in the
 `Record<PlanTier, number>` maps in `lib/entitlements.ts`.
 
-Reverse trial: every NEW org gets Business-level access (all features + Business AI
-quotas) for 14 days, then falls back to Free unless it subscribes. It is stamped as
+Reverse trial: every NEW org gets Business-level access (all features unlocked) for
+14 days, then falls back to Free unless it subscribes. AI quotas during the trial are
+NOT the full Business volume — they are clamped to `TRIAL_AI_MONTHLY_CAP` (50/mo) per
+AI feature (`min(businessQuota, 50)`; anti-farm, so a throwaway trial org can sample
+each AI feature without harvesting the paid volume). The cap applies ONLY to
+`source === 'trial'`; real paid/comped Business keep their full quotas. It is stamped as
 `publicMetadata.trial_ends_at` on `organization.created` (webhook) and read at
 request time from the `org_trial_ends_at` session claim — zero DB I/O.
 `getEffectiveEntitlementState()` resolves `{ tier, source, trialEndsAt }` with

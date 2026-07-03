@@ -151,6 +151,19 @@ export const WEEKLY_CFO_REPORT_MONTHLY_LIMIT = {
   business: 30,
 } as const satisfies Record<PlanTier, number>;
 
+/**
+ * Anti-farm ceiling for the reverse trial. Every AI quota above resolves to the
+ * Business allowance while the trial is active (the trial grants Business tier),
+ * which would let a throwaway org farm the full Business AI volume for free. So
+ * DURING THE TRIAL every AI monthly allowance is clamped to this single cap —
+ * `min(businessQuota, cap)` — enough to genuinely sample each AI feature without
+ * handing out the paid volume. Applies ONLY to `source === 'trial'`; real paid and
+ * comped Business keep their full quota. Feature ACCESS is unchanged (the trial
+ * still unlocks every module) — only the AI call volume is limited. The CFO report
+ * (Business 30) already sits below this, so it is unaffected.
+ */
+export const TRIAL_AI_MONTHLY_CAP = 50;
+
 /* -------------------------------------------------------------------------- */
 /* Reverse trial — every NEW org gets full (Business) access for a window, then */
 /* falls back to Free unless it subscribes. Pure, I/O-free primitives.          */
@@ -457,8 +470,26 @@ export async function aiExtractionMonthlyLimit(): Promise<{
   limit: number;
   tier: PlanTier;
 }> {
-  const tier = await getPlanTier();
-  return { limit: AI_EXTRACTION_MONTHLY_LIMIT[tier], tier };
+  return aiMonthlyLimit(AI_EXTRACTION_MONTHLY_LIMIT);
+}
+
+/**
+ * Shared resolver for every per-tier AI monthly allowance. Reads the effective
+ * entitlement state once (fail-closed to `starter`/`free`), returns the tier's
+ * allowance — but clamps it to {@link TRIAL_AI_MONTHLY_CAP} while the reverse trial
+ * is the source, so a trial org can sample AI without farming the full Business
+ * volume. `tier` in the result stays the EFFECTIVE tier (`business` during a trial),
+ * matching what callers surface in `USAGE_LIMIT_REACHED` messaging.
+ */
+async function aiMonthlyLimit(
+  table: Record<PlanTier, number>,
+): Promise<{ limit: number; tier: PlanTier }> {
+  const { tier, source } = await getEffectiveEntitlementState();
+  const base = table[tier];
+  return {
+    limit: source === 'trial' ? Math.min(base, TRIAL_AI_MONTHLY_CAP) : base,
+    tier,
+  };
 }
 
 /**
@@ -471,8 +502,7 @@ export async function supplierInvoiceMonthlyLimit(): Promise<{
   limit: number;
   tier: PlanTier;
 }> {
-  const tier = await getPlanTier();
-  return { limit: SUPPLIER_INVOICE_MONTHLY_LIMIT[tier], tier };
+  return aiMonthlyLimit(SUPPLIER_INVOICE_MONTHLY_LIMIT);
 }
 
 /**
@@ -485,8 +515,7 @@ export async function profitLeakExplanationMonthlyLimit(): Promise<{
   limit: number;
   tier: PlanTier;
 }> {
-  const tier = await getPlanTier();
-  return { limit: PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT[tier], tier };
+  return aiMonthlyLimit(PROFIT_LEAK_EXPLANATION_MONTHLY_LIMIT);
 }
 
 /**
@@ -499,8 +528,7 @@ export async function dailyCloseSummaryMonthlyLimit(): Promise<{
   limit: number;
   tier: PlanTier;
 }> {
-  const tier = await getPlanTier();
-  return { limit: DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT[tier], tier };
+  return aiMonthlyLimit(DAILY_CLOSE_SUMMARY_MONTHLY_LIMIT);
 }
 
 /**
@@ -513,8 +541,7 @@ export async function prepPlanSummaryMonthlyLimit(): Promise<{
   limit: number;
   tier: PlanTier;
 }> {
-  const tier = await getPlanTier();
-  return { limit: PREP_PLAN_SUMMARY_MONTHLY_LIMIT[tier], tier };
+  return aiMonthlyLimit(PREP_PLAN_SUMMARY_MONTHLY_LIMIT);
 }
 
 /**
@@ -527,6 +554,5 @@ export async function weeklyCfoReportMonthlyLimit(): Promise<{
   limit: number;
   tier: PlanTier;
 }> {
-  const tier = await getPlanTier();
-  return { limit: WEEKLY_CFO_REPORT_MONTHLY_LIMIT[tier], tier };
+  return aiMonthlyLimit(WEEKLY_CFO_REPORT_MONTHLY_LIMIT);
 }

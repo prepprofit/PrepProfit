@@ -41,6 +41,10 @@ import {
   trialReminderDaysLeft,
   isTrialReminderDue,
   profitLeakExplanationMonthlyLimit,
+  aiExtractionMonthlyLimit,
+  supplierInvoiceMonthlyLimit,
+  weeklyCfoReportMonthlyLimit,
+  TRIAL_AI_MONTHLY_CAP,
 } from '@/lib/entitlements';
 
 /**
@@ -394,6 +398,50 @@ describe('reverse trial (request-time override)', () => {
     expect(await getPlanTier()).toBe('business');
     expect(await canUseFeature('payroll')).toBe(true);
     expect((await getEffectiveEntitlementState()).source).toBe('comped');
+  });
+});
+
+describe('reverse trial — AI quotas are capped to TRIAL_AI_MONTHLY_CAP', () => {
+  it('clamps every AI allowance during the trial (feature ACCESS stays full)', async () => {
+    setTrial(future());
+    // Tier resolves to business, so the raw allowance would be 500/200 — clamp to 50.
+    expect(await aiExtractionMonthlyLimit()).toEqual({
+      limit: TRIAL_AI_MONTHLY_CAP,
+      tier: 'business',
+    });
+    expect(await supplierInvoiceMonthlyLimit()).toEqual({
+      limit: TRIAL_AI_MONTHLY_CAP,
+      tier: 'business',
+    });
+    expect(await profitLeakExplanationMonthlyLimit()).toEqual({
+      limit: TRIAL_AI_MONTHLY_CAP,
+      tier: 'business',
+    });
+    // CFO business (30) already sits below the cap → unchanged, never raised to 50.
+    expect(await weeklyCfoReportMonthlyLimit()).toEqual({
+      limit: WEEKLY_CFO_REPORT_MONTHLY_LIMIT.business,
+      tier: 'business',
+    });
+  });
+
+  it('does NOT cap a real paid Business plan — the cap is trial-only', async () => {
+    setHas(({ plan }) => plan === 'business');
+    expect(await aiExtractionMonthlyLimit()).toEqual({
+      limit: AI_EXTRACTION_MONTHLY_LIMIT.business,
+      tier: 'business',
+    });
+    expect(await supplierInvoiceMonthlyLimit()).toEqual({
+      limit: SUPPLIER_INVOICE_MONTHLY_LIMIT.business,
+      tier: 'business',
+    });
+  });
+
+  it('leaves the Free baseline (expired trial) untouched — cap only bites the trial', async () => {
+    setTrial(past()); // expired → starter/free
+    expect(await aiExtractionMonthlyLimit()).toEqual({
+      limit: AI_EXTRACTION_MONTHLY_LIMIT.starter,
+      tier: 'starter',
+    });
   });
 });
 
