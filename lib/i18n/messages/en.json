@@ -1897,6 +1897,23 @@
       }
     }
   },
+  "trial": {
+    "daysLeft": "{days, plural, =0 {Ends today} one {# trial day left} other {# trial days left}}",
+    "card": {
+      "title": "Business is unlocked for your trial",
+      "subtitle": "Use every module now. Trial AI uses smaller monthly allowances; paid plans unlock higher monthly volume.",
+      "cta": "Upgrade now"
+    },
+    "banner": {
+      "body": "You have {daysLabel} to try the paid features. Upgrade anytime from {price}/month.",
+      "cta": "Upgrade"
+    },
+    "sidebar": {
+      "title": "AI usage this month",
+      "managePlan": "Manage plan",
+      "upgrade": "Upgrade"
+    }
+  },
   "pricing": {
     "title": "Choose a plan",
     "subtitle": "Pick the plan that fits your kitchen. You can change it any time."
