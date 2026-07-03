@@ -15,9 +15,7 @@ import { Button } from '@/components/ui/button';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { BackgroundBlur } from '@/components/marketing/ui/background-blur';
 import { AppPreview } from '@/components/marketing/app-preview';
-import { IntroSection } from '@/components/marketing/intro-section';
-import { FeatureCards } from '@/components/marketing/feature-cards';
-import { ImportExportSection } from '@/components/marketing/import-export-section';
+import { FeaturedBento } from '@/components/marketing/featured-bento';
 import { PricingSection } from '@/components/marketing/pricing-section';
 import { TestimonialFeature } from '@/components/marketing/testimonial-feature';
 import { FaqSection } from '@/components/marketing/faq-section';
@@ -107,14 +105,9 @@ export default async function MarketingPage() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* "Everything you need" intro                                       */}
+        {/* Bento feature grid (absorbs intro, feature cards, import/export)  */}
         {/* ---------------------------------------------------------------- */}
-        <IntroSection />
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Feature cards                                                     */}
-        {/* ---------------------------------------------------------------- */}
-        <FeatureCards />
+        <FeaturedBento />
 
         {/* ---------------------------------------------------------------- */}
         {/* How it works                                                      */}
@@ -152,11 +145,6 @@ export default async function MarketingPage() {
             </div>
           </div>
         </section>
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Import & export (replaces template's integrations)                */}
-        {/* ---------------------------------------------------------------- */}
-        <ImportExportSection />
 
         {/* ---------------------------------------------------------------- */}
         {/* Pricing                                                          */}
