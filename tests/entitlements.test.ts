@@ -48,6 +48,7 @@ import {
   weeklyCfoReportMonthlyLimit,
   allAiMonthlyLimits,
   TRIAL_AI_MONTHLY_CAP,
+  WEEKLY_CFO_REPORT_TRIAL_CAP,
 } from '@/lib/entitlements';
 import { AI_USAGE_FEATURES } from '@/lib/ai/usage-features';
 
@@ -421,9 +422,9 @@ describe('reverse trial — AI quotas are capped to TRIAL_AI_MONTHLY_CAP', () =>
       limit: TRIAL_AI_MONTHLY_CAP,
       tier: 'business',
     });
-    // CFO business (30) already sits below the cap → unchanged, never raised to 50.
+    // CFO gets its own tighter trial ceiling (8), not the general cap.
     expect(await weeklyCfoReportMonthlyLimit()).toEqual({
-      limit: WEEKLY_CFO_REPORT_MONTHLY_LIMIT.business,
+      limit: WEEKLY_CFO_REPORT_TRIAL_CAP,
       tier: 'business',
     });
   });
@@ -487,8 +488,8 @@ describe('allAiMonthlyLimits (usage meter — all six features from one state)',
       source: 'trial',
     });
     expect(all.supplier_invoice_extraction.limit).toBe(TRIAL_AI_MONTHLY_CAP);
-    // CFO Business is 30 < 50, so the clamp never raises it.
-    expect(all.kitchen_cfo_report.limit).toBe(WEEKLY_CFO_REPORT_MONTHLY_LIMIT.business);
+    // CFO has its own tighter trial ceiling (8).
+    expect(all.kitchen_cfo_report.limit).toBe(WEEKLY_CFO_REPORT_TRIAL_CAP);
   });
 
   it('fail-closes to Starter/free when auth() throws', async () => {
