@@ -61,6 +61,8 @@ import {
 import { loadProfitLeaks } from '@/lib/data/profit-leaks';
 import { MARGIN_THRESHOLDS } from '@/lib/calculations/margin';
 import { leakHref, leakLabel } from '@/lib/profit-leaks/labels';
+import { getTrialView } from '@/lib/trial';
+import { DashboardTrialCard } from '@/components/app/trial/dashboard-trial-card';
 
 const shortMonth = (month: number, locale: string) =>
   new Date(2000, month - 1, 1).toLocaleDateString(locale, { month: 'short' });
@@ -145,6 +147,10 @@ export default async function DashboardPage({
   const firstName = await getFirstName();
   const locale = await getLocale();
   const sp = await searchParams;
+  // Reverse-trial status strip — manager-only (kitchen is redirected above) and only
+  // during an active trial (`getTrialView()` returns null otherwise). Request-cached, so
+  // this shares the layout's entitlement read.
+  const trial = await getTrialView();
 
   // Period for the financial widgets — defaults to current month.
   const currentKey = currentPeriodKey('month');
@@ -329,6 +335,8 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-col gap-5">
+      {trial && <DashboardTrialCard trial={trial} />}
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">

@@ -5,6 +5,9 @@ import { useTranslations } from 'next-intl';
 import { Sidebar } from './sidebar';
 import { TopBar } from './top-bar';
 import { CommandPalette } from './command-palette';
+import { TrialTopBanner } from './trial/trial-top-banner';
+import type { TrialView } from '@/lib/trial';
+import type { SidebarAiMeterView } from '@/lib/data/ai-usage';
 import { cn } from '@/lib/utils';
 
 /**
@@ -15,10 +18,19 @@ import { cn } from '@/lib/utils';
 export function AppShell({
   children,
   canSeeFinance,
+  trial,
+  sidebarAiMeter,
+  lowestPaidPrice,
 }: {
   children: React.ReactNode;
   /** Forwarded to both Sidebar instances; hides Finance for kitchen role. */
   canSeeFinance: boolean;
+  /** Active reverse-trial view (manager-only); `null` disables the top banner. */
+  trial: TrialView | null;
+  /** Photo-extraction usage meter for the expanded sidebar footer (manager-only). */
+  sidebarAiMeter: SidebarAiMeterView | null;
+  /** Lowest paid price label for the banner copy (empty for kitchen). */
+  lowestPaidPrice: string;
 }) {
   const tTop = useTranslations('topbar');
   const [open, setOpen] = React.useState(false);
@@ -79,12 +91,17 @@ export function AppShell({
   }, [open]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen flex-col overflow-hidden bg-background">
+      {/* Full-width trial strip above the chrome — spans the sidebar + top bar. */}
+      <TrialTopBanner trial={trial} lowestPaidPrice={lowestPaidPrice} />
+
+      <div className="flex min-h-0 flex-1 overflow-hidden">
       <Sidebar
         className="hidden lg:flex"
         canSeeFinance={canSeeFinance}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        sidebarAiMeter={sidebarAiMeter}
       />
 
       {/* Mobile drawer */}
@@ -114,6 +131,7 @@ export function AppShell({
             className="h-full"
             onNavigate={() => setOpen(false)}
             canSeeFinance={canSeeFinance}
+            sidebarAiMeter={sidebarAiMeter}
           />
         </div>
       </div>
@@ -134,6 +152,7 @@ export function AppShell({
         onOpenChange={setPaletteOpen}
         canSeeFinance={canSeeFinance}
       />
+      </div>
     </div>
   );
 }
