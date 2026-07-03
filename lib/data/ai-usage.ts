@@ -167,35 +167,45 @@ export async function getPhotoExtractionUsageSummaryThisMonth(
   };
 }
 
-/** Serializable view for the sidebar photo-extraction meter (client-safe). */
-export type SidebarAiMeterView = {
-  source: EntitlementSource;
-  feature: 'photo_recipe_extraction';
+/** One metered feature's slice of the sidebar meter (client-safe). */
+export type SidebarAiMeterFeature = {
+  feature: AiUsageFeature;
   used: number;
   limit: number;
   remaining: number;
   availableNow: number;
   /** `used / limit` clamped to 0..100 for the bar. */
   percent: number;
+};
+
+/** Serializable view for the sidebar AI-usage meter (client-safe). */
+export type SidebarAiMeterView = {
+  source: EntitlementSource;
   /**
    * Source-driven upsell: trial/free → `Upgrade` to `/pricing`, paid → `Manage plan` to
    * `/billing`, comped → none (no plan to buy).
    */
   cta: null | { labelKey: 'upgrade' | 'managePlan'; href: '/pricing' | '/billing' };
+  /**
+   * One entry per metered feature the plan actually grants (`limit > 0`), in display
+   * order. Always non-empty (the builder returns `null` when there is nothing to show),
+   * so the sidebar meter can page left/right through them.
+   */
+  features: SidebarAiMeterFeature[];
 };
 
 /**
- * Pure projection of a {@link PhotoExtractionUsageSummary} into the sidebar meter view.
- * Returns `null` when the plan grants no photo allowance (`limit <= 0`) so the footer
- * meter simply doesn't render. `percent` clamps at 100 even after a downgrade left
- * `used > limit`; the CTA follows the entitlement source.
+ * Pure projection of the full {@link AiUsageSummary} into the sidebar meter view.
+ * Returns `null` when the plan grants no metered allowance (every `limit <= 0`) so the
+ * footer meter simply doesn't render. `percent` clamps at 100 even after a downgrade
+ * left `used > limit`; the CTA follows the entitlement source.
  */
 export function buildSidebarAiMeterView(
-  summary: PhotoExtractionUsageSummary,
+  summary: AiUsageSummary,
 ): SidebarAiMeterView | null {
-  const { row, source } = summary;
-  if (row.limit <= 0) return null;
-  const percent = Math.min(100, Math.round((row.used / row.limit) * 100));
+  const visible = summary.rows.filter((row) => row.limit > 0);
+  if (visible.length === 0) return null;
+  const { source } = summary;
   const cta =
     source === 'comped'
       ? null
@@ -204,12 +214,14 @@ export function buildSidebarAiMeterView(
         : ({ labelKey: 'upgrade', href: '/pricing' } as const);
   return {
     source,
-    feature: 'photo_recipe_extraction',
-    used: row.used,
-    limit: row.limit,
-    remaining: row.remaining,
-    availableNow: row.availableNow,
-    percent,
     cta,
+    features: visible.map((row) => ({
+      feature: row.feature,
+      used: row.used,
+      limit: row.limit,
+      remaining: row.remaining,
+      availableNow: row.availableNow,
+      percent: Math.min(100, Math.round((row.used / row.limit) * 100)),
+    })),
   };
 }

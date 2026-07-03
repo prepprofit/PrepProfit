@@ -8,15 +8,16 @@ import { getEffectiveEntitlementState } from '@/lib/entitlements';
 import { getActivationSnapshot } from '@/lib/data/activation';
 import {
   buildSidebarAiMeterView,
-  getPhotoExtractionUsageSummaryThisMonth,
+  getAiUsageThisMonth,
   type SidebarAiMeterView,
 } from '@/lib/data/ai-usage';
 
 // Cached on the layout side (not in `lib/data/*`, which stays React-free) so the single
-// server read is shared with any other per-request caller and never duplicated.
+// server read is shared with any other per-request caller and never duplicated. Reads
+// every metered feature so the sidebar meter can page left/right through them.
 const getSidebarAiMeterView = cache(
   async (): Promise<SidebarAiMeterView | null> =>
-    buildSidebarAiMeterView(await getPhotoExtractionUsageSummaryThisMonth()),
+    buildSidebarAiMeterView(await getAiUsageThisMonth()),
 );
 
 export default async function AppLayout({
