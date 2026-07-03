@@ -1,7 +1,6 @@
 import { cache } from 'react';
 import { getTranslations } from 'next-intl/server';
 import { AppShell } from '@/components/app/app-shell';
-import { CrispChat } from '@/components/support/crisp-chat';
 import Flows, { type FlowsUserProperties } from '@/app/flows';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
 import { getTrialView } from '@/lib/trial';
@@ -70,9 +69,6 @@ export default async function AppLayout({
       >
         {children}
       </AppShell>
-      {/* Human live-chat support (Crisp). Inside `(app)` only, so it never loads on
-          marketing routes. No-op until NEXT_PUBLIC_CRISP_WEBSITE_ID is set. */}
-      <CrispChat />
     </Flows>
   );
 }

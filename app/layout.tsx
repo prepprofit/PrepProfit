@@ -4,6 +4,7 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 import { ThemeProvider } from '@/components/theme-provider';
+import { CrispChat } from '@/components/support/crisp-chat';
 import './globals.css';
 
 // Google-product type pairing: Roboto for UI/body (the Android system font) and
@@ -41,7 +42,14 @@ export default async function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <NextIntlClientProvider>{children}</NextIntlClientProvider>
+            <NextIntlClientProvider>
+              {children}
+              {/* Crisp live-chat, site-wide: helps anonymous pre-sales visitors on the
+                  marketing site AND signed-in users in the app. No-op until
+                  NEXT_PUBLIC_CRISP_WEBSITE_ID is set; identifies the user only once
+                  signed in. */}
+              <CrispChat />
+            </NextIntlClientProvider>
           </ThemeProvider>
         </body>
       </html>

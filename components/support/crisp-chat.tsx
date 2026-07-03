@@ -5,8 +5,9 @@ import { useAuth, useOrganization, useUser } from '@clerk/nextjs';
 
 /**
  * Crisp live-chat widget (owner chose human support via a platform over an in-app
- * LLM bot — see docs/support-chat-plan.md, DEFERRED). Mounted only inside the
- * authenticated `(app)` layout, so it never loads on the public `(marketing)` routes.
+ * LLM bot — see docs/support-chat-plan.md, DEFERRED). Mounted SITE-WIDE in the root
+ * layout so it serves both anonymous pre-sales visitors on the marketing site and
+ * signed-in users in the app; identity (below) is attached only once a user is signed in.
  *
  * The website id is a PUBLIC build-time value (`NEXT_PUBLIC_CRISP_WEBSITE_ID`), read
  * directly here. When it is absent (local/CI without the id) the component is a safe
