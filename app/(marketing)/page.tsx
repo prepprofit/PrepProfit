@@ -17,7 +17,7 @@ import { BackgroundBlur } from '@/components/marketing/ui/background-blur';
 import { AppPreview } from '@/components/marketing/app-preview';
 import { FeaturedBento } from '@/components/marketing/featured-bento';
 import { PricingSection } from '@/components/marketing/pricing-section';
-import { TestimonialFeature } from '@/components/marketing/testimonial-feature';
+import { TestimonialsMarquee } from '@/components/marketing/testimonials-marquee';
 import { FaqSection } from '@/components/marketing/faq-section';
 import { Reveal } from '@/components/marketing/reveal';
 
@@ -147,24 +147,19 @@ export default async function MarketingPage() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
+        {/* Testimonials marquee                                             */}
+        {/* ---------------------------------------------------------------- */}
+        <TestimonialsMarquee />
+
+        {/* ---------------------------------------------------------------- */}
         {/* Pricing                                                          */}
         {/* ---------------------------------------------------------------- */}
         <PricingSection />
 
         {/* ---------------------------------------------------------------- */}
-        {/* Featured testimonial                                             */}
-        {/* ---------------------------------------------------------------- */}
-        <TestimonialFeature which="a" tinted />
-
-        {/* ---------------------------------------------------------------- */}
         {/* FAQ                                                              */}
         {/* ---------------------------------------------------------------- */}
         <FaqSection />
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Second testimonial                                               */}
-        {/* ---------------------------------------------------------------- */}
-        <TestimonialFeature which="c" tinted />
 
         {/* ---------------------------------------------------------------- */}
         {/* Dark CTA band                                                    */}
