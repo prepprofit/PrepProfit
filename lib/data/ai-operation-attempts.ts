@@ -189,6 +189,56 @@ export async function countReservedOperations(
 }
 
 /**
+ * Combined USAGE-METER counts for the current month, grouped by feature in ONE query:
+ * per feature, `used` (billed — `succeeded` since `monthStart`) and `reserved` (`used`
+ * PLUS still-in-flight `pending`). Returned as a `Map` keyed by feature so the meter can
+ * render one row per metered operation feature without a query each. Rows with neither a
+ * succeeded-this-month nor a fresh-pending attempt are absent — callers default missing
+ * features to `{ used: 0, reserved: 0 }`. This is the DISPLAY read (no advisory lock), so
+ * it must NOT authorize a call; {@link countReservedOperations} under
+ * {@link lockMonthlyOperationQuota} stays the cap authority. Org-scoped; RLS second layer.
+ */
+export async function countOperationUsageByFeatureSince(
+  db: TenantClient,
+  organizationId: string,
+  monthStart: Date,
+  now: Date,
+): Promise<Map<AiOperationFeature, { used: number; reserved: number }>> {
+  const inFlightSince = new Date(now.getTime() - OPERATION_INFLIGHT_MS);
+  const succeededThisMonth = and(
+    eq(aiOperationAttempts.status, 'succeeded'),
+    gte(aiOperationAttempts.createdAt, monthStart),
+  );
+  const freshPending = and(
+    eq(aiOperationAttempts.status, 'pending'),
+    gte(aiOperationAttempts.createdAt, inFlightSince),
+  );
+  const rows = await db
+    .select({
+      feature: aiOperationAttempts.feature,
+      used: sql<number>`count(*) filter (where ${succeededThisMonth})`,
+      reserved: sql<number>`count(*) filter (where ${succeededThisMonth} or ${freshPending})`,
+    })
+    .from(aiOperationAttempts)
+    .where(
+      and(
+        eq(aiOperationAttempts.organizationId, organizationId),
+        or(succeededThisMonth, freshPending),
+      ),
+    )
+    .groupBy(aiOperationAttempts.feature);
+
+  const usage = new Map<AiOperationFeature, { used: number; reserved: number }>();
+  for (const row of rows) {
+    usage.set(row.feature, {
+      used: Number(row.used ?? 0),
+      reserved: Number(row.reserved ?? 0),
+    });
+  }
+  return usage;
+}
+
+/**
  * Count this org's `succeeded` attempts for a feature since `since` (the billed-usage
  * figure, e.g. for a usage display). Org-scoped; RLS is the second layer. NOTE: the
  * monthly CAP is enforced with {@link countReservedOperations} under

@@ -195,6 +195,43 @@ export async function countSucceededAttemptsSince(
   return rows[0]?.value ?? 0;
 }
 
+/**
+ * Combined USAGE-METER counts for the current month, in one query: `used` (billed —
+ * `succeeded` since `monthStart`) and `reserved` (`used` PLUS still-in-flight
+ * `pending`, i.e. what the cap gate sees). This is the DISPLAY read for the AI usage
+ * meter — it is NOT a cap gate (no advisory lock), so it must never be used to authorize
+ * a call; {@link countReservedAttempts} under {@link lockMonthlyExtractionQuota} remains
+ * the authority. Org-scoped; RLS is the second layer. The in-flight horizon matches
+ * {@link EXTRACTION_INFLIGHT_MS} so `reserved` here agrees with the gate.
+ */
+export async function countExtractionUsageSince(
+  db: TenantClient,
+  organizationId: string,
+  monthStart: Date,
+  now: Date,
+): Promise<{ used: number; reserved: number }> {
+  const inFlightSince = new Date(now.getTime() - EXTRACTION_INFLIGHT_MS);
+  const succeededThisMonth = and(
+    eq(aiExtractionAttempts.status, 'succeeded'),
+    gte(aiExtractionAttempts.createdAt, monthStart),
+  );
+  const freshPending = and(
+    eq(aiExtractionAttempts.status, 'pending'),
+    gte(aiExtractionAttempts.createdAt, inFlightSince),
+  );
+  const rows = await db
+    .select({
+      used: sql<number>`count(*) filter (where ${succeededThisMonth})`,
+      reserved: sql<number>`count(*) filter (where ${succeededThisMonth} or ${freshPending})`,
+    })
+    .from(aiExtractionAttempts)
+    .where(eq(aiExtractionAttempts.organizationId, organizationId));
+  return {
+    used: Number(rows[0]?.used ?? 0),
+    reserved: Number(rows[0]?.reserved ?? 0),
+  };
+}
+
 /** Aggregated provider spend for one org over a window — the weekly-report figures. */
 export type ExtractionCostSummary = {
   /** Number of `succeeded` extractions in the window. */
