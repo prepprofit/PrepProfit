@@ -66,3 +66,6 @@ scripts/test-email.mjs
 # AI extraction eval images — real recipe photos are private fixtures, never
 # committed. The sanitized golden JSON + manifest (with checksums) ARE versioned.
 /eval/extraction/images/
+
+# purchased marketing template source (kept local only)
+/nguyen.zip
