@@ -160,10 +160,18 @@ export const WEEKLY_CFO_REPORT_MONTHLY_LIMIT = {
  * `min(businessQuota, cap)` — enough to genuinely sample each AI feature without
  * handing out the paid volume. Applies ONLY to `source === 'trial'`; real paid and
  * comped Business keep their full quota. Feature ACCESS is unchanged (the trial
- * still unlocks every module) — only the AI call volume is limited. The CFO report
- * (Business 30) already sits below this, so it is unaffected.
+ * still unlocks every module) — only the AI call volume is limited. The Weekly CFO
+ * report gets its own, tighter trial ceiling ({@link WEEKLY_CFO_REPORT_TRIAL_CAP}).
  */
-export const TRIAL_AI_MONTHLY_CAP = 50;
+export const TRIAL_AI_MONTHLY_CAP = 20;
+
+/**
+ * Tighter anti-farm ceiling applied to the Weekly CFO Report DURING the reverse trial
+ * only. The CFO report is the most expensive AI feature, so a throwaway trial org is
+ * held to this instead of the general {@link TRIAL_AI_MONTHLY_CAP}. Applies ONLY to
+ * `source === 'trial'`; real paid/comped Business keep their full quota.
+ */
+export const WEEKLY_CFO_REPORT_TRIAL_CAP = 8;
 
 /* -------------------------------------------------------------------------- */
 /* Reverse trial — every NEW org gets full (Business) access for a window, then */
@@ -487,7 +495,11 @@ function resolveAiLimit(
   table: Record<PlanTier, number>,
 ): number {
   const base = table[state.tier];
-  return state.source === 'trial' ? Math.min(base, TRIAL_AI_MONTHLY_CAP) : base;
+  const cap =
+    table === WEEKLY_CFO_REPORT_MONTHLY_LIMIT
+      ? WEEKLY_CFO_REPORT_TRIAL_CAP
+      : TRIAL_AI_MONTHLY_CAP;
+  return state.source === 'trial' ? Math.min(base, cap) : base;
 }
 
 /**
