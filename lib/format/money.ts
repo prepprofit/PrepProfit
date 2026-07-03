@@ -9,7 +9,7 @@
 
 /**
  * Format integer cents as a localized currency string.
- * `formatMoney(1234, 'EUR')` → `"€12.34"`. Fraction digits follow the currency
+ * `formatMoney(1234, 'USD')` → `"$12.34"`. Fraction digits follow the currency
  * (e.g. JPY shows none); the locale controls grouping and symbol placement.
  */
 export function formatMoney(
@@ -24,7 +24,7 @@ export function formatMoney(
 }
 
 /**
- * Compact currency for chart axes/labels: `450000` → `"€4.5K"`, `12000` → `"€120"`.
+ * Compact currency for chart axes/labels: `450000` → `"$4.5K"`, `12000` → `"$120"`.
  * Drops cents and uses compact notation so dense axes stay legible; tooltips and
  * KPIs still use the precise {@link formatMoney}.
  */

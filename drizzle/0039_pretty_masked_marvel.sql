@@ -1,0 +1,1 @@
+ALTER TABLE "organization_settings" ALTER COLUMN "currency" SET DEFAULT 'USD';

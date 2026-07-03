@@ -16,10 +16,8 @@ import {
  * three to each other so a future price/cap/feature change fails CI until every
  * surface is updated together.
  *
- * Deliberate exception it ENCODES rather than flags: `clerk/billing.json` amounts
- * are USD dev placeholders (Clerk's dev gateway only accepts usd) whose NUMERIC
- * value must still match the EUR public pricing (€29/€79 ↔ 2900/7900) — the prod
- * Clerk instance charges the same numbers in EUR.
+ * `clerk/billing.json` amounts are USD (Clerk charges in usd) and their NUMERIC
+ * value matches the USD public pricing ($29/$79 ↔ 2900/7900).
  */
 
 type BillingCatalogue = {
@@ -95,17 +93,17 @@ describe('billing catalogue ↔ entitlements ↔ public pricing consistency', ()
     }
   });
 
-  it('catalogue amounts (dev-usd placeholders) numerically match the EUR pricing copy', () => {
+  it('catalogue amounts (usd) numerically match the USD pricing copy', () => {
     const { pricing } = messages.marketing;
     expect(catalogue.billing.plans.solo!.amount).toBe(1900);
     expect(catalogue.billing.plans.pro!.amount).toBe(2900);
     expect(catalogue.billing.plans.business!.amount).toBe(7900);
-    expect(pricing.solo.price).toBe('€19');
-    expect(pricing.pro.price).toBe('€29');
-    expect(pricing.business.price).toBe('€79');
-    expect(pricing.free.price).toBe('€0');
-    // Yearly = 2 months free (Decision D): €19 × 10 = €190.
-    expect(pricing.solo.priceYear).toBe('€190');
+    expect(pricing.solo.price).toBe('$19');
+    expect(pricing.pro.price).toBe('$29');
+    expect(pricing.business.price).toBe('$79');
+    expect(pricing.free.price).toBe('$0');
+    // Yearly = 2 months free (Decision D): $19 × 10 = $190.
+    expect(pricing.solo.priceYear).toBe('$190');
   });
 
   it('public copy matches the enforced caps (recipes, seats, AI quota)', () => {

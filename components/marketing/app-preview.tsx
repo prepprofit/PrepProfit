@@ -76,13 +76,13 @@ export async function AppPreview() {
                 />
                 <StatCard
                   label={t('foodCost')}
-                  value="€2.41"
+                  value="$2.41"
                   icon={Percent}
                   delta={{ label: '4 pts', tone: 'positive', direction: 'down' }}
                 />
                 <StatCard
                   label={t('revenue')}
-                  value="€18.6k"
+                  value="$18.6k"
                   icon={Wallet}
                   delta={{ label: '12%', tone: 'positive', direction: 'up' }}
                 />

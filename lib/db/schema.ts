@@ -77,7 +77,7 @@ export const organizationSettings = pgTable('organization_settings', {
   organizationId: text('organization_id').primaryKey(),
   // ISO-4217 currency code (validated against a curated list, see
   // lib/validation/org-settings.ts).
-  currency: text('currency').notNull().default('EUR'),
+  currency: text('currency').notNull().default('USD'),
   measurementSystem: text('measurement_system', {
     enum: ['metric', 'imperial'],
   })

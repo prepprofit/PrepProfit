@@ -52,7 +52,7 @@ describe('onboarding data layer (PGlite, RLS-scoped)', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.onboardedAt).toBeInstanceOf(Date);
     // Defaults applied by the DB on the implicit insert.
-    expect(rows[0]?.currency).toBe('EUR');
+    expect(rows[0]?.currency).toBe('USD');
   });
 
   it('is set-once: a second call never overwrites the first timestamp', async () => {

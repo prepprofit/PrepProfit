@@ -37,7 +37,7 @@ export type OrgSettingsValues = {
 
 /** Used until the org saves its own settings. */
 export const DEFAULT_ORG_SETTINGS: OrgSettingsValues = {
-  currency: 'EUR',
+  currency: 'USD',
   measurementSystem: 'metric',
   businessName: null,
   businessAddress: null,

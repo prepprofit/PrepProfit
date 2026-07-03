@@ -8,7 +8,7 @@ import {
 const PLAN_KEYS = ['free', 'solo', 'pro', 'business'] as const;
 const FEATURE_KEYS = ['f1', 'f2', 'f3', 'f4'] as const;
 
-/** The message strings ("€19") stay the single source; NumberFlow needs numbers. */
+/** The message strings ("$19") stay the single source; NumberFlow needs numbers. */
 function priceValue(message: string): number {
   const parsed = Number(message.replace(/[^\d.]/g, ''));
   return Number.isFinite(parsed) ? parsed : 0;

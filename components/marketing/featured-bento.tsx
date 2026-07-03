@@ -163,10 +163,10 @@ function BentoCard({
 
 function CostingMock() {
   const rows = [
-    { name: 'Flour', value: '€0.42' },
-    { name: 'Tomato', value: '€0.88' },
-    { name: 'Mozzarella', value: '€1.11' },
-    { name: 'Basil', value: '€0.14' },
+    { name: 'Flour', value: '$0.42' },
+    { name: 'Tomato', value: '$0.88' },
+    { name: 'Mozzarella', value: '$1.11' },
+    { name: 'Basil', value: '$0.14' },
   ];
   return (
     <Card className="w-full max-w-sm p-4" aria-hidden>
@@ -190,7 +190,7 @@ function CostingMock() {
       <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-xs">
         <span className="font-medium text-muted-foreground">Food cost</span>
         <span className="font-display font-semibold tabular-nums text-foreground">
-          €2.41
+          $2.41
         </span>
       </div>
     </Card>
@@ -219,7 +219,7 @@ function FinancialsMock() {
       <div className="mt-3 flex items-center justify-between text-xs">
         <span className="text-muted-foreground">Break-even</span>
         <span className="font-display font-semibold tabular-nums text-foreground">
-          €4,200
+          $4,200
         </span>
       </div>
     </Card>
@@ -295,7 +295,7 @@ function OperationsMock() {
   const rows = [
     { Icon: ReceiptText, label: 'INV-2026-0142', value: 'Paid' },
     { Icon: Table2, label: 'Mozzarella · stock', value: '12 kg' },
-    { Icon: ReceiptText, label: 'Payroll · June', value: '€6,840' },
+    { Icon: ReceiptText, label: 'Payroll · June', value: '$6,840' },
   ] as const;
   return (
     <Card className="w-full max-w-xs p-4" aria-hidden>
