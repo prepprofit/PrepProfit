@@ -51,6 +51,7 @@ import {
   countDimensionMismatches,
 } from '@/app/(app)/import/recipe-resolution';
 import type { IngredientOption } from '@/lib/data/ingredients';
+import type { AiUsageRow } from '@/lib/data/ai-usage';
 
 const ISSUE_DISPLAY_LIMIT = 50;
 
@@ -83,16 +84,26 @@ function deriveQuantity(text: string): number | null {
 export function PhotoImportWorkbench({
   measurementSystem,
   ingredientOptions,
+  photoUsage,
 }: {
   measurementSystem: MeasurementSystem;
   ingredientOptions: IngredientOption[];
+  photoUsage: AiUsageRow;
 }) {
   const [resetKey, setResetKey] = useState(0);
+  // Live availability lives HERE (not in PhotoFlow) so it survives "Start over",
+  // which remounts PhotoFlow via `key`. Decremented once per successful extraction so
+  // a second upload in the same session reflects the slot already spent. The server
+  // hint is the seed; the upload route stays the real cap authority.
+  const [availableNow, setAvailableNow] = useState(photoUsage.availableNow);
   return (
     <PhotoFlow
       key={resetKey}
       measurementSystem={measurementSystem}
       ingredientOptions={ingredientOptions}
+      availableNow={availableNow}
+      usageLimit={photoUsage.limit}
+      onExtracted={() => setAvailableNow((n) => Math.max(0, n - 1))}
       onStartOver={() => setResetKey((k) => k + 1)}
     />
   );
@@ -101,10 +112,16 @@ export function PhotoImportWorkbench({
 function PhotoFlow({
   measurementSystem,
   ingredientOptions,
+  availableNow,
+  usageLimit,
+  onExtracted,
   onStartOver,
 }: {
   measurementSystem: MeasurementSystem;
   ingredientOptions: IngredientOption[];
+  availableNow: number;
+  usageLimit: number;
+  onExtracted: () => void;
   onStartOver: () => void;
 }) {
   const t = useTranslations('recipes.importPhoto');
@@ -159,6 +176,10 @@ function PhotoFlow({
       const result = (await res.json()) as PhotoExtractionDraft;
       setDraft(result);
       setImageUrl(URL.createObjectURL(selectedFile));
+      // A 200 means the provider ran and a slot was spent — reflect it locally so a
+      // repeat upload this session shows honest availability. Failures/USAGE_LIMIT
+      // returned above (via !res.ok) never reach here, so they don't decrement.
+      onExtracted();
     } catch {
       setError('UNEXPECTED');
     } finally {
@@ -377,6 +398,12 @@ function PhotoFlow({
               {t('upload.chooseFromGallery')}
             </Button>
           </div>
+          {/* Proactive quota hint — display only; the upload route enforces the cap. */}
+          <p className="text-xs text-muted-foreground">
+            {availableNow <= 0
+              ? t('upload.usageExhausted', { limit: usageLimit })
+              : t('upload.usageLeft', { available: availableNow, limit: usageLimit })}
+          </p>
           {selectedFile && (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <CheckCircle2 className="size-4 text-accent-600" />

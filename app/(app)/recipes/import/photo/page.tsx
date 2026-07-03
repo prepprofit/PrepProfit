@@ -3,6 +3,7 @@ import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { listIngredientOptions } from '@/lib/data/ingredients';
+import { getPhotoExtractionUsageThisMonth } from '@/lib/data/ai-usage';
 import { NoAccess } from '@/components/app/no-access';
 import { PhotoImportWorkbench } from './photo-workbench';
 
@@ -26,6 +27,9 @@ export default async function PhotoImportPage() {
   const ingredientOptions = await withOrg(organizationId, (tx) =>
     listIngredientOptions(tx, organizationId),
   );
+  // Proactive quota hint (availableNow so it never promises an already-reserved slot).
+  // The upload route stays the authority — this is display only.
+  const photoUsage = await getPhotoExtractionUsageThisMonth();
 
   return (
     <div className="flex flex-col gap-5">
@@ -33,6 +37,7 @@ export default async function PhotoImportPage() {
       <PhotoImportWorkbench
         measurementSystem={settings.measurementSystem}
         ingredientOptions={ingredientOptions}
+        photoUsage={photoUsage}
       />
     </div>
   );

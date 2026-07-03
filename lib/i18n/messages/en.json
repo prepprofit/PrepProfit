@@ -703,6 +703,8 @@
         "chooseFromGallery": "Choose from gallery",
         "cta": "Extract recipe",
         "extracting": "Reading the photo…",
+        "usageLeft": "{available} of {limit} photo extractions left this month.",
+        "usageExhausted": "You've used all {limit} photo extractions this month. They reset at the start of next month.",
         "progress": {
           "title": "Reading your recipe…",
           "hint": "This usually takes 15–20 seconds. Please keep this tab open.",
