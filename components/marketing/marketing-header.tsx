@@ -116,7 +116,7 @@ export function MarketingHeader({ productName }: { productName: string }) {
             </div>
 
             {/* Right — actions; doubles as the mobile menu card */}
-            <div className="mb-6 hidden w-full flex-wrap items-center justify-end space-y-8 rounded-3xl border border-border bg-background p-6 shadow-2xl shadow-black/5 in-data-[state=active]:flex md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:shadow-none">
+            <div className="mb-6 hidden w-full space-y-8 rounded-3xl border border-border bg-background p-6 shadow-2xl shadow-black/5 in-data-[state=active]:block lg:m-0 lg:flex lg:w-fit lg:items-center lg:justify-end lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:shadow-none">
               {/* Mobile menu links */}
               <div className="lg:hidden">
                 <ul className="space-y-6 text-base">
