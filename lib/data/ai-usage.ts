@@ -133,3 +133,83 @@ export async function getPhotoExtractionUsageThisMonth(
     limits.photo_recipe_extraction.limit,
   );
 }
+
+/** Photo-extraction usage + the tier/source/reset context the sidebar meter needs. */
+export type PhotoExtractionUsageSummary = {
+  tier: PlanTier;
+  source: EntitlementSource;
+  /** First instant of the next UTC month — when the counter resets. */
+  resetAt: Date;
+  row: AiUsageRow;
+};
+
+/**
+ * Photo-extraction usage for the SIDEBAR meter (one row, plus the tier/source needed to
+ * pick its CTA). Reads only the effective photo limit + the extraction ledger inside one
+ * `withOrg` transaction — it deliberately never touches the five operation features, so
+ * the meter costs one cheap read per navigation instead of the full billing meter.
+ */
+export async function getPhotoExtractionUsageSummaryThisMonth(
+  now: Date = new Date(),
+): Promise<PhotoExtractionUsageSummary> {
+  const organizationId = await getOrgId();
+  const limits = await allAiMonthlyLimits();
+  const monthStart = monthStartUtc(now);
+  const counts = await withOrg(organizationId, (tx) =>
+    countExtractionUsageSince(tx, organizationId, monthStart, now),
+  );
+  const photo = limits.photo_recipe_extraction;
+  return {
+    tier: photo.tier,
+    source: photo.source,
+    resetAt: nextMonthResetUtc(now),
+    row: buildUsageRow('photo_recipe_extraction', counts, photo.limit),
+  };
+}
+
+/** Serializable view for the sidebar photo-extraction meter (client-safe). */
+export type SidebarAiMeterView = {
+  source: EntitlementSource;
+  feature: 'photo_recipe_extraction';
+  used: number;
+  limit: number;
+  remaining: number;
+  availableNow: number;
+  /** `used / limit` clamped to 0..100 for the bar. */
+  percent: number;
+  /**
+   * Source-driven upsell: trial/free → `Upgrade` to `/pricing`, paid → `Manage plan` to
+   * `/billing`, comped → none (no plan to buy).
+   */
+  cta: null | { labelKey: 'upgrade' | 'managePlan'; href: '/pricing' | '/billing' };
+};
+
+/**
+ * Pure projection of a {@link PhotoExtractionUsageSummary} into the sidebar meter view.
+ * Returns `null` when the plan grants no photo allowance (`limit <= 0`) so the footer
+ * meter simply doesn't render. `percent` clamps at 100 even after a downgrade left
+ * `used > limit`; the CTA follows the entitlement source.
+ */
+export function buildSidebarAiMeterView(
+  summary: PhotoExtractionUsageSummary,
+): SidebarAiMeterView | null {
+  const { row, source } = summary;
+  if (row.limit <= 0) return null;
+  const percent = Math.min(100, Math.round((row.used / row.limit) * 100));
+  const cta =
+    source === 'comped'
+      ? null
+      : source === 'paid'
+        ? ({ labelKey: 'managePlan', href: '/billing' } as const)
+        : ({ labelKey: 'upgrade', href: '/pricing' } as const);
+  return {
+    source,
+    feature: 'photo_recipe_extraction',
+    used: row.used,
+    limit: row.limit,
+    remaining: row.remaining,
+    availableNow: row.availableNow,
+    percent,
+    cta,
+  };
+}

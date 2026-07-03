@@ -20,7 +20,13 @@ import {
 } from '@/lib/data/ai-operation-attempts';
 import { AI_USAGE_FEATURES } from '@/lib/ai/usage-features';
 import type { AiOperationFeature } from '@/lib/ai/operation-types';
-import { buildUsageRow, nextMonthResetUtc } from '@/lib/data/ai-usage';
+import {
+  buildSidebarAiMeterView,
+  buildUsageRow,
+  nextMonthResetUtc,
+  type PhotoExtractionUsageSummary,
+} from '@/lib/data/ai-usage';
+import type { EntitlementSource } from '@/lib/entitlements';
 
 /**
  * Data-layer tests for the AI usage meter (2026-07). Cover the combined DISPLAY counts
@@ -216,6 +222,56 @@ describe('buildUsageRow (pure meter math)', () => {
     expect(over.used).toBe(12);
     expect(over.remaining).toBe(0);
     expect(over.availableNow).toBe(0);
+  });
+});
+
+describe('buildSidebarAiMeterView (pure sidebar meter projection)', () => {
+  function summary(
+    source: EntitlementSource,
+    used: number,
+    limit: number,
+  ): PhotoExtractionUsageSummary {
+    return {
+      tier: 'business',
+      source,
+      resetAt: nextMonthResetUtc(new Date('2026-07-03T00:00:00Z')),
+      row: buildUsageRow('photo_recipe_extraction', { used, reserved: used }, limit),
+    };
+  }
+
+  it('returns null when the plan grants no photo allowance', () => {
+    expect(buildSidebarAiMeterView(summary('free', 0, 0))).toBeNull();
+  });
+
+  it('picks Upgrade → /pricing for trial and free', () => {
+    for (const source of ['trial', 'free'] as const) {
+      expect(buildSidebarAiMeterView(summary(source, 5, 50))?.cta).toEqual({
+        labelKey: 'upgrade',
+        href: '/pricing',
+      });
+    }
+  });
+
+  it('picks Manage plan → /billing for paid', () => {
+    expect(buildSidebarAiMeterView(summary('paid', 5, 100))?.cta).toEqual({
+      labelKey: 'managePlan',
+      href: '/billing',
+    });
+  });
+
+  it('has no CTA for comped', () => {
+    expect(buildSidebarAiMeterView(summary('comped', 5, 500))?.cta).toBeNull();
+  });
+
+  it('clamps percent at 100 and remaining at 0 for over-cap usage', () => {
+    const view = buildSidebarAiMeterView(summary('free', 12, 10));
+    expect(view?.percent).toBe(100);
+    expect(view?.remaining).toBe(0);
+    expect(view?.used).toBe(12);
+  });
+
+  it('computes percent from used / limit', () => {
+    expect(buildSidebarAiMeterView(summary('trial', 5, 50))?.percent).toBe(10);
   });
 });
 
