@@ -1886,6 +1886,8 @@
       "used": "{used} of {limit} used",
       "remaining": "{count} left",
       "inFlight": "{count} in progress",
+      "previousFeature": "Previous feature",
+      "nextFeature": "Next feature",
       "trialNote": "These are trial allowances — subscribe to unlock your full monthly volume.",
       "features": {
         "photo_recipe_extraction": "Photo recipe extraction",
