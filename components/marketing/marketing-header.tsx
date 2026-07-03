@@ -55,9 +55,9 @@ export function MarketingHeader({ productName }: { productName: string }) {
       >
         <div
           className={cn(
-            'mx-auto mt-2 max-w-6xl px-6 transition-all duration-300 ease-out lg:px-12',
+            'mx-auto mt-2 max-w-6xl border border-transparent bg-transparent px-6 transition-all duration-300 ease-out lg:px-12',
             scrolled &&
-              'max-w-4xl rounded-3xl border border-border bg-background/60 backdrop-blur-2xl lg:px-5',
+              'max-w-4xl rounded-3xl border-border bg-background/60 backdrop-blur-2xl lg:px-5',
           )}
         >
           <div className="relative flex flex-wrap items-center justify-between gap-6 py-3 lg:gap-0 lg:py-4">
