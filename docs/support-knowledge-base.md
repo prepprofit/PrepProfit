@@ -5,10 +5,9 @@
 > Helpdesk articles. Instructions (tone/escalation) live elsewhere — this file is the
 > *knowledge*.
 >
-> **Owner action before publishing:** search for `⟨CONFIRMAR⟩` and either fill in the
-> exact in-app navigation/labels or delete the line. Those are places where the precise
-> UI path matters and should be verified against the live app so Hugo never gives a
-> wrong step. Also confirm the support email and any prices before go-live.
+> **Owner note:** verify any in-app step against the live app before relying on it — this
+> file deliberately avoids naming exact buttons/menus where they could drift. Prices are
+> shown in US dollars, the current official currency.
 >
 > Written in English (Hugo replies in the customer's own language regardless). Ask if
 > you want a Portuguese/French copy too.
@@ -48,20 +47,18 @@ file taxes for you. For those, consult a professional.
 **Tip:** you can also create a recipe draft from a **photo** using AI extraction (see
 §4) — useful for importing an existing recipe card or cookbook page.
 
-⟨CONFIRMAR⟩ Exact first-run/onboarding steps and menu labels.
-
 ---
 
 ## 3. Plans & pricing
 
-PrepProfit has four tiers. Prices are in euros, billed monthly.
+PrepProfit has four tiers. Prices are in US dollars, billed monthly or annually.
 
 | Plan | Price | Users | Recipes | What's included |
 |---|---|---|---|---|
-| **Free (Starter)** | €0 | 1 | up to 10 | All operational modules: recipes, ingredients, menus, suppliers, inventory, productions, sales, tasks, allergens, purchase orders. AI photo extraction: **10/month**. |
-| **Solo** | €19/mo | 1 | unlimited | Everything in Free **+ break-even simulator**. AI extraction: **40/month**. |
-| **Pro** | €29/mo | 5 | unlimited | Everything in Solo **+ invoices**. AI extraction: **100/month**. |
-| **Business** | €79/mo | unlimited | unlimited | Everything in Pro **+ payroll + advanced document/report workflows**. AI extraction: **500/month**. |
+| **Free (Starter)** | $0 | 1 | up to 10 | All operational modules: recipes, ingredients, menus, suppliers, inventory, productions, sales, tasks, allergens, purchase orders. AI photo extraction: **10/month**. |
+| **Solo** | $19/mo | 1 | unlimited | Everything in Free **+ break-even simulator**. AI extraction: **40/month**. |
+| **Pro** | $29/mo | 5 | unlimited | Everything in Solo **+ invoices**. AI extraction: **100/month**. |
+| **Business** | $79/mo | unlimited | unlimited | Everything in Pro **+ payroll + advanced document/report workflows**. AI extraction: **500/month**. |
 
 **Feature ladder (quick reference):**
 - Break-even → **Solo and up**
@@ -81,12 +78,12 @@ month** (an anti-abuse limit), not the full Business volume.
 
 ### 3.2 Common pricing questions
 - **"Do I need a credit card to try it?"** No — the 14-day trial starts automatically
-  for new businesses. ⟨CONFIRMAR⟩ card-at-signup policy.
+  for new businesses.
 - **"What happens to my data if I don't subscribe?"** It stays. You keep Free-plan
   access; features above Free are locked until you upgrade.
-- **"Can I change plans later?"** Yes, upgrade or downgrade anytime. ⟨CONFIRMAR⟩ exact
-  billing page path.
-- **"Is there an annual plan / discount?"** ⟨CONFIRMAR⟩
+- **"Can I change plans later?"** Yes, upgrade or downgrade anytime.
+- **"Is there an annual plan / discount?"** Yes — choosing annual billing gives you 2
+  months free versus paying monthly.
 
 ---
 
@@ -101,7 +98,7 @@ before saving.
   (Free 10, Solo 40, Pro 100, Business 500; trial 50/feature).
 - The AI creates a **draft you must review and confirm** — it never creates a final
   recipe or ingredient automatically. You stay in control.
-- **New ingredients found in a photo start with a price of €0** and are flagged as
+- **New ingredients found in a photo start with a price of $0** and are flagged as
   "needs pricing." This is intentional: the AI does not trust a price it "reads" from an
   image, so you set the real price. This keeps your costs honest.
 - Best results come from clear, well-lit, flat photos. Blurry or angled photos may miss
@@ -110,12 +107,10 @@ before saving.
 **Common questions:**
 - **"It missed / misread a line."** Correct it in the review screen before confirming;
   nothing is saved until you confirm.
-- **"Why is the ingredient cost €0?"** New ingredients from a photo need you to set the
+- **"Why is the ingredient cost $0?"** New ingredients from a photo need you to set the
   price (see above). Add the price and the cost updates.
 - **"I ran out of extractions this month."** You've hit your plan's monthly AI quota.
   It resets next month, or upgrade for a higher quota.
-
-⟨CONFIRMAR⟩ exact location of the photo-import button and the review/confirm flow labels.
 
 ---
 
@@ -155,12 +150,12 @@ Free's operational set.)
 
 ### 5.9 Imports
 Import data from CSV/XLSX files through a staged preview: you review what will be
-imported before confirming. A missing or blank price imports at €0 and is flagged "needs
-pricing." ⟨CONFIRMAR⟩ which entities support import in the current release.
+imported before confirming. A missing or blank price imports at $0 and is flagged "needs
+pricing."
 
 ### 5.10 Documents & exports
 Generate printable/PDF/XLSX outputs (e.g., invoices, reports, recipe cards). Advanced
-document/report workflows are a Business feature. ⟨CONFIRMAR⟩ current document list.
+document/report workflows are a Business feature.
 
 ---
 
@@ -176,16 +171,14 @@ document/report workflows are a Business feature. ⟨CONFIRMAR⟩ current docume
     edit prices. This is by design, to keep sensitive financial data restricted.
 - **"My kitchen staff can't see recipe costs."** That is expected — cost/margin/price is
   manager-only. Ask an account manager to view those.
-- ⟨CONFIRMAR⟩ exact steps to invite a teammate and assign a role.
 
 ---
 
 ## 7. Billing & subscription
 
-- Subscriptions are billed monthly in euros.
+- Subscriptions are billed in US dollars, monthly or annually (annual billing gives you
+  2 months free).
 - Upgrade/downgrade anytime; access changes to match the new plan.
-- ⟨CONFIRMAR⟩ where billing lives in the app, accepted payment methods, invoices/receipts
-  for the subscription, and cancellation steps.
 - **Anything about charges, refunds, failed payments, or cancellations should be handled
   by a human** — Hugo should escalate these rather than guess.
 
@@ -197,15 +190,14 @@ document/report workflows are a Business feature. ⟨CONFIRMAR⟩ current docume
   another's data.
 - Your recipes, ingredients, and financials belong to you and remain available on the
   Free plan if a trial or subscription ends.
-- PrepProfit does not sell your data. ⟨CONFIRMAR⟩ link to the privacy policy / data-export
-  (GDPR) request process.
+- PrepProfit does not sell your data. You can request an export of your business's data.
 
 ---
 
 ## 9. Troubleshooting & common questions
 
-- **"I can't log in."** ⟨CONFIRMAR⟩ password-reset path. If it persists, escalate to a
-  human with the email used to sign up (never ask for the password).
+- **"I can't log in."** Reset your password from the sign-in page. If it persists,
+  escalate to a human with the email used to sign up (never ask for the password).
 - **"A feature is locked / greyed out."** It likely belongs to a higher plan, or your
   trial ended. Check §3 for what each plan includes.
 - **"My margins look wrong."** Usually an ingredient price is missing or out of date —
@@ -223,8 +215,8 @@ For anything Hugo can't resolve — billing, account, data, bugs, or a request t
 a person — a human on the PrepProfit team will follow up.
 
 - **In-app chat:** this window (a person is notified when a conversation is escalated).
-- **Email:** ⟨CONFIRMAR⟩ e.g. info@prepprofit.com
-- **Website:** ⟨CONFIRMAR⟩ https://prepprofit.com
+- **Email:** info@prepprofit.com
+- **Website:** https://prepprofit.com
 
 Hugo should **not** invent policies, prices, dates, or features. When unsure, it should
 say so and escalate.
