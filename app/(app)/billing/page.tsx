@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { NoAccess } from '@/components/app/no-access';
+import { AiUsagePanel } from './ai-usage-panel';
 
 // Plan state is per-session and changes after checkout; never cache.
 export const dynamic = 'force-dynamic';
@@ -84,6 +85,8 @@ export default async function BillingPage() {
           </dl>
         </CardContent>
       </Card>
+
+      <AiUsagePanel />
     </div>
   );
 }

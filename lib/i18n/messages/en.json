@@ -1877,6 +1877,22 @@
       "activeName": "{plan} trial",
       "endsOn": "Full access ends {date} — choose a plan to keep it.",
       "ended": "Your trial has ended. You're on the Free plan."
+    },
+    "aiUsage": {
+      "title": "AI usage this month",
+      "resetsOn": "Resets on {date}",
+      "used": "{used} of {limit} used",
+      "remaining": "{count} left",
+      "inFlight": "{count} in progress",
+      "trialNote": "These are trial allowances — subscribe to unlock your full monthly volume.",
+      "features": {
+        "photo_recipe_extraction": "Photo recipe extraction",
+        "supplier_invoice_extraction": "Supplier invoice reader",
+        "profit_leak_explanation": "Profit-leak explanation",
+        "daily_close_summary": "Daily-close summary",
+        "prep_reorder_plan_summary": "Prep/reorder summary",
+        "kitchen_cfo_report": "Weekly CFO report"
+      }
     }
   },
   "pricing": {
