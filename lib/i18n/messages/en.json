@@ -2241,6 +2241,7 @@
       "subtitle": "Every new workspace starts with 14 days of everything — no card required. Keep a paid plan or move to Free, and your data stays either way.",
       "perMonth": "/mo",
       "perYear": "/yr",
+      "currency": "€",
       "popular": "Most popular",
       "toggle": {
         "monthly": "Monthly",

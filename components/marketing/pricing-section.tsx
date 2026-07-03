@@ -8,6 +8,12 @@ import {
 const PLAN_KEYS = ['free', 'solo', 'pro', 'business'] as const;
 const FEATURE_KEYS = ['f1', 'f2', 'f3', 'f4'] as const;
 
+/** The message strings ("€19") stay the single source; NumberFlow needs numbers. */
+function priceValue(message: string): number {
+  const parsed = Number(message.replace(/[^\d.]/g, ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export async function PricingSection() {
   const t = await getTranslations('marketing.pricing');
 
@@ -15,11 +21,10 @@ export async function PricingSection() {
     key,
     name: t(`${key}.name`),
     tagline: t(`${key}.tagline`),
-    priceMonth: t(`${key}.price`),
-    priceYear: t(`${key}.priceYear`),
+    priceMonth: priceValue(t(`${key}.price`)),
+    priceYear: priceValue(t(`${key}.priceYear`)),
     cta: t(`${key}.cta`),
     features: FEATURE_KEYS.map((f) => t(`${key}.${f}`)),
-    filled: key === 'free',
     popular: key === 'pro',
   }));
 
@@ -45,6 +50,7 @@ export async function PricingSection() {
           perYear: t('perYear'),
           billedYearly: t('billedYearly'),
           popular: t('popular'),
+          currency: t('currency'),
         }}
       />
     </section>
