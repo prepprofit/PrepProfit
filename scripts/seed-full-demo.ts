@@ -465,13 +465,26 @@ async function main() {
         });
         txnCount++;
       };
-      await add('income', 'food_sales', '06', Math.round(52_000 * wobble), incomeRecipes[back % incomeRecipes.length]);
-      await add('income', 'food_sales', '14', Math.round(38_000 * wobble), incomeRecipes[(back + 2) % incomeRecipes.length]);
-      await add('income', 'catering', '19', Math.round(60_000 * wobble), undefined, 'Event order');
-      await add('income', 'beverage_sales', '24', Math.round(18_000 * wobble));
-      await add('expense', 'ingredients', '03', Math.round(42_000 * wobble));
+      // Growth arc: idx 0 = oldest … 11 = newest. Sales ramp up hard while fixed
+      // costs stay flat, so the org starts near break-even/slight loss and turns
+      // strongly profitable — the "after PrepProfit you get profitable" story.
+      const idx = 11 - back;
+      const growth = 0.65 + idx * 0.125; // ≈0.65 (oldest) → ≈2.03 (newest)
+      const inc = (base: number) => Math.round(base * growth * wobble);
+      // Food sales — several recipe-linked entries so revenue is high and the
+      // top-products ranking is rich.
+      await add('income', 'food_sales', '05', inc(64_000), incomeRecipes[back % incomeRecipes.length]);
+      await add('income', 'food_sales', '11', inc(52_000), incomeRecipes[(back + 1) % incomeRecipes.length]);
+      await add('income', 'food_sales', '17', inc(46_000), incomeRecipes[(back + 2) % incomeRecipes.length]);
+      await add('income', 'food_sales', '23', inc(38_000), incomeRecipes[(back + 3) % incomeRecipes.length]);
+      await add('income', 'food_sales', '27', inc(30_000), incomeRecipes[(back + 4) % incomeRecipes.length]);
+      await add('income', 'catering', '19', inc(80_000), undefined, 'Event order');
+      await add('income', 'beverage_sales', '24', inc(35_000));
+      // Expenses — fixed rent, mildly growing wages, COGS that scales sublinearly
+      // with volume (so food-cost % improves as sales climb), flat-ish utilities.
+      await add('expense', 'ingredients', '03', Math.round(55_000 * (0.6 + 0.2 * growth) * wobble));
       await add('expense', 'rent', '01', 120_000);
-      await add('expense', 'staff_wages', '28', 88_000);
+      await add('expense', 'staff_wages', '28', 80_000 + idx * 2_000);
       await add('expense', 'utilities', '21', Math.round(15_000 * wobble));
     }
     const thisYm = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`;
