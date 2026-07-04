@@ -2147,11 +2147,12 @@
     },
     "hero": {
       "eyebrow": "Built for food businesses",
-      "headline": "Know what every dish really costs.",
-      "headline2": "Protect every margin.",
-      "subhead": "PrepProfit turns your recipes, inventory and sales into one clear view of your margins, so you price with confidence instead of guesswork.",
+      "headline": "Stop pricing your recipes",
+      "headline2": "with messy spreadsheets.",
+      "subhead": "PrepProfit helps chefs, bakeries and caterers organize recipes, calculate real costs, track margins and price every product with confidence.",
+      "supporting": "No more scattered recipe cards. No more outdated ingredient costs. No more guessing what each product actually makes.",
       "ctaPrimary": "Start free — 14 days of everything",
-      "ctaSecondary": "Sign in",
+      "ctaSecondary": "See the product",
       "playVideo": "Watch the demo",
       "videoComingSoon": "Demo video coming soon",
       "videoComingSoonHint": "We're recording a full walkthrough of PrepProfit. Check back shortly."
@@ -2169,14 +2170,14 @@
       "months": "Last 12 months"
     },
     "audience": {
-      "title": "Built for every food business",
-      "subtitle": "One system for costing, financials and operations — whatever you serve.",
+      "title": "Built for food businesses that still run costing in spreadsheets",
+      "subtitle": "For chefs, bakeries, caterers and small food teams who need one place for recipes, costs, margins and pricing.",
       "restaurants": "Restaurants",
       "bakeries": "Bakeries",
       "patisseries": "Patisseries",
       "cafes": "Cafés",
       "chefs": "Chefs",
-      "catering": "Catering"
+      "catering": "Caterers"
     },
     "problem": {
       "title": "Spreadsheets were never built to run a kitchen.",

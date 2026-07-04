@@ -14,12 +14,12 @@ import { FaqSection } from '@/components/marketing/faq-section';
 import { Reveal } from '@/components/marketing/reveal';
 
 const AUDIENCE = [
-  { key: 'restaurants', icon: '/icons/restaurants.webp' },
+  { key: 'chefs', icon: '/icons/chefs.webp' },
   { key: 'bakeries', icon: '/icons/bakeries.webp' },
+  { key: 'catering', icon: '/icons/catering.webp' },
   { key: 'patisseries', icon: '/icons/patisseries.webp' },
   { key: 'cafes', icon: '/icons/cafes.webp' },
-  { key: 'chefs', icon: '/icons/chefs.webp' },
-  { key: 'catering', icon: '/icons/catering.webp' },
+  { key: 'restaurants', icon: '/icons/restaurants.webp' },
 ] as const;
 
 const TOUR_TABS = [
@@ -66,7 +66,10 @@ export default async function MarketingPage() {
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline">
-                  <Link href="/sign-in">{t('hero.ctaSecondary')}</Link>
+                  <a href="#how-it-works">
+                    {t('hero.ctaSecondary')}
+                    <ArrowRight className="size-4" aria-hidden />
+                  </a>
                 </Button>
               </div>
             </div>
@@ -81,6 +84,9 @@ export default async function MarketingPage() {
               >
                 <AppPreview />
               </HeroVideo>
+              <p className="mx-auto mt-8 max-w-2xl text-center text-sm leading-relaxed text-muted-foreground sm:text-base">
+                {t('hero.supporting')}
+              </p>
             </div>
           </div>
         </section>
