@@ -18,6 +18,7 @@
     "seed": "tsx scripts/seed.ts",
     "seed:org": "tsx scripts/seed-org.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
+    "seed:full": "tsx --tsconfig tsconfig.seed.json scripts/seed-full-demo.ts",
     "backfill:suppliers": "tsx scripts/backfill-suppliers.ts",
     "eval:extraction": "tsx scripts/eval-extraction.ts"
   },
