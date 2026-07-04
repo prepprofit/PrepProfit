@@ -1,16 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
-import {
-  ChefHat,
-  Croissant,
-  CakeSlice,
-  Coffee,
-  Truck,
-  UtensilsCrossed,
-  ArrowRight,
-  Star,
-} from 'lucide-react';
+import { ArrowRight, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { AppPreview } from '@/components/marketing/app-preview';
@@ -22,12 +13,12 @@ import { FaqSection } from '@/components/marketing/faq-section';
 import { Reveal } from '@/components/marketing/reveal';
 
 const AUDIENCE = [
-  { key: 'restaurants', Icon: UtensilsCrossed },
-  { key: 'bakeries', Icon: Croissant },
-  { key: 'patisseries', Icon: CakeSlice },
-  { key: 'cafes', Icon: Coffee },
-  { key: 'foodTrucks', Icon: Truck },
-  { key: 'catering', Icon: ChefHat },
+  { key: 'restaurants', icon: '/icons/restaurants.webp' },
+  { key: 'bakeries', icon: '/icons/bakeries.webp' },
+  { key: 'patisseries', icon: '/icons/patisseries.webp' },
+  { key: 'cafes', icon: '/icons/cafes.webp' },
+  { key: 'foodTrucks', icon: '/icons/food-truck.webp' },
+  { key: 'catering', icon: '/icons/catering.webp' },
 ] as const;
 
 const HOW_STEPS = ['step1', 'step2', 'step3'] as const;
@@ -92,23 +83,36 @@ export default async function MarketingPage() {
         {/* Segment strip (honest, replaces the template's customer logos)    */}
         {/* ---------------------------------------------------------------- */}
         <section className="border-y border-border bg-surface/50">
-          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <div className="flex flex-col items-center gap-6">
-              <p className="text-sm font-medium text-muted-foreground">
-                {t('audience.lead')}
+          <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-24 lg:px-8">
+            <Reveal className="mx-auto max-w-2xl text-center">
+              <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
+                {t('audience.title')}
+              </h2>
+              <p className="mt-4 text-lg text-muted-foreground">
+                {t('audience.subtitle')}
               </p>
-              <ul className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
-                {AUDIENCE.map(({ key, Icon }) => (
-                  <li
-                    key={key}
-                    className="flex items-center gap-2 text-sm font-medium text-foreground/80"
-                  >
-                    <Icon className="size-4 text-accent-500" aria-hidden />
+            </Reveal>
+
+            <Reveal className="mx-auto mt-12 grid max-w-5xl grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
+              {AUDIENCE.map(({ key, icon }) => (
+                <div
+                  key={key}
+                  className="group flex flex-col items-center gap-3 rounded-2xl border border-transparent bg-background/40 p-5 transition-all duration-300 ease-out hover:-translate-y-1.5 hover:border-border hover:bg-background hover:shadow-lg"
+                >
+                  <Image
+                    src={icon}
+                    alt=""
+                    width={72}
+                    height={72}
+                    className="size-16 object-contain drop-shadow-sm transition-transform duration-300 ease-out group-hover:scale-110"
+                    aria-hidden
+                  />
+                  <span className="text-sm font-medium text-foreground/80 transition-colors group-hover:text-foreground">
                     {t(`audience.${key}`)}
-                  </li>
-                ))}
-              </ul>
-            </div>
+                  </span>
+                </div>
+              ))}
+            </Reveal>
           </div>
         </section>
 
