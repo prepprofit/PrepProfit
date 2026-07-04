@@ -2225,28 +2225,28 @@
       "title": "Everything you need to run on the numbers",
       "subtitle": "From the cost of a single dish to the month's profit, in one secure place.",
       "costing": {
-        "title": "Recipe costing that updates itself",
-        "body": "Ingredient cost, yield and loss, hidden costs and live margin on every recipe. Change a price and see the impact instantly."
+        "title": "Recipe costing that stays current",
+        "body": "Build recipes with ingredients, yield, loss, portions and selling price. PrepProfit shows what the product actually costs and the margin it leaves behind."
       },
       "financials": {
-        "title": "Financials & break-even",
-        "body": "Track income and expenses, read clear dashboards, and simulate break-even before you commit to a price."
+        "title": "Break-even and pricing decisions",
+        "body": "Understand how much you need to sell, what a product should cost and when a catering job or menu item stops making sense."
       },
       "operations": {
-        "title": "Invoices, payroll & inventory",
-        "body": "Gap-free invoicing, employee shifts and period summaries, and an authoritative stock ledger with low-stock alerts."
+        "title": "Ingredient updates without spreadsheet surgery",
+        "body": "Update an ingredient once and see which recipes are affected, instead of rebuilding formulas across multiple files. Invoices, payroll and stock live alongside."
       },
       "ai": {
-        "title": "AI photo recipe extraction",
-        "body": "Photograph a recipe card and get a costed draft to review. Import ingredients and transactions from CSV or Excel."
+        "title": "AI photo recipe extraction, reviewed by you",
+        "body": "Take a photo of a recipe card and get a draft you can review before anything is saved."
       },
       "imports": {
-        "title": "Imports & exports",
-        "body": "Start from the data you already have and take it anywhere: CSV, Excel, photo drafts in — clean PDF and XLSX out."
+        "title": "Supplier invoices into margin impact",
+        "body": "Upload or import supplier invoice data, review the changes and keep ingredient costs closer to reality. CSV and Excel in, clean PDF and XLSX out."
       },
       "security": {
-        "title": "Multi-tenant and secure by design",
-        "body": "Every record is isolated to your organization at the database layer, with roles that keep sensitive numbers manager-only."
+        "title": "Roles, privacy and exports",
+        "body": "Keep sensitive numbers manager-only, export your data anytime and run the business without locking your numbers in a fragile sheet."
       }
     },
     "how": {
@@ -2266,24 +2266,24 @@
       }
     },
     "tour": {
-      "title": "See PrepProfit on your real numbers",
-      "subtitle": "Every screen runs on the data you already have — no setup project, no consultant.",
+      "title": "See the product on real sample numbers",
+      "subtitle": "A quick look at how PrepProfit connects recipe costing, margin insights and break-even planning.",
       "tabs": {
         "dashboard": {
           "title": "Dashboard",
-          "desc": "Live margins at a glance"
+          "desc": "Margins at a glance"
         },
         "costing": {
           "title": "Recipe costing",
-          "desc": "True cost on every dish"
+          "desc": "Cost, price and margin"
         },
         "insights": {
           "title": "Profit insights",
-          "desc": "Catch margins before they slip"
+          "desc": "Find silent profit leaks"
         },
         "breakeven": {
           "title": "Break-even",
-          "desc": "Price and plan with confidence"
+          "desc": "Know what you need to sell"
         }
       },
       "path": {
