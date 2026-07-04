@@ -33,7 +33,7 @@ export async function FeaturedBento() {
     >
       {/* Two-column section header (template pattern) */}
       <Reveal className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-2 md:items-start">
-        <h2 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+        <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
           {t('title')}
         </h2>
         <p className="text-lg leading-relaxed text-muted-foreground md:pt-1">

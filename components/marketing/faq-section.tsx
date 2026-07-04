@@ -18,7 +18,7 @@ export async function FaqSection() {
       className="mx-auto max-w-3xl scroll-mt-20 px-4 py-20 sm:px-6 md:py-28 lg:px-8"
     >
       <Reveal className="text-center">
-        <h2 className="font-display text-3xl font-bold tracking-tight text-foreground md:text-4xl">
+        <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
           {t('title')}
         </h2>
         <p className="mt-4 text-lg text-muted-foreground">{t('subtitle')}</p>

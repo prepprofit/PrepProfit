@@ -140,6 +140,14 @@ components will be migrated to these tokens.)
   (`--font-display`). A free, geometric stand-in for Google Sans.
 - **Body**: **Roboto** — UI, lists, descriptions (`--font-sans`); the Android
   system font, for a Google-product feel.
+- **Title weight is always `font-semibold` (600).** Every display title/heading —
+  `h1`–`h4`, section titles, card titles — uses weight 600 across **both**
+  marketing and dashboard. Never `font-bold` (700), `font-medium` (500), or
+  `font-extrabold` (800) on a title. (Small uppercase eyebrow/micro-labels are
+  not titles and may stay `font-medium`; large numeric stat values keep their
+  own display weight.)
+- Only two fonts exist in the whole project: **Outfit** (display) and **Roboto**
+  (body). Do not introduce a third.
 - Already wired in `app/layout.tsx` via `next/font` variables.
 
 ---

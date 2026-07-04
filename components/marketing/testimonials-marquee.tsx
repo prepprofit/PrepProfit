@@ -26,7 +26,7 @@ export async function TestimonialsMarquee() {
   return (
     <section className="border-y border-border bg-surface/40 py-20 md:py-28">
       <Reveal className="mx-auto max-w-2xl px-4 text-center sm:px-6">
-        <h2 className="font-display text-3xl font-bold tracking-tight text-foreground md:text-4xl">
+        <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
           {t('title')}
         </h2>
         <p className="mt-4 text-lg text-muted-foreground">{t('subtitle')}</p>

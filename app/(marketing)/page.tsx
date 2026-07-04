@@ -52,7 +52,7 @@ export default async function MarketingPage() {
           <div className="mx-auto max-w-7xl px-4 pt-32 sm:px-6 md:pt-52 lg:px-8">
             {/* No entrance animation above the fold — static, no ease-out. */}
             <div className="mx-auto flex max-w-4xl flex-col items-center text-center lg:max-w-6xl">
-              <h1 className="font-display text-4xl font-medium leading-[1.1] tracking-tight text-foreground sm:text-7xl lg:text-6xl">
+              <h1 className="font-display text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-7xl lg:text-6xl">
                 {t('hero.headline')}
                 <span className="block text-muted-foreground">
                   {t('hero.headline2')}
@@ -126,7 +126,7 @@ export default async function MarketingPage() {
         >
           <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
             <Reveal className="mx-auto max-w-2xl text-center">
-              <h2 className="font-display text-3xl font-bold tracking-tight text-foreground md:text-4xl">
+              <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
                 {t('how.title')}
               </h2>
               <p className="mt-4 text-lg text-muted-foreground">
@@ -186,7 +186,7 @@ export default async function MarketingPage() {
               <span className="relative inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-white/80">
                 {t('subscribe.eyebrow')}
               </span>
-              <h2 className="relative mt-6 font-display text-3xl font-bold tracking-tight text-white md:text-4xl">
+              <h2 className="relative mt-6 font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">
                 {t('subscribe.title')}{' '}
                 <span className="text-accent-400">
                   {t('subscribe.titleAccent')}
