@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
-import { ArrowRight, Star } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { AppPreview } from '@/components/marketing/app-preview';
@@ -10,7 +10,7 @@ import { FeaturedBento } from '@/components/marketing/featured-bento';
 import { ProblemSection } from '@/components/marketing/problem-section';
 import { ProductTour } from '@/components/marketing/product-tour';
 import { PricingSection } from '@/components/marketing/pricing-section';
-import { TestimonialsMarquee } from '@/components/marketing/testimonials-marquee';
+import { ProofSection } from '@/components/marketing/proof-section';
 import { FaqSection } from '@/components/marketing/faq-section';
 import { Reveal } from '@/components/marketing/reveal';
 
@@ -172,9 +172,9 @@ export default async function MarketingPage() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Testimonials marquee                                             */}
+        {/* Proof — honest product evidence, no fabricated testimonials      */}
         {/* ---------------------------------------------------------------- */}
-        <TestimonialsMarquee />
+        <ProofSection />
 
         {/* ---------------------------------------------------------------- */}
         {/* Pricing                                                          */}
@@ -229,21 +229,8 @@ export default async function MarketingPage() {
                   variant="ghost"
                   className="text-white hover:bg-white/10 hover:text-white"
                 >
-                  <Link href="/sign-in">{t('subscribe.secondary')}</Link>
+                  <a href="#how-it-works">{t('subscribe.secondary')}</a>
                 </Button>
-              </div>
-              <div className="relative mt-8 flex items-center gap-2">
-                <span className="flex items-center gap-1" aria-hidden>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      className="size-4 fill-accent-400 text-accent-400"
-                    />
-                  ))}
-                </span>
-                <span className="text-sm text-white/60">
-                  {t('subscribe.rating')}
-                </span>
               </div>
             </Reveal>
           </div>
