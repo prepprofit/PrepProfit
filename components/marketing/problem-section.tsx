@@ -76,7 +76,7 @@ function ProblemColumn({
         {items.map(({ title, body, icon }) => (
           <div
             key={title}
-            className="group flex flex-col gap-3 rounded-2xl border border-transparent bg-background/40 p-5 transition-all duration-300 ease-out hover:-translate-y-1.5 hover:border-border hover:bg-background hover:shadow-lg"
+            className="group flex flex-col gap-3 rounded-2xl border border-border bg-background/40 p-5 transition-all duration-300 ease-out hover:-translate-y-1.5 hover:bg-background hover:shadow-lg md:border-transparent md:hover:border-border"
           >
             <Image
               src={icon}
