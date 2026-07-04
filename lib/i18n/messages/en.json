@@ -2325,8 +2325,8 @@
       "invoices": "Invoice PDFs"
     },
     "pricing": {
-      "title": "Affordable & flexible pricing for every kitchen",
-      "subtitle": "Every new workspace starts with 14 days of everything — no card required. Keep a paid plan or move to Free, and your data stays either way.",
+      "title": "Start with everything. Keep what fits.",
+      "subtitle": "Every new workspace starts with 14 days of Business-level access, no card required. After that, choose a paid plan or continue on Free — your data stays either way.",
       "perMonth": "/mo",
       "perYear": "/yr",
       "currency": "$",
@@ -2341,44 +2341,44 @@
         "name": "Free",
         "price": "$0",
         "priceYear": "$0",
-        "tagline": "For getting your first recipes costed.",
+        "tagline": "For costing your first recipes.",
         "cta": "Try it free",
         "f1": "1 user",
         "f2": "Up to 10 recipes",
-        "f3": "All operational modules",
+        "f3": "Core recipe costing tools",
         "f4": "AI photo extraction, 10 per month"
       },
       "solo": {
         "name": "Solo",
         "price": "$19",
         "priceYear": "$190",
-        "tagline": "For a solo owner-operator running the numbers.",
+        "tagline": "For solo chefs and owner-operators.",
         "cta": "Try it free",
         "f1": "1 user",
         "f2": "Unlimited recipes",
-        "f3": "Everything in Free, plus break-even",
+        "f3": "Break-even planning",
         "f4": "AI photo extraction, 40 per month"
       },
       "pro": {
         "name": "Pro",
         "price": "$29",
         "priceYear": "$290",
-        "tagline": "For growing kitchens that price to win.",
+        "tagline": "For growing kitchens that need better pricing control.",
         "cta": "Try it free",
         "f1": "5 users",
         "f2": "Unlimited recipes",
-        "f3": "Everything in Solo, plus invoices",
+        "f3": "Invoices and operations",
         "f4": "AI photo extraction, 100 per month"
       },
       "business": {
         "name": "Business",
         "price": "$79",
         "priceYear": "$790",
-        "tagline": "For multi-site operations and full back office.",
+        "tagline": "For teams that need full back-office control.",
         "cta": "Try it free",
         "f1": "Unlimited users",
-        "f2": "Everything in Pro, plus payroll",
-        "f3": "Advanced documents and reports",
+        "f2": "Payroll, reports and advanced documents",
+        "f3": "Role-based access",
         "f4": "AI photo extraction, 500 per month"
       }
     },
@@ -2419,24 +2419,32 @@
       "title": "Questions, answered",
       "subtitle": "Everything you need to know before you start.",
       "q1": {
-        "q": "Is my data private from other businesses?",
-        "a": "Yes. PrepProfit is multi-tenant by design: every record is scoped to your organization with database-level isolation, so no other business can ever see your data."
+        "q": "Why not just keep using my spreadsheet?",
+        "a": "A spreadsheet can work when you have a few products. It starts failing when ingredient prices change, formulas break, recipes multiply and costs like yield, waste, packaging and labor are easy to miss. PrepProfit keeps the costing logic in the product so you are not rebuilding formulas every time something changes."
       },
       "q2": {
-        "q": "Do I have to rebuild everything from my spreadsheets?",
-        "a": "No. Import ingredients, transactions and recipes from CSV or Excel, or photograph a recipe and review an AI-drafted card. You start with your real data."
+        "q": "How is this different from a free recipe cost calculator?",
+        "a": "A calculator gives you one answer once. PrepProfit gives you an organized system for recipes, ingredients, margins, invoices, inventory, exports and pricing decisions over time."
       },
       "q3": {
-        "q": "What happens after the 14-day trial?",
-        "a": "Every new workspace starts with 14 days of full access — no card required. If you choose not to pick a paid plan, you move to the Free plan and keep your data."
+        "q": "Do I have to rebuild everything from scratch?",
+        "a": "No. You can import data from CSV or Excel, photograph a recipe for a reviewed AI draft, or upload supplier invoice data and review the changes before they affect your numbers."
       },
       "q4": {
-        "q": "How accurate is the AI recipe extraction?",
-        "a": "AI drafts are always reviewed by you before anything is saved. Nothing becomes a final recipe or ingredient without your confirmation."
+        "q": "What happens after the 14-day trial?",
+        "a": "Every new workspace starts with 14 days of Business-level access — no card required. If you do not choose a paid plan, your workspace moves to Free automatically. Your data is not deleted."
       },
       "q5": {
-        "q": "Can my whole team use it?",
-        "a": "Yes, with roles. Managers see financials and settings; kitchen staff get the operational tools they need, with sensitive numbers kept manager-only."
+        "q": "Does AI change my recipes automatically?",
+        "a": "No. AI creates a draft for you to review. Nothing becomes final until you confirm it."
+      },
+      "q6": {
+        "q": "Can I export my data?",
+        "a": "Yes. PrepProfit is designed so you can bring data in and export clean files when you need them."
+      },
+      "q7": {
+        "q": "Can my team use it?",
+        "a": "Yes. Paid plans support team workflows and role-based access, so managers can keep financial data protected while kitchen staff use the operational tools they need."
       }
     },
     "ctaBand": {

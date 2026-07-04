@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/accordion';
 import { Reveal } from '@/components/marketing/reveal';
 
-const QUESTIONS = ['q1', 'q2', 'q3', 'q4', 'q5'] as const;
+const QUESTIONS = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7'] as const;
 
 export async function FaqSection() {
   const t = await getTranslations('marketing.faq');
