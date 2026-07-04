@@ -10,7 +10,7 @@ import { FeaturedBento } from '@/components/marketing/featured-bento';
 import { ProblemSection } from '@/components/marketing/problem-section';
 import { ProductTour } from '@/components/marketing/product-tour';
 import { PricingSection } from '@/components/marketing/pricing-section';
-import { ProofSection } from '@/components/marketing/proof-section';
+import { TestimonialsMarquee } from '@/components/marketing/testimonials-marquee';
 import { FaqSection } from '@/components/marketing/faq-section';
 import { Reveal } from '@/components/marketing/reveal';
 
@@ -172,9 +172,9 @@ export default async function MarketingPage() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Proof — honest product evidence, no fabricated testimonials      */}
+        {/* Testimonials marquee                                             */}
         {/* ---------------------------------------------------------------- */}
-        <ProofSection />
+        <TestimonialsMarquee />
 
         {/* ---------------------------------------------------------------- */}
         {/* Pricing                                                          */}

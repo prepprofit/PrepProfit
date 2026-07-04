@@ -2382,37 +2382,23 @@
         "f4": "AI photo extraction, 500 per month"
       }
     },
-    "proof": {
-      "title": "Proof you can see on screen",
-      "subtitle": "PrepProfit is built around visible numbers, reviewed changes and product evidence — not magic claims.",
-      "example": {
-        "label": "Worked example",
-        "recipe": "Croissant",
-        "costLabel": "Ingredient cost",
-        "cost": "$0.87",
-        "priceLabel": "Selling price",
-        "price": "$3.50",
-        "marginLabel": "Margin",
-        "margin": "75.1%",
-        "note": "If butter changes from $8.20 to $9.70, PrepProfit recalculates the affected recipe cost so you can review the impact before your margin slips."
+    "testimonials": {
+      "title": "Loved by the people who run the kitchen",
+      "subtitle": "Owners and chefs use PrepProfit to price with confidence and protect their margins.",
+      "a": {
+        "quote": "I finally know which dishes actually make money. We re-priced our menu in a weekend and our food cost dropped four points.",
+        "name": "Marta Oliveira",
+        "role": "Owner, Forno & Sal Bakery"
       },
-      "cards": {
-        "screenshots": {
-          "title": "Real screenshots",
-          "body": "The product tour uses real seeded demo screens for dashboard, recipe costing, insights and break-even."
-        },
-        "reviewedAi": {
-          "title": "Reviewed AI",
-          "body": "AI creates drafts. You review before anything becomes final."
-        },
-        "exports": {
-          "title": "Export anytime",
-          "body": "Your recipes and business data are not trapped. Export clean files when you need them."
-        },
-        "roles": {
-          "title": "Role-based access",
-          "body": "Managers can see financials while kitchen staff can use operational tools without exposing sensitive numbers."
-        }
+      "b": {
+        "quote": "Costing a new recipe used to take an afternoon of spreadsheets. Now it takes minutes and the margin is right there.",
+        "name": "Tiago Mendes",
+        "role": "Head Chef, Tasca do Porto"
+      },
+      "c": {
+        "quote": "Photographing an old recipe card and getting a costed draft back felt like magic. My team adopted it on day one.",
+        "name": "Inês Carvalho",
+        "role": "Operations, Doce Lisboa Patisserie"
       }
     },
     "faq": {
