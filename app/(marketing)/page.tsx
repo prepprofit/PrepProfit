@@ -45,29 +45,19 @@ export default async function MarketingPage() {
         {/* ---------------------------------------------------------------- */}
         {/* Hero — centered copy with a full-width product preview below       */}
         {/* ---------------------------------------------------------------- */}
-        <section
-          className="relative"
-          style={{
-            // Brand-accent watercolor wash at the top of the hero (matches the
-            // purchased template's composition, in orange). Painted as the
-            // section's own background so it sits above the page bg and behind
-            // the hero content — no z-index/isolate games. Two overlapping
-            // lobes for the template's soft "twin blur" feel, anchored in px so
-            // it's independent of section height.
-            background:
-              'radial-gradient(820px 480px at 34% -60px, color-mix(in oklab, var(--color-accent-400) 30%, transparent), transparent 70%),' +
-              'radial-gradient(820px 480px at 66% -60px, color-mix(in oklab, var(--color-accent-500) 30%, transparent), transparent 70%)',
-          }}
-        >
-          <div className="mx-auto max-w-7xl px-4 pt-20 sm:px-6 md:pt-32 lg:px-8">
-            <Reveal className="mx-auto flex max-w-4xl flex-col items-center text-center font-inter">
-              <h1 className="text-4xl font-medium leading-[1.1] tracking-tight text-foreground sm:text-7xl">
+        {/* hero-wash paints the brand-accent watercolor as the section's own
+            background (see globals.css): centered lobes on mobile/tablet, and
+            top-corner lobes on desktop to match the template's blur pattern. */}
+        <section className="relative hero-wash">
+          <div className="mx-auto max-w-7xl px-4 pt-28 sm:px-6 md:pt-40 lg:px-8">
+            <Reveal className="mx-auto flex max-w-4xl flex-col items-center text-center font-inter lg:max-w-6xl">
+              <h1 className="text-4xl font-medium leading-[1.1] tracking-tight text-foreground sm:text-7xl lg:text-6xl">
                 {t('hero.headline')}
                 <span className="block text-muted-foreground">
                   {t('hero.headline2')}
                 </span>
               </h1>
-              <p className="mt-6 max-w-lg text-lg leading-6 tracking-tight text-muted-foreground sm:text-xl">
+              <p className="mt-6 max-w-lg text-lg leading-6 tracking-tight text-muted-foreground sm:text-xl lg:max-w-2xl">
                 {t('hero.subhead')}
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">

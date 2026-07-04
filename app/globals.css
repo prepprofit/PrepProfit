@@ -176,3 +176,38 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Marketing hero wash — brand-accent watercolor at the top of the hero.
+   Painted as the section's own background so it sits above the page bg and
+   behind the content. Mobile/tablet: two soft lobes near the center-top.
+   Desktop (lg+): two larger lobes anchored in the top corners with a lighter
+   valley between them, matching the purchased template's blur pattern. */
+.hero-wash {
+  background:
+    radial-gradient(
+      820px 480px at 34% -60px,
+      color-mix(in oklab, var(--color-accent-400) 30%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      820px 480px at 66% -60px,
+      color-mix(in oklab, var(--color-accent-500) 30%, transparent),
+      transparent 70%
+    );
+}
+
+@media (min-width: 1024px) {
+  .hero-wash {
+    background:
+      radial-gradient(
+        1000px 720px at 0% -8%,
+        color-mix(in oklab, var(--color-accent-400) 34%, transparent),
+        transparent 60%
+      ),
+      radial-gradient(
+        1000px 720px at 100% -8%,
+        color-mix(in oklab, var(--color-accent-500) 34%, transparent),
+        transparent 60%
+      );
+  }
+}
