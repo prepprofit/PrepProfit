@@ -49,8 +49,9 @@ export default async function MarketingPage() {
             background (see globals.css): centered lobes on mobile/tablet, and
             top-corner lobes on desktop to match the template's blur pattern. */}
         <section className="relative hero-wash">
-          <div className="mx-auto max-w-7xl px-4 pt-28 sm:px-6 md:pt-40 lg:px-8">
-            <Reveal className="mx-auto flex max-w-4xl flex-col items-center text-center font-inter lg:max-w-6xl">
+          <div className="mx-auto max-w-7xl px-4 pt-32 sm:px-6 md:pt-52 lg:px-8">
+            {/* No entrance animation above the fold — static, no ease-out. */}
+            <div className="mx-auto flex max-w-4xl flex-col items-center text-center font-inter lg:max-w-6xl">
               <h1 className="text-4xl font-medium leading-[1.1] tracking-tight text-foreground sm:text-7xl lg:text-6xl">
                 {t('hero.headline')}
                 <span className="block text-muted-foreground">
@@ -71,12 +72,9 @@ export default async function MarketingPage() {
                   <Link href="/sign-in">{t('hero.ctaSecondary')}</Link>
                 </Button>
               </div>
-            </Reveal>
+            </div>
 
-            <Reveal
-              delay={140}
-              className="mx-auto mt-16 max-w-6xl pb-20 md:pb-28"
-            >
+            <div className="mx-auto mt-16 max-w-6xl pb-20 md:pb-28">
               <HeroVideo
                 labels={{
                   playVideo: t('hero.playVideo'),
@@ -86,7 +84,7 @@ export default async function MarketingPage() {
               >
                 <AppPreview />
               </HeroVideo>
-            </Reveal>
+            </div>
           </div>
         </section>
 

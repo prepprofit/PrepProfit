@@ -65,18 +65,23 @@ export function HeroVideo({ children, className, labels }: HeroVideoProps) {
         onClick={() => setIsOpen(true)}
         className="group relative block w-full cursor-pointer rounded-2xl border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
       >
-        {/* Poster (decorative — the button carries the label) */}
-        <div aria-hidden className="w-full transition-all duration-200 ease-out group-hover:brightness-[0.92]">
+        {/* Poster (decorative — the button carries the label). On mobile it is
+            cropped to a compact 16:9 thumbnail; from sm+ it shows the full
+            preview. No hover/entrance animation. */}
+        <div
+          aria-hidden
+          className="w-full overflow-hidden rounded-2xl max-sm:aspect-video"
+        >
           {children}
         </div>
 
         {/* Bottom fade into the page background, like the template */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 rounded-b-2xl bg-gradient-to-t from-background to-transparent" />
 
-        {/* Centered play button */}
-        <div className="absolute inset-0 flex scale-90 items-center justify-center transition-all duration-200 ease-out group-hover:scale-100">
+        {/* Centered play button (static — no hover/scale animation) */}
+        <div className="absolute inset-0 flex items-center justify-center">
           <div className="flex size-16 items-center justify-center rounded-full bg-accent-500/10 backdrop-blur-md sm:size-24">
-            <div className="relative flex size-12 items-center justify-center rounded-full bg-gradient-to-b from-accent-500 to-accent-700 shadow-lg transition-all duration-200 ease-out group-hover:scale-110 sm:size-16">
+            <div className="relative flex size-12 items-center justify-center rounded-full bg-gradient-to-b from-accent-500 to-accent-700 shadow-lg sm:size-16">
               <Play
                 className="size-5 fill-white text-white sm:size-7"
                 style={{
