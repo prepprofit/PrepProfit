@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
-import { BackgroundBlur } from '@/components/marketing/ui/background-blur';
 import { AppPreview } from '@/components/marketing/app-preview';
 import { HeroVideo } from '@/components/marketing/hero-video';
 import { FeaturedBento } from '@/components/marketing/featured-bento';
@@ -46,8 +45,20 @@ export default async function MarketingPage() {
         {/* ---------------------------------------------------------------- */}
         {/* Hero — centered copy with a full-width product preview below       */}
         {/* ---------------------------------------------------------------- */}
-        <section className="relative">
-          <BackgroundBlur />
+        <section
+          className="relative"
+          style={{
+            // Brand-accent watercolor wash at the top of the hero (matches the
+            // purchased template's composition, in orange). Painted as the
+            // section's own background so it sits above the page bg and behind
+            // the hero content — no z-index/isolate games. Two overlapping
+            // lobes for the template's soft "twin blur" feel, anchored in px so
+            // it's independent of section height.
+            background:
+              'radial-gradient(820px 480px at 34% -60px, color-mix(in oklab, var(--color-accent-400) 30%, transparent), transparent 70%),' +
+              'radial-gradient(820px 480px at 66% -60px, color-mix(in oklab, var(--color-accent-500) 30%, transparent), transparent 70%)',
+          }}
+        >
           <div className="mx-auto max-w-7xl px-4 pt-20 sm:px-6 md:pt-32 lg:px-8">
             <Reveal className="mx-auto flex max-w-4xl flex-col items-center text-center font-inter">
               <h1 className="text-4xl font-medium leading-[1.1] tracking-tight text-foreground sm:text-7xl">
