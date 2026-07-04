@@ -1,7 +1,20 @@
+import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
-import { Check, X } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Reveal } from '@/components/marketing/reveal';
+
+const BEFORE_ICONS = {
+  a: '/icons/recipes-everywhere.webp',
+  b: '/icons/ingredient-prices-drift.webp',
+  c: '/icons/margins-disappear-silently.webp',
+  d: '/icons/pricing-becomes-guesswork.webp',
+} as const;
+
+const AFTER_ICONS = {
+  a: '/icons/one-recipe-source-of-truth.webp',
+  b: '/icons/update-one-cost.webp',
+  c: '/icons/numbers-you-can-defend.webp',
+  d: '/icons/price-with-confidence.webp',
+} as const;
 
 const CARDS = ['a', 'b', 'c', 'd'] as const;
 
@@ -25,20 +38,20 @@ export async function ProblemSection() {
         <Reveal>
           <ProblemColumn
             heading={t('beforeTitle')}
-            tone="before"
             items={CARDS.map((c) => ({
               title: t(`before.${c}.title`),
               body: t(`before.${c}.body`),
+              icon: BEFORE_ICONS[c],
             }))}
           />
         </Reveal>
         <Reveal delay={120}>
           <ProblemColumn
             heading={t('afterTitle')}
-            tone="after"
             items={CARDS.map((c) => ({
               title: t(`after.${c}.title`),
               body: t(`after.${c}.body`),
+              icon: AFTER_ICONS[c],
             }))}
           />
         </Reveal>
@@ -49,49 +62,37 @@ export async function ProblemSection() {
 
 function ProblemColumn({
   heading,
-  tone,
   items,
 }: {
   heading: string;
-  tone: 'before' | 'after';
-  items: { title: string; body: string }[];
+  items: { title: string; body: string; icon: string }[];
 }) {
-  const after = tone === 'after';
   return (
     <div className="flex h-full flex-col">
       <h3 className="mb-4 text-center font-display text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         {heading}
       </h3>
-      <div className="grid flex-1 gap-3 sm:grid-cols-2">
-        {items.map(({ title, body }) => (
-          <Card
+      <div className="grid flex-1 gap-3 sm:grid-cols-2 sm:gap-4">
+        {items.map(({ title, body, icon }) => (
+          <div
             key={title}
-            className={
-              after
-                ? 'flex flex-col gap-2 border-accent-500/30 bg-surface p-5'
-                : 'flex flex-col gap-2 bg-surface/60 p-5'
-            }
+            className="group flex flex-col gap-3 rounded-2xl border border-transparent bg-background/40 p-5 transition-all duration-300 ease-out hover:-translate-y-1.5 hover:border-border hover:bg-background hover:shadow-lg"
           >
-            <span
-              className={
-                after
-                  ? 'flex size-7 items-center justify-center rounded-lg bg-brand-500/12 text-brand-600 dark:text-brand-400'
-                  : 'flex size-7 items-center justify-center rounded-lg bg-surface-2 text-muted-foreground'
-              }
-            >
-              {after ? (
-                <Check className="size-4" aria-hidden />
-              ) : (
-                <X className="size-4" aria-hidden />
-              )}
-            </span>
+            <Image
+              src={icon}
+              alt=""
+              width={72}
+              height={72}
+              className="size-16 object-contain drop-shadow-sm transition-transform duration-300 ease-out group-hover:scale-110"
+              aria-hidden
+            />
             <h4 className="font-display text-sm font-semibold text-foreground">
               {title}
             </h4>
             <p className="text-sm leading-relaxed text-muted-foreground">
               {body}
             </p>
-          </Card>
+          </div>
         ))}
       </div>
     </div>
