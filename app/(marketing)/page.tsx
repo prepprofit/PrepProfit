@@ -17,7 +17,7 @@ const AUDIENCE = [
   { key: 'bakeries', icon: '/icons/bakeries.webp' },
   { key: 'patisseries', icon: '/icons/patisseries.webp' },
   { key: 'cafes', icon: '/icons/cafes.webp' },
-  { key: 'foodTrucks', icon: '/icons/food-truck.webp' },
+  { key: 'chefs', icon: '/icons/chefs.webp' },
   { key: 'catering', icon: '/icons/catering.webp' },
 ] as const;
 
