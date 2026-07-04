@@ -2151,7 +2151,10 @@
       "headline2": "Protect every margin.",
       "subhead": "PrepProfit turns your recipes, inventory and sales into one clear view of your margins, so you price with confidence instead of guesswork.",
       "ctaPrimary": "Start free — 14 days of everything",
-      "ctaSecondary": "Sign in"
+      "ctaSecondary": "Sign in",
+      "playVideo": "Watch the demo",
+      "videoComingSoon": "Demo video coming soon",
+      "videoComingSoonHint": "We're recording a full walkthrough of PrepProfit. Check back shortly."
     },
     "preview": {
       "tag": "Sample data",

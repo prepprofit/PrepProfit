@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { BackgroundBlur } from '@/components/marketing/ui/background-blur';
 import { AppPreview } from '@/components/marketing/app-preview';
+import { HeroVideo } from '@/components/marketing/hero-video';
 import { FeaturedBento } from '@/components/marketing/featured-bento';
 import { PricingSection } from '@/components/marketing/pricing-section';
 import { TestimonialsMarquee } from '@/components/marketing/testimonials-marquee';
@@ -73,9 +74,17 @@ export default async function MarketingPage() {
 
             <Reveal
               delay={140}
-              className="mx-auto mt-16 max-w-5xl pb-20 md:pb-28"
+              className="mx-auto mt-16 max-w-6xl pb-20 md:pb-28"
             >
-              <AppPreview />
+              <HeroVideo
+                labels={{
+                  playVideo: t('hero.playVideo'),
+                  comingSoon: t('hero.videoComingSoon'),
+                  comingSoonHint: t('hero.videoComingSoonHint'),
+                }}
+              >
+                <AppPreview />
+              </HeroVideo>
             </Reveal>
           </div>
         </section>
