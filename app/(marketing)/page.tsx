@@ -49,14 +49,14 @@ export default async function MarketingPage() {
         <section className="relative">
           <BackgroundBlur />
           <div className="mx-auto max-w-7xl px-4 pt-20 sm:px-6 md:pt-32 lg:px-8">
-            <Reveal className="mx-auto flex max-w-4xl flex-col items-center text-center">
-              <h1 className="font-display text-4xl font-bold leading-[1.08] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
+            <Reveal className="mx-auto flex max-w-4xl flex-col items-center text-center font-inter">
+              <h1 className="text-4xl font-medium leading-[1.1] tracking-tight text-foreground sm:text-7xl">
                 {t('hero.headline')}
                 <span className="block text-muted-foreground">
                   {t('hero.headline2')}
                 </span>
               </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
+              <p className="mt-6 max-w-lg text-lg leading-6 tracking-tight text-muted-foreground sm:text-xl">
                 {t('hero.subhead')}
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
