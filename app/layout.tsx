@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Roboto, Outfit, Inter } from 'next/font/google';
+import { Roboto, Outfit } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
@@ -15,9 +15,6 @@ const roboto = Roboto({
   variable: '--font-roboto',
 });
 const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit' });
-// Inter — the purchased template's typeface, used on the marketing hero to
-// match it 1:1 (variable font, so all weights incl. medium are available).
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter-src' });
 
 export const metadata: Metadata = {
   title: 'PrepProfit',
@@ -35,7 +32,7 @@ export default async function RootLayout({
     <ClerkProvider>
       <html
         lang={locale}
-        className={`${roboto.variable} ${outfit.variable} ${inter.variable}`}
+        className={`${roboto.variable} ${outfit.variable}`}
         suppressHydrationWarning
       >
         <body className="font-sans" suppressHydrationWarning>

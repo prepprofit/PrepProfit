@@ -10,8 +10,6 @@
 @theme {
   --font-sans: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
-  /* Marketing hero — the purchased template's Inter, kept 1:1. */
-  --font-inter: var(--font-inter-src), ui-sans-serif, system-ui, sans-serif;
 
   /* Command palette / modal animations */
   --animate-overlay-in: overlay-in 0.2s ease-out;

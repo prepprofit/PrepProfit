@@ -51,8 +51,8 @@ export default async function MarketingPage() {
         <section className="relative hero-wash">
           <div className="mx-auto max-w-7xl px-4 pt-32 sm:px-6 md:pt-52 lg:px-8">
             {/* No entrance animation above the fold — static, no ease-out. */}
-            <div className="mx-auto flex max-w-4xl flex-col items-center text-center font-inter lg:max-w-6xl">
-              <h1 className="text-4xl font-medium leading-[1.1] tracking-tight text-foreground sm:text-7xl lg:text-6xl">
+            <div className="mx-auto flex max-w-4xl flex-col items-center text-center lg:max-w-6xl">
+              <h1 className="font-display text-4xl font-medium leading-[1.1] tracking-tight text-foreground sm:text-7xl lg:text-6xl">
                 {t('hero.headline')}
                 <span className="block text-muted-foreground">
                   {t('hero.headline2')}
