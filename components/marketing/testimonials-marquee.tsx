@@ -1,24 +1,12 @@
+import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
-import { Star } from 'lucide-react';
-import { Card } from '@/components/ui/card';
-import { Marquee } from '@/components/marketing/ui/marquee';
 import { Reveal } from '@/components/marketing/reveal';
 
-const QUOTES = ['a', 'b', 'c'] as const;
-
-/** Initials avatar — no real photos exist, so we derive initials from the name. */
-function initials(name: string) {
-  return name
-    .split(' ')
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
-}
-
 /**
- * Template's infinite testimonial marquee. The three quotes are rendered
- * twice per group (and the Marquee doubles the group again) so the CSS
- * -50% loop never shows a gap on wide viewports.
+ * Single profile-card testimonial: photo with an overlapping quote card.
+ * ponytail: one testimonial for now (Gui's real review lands later), so no
+ * carousel/state — turn this into a client carousel when a second quote exists.
+ * Copy lives under `marketing.testimonials.*`.
  */
 export async function TestimonialsMarquee() {
   const t = await getTranslations('marketing.testimonials');
@@ -32,52 +20,91 @@ export async function TestimonialsMarquee() {
         <p className="mt-4 text-lg text-muted-foreground">{t('subtitle')}</p>
       </Reveal>
 
-      <Reveal delay={120} className="mt-14">
-        <Marquee>
-          {[...QUOTES, ...QUOTES].map((which, i) => (
-            <TestimonialCard
-              key={`${which}-${i}`}
-              quote={t(`${which}.quote`)}
-              name={t(`${which}.name`)}
-              role={t(`${which}.role`)}
+      <Reveal delay={120} className="mx-auto mt-14 w-full max-w-5xl px-4">
+        {/* Desktop: photo with overlapping card */}
+        <div className="hidden items-center md:flex">
+          <div className="size-[470px] shrink-0 overflow-hidden rounded-3xl bg-surface-2">
+            <Image
+              src="/testimonial-gui.jpg"
+              alt={t('a.name')}
+              width={470}
+              height={470}
+              className="size-full object-cover"
+              draggable={false}
             />
-          ))}
-        </Marquee>
+          </div>
+          <div className="z-10 -ml-20 max-w-xl flex-1 rounded-3xl bg-background p-8 shadow-2xl">
+            <h3 className="font-display text-2xl font-bold text-foreground">
+              {t('a.name')}
+            </h3>
+            <p className="mt-2 text-sm font-medium text-muted-foreground">
+              {t('a.role')}
+            </p>
+            <blockquote className="mt-6 text-base leading-relaxed text-foreground">
+              {t('a.quote')}
+            </blockquote>
+            <div className="mt-8">
+              <InstagramLink label={t('a.name')} />
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile: stacked */}
+        <div className="mx-auto max-w-sm text-center md:hidden">
+          <div className="aspect-square w-full overflow-hidden rounded-3xl bg-surface-2">
+            <Image
+              src="/testimonial-gui.jpg"
+              alt={t('a.name')}
+              width={400}
+              height={400}
+              className="size-full object-cover"
+              draggable={false}
+            />
+          </div>
+          <div className="mt-6 px-4">
+            <h3 className="font-display text-xl font-bold text-foreground">
+              {t('a.name')}
+            </h3>
+            <p className="mt-2 text-sm font-medium text-muted-foreground">
+              {t('a.role')}
+            </p>
+            <blockquote className="mt-4 text-sm leading-relaxed text-foreground">
+              {t('a.quote')}
+            </blockquote>
+            <div className="mt-6 flex justify-center">
+              <InstagramLink label={t('a.name')} />
+            </div>
+          </div>
+        </div>
       </Reveal>
     </section>
   );
 }
 
-function TestimonialCard({
-  quote,
-  name,
-  role,
-}: {
-  quote: string;
-  name: string;
-  role: string;
-}) {
+function InstagramLink({ label }: { label: string }) {
   return (
-    <Card className="flex w-80 flex-col gap-4 p-7 shadow-md md:w-96 md:p-8">
-      <div className="flex items-center gap-1" aria-hidden>
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Star key={i} className="size-4 fill-accent-500 text-accent-500" />
-        ))}
-      </div>
-      <blockquote className="text-sm leading-relaxed text-foreground md:text-base">
-        “{quote}”
-      </blockquote>
-      <figcaption className="mt-auto flex items-center gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-700 font-display text-xs font-semibold text-white">
-          {initials(name)}
-        </span>
-        <span>
-          <span className="block font-display text-sm font-semibold text-foreground">
-            {name}
-          </span>
-          <span className="block text-xs text-muted-foreground">{role}</span>
-        </span>
-      </figcaption>
-    </Card>
+    <a
+      href="#"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex size-12 items-center justify-center rounded-full bg-foreground text-background transition-transform hover:scale-105"
+      aria-label={`Instagram — ${label}`}
+    >
+      {/* Instagram glyph — lucide-react no longer ships brand icons */}
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="size-5"
+        aria-hidden
+      >
+        <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+        <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+      </svg>
+    </a>
   );
 }

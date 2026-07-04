@@ -2386,19 +2386,9 @@
       "title": "Loved by the people who run the kitchen",
       "subtitle": "Owners and chefs use PrepProfit to price with confidence and protect their margins.",
       "a": {
-        "quote": "I finally know which dishes actually make money. We re-priced our menu in a weekend and our food cost dropped four points.",
-        "name": "Marta Oliveira",
-        "role": "Owner, Forno & Sal Bakery"
-      },
-      "b": {
-        "quote": "Costing a new recipe used to take an afternoon of spreadsheets. Now it takes minutes and the margin is right there.",
-        "name": "Tiago Mendes",
-        "role": "Head Chef, Tasca do Porto"
-      },
-      "c": {
-        "quote": "Photographing an old recipe card and getting a costed draft back felt like magic. My team adopted it on day one.",
-        "name": "Inês Carvalho",
-        "role": "Operations, Doce Lisboa Patisserie"
+        "quote": "I moved all my recipes out of spreadsheets in one afternoon. Now when butter or flour goes up, I see exactly which products are at risk and re-price the same day. Costing a new recipe went from an hour of formulas to a few minutes.",
+        "name": "Gui",
+        "role": "Chef"
       }
     },
     "faq": {
