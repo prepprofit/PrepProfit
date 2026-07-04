@@ -146,7 +146,7 @@ export default async function MarketingPage() {
           id="how-it-works"
           className="scroll-mt-20 bg-surface/40"
         >
-          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
+          <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
             <Reveal className="mx-auto max-w-2xl text-center">
               <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
                 {t('tour.title')}
@@ -246,7 +246,7 @@ export default async function MarketingPage() {
           aria-hidden
           className="footer-wash pointer-events-none absolute inset-0"
         />
-        <div className="relative mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 md:py-24 lg:px-8">
+        <div className="relative mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 md:py-24 lg:px-8">
           {/* Top section with logo and links */}
           <div className="grid gap-12 md:grid-cols-5">
             {/* Logo and description */}

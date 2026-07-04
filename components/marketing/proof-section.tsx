@@ -21,7 +21,7 @@ export async function ProofSection() {
 
   return (
     <section className="bg-surface/40">
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
           <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
             {t('title')}

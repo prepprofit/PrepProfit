@@ -15,7 +15,7 @@ export async function FaqSection() {
   return (
     <section
       id="faq"
-      className="mx-auto max-w-3xl scroll-mt-20 px-4 py-20 sm:px-6 md:py-28 lg:px-8"
+      className="mx-auto max-w-7xl scroll-mt-20 px-4 py-20 sm:px-6 md:py-28 lg:px-8"
     >
       <Reveal className="text-center">
         <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
