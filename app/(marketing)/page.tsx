@@ -88,7 +88,7 @@ export default async function MarketingPage() {
         {/* ---------------------------------------------------------------- */}
         {/* Segment strip (honest, replaces the template's customer logos)    */}
         {/* ---------------------------------------------------------------- */}
-        <section className="border-y border-border bg-surface/50">
+        <section className="bg-surface/50">
           <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-24 lg:px-8">
             <Reveal className="mx-auto max-w-2xl text-center">
               <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
@@ -132,7 +132,7 @@ export default async function MarketingPage() {
         {/* ---------------------------------------------------------------- */}
         <section
           id="how-it-works"
-          className="scroll-mt-20 border-y border-border bg-surface/40"
+          className="scroll-mt-20 bg-surface/40"
         >
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
             <Reveal className="mx-auto max-w-2xl text-center">
@@ -239,97 +239,129 @@ export default async function MarketingPage() {
       </main>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Footer (dark, like the template)                                   */}
+      {/* Footer (light, nguyen-style, with a pure-CSS orange wash rising     */}
+      {/* from the bottom — no background image)                             */}
       {/* ------------------------------------------------------------------ */}
-      <footer className="bg-[#0a0a0b] text-white">
-        <div className="mx-auto max-w-7xl border-t border-white/10 px-4 py-14 sm:px-6 lg:px-8">
-          <div className="grid gap-10 md:grid-cols-[1.6fr_1fr_1fr_1fr]">
-            <div className="max-w-sm">
+      <footer className="relative overflow-hidden bg-background">
+        <div
+          aria-hidden
+          className="footer-wash pointer-events-none absolute inset-0 -z-10"
+        />
+        <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 md:py-24 lg:px-8">
+          {/* Top section with logo and links */}
+          <div className="grid gap-12 md:grid-cols-5">
+            {/* Logo and description */}
+            <div className="md:col-span-2">
               <Image
-                src="/logo-white.webp"
+                src="/logo.webp"
                 alt={productName}
                 width={512}
                 height={113}
                 className="h-8 w-auto"
               />
-              <p className="mt-4 text-sm text-white/60">{t('footer.tagline')}</p>
+              <p className="mt-4 max-w-sm text-sm leading-relaxed text-muted-foreground">
+                {t('footer.tagline')}
+              </p>
               <a
                 href="mailto:info@prepprofit.com"
-                className="mt-4 inline-block text-sm text-white/80 hover:text-white"
+                className="mt-4 inline-block text-sm text-foreground/80 transition-colors hover:text-foreground"
               >
                 info@prepprofit.com
               </a>
             </div>
 
+            {/* Product */}
             <div>
-              <p className="font-display text-sm font-semibold text-white">
+              <h3 className="mb-4 text-sm font-semibold text-foreground">
                 {t('footer.productTitle')}
-              </p>
-              <ul className="mt-4 flex flex-col gap-3 text-sm text-white/60">
+              </h3>
+              <ul className="space-y-3">
                 <li>
-                  <a href="#features" className="hover:text-white">
+                  <a
+                    href="#features"
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
                     {t('nav.features')}
                   </a>
                 </li>
                 <li>
-                  <a href="#pricing" className="hover:text-white">
+                  <a
+                    href="#pricing"
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
                     {t('nav.pricing')}
                   </a>
                 </li>
                 <li>
-                  <a href="#faq" className="hover:text-white">
+                  <a
+                    href="#faq"
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
                     {t('nav.faq')}
                   </a>
                 </li>
               </ul>
             </div>
 
+            {/* Account */}
             <div>
-              <p className="font-display text-sm font-semibold text-white">
+              <h3 className="mb-4 text-sm font-semibold text-foreground">
                 {t('footer.accountTitle')}
-              </p>
-              <ul className="mt-4 flex flex-col gap-3 text-sm text-white/60">
+              </h3>
+              <ul className="space-y-3">
                 <li>
-                  <Link href="/sign-in" className="hover:text-white">
+                  <Link
+                    href="/sign-in"
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
                     {t('nav.signIn')}
                   </Link>
                 </li>
                 <li>
-                  <Link href="/sign-up" className="hover:text-white">
+                  <Link
+                    href="/sign-up"
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
                     {t('nav.getStarted')}
                   </Link>
                 </li>
               </ul>
             </div>
 
+            {/* Legal */}
             <div>
-              <p className="font-display text-sm font-semibold text-white">
+              <h3 className="mb-4 text-sm font-semibold text-foreground">
                 {t('footer.legalTitle')}
-              </p>
-              <ul className="mt-4 flex flex-col gap-3 text-sm text-white/60">
+              </h3>
+              <ul className="space-y-3">
                 <li>
                   <a
                     href="mailto:info@prepprofit.com"
-                    className="hover:text-white"
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {t('footer.contact')}
                   </a>
                 </li>
                 <li>
-                  <span className="text-white/40">{t('footer.privacy')}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {t('footer.privacy')}
+                  </span>
                 </li>
                 <li>
-                  <span className="text-white/40">{t('footer.terms')}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {t('footer.terms')}
+                  </span>
                 </li>
               </ul>
             </div>
           </div>
 
-          <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 text-sm text-white/50 sm:flex-row">
-            <span>
+          {/* Bottom section */}
+          <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-border pt-8 text-sm text-muted-foreground md:flex-row">
+            <p>
               © {new Date().getFullYear()} {productName}. {t('footer.rights')}
-            </span>
-            <span>{t('footer.note')}</span>
+            </p>
+            <p>{t('footer.note')}</p>
           </div>
         </div>
       </footer>

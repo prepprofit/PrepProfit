@@ -209,3 +209,38 @@ body {
       );
   }
 }
+
+/* footer-wash paints the same brand-accent watercolor as the hero, but rising
+   from the bottom of the footer (orange lobes, pure CSS — no image). Masked to
+   fade toward the top so it blends into the page above. */
+.footer-wash {
+  background:
+    radial-gradient(
+      820px 460px at 30% 120%,
+      color-mix(in oklab, var(--color-accent-400) 28%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      820px 460px at 70% 120%,
+      color-mix(in oklab, var(--color-accent-500) 28%, transparent),
+      transparent 70%
+    );
+  -webkit-mask-image: linear-gradient(to top, black 55%, transparent);
+  mask-image: linear-gradient(to top, black 55%, transparent);
+}
+
+@media (min-width: 1024px) {
+  .footer-wash {
+    background:
+      radial-gradient(
+        1100px 640px at 0% 130%,
+        color-mix(in oklab, var(--color-accent-400) 32%, transparent),
+        transparent 62%
+      ),
+      radial-gradient(
+        1100px 640px at 100% 130%,
+        color-mix(in oklab, var(--color-accent-500) 32%, transparent),
+        transparent 62%
+      );
+  }
+}

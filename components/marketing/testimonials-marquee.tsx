@@ -24,7 +24,7 @@ export async function TestimonialsMarquee() {
   const t = await getTranslations('marketing.testimonials');
 
   return (
-    <section className="border-y border-border bg-surface/40 py-20 md:py-28">
+    <section className="bg-surface/40 py-20 md:py-28">
       <Reveal className="mx-auto max-w-2xl px-4 text-center sm:px-6">
         <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
           {t('title')}

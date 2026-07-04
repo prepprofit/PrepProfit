@@ -47,7 +47,7 @@ export async function AppPreview() {
           <span className="size-3 rounded-full bg-brand-400/80" />
           <div className="ml-3 hidden flex-1 sm:block">
             <div className="mx-auto w-fit rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted-foreground">
-              app.prepprofit.com/dashboard
+              prepprofit.com/dashboard
             </div>
           </div>
         </div>
