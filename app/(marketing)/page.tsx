@@ -7,6 +7,7 @@ import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { AppPreview } from '@/components/marketing/app-preview';
 import { HeroVideo } from '@/components/marketing/hero-video';
 import { FeaturedBento } from '@/components/marketing/featured-bento';
+import { ProductTour } from '@/components/marketing/product-tour';
 import { PricingSection } from '@/components/marketing/pricing-section';
 import { TestimonialsMarquee } from '@/components/marketing/testimonials-marquee';
 import { FaqSection } from '@/components/marketing/faq-section';
@@ -21,7 +22,12 @@ const AUDIENCE = [
   { key: 'catering', icon: '/icons/catering.webp' },
 ] as const;
 
-const HOW_STEPS = ['step1', 'step2', 'step3'] as const;
+const TOUR_TABS = [
+  { key: 'dashboard', src: '/screenshots/dashboard.webp' },
+  { key: 'costing', src: '/screenshots/recipe-costing.webp' },
+  { key: 'insights', src: '/screenshots/insights.webp' },
+  { key: 'breakeven', src: '/screenshots/break-even.webp' },
+] as const;
 
 export default async function MarketingPage() {
   const t = await getTranslations('marketing');
@@ -128,33 +134,28 @@ export default async function MarketingPage() {
           id="how-it-works"
           className="scroll-mt-20 border-y border-border bg-surface/40"
         >
-          <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
             <Reveal className="mx-auto max-w-2xl text-center">
               <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-                {t('how.title')}
+                {t('tour.title')}
               </h2>
               <p className="mt-4 text-lg text-muted-foreground">
-                {t('how.subtitle')}
+                {t('tour.subtitle')}
               </p>
             </Reveal>
 
-            <div className="mt-14 grid gap-8 md:grid-cols-3">
-              {HOW_STEPS.map((step, i) => (
-                <Reveal key={step} delay={i * 100}>
-                  <div className="flex flex-col">
-                    <div className="flex size-10 items-center justify-center rounded-full bg-accent-700 font-display text-sm font-semibold text-white">
-                      {i + 1}
-                    </div>
-                    <h3 className="mt-5 font-display text-lg font-semibold text-foreground">
-                      {t(`how.${step}.title`)}
-                    </h3>
-                    <p className="mt-2 text-muted-foreground">
-                      {t(`how.${step}.body`)}
-                    </p>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
+            <Reveal>
+              <ProductTour
+                tabs={TOUR_TABS.map(({ key, src }) => ({
+                  key,
+                  src,
+                  title: t(`tour.tabs.${key}.title`),
+                  desc: t(`tour.tabs.${key}.desc`),
+                  path: t(`tour.path.${key}`),
+                  alt: t(`tour.shots.${key}`),
+                }))}
+              />
+            </Reveal>
           </div>
         </section>
 

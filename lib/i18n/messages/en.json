@@ -2240,6 +2240,40 @@
         "body": "Track sales, inventory and finances, then price and plan with break-even built in."
       }
     },
+    "tour": {
+      "title": "See PrepProfit on your real numbers",
+      "subtitle": "Every screen runs on the data you already have — no setup project, no consultant.",
+      "tabs": {
+        "dashboard": {
+          "title": "Dashboard",
+          "desc": "Live margins at a glance"
+        },
+        "costing": {
+          "title": "Recipe costing",
+          "desc": "True cost on every dish"
+        },
+        "insights": {
+          "title": "Profit insights",
+          "desc": "Catch margins before they slip"
+        },
+        "breakeven": {
+          "title": "Break-even",
+          "desc": "Price and plan with confidence"
+        }
+      },
+      "path": {
+        "dashboard": "app.prepprofit.com/dashboard",
+        "costing": "app.prepprofit.com/recipes",
+        "insights": "app.prepprofit.com/insights",
+        "breakeven": "app.prepprofit.com/break-even"
+      },
+      "shots": {
+        "dashboard": "PrepProfit dashboard showing average margin and top recipes by margin",
+        "costing": "Recipe editor showing ingredient costs, yield and live margin",
+        "insights": "Profit insights surfacing recipes below their target margin",
+        "breakeven": "Break-even simulator with scenario inputs and results"
+      }
+    },
     "intro": {
       "eyebrow": "The platform",
       "title": "Everything you need to manage and grow your kitchen",
