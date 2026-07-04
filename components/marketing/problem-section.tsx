@@ -81,9 +81,9 @@ function ProblemColumn({
             <Image
               src={icon}
               alt=""
-              width={72}
-              height={72}
-              className="size-16 object-contain drop-shadow-sm transition-transform duration-300 ease-out group-hover:scale-110"
+              width={96}
+              height={96}
+              className="size-24 object-contain drop-shadow-sm transition-transform duration-300 ease-out group-hover:scale-110"
               aria-hidden
             />
             <h4 className="font-display text-sm font-semibold text-foreground">
