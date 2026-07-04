@@ -75,7 +75,7 @@ export default async function MarketingPage() {
               </div>
             </div>
 
-            <div className="mx-auto mt-16 max-w-6xl pb-20 md:pb-28">
+            <div className="mx-auto mt-16 max-w-7xl pb-20 md:pb-28">
               <HeroVideo
                 labels={{
                   playVideo: t('hero.playVideo'),
