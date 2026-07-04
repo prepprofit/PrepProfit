@@ -242,12 +242,12 @@ export default async function MarketingPage() {
       {/* Footer (light, nguyen-style, with a pure-CSS orange wash rising     */}
       {/* from the bottom — no background image)                             */}
       {/* ------------------------------------------------------------------ */}
-      <footer className="relative overflow-hidden bg-background">
+      <footer className="relative overflow-hidden">
         <div
           aria-hidden
-          className="footer-wash pointer-events-none absolute inset-0 -z-10"
+          className="footer-wash pointer-events-none absolute inset-0"
         />
-        <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 md:py-24 lg:px-8">
+        <div className="relative mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 md:py-24 lg:px-8">
           {/* Top section with logo and links */}
           <div className="grid gap-12 md:grid-cols-5">
             {/* Logo and description */}

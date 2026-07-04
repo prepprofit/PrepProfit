@@ -2262,10 +2262,10 @@
         }
       },
       "path": {
-        "dashboard": "app.prepprofit.com/dashboard",
-        "costing": "app.prepprofit.com/recipes",
-        "insights": "app.prepprofit.com/insights",
-        "breakeven": "app.prepprofit.com/break-even"
+        "dashboard": "prepprofit.com/dashboard",
+        "costing": "prepprofit.com/recipes",
+        "insights": "prepprofit.com/insights",
+        "breakeven": "prepprofit.com/break-even"
       },
       "shots": {
         "dashboard": "PrepProfit dashboard showing average margin and top recipes by margin",
