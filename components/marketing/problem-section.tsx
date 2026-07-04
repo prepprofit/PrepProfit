@@ -38,6 +38,7 @@ export async function ProblemSection() {
         <Reveal>
           <ProblemColumn
             heading={t('beforeTitle')}
+            tone="before"
             items={CARDS.map((c) => ({
               title: t(`before.${c}.title`),
               body: t(`before.${c}.body`),
@@ -48,6 +49,7 @@ export async function ProblemSection() {
         <Reveal delay={120}>
           <ProblemColumn
             heading={t('afterTitle')}
+            tone="after"
             items={CARDS.map((c) => ({
               title: t(`after.${c}.title`),
               body: t(`after.${c}.body`),
@@ -62,14 +64,29 @@ export async function ProblemSection() {
 
 function ProblemColumn({
   heading,
+  tone,
   items,
 }: {
   heading: string;
+  tone: 'before' | 'after';
   items: { title: string; body: string; icon: string }[];
 }) {
+  const after = tone === 'after';
   return (
-    <div className="flex h-full flex-col">
-      <h3 className="mb-4 text-center font-display text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+    <div
+      className={
+        after
+          ? 'flex h-full flex-col rounded-3xl border border-brand-500/30 bg-brand-500/5 p-5 sm:p-6'
+          : 'flex h-full flex-col rounded-3xl border border-border bg-surface/60 p-5 sm:p-6'
+      }
+    >
+      <h3
+        className={
+          after
+            ? 'mb-5 self-center rounded-full bg-brand-500/12 px-4 py-1.5 font-display text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400'
+            : 'mb-5 self-center rounded-full bg-surface-2 px-4 py-1.5 font-display text-sm font-semibold uppercase tracking-wide text-muted-foreground'
+        }
+      >
         {heading}
       </h3>
       <div className="grid flex-1 gap-3 sm:grid-cols-2 sm:gap-4">
