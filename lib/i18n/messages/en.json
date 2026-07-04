@@ -2180,21 +2180,45 @@
       "catering": "Caterers"
     },
     "problem": {
-      "title": "Spreadsheets were never built to run a kitchen.",
-      "subtitle": "Formulas break, ingredient prices drift, and last month's numbers never quite add up. PrepProfit keeps every cost, recipe and sale in sync.",
-      "beforeTitle": "Life on spreadsheets",
+      "title": "Your spreadsheet is free. The mistakes are not.",
+      "subtitle": "When ingredient prices change, formulas break, or recipes live in five different places, your margins disappear quietly.",
+      "beforeTitle": "Life today",
       "before": {
-        "a": "Margins are a guess until the month closes",
-        "b": "One price change means editing dozens of cells",
-        "c": "Costs, sales and stock live in separate files",
-        "d": "Broken formulas quietly corrupt your numbers"
+        "a": {
+          "title": "Recipes everywhere",
+          "body": "Recipe cards, notebooks, WhatsApp messages and spreadsheets make it hard to keep products consistent."
+        },
+        "b": {
+          "title": "Ingredient prices drift",
+          "body": "Butter, flour and cream change price — but your old spreadsheet does not always catch the margin impact."
+        },
+        "c": {
+          "title": "Margins disappear silently",
+          "body": "A popular product can look successful while barely making profit after yield, waste, packaging and labor."
+        },
+        "d": {
+          "title": "Pricing becomes guesswork",
+          "body": "You end up defending prices with instinct instead of numbers you can trust."
+        }
       },
       "afterTitle": "Life on PrepProfit",
       "after": {
-        "a": "Live margin on every dish as prices change",
-        "b": "Update an ingredient once, see every recipe react",
-        "c": "Recipes, inventory and finances in one place",
-        "d": "Tested calculations you can actually trust"
+        "a": {
+          "title": "One recipe source of truth",
+          "body": "Keep ingredients, yields, portions and selling prices organized in one place."
+        },
+        "b": {
+          "title": "Update one cost, see the impact",
+          "body": "Change an ingredient once and see which recipes need attention."
+        },
+        "c": {
+          "title": "Numbers you can defend",
+          "body": "See what each product actually costs, what it sells for and the margin it leaves behind."
+        },
+        "d": {
+          "title": "Price with confidence",
+          "body": "Use real costs and break-even numbers before changing your menu or accepting a catering job."
+        }
       }
     },
     "features": {

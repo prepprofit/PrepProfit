@@ -7,6 +7,7 @@ import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { AppPreview } from '@/components/marketing/app-preview';
 import { HeroVideo } from '@/components/marketing/hero-video';
 import { FeaturedBento } from '@/components/marketing/featured-bento';
+import { ProblemSection } from '@/components/marketing/problem-section';
 import { ProductTour } from '@/components/marketing/product-tour';
 import { PricingSection } from '@/components/marketing/pricing-section';
 import { TestimonialsMarquee } from '@/components/marketing/testimonials-marquee';
@@ -127,6 +128,11 @@ export default async function MarketingPage() {
             </Reveal>
           </div>
         </section>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Problem section — spreadsheet pain, before/after                  */}
+        {/* ---------------------------------------------------------------- */}
+        <ProblemSection />
 
         {/* ---------------------------------------------------------------- */}
         {/* Bento feature grid (absorbs intro, feature cards, import/export)  */}
