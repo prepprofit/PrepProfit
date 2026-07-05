@@ -11,6 +11,9 @@ const isPublicRoute = createRouteMatcher([
   // Clerk webhooks (Sprint 4c) authenticate by Svix signature (verifyWebhook),
   // not a Clerk session — keep them out of auth.protect().
   '/api/webhooks(.*)',
+  // PostHog reverse proxy (next.config.ts rewrites): anonymous marketing visitors
+  // must reach it; destination is a fixed PostHog EU host, not an open proxy.
+  '/ingest(.*)',
 ]);
 
 const isOrgSelectionRoute = createRouteMatcher(['/select-organization(.*)']);
