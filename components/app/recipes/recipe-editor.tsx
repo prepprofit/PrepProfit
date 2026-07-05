@@ -578,9 +578,11 @@ export function RecipeEditor({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Ingredients */}
-        <Card className="lg:col-span-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
+        {/* Left column: ingredients + instructions (fills the column instead of
+            leaving blank space when the recipe has few ingredients). */}
+        <div className="flex flex-col gap-6 lg:col-span-2">
+        <Card>
           <CardHeader>
             <CardTitle>{t('ingredients.title')}</CardTitle>
           </CardHeader>
@@ -811,6 +813,23 @@ export function RecipeEditor({
           </CardContent>
         </Card>
 
+        {/* Instructions / notes — under the ingredients (it's where the chef
+            reads/writes how to make the recipe). */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('fields.instructionsNotes')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={form.notes}
+              disabled={pending}
+              placeholder={t('placeholders.notes')}
+              onChange={(e) => setField({ notes: e.target.value })}
+            />
+          </CardContent>
+        </Card>
+        </div>
+
         {/* Right column */}
         <div className="flex flex-col gap-6">
           <Card>
@@ -982,22 +1001,6 @@ export function RecipeEditor({
           )}
         </div>
       </div>
-
-      {/* Instructions / notes — placed right after the ingredients/parameters grid
-          (it's where the chef reads/writes how to make the recipe). */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('fields.instructionsNotes')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Textarea
-            value={form.notes}
-            disabled={pending}
-            placeholder={t('placeholders.notes')}
-            onChange={(e) => setField({ notes: e.target.value })}
-          />
-        </CardContent>
-      </Card>
 
       {/* Kitchen presets — OPERATIONAL config, both roles manage name + weight; the
           per-preset cost preview is derived manager-side only from the live batch
