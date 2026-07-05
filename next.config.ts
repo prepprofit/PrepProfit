@@ -8,11 +8,9 @@ const isProd = process.env.NODE_ENV === 'production';
 
 /**
  * Browser-hardening headers (audit F-04). The always-on set (nosniff, referrer,
- * permissions, clickjacking) is cheap and breaks nothing. The CSP ships
- * Report-Only first: an SSR app pulls in third-party scripts (Clerk, Sentry,
- * PostHog) whose exact origins are easy to under-allowlist, so we observe
- * violation reports in the browser console before promoting to an enforcing
- * `Content-Security-Policy`. `'unsafe-inline'`/`'unsafe-eval'` stay until Next's
+ * permissions, clickjacking) is cheap and breaks nothing. The CSP is ENFORCING
+ * (promoted from Report-Only 2026-07-05 after prod observation showed no
+ * violations). `'unsafe-inline'`/`'unsafe-eval'` stay until Next's
  * nonce-based CSP is wired; `frame-ancestors 'none'` is the real anti-clickjacking
  * control (X-Frame-Options is the legacy mirror).
  */
@@ -47,8 +45,8 @@ const securityHeaders = [
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=(), browsing-topics=()',
   },
-  // CSP is Report-Only for now (see note above): violations are logged, never blocked.
-  { key: 'Content-Security-Policy-Report-Only', value: contentSecurityPolicy },
+  // CSP enforcing since 2026-07-05 (promoted from Report-Only after prod observation).
+  { key: 'Content-Security-Policy', value: contentSecurityPolicy },
   // HSTS only in production (HTTPS-only); browsers ignore it on plain-http localhost,
   // but gating it keeps dev preview tooling from caching a forced-HTTPS upgrade.
   ...(isProd
