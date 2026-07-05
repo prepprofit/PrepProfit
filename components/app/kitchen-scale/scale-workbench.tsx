@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { ArrowLeft, Download, Printer, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Calculator, Download, Printer, RotateCcw } from 'lucide-react';
 import {
   type MeasurementSystem,
   type Unit,
@@ -83,6 +83,9 @@ export function ScaleWorkbench({
   const [customUnit, setCustomUnit] = React.useState<Unit>(
     () => weightUnits[0] ?? 'g',
   );
+  // The basket only scales after the user clicks Calculate; editing any basket
+  // input invalidates the applied result until they calculate again.
+  const [appliedGrams, setAppliedGrams] = React.useState<number | null>(null);
   // Anchor override: editing a scaled quantity pins the scale to that line and
   // takes precedence over the basket until the basket changes or Reset.
   const [anchor, setAnchor] = React.useState<{
@@ -114,8 +117,11 @@ export function ScaleWorkbench({
       anchor.lineId,
       toCanonical(Number(anchor.text), anchor.unit),
     );
-  } else if (!anchor && targetTotalGrams > 0) {
-    result = scaleFromBasket(recipe, lines, basket);
+  } else if (!anchor && appliedGrams != null) {
+    result = scaleFromBasket(recipe, lines, {
+      presetQuantities: [],
+      customWeightGrams: appliedGrams,
+    });
   }
 
   const ok = result?.ok ? result : null;
@@ -128,16 +134,23 @@ export function ScaleWorkbench({
 
   const setBasketPresetQty = (id: string, value: string) => {
     setAnchor(null);
+    setAppliedGrams(null);
     setPresetQty((prev) => ({ ...prev, [id]: value }));
   };
   const setBasketCustom = (value: string) => {
     setAnchor(null);
+    setAppliedGrams(null);
     setCustomText(value);
+  };
+  const calculate = () => {
+    setAnchor(null);
+    setAppliedGrams(targetTotalGrams);
   };
   const reset = () => {
     setPresetQty({});
     setCustomText('');
     setAnchor(null);
+    setAppliedGrams(null);
   };
 
   // Begin editing a line: seed the input with the line's CURRENT scaled value in
@@ -274,7 +287,16 @@ export function ScaleWorkbench({
               </div>
             )}
 
-            <div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                className="flex-1"
+                disabled={!canScaleByWeight || targetTotalGrams <= 0}
+                onClick={calculate}
+              >
+                <Calculator className="size-4" />
+                {t('calculate')}
+              </Button>
               <Button type="button" variant="ghost" size="sm" onClick={reset}>
                 <RotateCcw className="size-4" />
                 {t('reset')}

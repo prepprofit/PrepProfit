@@ -102,8 +102,8 @@ describe('billing catalogue ↔ entitlements ↔ public pricing consistency', ()
     expect(pricing.pro.price).toBe('$29');
     expect(pricing.business.price).toBe('$79');
     expect(pricing.free.price).toBe('$0');
-    // Yearly = 2 months free (Decision D): $19 × 10 = $190.
-    expect(pricing.solo.priceYear).toBe('$190');
+    // Yearly = 20% off: $19 × 12 × 0.8 = $182.40 → $180 (rounded to a clean price).
+    expect(pricing.solo.priceYear).toBe('$180');
   });
 
   it('public copy matches the enforced caps (recipes, seats, AI quota)', () => {
