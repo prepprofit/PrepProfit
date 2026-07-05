@@ -122,6 +122,9 @@ export function ScaleWorkbench({
   const factor = ok ? ok.factor : 1;
   const portionsParam = result ? portionsParamFor(result) : null;
   const query = portionsParam != null ? `?portions=${portionsParam}` : '';
+  // No scale input = export the unscaled card (routes treat a missing ?portions=
+  // as factor 1). Disable only when an actual scale exists but is invalid.
+  const exportDisabled = result != null && portionsParam == null;
 
   const setBasketPresetQty = (id: string, value: string) => {
     setAnchor(null);
@@ -167,13 +170,13 @@ export function ScaleWorkbench({
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <ExportButton
             href={`/recipes/${recipeId}/prep-card/print${query}`}
-            disabled={portionsParam == null}
+            disabled={exportDisabled}
             icon={<Printer className="size-4" />}
             label={t('printPrep')}
           />
           <ExportButton
             href={`/api/recipes/${recipeId}/prep-card/pdf${query}`}
-            disabled={portionsParam == null}
+            disabled={exportDisabled}
             icon={<Download className="size-4" />}
             label={t('downloadPrep')}
           />
@@ -397,10 +400,12 @@ function ExportButton({
   }
   return (
     <Button asChild variant="outline" size="sm">
-      <Link href={href}>
+      {/* Plain <a>: /api PDF downloads must not go through Link client navigation
+          or prefetch (rate-limited + audited route); same pattern as the print page. */}
+      <a href={href}>
         {icon}
         {label}
-      </Link>
+      </a>
     </Button>
   );
 }
