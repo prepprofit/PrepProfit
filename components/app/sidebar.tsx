@@ -10,6 +10,7 @@ import { OrganizationSwitcher } from '@clerk/nextjs';
 import {
   LayoutDashboard,
   Utensils,
+  Scale,
   BookOpen,
   CookingPot,
   Package,
@@ -42,6 +43,7 @@ import { cn } from '@/lib/utils';
 const icons: Record<NavKey, LucideIcon> = {
   dashboard: LayoutDashboard,
   recipes: Utensils,
+  kitchenScale: Scale,
   menus: BookOpen,
   productions: CookingPot,
   ingredients: Package,

@@ -2,6 +2,7 @@ import { and, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import {
   ingredients,
   recipeIngredients,
+  recipePresets,
   recipes,
   transactions,
 } from '@/lib/db/schema';
@@ -90,6 +91,72 @@ export function toKitchenRecipeWithIngredients(
       ingredient: { name: l.ingredient.name, dimension: l.ingredient.dimension },
     })),
   };
+}
+
+/**
+ * Kitchen Scale listing DTO (Kitchen Scale module): the operational, MONEY-FREE
+ * shape BOTH roles receive on `/kitchen-scale`. Unlike the recipes page (which
+ * strips money only for kitchen), this page never carries money for anyone, so
+ * the DTO simply has no money keys.
+ */
+export type KitchenScaleRecipeListItem = {
+  id: string;
+  name: string;
+  folderId: string | null;
+  yieldPortions: number;
+  yieldWeightGrams: number | null;
+  lineCount: number;
+  presetCount: number;
+};
+
+/**
+ * Active recipes in the org as {@link KitchenScaleRecipeListItem}s. Three
+ * org-scoped queries (recipes + grouped line counts + grouped preset counts)
+ * merged in memory — no N+1, no money fields ever selected.
+ */
+export async function listKitchenScaleRecipes(
+  db: TenantClient,
+  organizationId: string,
+): Promise<KitchenScaleRecipeListItem[]> {
+  const recipeRows = await db
+    .select({
+      id: recipes.id,
+      name: recipes.name,
+      folderId: recipes.folderId,
+      yieldPortions: recipes.yieldPortions,
+      yieldWeightGrams: recipes.yieldWeightGrams,
+    })
+    .from(recipes)
+    .where(
+      and(eq(recipes.organizationId, organizationId), isNull(recipes.deletedAt)),
+    )
+    .orderBy(recipes.name);
+  if (recipeRows.length === 0) return [];
+
+  const [lineRows, presetRows] = await Promise.all([
+    db
+      .select({ recipeId: recipeIngredients.recipeId, value: count() })
+      .from(recipeIngredients)
+      .where(eq(recipeIngredients.organizationId, organizationId))
+      .groupBy(recipeIngredients.recipeId),
+    db
+      .select({ recipeId: recipePresets.recipeId, value: count() })
+      .from(recipePresets)
+      .where(eq(recipePresets.organizationId, organizationId))
+      .groupBy(recipePresets.recipeId),
+  ]);
+  const lineCounts = new Map(lineRows.map((r) => [r.recipeId, r.value]));
+  const presetCounts = new Map(presetRows.map((r) => [r.recipeId, r.value]));
+
+  return recipeRows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    folderId: r.folderId,
+    yieldPortions: r.yieldPortions,
+    yieldWeightGrams: r.yieldWeightGrams,
+    lineCount: lineCounts.get(r.id) ?? 0,
+    presetCount: presetCounts.get(r.id) ?? 0,
+  }));
 }
 
 /**

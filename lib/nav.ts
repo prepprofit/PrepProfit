@@ -15,6 +15,9 @@ export const navGroups = [
     key: 'operations',
     items: [
       { key: 'recipes', href: '/recipes' },
+      // Kitchen Scale (scaling workbench) — visible to BOTH roles; operational and
+      // money-free by DTO type. Lives right after Recipes in Operations.
+      { key: 'kitchenScale', href: '/kitchen-scale' },
       // Menus / combos (Sprint 10) — visible to BOTH roles (kitchen sees an
       // operational, money-free view); lives in Operations near Recipes.
       { key: 'menus', href: '/menus' },

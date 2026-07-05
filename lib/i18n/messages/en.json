@@ -161,6 +161,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "recipes": "Recipes",
+    "kitchenScale": "Kitchen Scale",
     "menus": "Menus",
     "productions": "Production",
     "ingredients": "Ingredients",
@@ -182,6 +183,19 @@
     "import": "Import",
     "onboarding": "Get started",
     "purchaseOrders": "Purchase orders"
+  },
+  "kitchenScale": {
+    "subtitle": "Pick a recipe and scale it for today's batch. Nothing is saved — it's just a working view.",
+    "searchPlaceholder": "Search recipes…",
+    "folderFilter": "Folder",
+    "allFolders": "All folders",
+    "noFolder": "No folder",
+    "empty": "No recipes yet. Create one on the Recipes page first.",
+    "noMatches": "No recipes match your search.",
+    "cardPortions": "{count, plural, one {# portion} other {# portions}}",
+    "cardLines": "{count, plural, one {# ingredient} other {# ingredients}}",
+    "cardPresets": "{count, plural, one {# preset} other {# presets}}",
+    "cardYieldWeight": "{weight} batch"
   },
   "navGroups": {
     "operations": "Operations",
