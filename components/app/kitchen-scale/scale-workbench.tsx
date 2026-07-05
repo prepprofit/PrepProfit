@@ -291,7 +291,7 @@ export function ScaleWorkbench({
               <Button
                 type="button"
                 className="flex-1"
-                disabled={!canScaleByWeight || targetTotalGrams <= 0}
+                disabled={targetTotalGrams <= 0}
                 onClick={calculate}
               >
                 <Calculator className="size-4" />
