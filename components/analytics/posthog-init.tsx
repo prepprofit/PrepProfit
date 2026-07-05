@@ -22,7 +22,7 @@ export function PostHogInit() {
     // don't drop events; ui_host keeps toolbar/replay links on the real region.
     posthog.init(KEY, {
       api_host: '/ingest',
-      ui_host: 'https://us.posthog.com',
+      ui_host: 'https://eu.posthog.com',
       defaults: '2026-05-30',
     });
   }, []);

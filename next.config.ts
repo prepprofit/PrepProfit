@@ -72,14 +72,14 @@ const nextConfig: NextConfig = {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
   // PostHog reverse proxy: first-party /ingest path so adblockers don't drop
-  // pageviews/replay from the marketing funnel. US region (matches project).
+  // pageviews/replay from the marketing funnel. EU region (matches project).
   async rewrites() {
     return [
       {
         source: '/ingest/static/:path*',
-        destination: 'https://us-assets.i.posthog.com/static/:path*',
+        destination: 'https://eu-assets.i.posthog.com/static/:path*',
       },
-      { source: '/ingest/:path*', destination: 'https://us.i.posthog.com/:path*' },
+      { source: '/ingest/:path*', destination: 'https://eu.i.posthog.com/:path*' },
     ];
   },
   // PostHog capture endpoints use trailing slashes (/ingest/e/); without this
