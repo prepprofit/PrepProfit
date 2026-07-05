@@ -828,6 +828,76 @@ export function RecipeEditor({
             />
           </CardContent>
         </Card>
+
+        {/* Cost breakdown + pricing are financial — managers only (Sprint F4). */}
+        {cost && (
+          <>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('cost.title')}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2 text-sm">
+              <Row label={t('cost.ingredients')} value={formatMoney(cost.ingredientCostCents, currency)} />
+              <Row label={t('cost.hidden')} value={formatMoney(cost.hiddenCostCents, currency)} />
+              <Row label={t('cost.total')} value={formatMoney(cost.totalCostCents, currency)} />
+              <div className="my-1 border-t border-border" />
+              <Row
+                label={t('cost.perPortion')}
+                value={formatMoney(cost.costPerPortionCents, currency)}
+                strong
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('pricing.title')}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3 text-sm">
+              <Field label={`${t('pricing.sellingPrice')} · ${currency}`}>
+                <Input
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={form.sellingText}
+                  disabled={pending}
+                  onChange={(e) => setField({ sellingText: e.target.value })}
+                />
+              </Field>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">{t('pricing.margin')}</span>
+                {hasPrice ? (
+                  <Badge variant={LIGHT_VARIANT[light]}>{margin}%</Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    {t('pricing.noPrice')}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">
+                  {t('pricing.suggested', { margin: TARGET_MARGIN })}
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="tabular-nums">
+                    {formatMoney(suggested, currency)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pending || suggested <= 0}
+                    onClick={() =>
+                      setField({ sellingText: centsToAmountInput(suggested) })
+                    }
+                  >
+                    {t('pricing.apply')}
+                  </Button>
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+          </>
+        )}
         </div>
 
         {/* Right column */}
@@ -929,76 +999,6 @@ export function RecipeEditor({
               )}
             </CardContent>
           </Card>
-
-          {/* Cost breakdown + pricing are financial — managers only (Sprint F4). */}
-          {cost && (
-            <>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('cost.title')}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2 text-sm">
-              <Row label={t('cost.ingredients')} value={formatMoney(cost.ingredientCostCents, currency)} />
-              <Row label={t('cost.hidden')} value={formatMoney(cost.hiddenCostCents, currency)} />
-              <Row label={t('cost.total')} value={formatMoney(cost.totalCostCents, currency)} />
-              <div className="my-1 border-t border-border" />
-              <Row
-                label={t('cost.perPortion')}
-                value={formatMoney(cost.costPerPortionCents, currency)}
-                strong
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('pricing.title')}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3 text-sm">
-              <Field label={`${t('pricing.sellingPrice')} · ${currency}`}>
-                <Input
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={form.sellingText}
-                  disabled={pending}
-                  onChange={(e) => setField({ sellingText: e.target.value })}
-                />
-              </Field>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">{t('pricing.margin')}</span>
-                {hasPrice ? (
-                  <Badge variant={LIGHT_VARIANT[light]}>{margin}%</Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">
-                    {t('pricing.noPrice')}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">
-                  {t('pricing.suggested', { margin: TARGET_MARGIN })}
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="tabular-nums">
-                    {formatMoney(suggested, currency)}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={pending || suggested <= 0}
-                    onClick={() =>
-                      setField({ sellingText: centsToAmountInput(suggested) })
-                    }
-                  >
-                    {t('pricing.apply')}
-                  </Button>
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-            </>
-          )}
         </div>
       </div>
 
