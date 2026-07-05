@@ -27,12 +27,17 @@ The core product (Sprints 0–5) is built and in production: billing, document/P
 generation, transactional email, deterministic imports, reviewed AI photo recipe
 extraction, and launch operations are all shipped. See [PLANO.md](PLANO.md).
 
-The current focus is the **AI margin-protection** track — turning the financial data already
-in the product into proactive, chef-friendly insight. The guiding principle is deterministic
+The **AI margin-protection** track (8 sprints) is also complete — it turns the financial data
+already in the product into proactive, chef-friendly insight. The guiding principle is deterministic
 first: the math that produces a money number is always pure and tested, and AI is used only to
 *read messy inputs* (invoices, photos) and to *explain* findings — never to invent a margin,
 a cost, or a price. See the roadmap below and
 [the implementation plan](docs/prepprofit_ai_implementation_plan_senior_revised.md).
+
+The current focus is **launch and go-to-market**: 4-tier pricing (Free / Solo / Pro / Business)
+with a 14-day reverse trial for every new organization, conversion-focused landing copy,
+first-party analytics (PostHog via an `/ingest` reverse proxy), transactional + opt-in weekly
+CFO emails (React Email + Resend), and in-app onboarding.
 
 ## Product modules
 
@@ -142,6 +147,10 @@ Required production checks:
 - `npm run db:migrate` completes and the expected columns/tables exist in Neon.
 - CI gates pass: lint, typecheck, tests, and `next build`.
 
+Security headers (nosniff, frame-ancestors, HSTS) and an **enforcing Content-Security-Policy**
+are set in [next.config.ts](next.config.ts). PostHog is proxied first-party through `/ingest`
+(rewrites in the same file; the route is public in [middleware.ts](middleware.ts)).
+
 ## Roadmap
 
 [PLANO.md](PLANO.md) is the source of truth. Sprints 0–5 are complete and in production:
@@ -168,7 +177,7 @@ Required production checks:
 Also shipped outside the numbered sprints: a kitchen-ops module set (suppliers, menus,
 productions, sales, purchase orders) and live recipe batch scaling.
 
-### AI margin-protection track (current focus)
+### AI margin-protection track (complete)
 
 Positioning: *AI margin protection for small kitchens.* Value-ordered, deterministic-first.
 Full detail in [the implementation plan](docs/prepprofit_ai_implementation_plan_senior_revised.md).
