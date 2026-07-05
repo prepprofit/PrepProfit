@@ -63,7 +63,6 @@ import {
 } from '@/app/(app)/recipes/actions';
 import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
-import { RecipeScalePanel } from '@/components/app/recipes/recipe-scale-panel';
 import {
   RecipePresets,
   type EditorPreset,
@@ -194,8 +193,7 @@ export function RecipeEditor({
   const [lines, setLines] = React.useState<Line[]>(() =>
     initialLines.map(makeLine),
   );
-  // Canonical preset list — owned here so the management section (RecipePresets) and
-  // the scale panel's "scale to {name}" buttons stay in sync after any preset edit.
+  // Canonical preset list — owned here and passed down to RecipePresets.
   const [presets, setPresets] = React.useState<EditorPreset[]>(initialPresets);
   const [newIngredientId, setNewIngredientId] = React.useState('');
   const [newValueText, setNewValueText] = React.useState('');
@@ -206,11 +204,6 @@ export function RecipeEditor({
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [folderId, setFolderId] = React.useState<string | null>(recipe.folderId);
   const [pending, startTransition] = React.useTransition();
-  // Export gating for the scale panel: the export routes read the SAVED recipe, so
-  // print/download must be blocked while on-screen header/line edits are unsaved.
-  // `headerDirty` clears on a header save; `linesDirty` clears once a line write lands.
-  const [headerDirty, setHeaderDirty] = React.useState(false);
-  const [linesDirty, setLinesDirty] = React.useState(false);
 
   // Briefly flag a line as "saved" after its quantity auto-saves on blur/Enter.
   const savedLineTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -247,7 +240,6 @@ export function RecipeEditor({
   const setField = (patch: Partial<typeof form>) => {
     setForm((prev) => ({ ...prev, ...patch }));
     setSaved(false);
-    setHeaderDirty(true);
   };
 
   // Changing the weight unit re-expresses the current entry in the new unit (the
@@ -346,7 +338,6 @@ export function RecipeEditor({
       const result = await updateRecipeAction(recipe.id, input);
       if (result.ok) {
         setSaved(true);
-        setHeaderDirty(false);
       } else {
         setError(actionError(result.code));
       }
@@ -379,7 +370,6 @@ export function RecipeEditor({
           : l,
       ),
     );
-    setLinesDirty(true);
   };
 
   const setLineUnit = (lineId: string, unit: Unit) => {
@@ -402,7 +392,6 @@ export function RecipeEditor({
       });
       if (result.ok) {
         flashSavedLine(lineId);
-        setLinesDirty(false);
       } else setError(actionError(result.code));
     });
   };
@@ -413,7 +402,6 @@ export function RecipeEditor({
       const result = await removeRecipeIngredientAction(recipe.id, lineId);
       if (result.ok) {
         setLines((prev) => prev.filter((l) => l.id !== lineId));
-        setLinesDirty(false);
       } else {
         setError(actionError(result.code));
       }
@@ -429,17 +417,13 @@ export function RecipeEditor({
   const commitReorder = (next: Line[]) => {
     const previous = lines;
     setLines(next);
-    setLinesDirty(true);
     setError(null);
     startTransition(async () => {
       const result = await reorderRecipeIngredientsAction(recipe.id, {
         orderedLineIds: next.map((l) => l.id),
       });
-      if (result.ok) {
-        setLinesDirty(false);
-      } else {
+      if (!result.ok) {
         setLines(previous);
-        setLinesDirty(false);
         setError(actionError(result.code));
       }
     });
@@ -504,7 +488,6 @@ export function RecipeEditor({
         ]);
         setNewIngredientId('');
         setNewValueText('');
-        setLinesDirty(false);
       } else {
         setError(actionError(result.code));
       }
@@ -1000,8 +983,8 @@ export function RecipeEditor({
         </div>
       </div>
 
-      {/* Instructions / notes — placed right after the ingredients/parameters grid and
-          before the scale panel (it's where the chef reads/writes how to make the recipe). */}
+      {/* Instructions / notes — placed right after the ingredients/parameters grid
+          (it's where the chef reads/writes how to make the recipe). */}
       <Card>
         <CardHeader>
           <CardTitle>{t('fields.instructionsNotes')}</CardTitle>
@@ -1015,31 +998,6 @@ export function RecipeEditor({
           />
         </CardContent>
       </Card>
-
-      {/* Scale batch — DB-inert, both roles; money preview managers-only. Export is
-          gated on saved state because the export routes read the persisted recipe. */}
-      <RecipeScalePanel
-        recipeId={recipe.id}
-        yieldPortions={Number(form.yieldPortions) || 0}
-        lines={lines.map((l) => ({
-          id: l.id,
-          ingredientId: l.ingredientId,
-          name: l.ingredient.name,
-          dimension: l.ingredient.dimension,
-          quantity: l.quantity,
-        }))}
-        measurementSystem={measurementSystem}
-        currency={currency}
-        canSeeCosts={canSeeCosts}
-        batchTotalCents={cost ? cost.totalCostCents : null}
-        exportDisabled={pending || headerDirty || linesDirty}
-        presets={presets.map((p) => ({
-          id: p.id,
-          name: p.name,
-          targetWeightGrams: p.targetWeightGrams,
-        }))}
-        yieldWeightGrams={yieldWeightGramsLive}
-      />
 
       {/* Kitchen presets — OPERATIONAL config, both roles manage name + weight; the
           per-preset cost preview is derived manager-side only from the live batch
