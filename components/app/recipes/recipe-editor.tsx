@@ -829,9 +829,10 @@ export function RecipeEditor({
           </CardContent>
         </Card>
 
-        {/* Cost breakdown + pricing are financial — managers only (Sprint F4). */}
+        {/* Cost breakdown + pricing are financial — managers only (Sprint F4).
+            Side by side on wider screens so they don't stack tall. */}
         {cost && (
-          <>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle>{t('cost.title')}</CardTitle>
@@ -896,7 +897,7 @@ export function RecipeEditor({
               </div>
             </CardContent>
           </Card>
-          </>
+          </div>
         )}
         </div>
 
