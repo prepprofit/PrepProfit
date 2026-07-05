@@ -71,6 +71,20 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
+  // PostHog reverse proxy: first-party /ingest path so adblockers don't drop
+  // pageviews/replay from the marketing funnel. US region (matches project).
+  async rewrites() {
+    return [
+      {
+        source: '/ingest/static/:path*',
+        destination: 'https://us-assets.i.posthog.com/static/:path*',
+      },
+      { source: '/ingest/:path*', destination: 'https://us.i.posthog.com/:path*' },
+    ];
+  },
+  // PostHog capture endpoints use trailing slashes (/ingest/e/); without this
+  // Next 308-redirects them and the proxy breaks.
+  skipTrailingSlashRedirect: true,
 };
 
 // Sentry (Sprint 5a) wraps the already-composed config. Source-map upload only

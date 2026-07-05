@@ -5,7 +5,6 @@ import posthog from 'posthog-js';
 import { useAuth } from '@clerk/nextjs';
 
 const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-const HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com';
 
 /**
  * Browser-side PostHog: pageviews, autocapture, session replay, web vitals —
@@ -19,7 +18,13 @@ export function PostHogInit() {
 
   useEffect(() => {
     if (!KEY || posthog.__loaded) return;
-    posthog.init(KEY, { api_host: HOST, defaults: '2026-05-30' });
+    // First-party reverse proxy (see rewrites in next.config.ts) so adblockers
+    // don't drop events; ui_host keeps toolbar/replay links on the real region.
+    posthog.init(KEY, {
+      api_host: '/ingest',
+      ui_host: 'https://us.posthog.com',
+      defaults: '2026-05-30',
+    });
   }, []);
 
   useEffect(() => {
