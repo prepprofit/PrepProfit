@@ -14,7 +14,8 @@ const isProd = process.env.NODE_ENV === 'production';
  * nonce-based CSP is wired; `frame-ancestors 'none'` is the real anti-clickjacking
  * control (X-Frame-Options is the legacy mirror).
  */
-const CLERK = 'https://*.clerk.com https://*.clerk.accounts.dev https://clerk-telemetry.com';
+const CLERK =
+  'https://*.clerk.com https://*.clerk.accounts.dev https://clerk.prepprofit.com https://clerk-telemetry.com';
 const SENTRY = 'https://*.sentry.io https://*.ingest.sentry.io https://*.ingest.de.sentry.io';
 const POSTHOG = 'https://*.posthog.com https://*.i.posthog.com';
 
