@@ -5,6 +5,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 import { ThemeProvider } from '@/components/theme-provider';
 import { CrispChat } from '@/components/support/crisp-chat';
+import { PostHogInit } from '@/components/analytics/posthog-init';
 import './globals.css';
 
 // Google-product type pairing: Roboto for UI/body (the Android system font) and
@@ -49,6 +50,9 @@ export default async function RootLayout({
                   NEXT_PUBLIC_CRISP_WEBSITE_ID is set; identifies the user only once
                   signed in. */}
               <CrispChat />
+              {/* Browser PostHog (pageviews/autocapture/replay). No-op until
+                  NEXT_PUBLIC_POSTHOG_KEY is set. */}
+              <PostHogInit />
             </NextIntlClientProvider>
           </ThemeProvider>
         </body>
