@@ -685,7 +685,9 @@
     "delete": "Delete",
     "add": "Add",
     "moveToTrash": "Move to Trash",
-    "deleteForever": "Delete permanently"
+    "deleteForever": "Delete permanently",
+    "searchPlaceholder": "Search…",
+    "noMatches": "Nothing matches your search."
   },
   "dimensions": {
     "weight": "Weight",

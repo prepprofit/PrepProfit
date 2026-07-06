@@ -54,6 +54,11 @@ export function RecipeList({
   const actionError = useActionError();
   const router = useRouter();
   const [name, setName] = React.useState('');
+  const [query, setQuery] = React.useState('');
+  const q = query.trim().toLowerCase();
+  const visibleRecipes = q
+    ? recipes.filter((r) => r.name.toLowerCase().includes(q))
+    : recipes;
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -141,13 +146,26 @@ export function RecipeList({
         </Button>
       </div>
 
-      {recipes.length === 0 ? (
+      <Input
+        type="search"
+        aria-label={tCommon('searchPlaceholder')}
+        placeholder={tCommon('searchPlaceholder')}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className="max-w-xs"
+      />
+
+      {visibleRecipes.length === 0 ? (
         <p className="px-1 py-8 text-center text-sm text-muted-foreground">
-          {inFolder ? tFolders('emptyFolder') : t('empty')}
+          {q
+            ? tCommon('noMatches')
+            : inFolder
+              ? tFolders('emptyFolder')
+              : t('empty')}
         </p>
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {recipes.map((recipe) => (
+          {visibleRecipes.map((recipe) => (
             <li
               key={recipe.id}
               className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4"
