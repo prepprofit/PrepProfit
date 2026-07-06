@@ -696,6 +696,8 @@
     "title": "Ingredients",
     "subtitle": "Your pantry. Prices feed straight into recipe costs.",
     "empty": "No ingredients yet. Add your first one below.",
+    "searchPlaceholder": "Search ingredients…",
+    "noMatches": "No ingredients match your search.",
     "saved": "Saved",
     "needsPricing": "Needs pricing",
     "columns": {

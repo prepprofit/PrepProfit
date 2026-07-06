@@ -156,6 +156,18 @@ export function IngredientGrid({
     Object.fromEntries(initialIngredients.map((r) => [r.id, draftFromRow(r)])),
   );
   const [newDraft, setNewDraft] = React.useState<Draft>(emptyDraft);
+  const [query, setQuery] = React.useState('');
+  // Needs-pricing rows float to the top; the rest stay alphabetical.
+  const visibleRows = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows
+      .filter((r) => !q || r.name.toLowerCase().includes(q))
+      .sort(
+        (a, b) =>
+          Number(b.needsPricing) - Number(a.needsPricing) ||
+          a.name.localeCompare(b.name),
+      );
+  }, [rows, query]);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [savedId, setSavedId] = React.useState<string | null>(null);
@@ -506,7 +518,7 @@ export function IngredientGrid({
   );
 
   const table = useReactTable({
-    data: rows,
+    data: visibleRows,
     columns,
     getCoreRowModel: getCoreRowModel(),
     meta: {
@@ -609,6 +621,15 @@ export function IngredientGrid({
         </div>
       </div>
 
+      <Input
+        type="search"
+        aria-label={t('searchPlaceholder')}
+        placeholder={t('searchPlaceholder')}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className="max-w-xs"
+      />
+
       <Card className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
@@ -635,7 +656,7 @@ export function IngredientGrid({
                   colSpan={columns.length}
                   className="px-3 py-8 text-center text-sm text-muted-foreground"
                 >
-                  {t('empty')}
+                  {query ? t('noMatches') : t('empty')}
                 </td>
               </tr>
             )}
