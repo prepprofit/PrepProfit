@@ -129,31 +129,32 @@ export function RecipeList({
         </div>
       )}
 
-      <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border bg-surface p-3 sm:flex-row sm:items-center">
+      {/* Search + create side by side: search left, new-recipe field right. */}
+      <div className="grid grid-cols-1 items-center gap-3 lg:grid-cols-2">
         <Input
-          aria-label={t('newName')}
-          placeholder={t('placeholders.name')}
-          value={name}
-          disabled={pending}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onCreate();
-          }}
+          type="search"
+          aria-label={tCommon('searchPlaceholder')}
+          placeholder={tCommon('searchPlaceholder')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
         />
-        <Button type="button" onClick={onCreate} disabled={pending}>
-          <Plus className="size-4" />
-          {t('actions.create')}
-        </Button>
+        <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border bg-surface p-3 sm:flex-row sm:items-center">
+          <Input
+            aria-label={t('newName')}
+            placeholder={t('placeholders.name')}
+            value={name}
+            disabled={pending}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onCreate();
+            }}
+          />
+          <Button type="button" onClick={onCreate} disabled={pending}>
+            <Plus className="size-4" />
+            {t('actions.create')}
+          </Button>
+        </div>
       </div>
-
-      <Input
-        type="search"
-        aria-label={tCommon('searchPlaceholder')}
-        placeholder={tCommon('searchPlaceholder')}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        className="max-w-xs"
-      />
 
       {visibleRecipes.length === 0 ? (
         <p className="px-1 py-8 text-center text-sm text-muted-foreground">

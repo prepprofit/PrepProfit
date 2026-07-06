@@ -559,7 +559,15 @@ export function IngredientGrid({
         </div>
       )}
 
-      {/* Add a new ingredient — kept at the top, mirroring the Recipes page. */}
+      {/* Search + add side by side: search left, new-ingredient field right. */}
+      <div className="grid grid-cols-1 items-center gap-3 lg:grid-cols-2">
+      <Input
+        type="search"
+        aria-label={t('searchPlaceholder')}
+        placeholder={t('searchPlaceholder')}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
       <div className="rounded-xl border border-dashed border-border bg-surface p-3">
         <div
           className={cn(
@@ -621,14 +629,7 @@ export function IngredientGrid({
         </div>
       </div>
 
-      <Input
-        type="search"
-        aria-label={t('searchPlaceholder')}
-        placeholder={t('searchPlaceholder')}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        className="max-w-xs"
-      />
+      </div>
 
       <Card className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
