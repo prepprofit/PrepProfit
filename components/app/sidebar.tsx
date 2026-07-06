@@ -84,6 +84,7 @@ export function Sidebar({
   collapsed = false,
   onToggleCollapse,
   sidebarAiMeter,
+  needsPricingCount = 0,
 }: {
   className?: string;
   onNavigate?: () => void;
@@ -98,11 +99,14 @@ export function Sidebar({
   onToggleCollapse?: () => void;
   /** Manager-only photo-extraction usage meter; shown expanded-only in the footer. */
   sidebarAiMeter?: SidebarAiMeterView | null;
+  /** Active ingredients still needing a price — amber badge on the Ingredients row. */
+  needsPricingCount?: number;
 }) {
   const pathname = usePathname();
   const t = useTranslations('nav');
   const tGroups = useTranslations('navGroups');
   const tApp = useTranslations('app');
+  const tIngredients = useTranslations('ingredients');
   const tTop = useTranslations('topbar');
   const { resolvedTheme } = useTheme();
 
@@ -302,6 +306,10 @@ export function Sidebar({
             group.items.map(({ key, href }) => {
               const Icon = icons[key];
               const active = isActive(href);
+              // Manager nudge: ingredients still missing a price surface as an
+              // amber count pill (expanded) / dot (icon rail) on the row.
+              const showNeedsPricing =
+                key === 'ingredients' && needsPricingCount > 0;
               return (
                 <Link
                   key={key}
@@ -320,6 +328,21 @@ export function Sidebar({
                     )}
                   />
                   {!collapsed && t(key)}
+                  {showNeedsPricing &&
+                    (collapsed ? (
+                      <span
+                        className="absolute right-1.5 top-1.5 size-2 rounded-full bg-amber-500"
+                        aria-hidden
+                      />
+                    ) : (
+                      <span
+                        title={tIngredients('needsPricing')}
+                        aria-label={tIngredients('needsPricing')}
+                        className="ml-auto inline-flex min-w-4 items-center justify-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none tabular-nums text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                      >
+                        {needsPricingCount}
+                      </span>
+                    ))}
                 </Link>
               );
             })}

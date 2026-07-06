@@ -2,7 +2,9 @@ import { cache } from 'react';
 import { getTranslations } from 'next-intl/server';
 import { AppShell } from '@/components/app/app-shell';
 import Flows, { type FlowsUserProperties } from '@/app/flows';
-import { canAccessFinancials, getUserRole } from '@/lib/auth';
+import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
+import { withOrg } from '@/lib/db';
+import { countNeedsPricing } from '@/lib/data/ingredients';
 import { getTrialView } from '@/lib/trial';
 import { getEffectiveEntitlementState } from '@/lib/entitlements';
 import { getActivationSnapshot } from '@/lib/data/activation';
@@ -41,6 +43,16 @@ export default async function AppLayout({
         getActivationSnapshot(),
       ])
     : [null, null, null, null];
+  // Sidebar "Ingredients" badge: how many active ingredients still need a price.
+  // Manager-only (pricing is financial); kitchen gets no badge and no extra read.
+  const needsPricingCount = canSeeFinance
+    ? await (async () => {
+        const organizationId = await getOrgId();
+        return withOrg(organizationId, (tx) =>
+          countNeedsPricing(tx, organizationId),
+        );
+      })()
+    : 0;
   const lowestPaidPrice = canSeeFinance
     ? (await getTranslations('marketing.pricing.solo'))('price')
     : '';
@@ -66,6 +78,7 @@ export default async function AppLayout({
         trial={trial}
         sidebarAiMeter={sidebarAiMeter}
         lowestPaidPrice={lowestPaidPrice}
+        needsPricingCount={needsPricingCount}
       >
         {children}
       </AppShell>
