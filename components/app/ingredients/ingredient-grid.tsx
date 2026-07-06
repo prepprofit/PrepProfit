@@ -569,6 +569,9 @@ export function IngredientGrid({
         onChange={(e) => setQuery(e.target.value)}
       />
       <div className="rounded-xl border border-dashed border-border bg-surface p-3">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          {t('addTitle')}
+        </p>
         <div
           className={cn(
             'grid grid-cols-1 gap-2 sm:items-center',

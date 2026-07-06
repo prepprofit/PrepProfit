@@ -700,6 +700,7 @@
     "empty": "No ingredients yet. Add your first one below.",
     "searchPlaceholder": "Search ingredients…",
     "noMatches": "No ingredients match your search.",
+    "addTitle": "Add a new ingredient",
     "saved": "Saved",
     "needsPricing": "Needs pricing",
     "columns": {
