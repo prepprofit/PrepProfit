@@ -3,6 +3,7 @@ import { Pool, neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 import * as schema from './schema';
 import { serverEnv } from '../env';
+import { logError } from '../observability';
 import { runInOrg, type TenantTx } from './tenant';
 
 export * from './schema';
@@ -31,19 +32,10 @@ export function getDb(): NeonDatabase<typeof schema> {
     // while a slow AI call runs between two transactions. That event is off the
     // await path, so a request's try/catch can never catch it; without this
     // listener it escalates to an unhandled rejection ('Connection terminated
-    // unexpectedly') that Sentry reports as a crash. The pool discards the dead
-    // client and reconnects on the next checkout, so this is EXPECTED lifecycle
-    // noise — a console line (searchable in Vercel logs) without a Sentry event.
-    // A genuinely broken DB still surfaces on the await path of the next query.
+    // unexpectedly') that Sentry reports as a crash. We log it and let the pool
+    // discard the dead client and reconnect on the next checkout.
     pool.on('error', (err: Error) => {
-      console.warn(
-        JSON.stringify({
-          level: 'warn',
-          at: new Date().toISOString(),
-          action: 'dbPoolIdleClient',
-          message: err.message,
-        }),
-      );
+      logError({ action: 'dbPoolIdleClient' }, err);
     });
     cached = drizzle(pool, { schema });
   }

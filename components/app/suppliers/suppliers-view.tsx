@@ -87,11 +87,7 @@ export function SuppliersView({
 
   const [confirmArchiveId, setConfirmArchiveId] = React.useState<string | null>(null);
 
-  const [query, setQuery] = React.useState('');
-  const q = query.trim().toLowerCase();
-  const visible = (showArchived ? rows : rows.filter((r) => r.active)).filter(
-    (r) => !q || r.name.toLowerCase().includes(q),
-  );
+  const visible = showArchived ? rows : rows.filter((r) => r.active);
   const archiveTarget = rows.find((r) => r.id === confirmArchiveId) ?? null;
   const dialogRef = React.useRef<HTMLDialogElement>(null);
   const titleId = React.useId();
@@ -201,15 +197,6 @@ export function SuppliersView({
         </div>
       )}
 
-      <Input
-        type="search"
-        aria-label={tCommon('searchPlaceholder')}
-        placeholder={tCommon('searchPlaceholder')}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        className="max-w-xs"
-      />
-
       <div className="flex items-center justify-between gap-3">
         <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
           <input
@@ -249,7 +236,7 @@ export function SuppliersView({
                   colSpan={4}
                   className="px-3 py-8 text-center text-sm text-muted-foreground"
                 >
-                  {q ? tCommon('noMatches') : t('empty')}
+                  {t('empty')}
                 </td>
               </tr>
             )}

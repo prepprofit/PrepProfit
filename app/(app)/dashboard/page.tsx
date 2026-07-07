@@ -12,13 +12,9 @@ import { canAccessFinancials, getFirstName, getOrgId, getUserRole } from '@/lib/
 import { withOrg } from '@/lib/db';
 import { listRecipesWithLines } from '@/lib/data/recipes';
 import { listIngredients } from '@/lib/data/ingredients';
-import {
-  listTransactions,
-  sumTransactionsByMonth,
-  sumTransactionsByType,
-} from '@/lib/data/transactions';
-import { summarizeInvoicesForDashboard } from '@/lib/data/invoices';
-import { DEFAULT_ORG_SETTINGS, getOrgSettingsRow } from '@/lib/data/org-settings';
+import { listTransactions } from '@/lib/data/transactions';
+import { listInvoices } from '@/lib/data/invoices';
+import { getOrgSettings } from '@/lib/data/org-settings';
 import {
   dashboardSummary,
   type DashboardRecipeInput,
@@ -26,8 +22,10 @@ import {
 import {
   comparePeriods,
   financeSummary,
+  monthlyBuckets,
   type PeriodComparison,
 } from '@/lib/calculations/finance';
+import { invoiceSummary } from '@/lib/calculations/invoice';
 import { selectLowStock } from '@/lib/calculations/inventory';
 import { categoryLabel } from '@/lib/finance/categories';
 import {
@@ -127,12 +125,10 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [t, tFin, tCat, tLeaks] = await Promise.all([
-    getTranslations('dashboard'),
-    getTranslations('finance.dashboard'),
-    getTranslations('finance.categories'),
-    getTranslations('dashboard.profitLeaks'),
-  ]);
+  const t = await getTranslations('dashboard');
+  const tFin = await getTranslations('finance.dashboard');
+  const tCat = await getTranslations('finance.categories');
+  const tLeaks = await getTranslations('dashboard.profitLeaks');
   const organizationId = await getOrgId();
   // The dashboard is a manager cockpit — financial figures throughout (and the
   // operational KPIs are derived from recipe cost/price). Kitchen staff don't see
@@ -141,11 +137,17 @@ export default async function DashboardPage({
   if (!canAccessFinancials(await getUserRole())) {
     redirect('/recipes');
   }
-  const [firstName, locale, sp] = await Promise.all([
-    getFirstName(),
-    getLocale(),
-    searchParams,
-  ]);
+  const settings = await getOrgSettings();
+  // Post-signup onboarding gate (Sprint 4d). A manager whose org hasn't finished
+  // onboarding lands here (the sign-up fallback redirect → /dashboard) and is sent
+  // through the guided setup once. Set-once, so this never loops. Kitchen staff are
+  // already redirected to /recipes above and never see this.
+  if (settings.onboardedAt == null) {
+    redirect('/onboarding');
+  }
+  const firstName = await getFirstName();
+  const locale = await getLocale();
+  const sp = await searchParams;
   // Reverse-trial status strip — manager-only (kitchen is redirected above) and only
   // during an active trial (`getTrialView()` returns null otherwise). Request-cached, so
   // this shares the layout's entitlement read.
@@ -160,51 +162,15 @@ export default async function DashboardPage({
   const resolved = resolvePeriod('month', periodKey);
   const periodOptions = buildPeriodOptions(currentKey, locale);
 
-  // Two parallel org transactions: A = settings + operational data, B = financial
-  // aggregates + bounded finance rows. The onboarding check lives inside A (the
-  // settings read), so B may run needlessly on the rare not-yet-onboarded request —
-  // acceptable; the common path gets the latency win.
-  const [operational, financeRows] = await Promise.all([
-    withOrg(organizationId, async (tx) => {
-      const settings =
-        (await getOrgSettingsRow(tx, organizationId)) ?? DEFAULT_ORG_SETTINGS;
-      // Post-signup onboarding gate (Sprint 4d). A manager whose org hasn't finished
-      // onboarding is sent through the guided setup once. Set-once, never loops.
-      // redirect() must not be thrown inside the transaction — sentinel instead.
-      if (settings.onboardedAt == null) {
-        return { needsOnboarding: true as const, settings };
-      }
-      return {
-        needsOnboarding: false as const,
-        settings,
-        recipes: await listRecipesWithLines(tx, organizationId),
-        ingredients: await listIngredients(tx, organizationId),
-        profitLeaks: await loadProfitLeaks(tx, organizationId),
-      };
+  // Recipes + ingredients are operational (no financial figures) — both roles.
+  const { recipes, ingredients, profitLeaks } = await withOrg(
+    organizationId,
+    async (tx) => ({
+      recipes: await listRecipesWithLines(tx, organizationId),
+      ingredients: await listIngredients(tx, organizationId),
+      profitLeaks: await loadProfitLeaks(tx, organizationId),
     }),
-    withOrg(organizationId, async (tx) => ({
-      monthly: await sumTransactionsByMonth(tx, organizationId, resolved.year),
-      prior: await sumTransactionsByType(tx, organizationId, {
-        from: resolved.priorFrom,
-        to: resolved.priorTo,
-      }),
-      period: await listTransactions(tx, organizationId, {
-        from: resolved.from,
-        to: resolved.to,
-      }),
-      recent: await listTransactions(tx, organizationId, { limit: 8 }),
-      invoices: await summarizeInvoicesForDashboard(
-        tx,
-        organizationId,
-        todayKey(),
-      ),
-    })),
-  ]);
-
-  if (operational.needsOnboarding) {
-    redirect('/onboarding');
-  }
-  const { settings, recipes, ingredients, profitLeaks } = operational;
+  );
 
   const input: DashboardRecipeInput[] = recipes.map(({ recipe, lines }) => ({
     id: recipe.id,
@@ -245,44 +211,65 @@ export default async function DashboardPage({
   }));
 
   // Finance data — the page is manager-only (kitchen is redirected above).
-  // Full-year and prior-period totals plus the invoice summary come from SQL
-  // aggregates; only the current-month rows (category/product labels) and the
-  // recent list stay row-based.
-  const finance = (() => {
-    const periodSummary = financeSummary(financeRows.period);
-    return {
-      currency: settings.currency,
-      periodSummary,
-      revenueComparison: comparePeriods(
-        periodSummary.incomeCents,
-        financeRows.prior.incomeCents,
-      ),
-      profitComparison: comparePeriods(
-        periodSummary.profitCents,
-        financeRows.prior.profitCents,
-      ),
-      expenseComparison: comparePeriods(
-        periodSummary.expenseCents,
-        financeRows.prior.expenseCents,
-      ),
-      invoices: financeRows.invoices,
-      categoryItems: periodSummary.byCategory
-        .filter((c) => c.kind === 'expense')
-        .map((c) => ({
-          id: c.categoryId,
-          name: categoryLabel(c, (slug) => tCat(slug)),
-          kind: c.kind,
-          totalCents: c.totalCents,
-        })),
-      monthly: financeRows.monthly.map((b) => ({
-        label: shortMonth(b.month, locale),
-        incomeCents: b.incomeCents,
-        expenseCents: b.expenseCents,
-        profitCents: b.profitCents,
-      })),
-      recentTxns: financeRows.recent,
-    };
-  })();
+  const finance = await (async () => {
+        const yearKey = String(resolved.year);
+        const year = resolvePeriod('year', yearKey);
+
+        const txns = await withOrg(organizationId, async (tx) => ({
+          year: await listTransactions(tx, organizationId, {
+            from: year.from,
+            to: year.to,
+          }),
+          period: await listTransactions(tx, organizationId, {
+            from: resolved.from,
+            to: resolved.to,
+          }),
+          prior: await listTransactions(tx, organizationId, {
+            from: resolved.priorFrom,
+            to: resolved.priorTo,
+          }),
+          recent: await listTransactions(tx, organizationId, { limit: 8 }),
+        }));
+        const invoices = await withOrg(organizationId, (tx) =>
+          listInvoices(tx, organizationId),
+        );
+
+        const periodSummary = financeSummary(txns.period);
+        const priorSummary = financeSummary(txns.prior);
+
+        return {
+          currency: settings.currency,
+          periodSummary,
+          revenueComparison: comparePeriods(
+            periodSummary.incomeCents,
+            priorSummary.incomeCents,
+          ),
+          profitComparison: comparePeriods(
+            periodSummary.profitCents,
+            priorSummary.profitCents,
+          ),
+          expenseComparison: comparePeriods(
+            periodSummary.expenseCents,
+            priorSummary.expenseCents,
+          ),
+          invoices: invoiceSummary(invoices, todayKey()),
+          categoryItems: periodSummary.byCategory
+            .filter((c) => c.kind === 'expense')
+            .map((c) => ({
+              id: c.categoryId,
+              name: categoryLabel(c, (slug) => tCat(slug)),
+              kind: c.kind,
+              totalCents: c.totalCents,
+            })),
+          monthly: monthlyBuckets(txns.year, resolved.year).map((b) => ({
+            label: shortMonth(b.month, locale),
+            incomeCents: b.incomeCents,
+            expenseCents: b.expenseCents,
+            profitCents: b.profitCents,
+          })),
+          recentTxns: txns.recent,
+        };
+      })();
 
   const pricedCaption = t('kpi.pricedRecipes', { count: summary.pricedRecipes });
   const pct = (value: number | null) => (value == null ? '—' : `${value}%`);

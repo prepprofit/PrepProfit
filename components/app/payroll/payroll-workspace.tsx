@@ -198,12 +198,6 @@ function EmployeeManager({
     setOpen(true);
   };
 
-  const [query, setQuery] = React.useState('');
-  const q = query.trim().toLowerCase();
-  const visibleEmployees = q
-    ? employees.filter((e) => e.name.toLowerCase().includes(q))
-    : employees;
-
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (name.trim() === '') {
@@ -287,22 +281,11 @@ function EmployeeManager({
           </form>
         )}
 
-        <Input
-          type="search"
-          aria-label={tCommon('searchPlaceholder')}
-          placeholder={tCommon('searchPlaceholder')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="max-w-xs"
-        />
-
-        {visibleEmployees.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {q ? tCommon('noMatches') : t('empty')}
-          </p>
+        {employees.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
           <ul className="flex flex-col divide-y divide-border">
-            {visibleEmployees.map((e) => (
+            {employees.map((e) => (
               <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
                 <div className="flex min-w-0 flex-col">
                   <div className="flex items-center gap-2">

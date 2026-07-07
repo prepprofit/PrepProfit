@@ -171,11 +171,6 @@ function CustomerManager({
   const [deleteTarget, setDeleteTarget] = React.useState<CustomerOption | null>(
     null,
   );
-  const [query, setQuery] = React.useState('');
-  const q = query.trim().toLowerCase();
-  const visibleCustomers = q
-    ? customers.filter((c) => c.name.toLowerCase().includes(q))
-    : customers;
 
   const reset = () => {
     setEditingId(null);
@@ -275,22 +270,11 @@ function CustomerManager({
           </form>
         )}
 
-        <Input
-          type="search"
-          aria-label={tCommon('searchPlaceholder')}
-          placeholder={tCommon('searchPlaceholder')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="max-w-xs"
-        />
-
-        {visibleCustomers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {q ? tCommon('noMatches') : t('empty')}
-          </p>
+        {customers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
           <ul className="flex flex-col divide-y divide-border">
-            {visibleCustomers.map((c) => (
+            {customers.map((c) => (
               <li key={c.id} className="flex items-center justify-between gap-3 py-2">
                 <div className="flex min-w-0 flex-col">
                   <span className="truncate text-sm font-medium text-foreground">

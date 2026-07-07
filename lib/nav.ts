@@ -14,7 +14,6 @@ export const navGroups = [
   {
     key: 'operations',
     items: [
-      { key: 'ingredients', href: '/ingredients' },
       { key: 'recipes', href: '/recipes' },
       // Kitchen Scale (scaling workbench) — visible to BOTH roles; operational and
       // money-free by DTO type. Lives right after Recipes in Operations.
@@ -25,6 +24,7 @@ export const navGroups = [
       // Production planning (Sprint 11a) — visible to BOTH roles (kitchen plans a
       // money-free batch; manager also sees cost). Operations group.
       { key: 'productions', href: '/productions' },
+      { key: 'ingredients', href: '/ingredients' },
       { key: 'inventory', href: '/inventory' },
       // Kitchen task / prep / reorder lists (Sprint 6) — visible to BOTH roles
       // (operational, money-free). Operations group.

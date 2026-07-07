@@ -36,24 +36,6 @@ export function toKitchenIngredient(row: Ingredient): KitchenIngredient {
   return rest;
 }
 
-/** Active ingredients still flagged `needs_pricing` — feeds the sidebar badge. */
-export async function countNeedsPricing(
-  db: TenantClient,
-  organizationId: string,
-): Promise<number> {
-  const [row] = await db
-    .select({ value: count() })
-    .from(ingredients)
-    .where(
-      and(
-        eq(ingredients.organizationId, organizationId),
-        isNull(ingredients.deletedAt),
-        eq(ingredients.needsPricing, true),
-      ),
-    );
-  return row?.value ?? 0;
-}
-
 export async function listIngredients(
   db: TenantClient,
   organizationId: string,

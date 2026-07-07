@@ -54,11 +54,6 @@ export function RecipeList({
   const actionError = useActionError();
   const router = useRouter();
   const [name, setName] = React.useState('');
-  const [query, setQuery] = React.useState('');
-  const q = query.trim().toLowerCase();
-  const visibleRecipes = q
-    ? recipes.filter((r) => r.name.toLowerCase().includes(q))
-    : recipes;
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -129,44 +124,30 @@ export function RecipeList({
         </div>
       )}
 
-      {/* Search + create side by side: search left, new-recipe field right. */}
-      <div className="grid grid-cols-1 items-center gap-3 lg:grid-cols-2">
+      <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border bg-surface p-3 sm:flex-row sm:items-center">
         <Input
-          type="search"
-          aria-label={tCommon('searchPlaceholder')}
-          placeholder={tCommon('searchPlaceholder')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          aria-label={t('newName')}
+          placeholder={t('placeholders.name')}
+          value={name}
+          disabled={pending}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onCreate();
+          }}
         />
-        <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border bg-surface p-3 sm:flex-row sm:items-center">
-          <Input
-            aria-label={t('newName')}
-            placeholder={t('placeholders.name')}
-            value={name}
-            disabled={pending}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onCreate();
-            }}
-          />
-          <Button type="button" onClick={onCreate} disabled={pending}>
-            <Plus className="size-4" />
-            {t('actions.create')}
-          </Button>
-        </div>
+        <Button type="button" onClick={onCreate} disabled={pending}>
+          <Plus className="size-4" />
+          {t('actions.create')}
+        </Button>
       </div>
 
-      {visibleRecipes.length === 0 ? (
+      {recipes.length === 0 ? (
         <p className="px-1 py-8 text-center text-sm text-muted-foreground">
-          {q
-            ? tCommon('noMatches')
-            : inFolder
-              ? tFolders('emptyFolder')
-              : t('empty')}
+          {inFolder ? tFolders('emptyFolder') : t('empty')}
         </p>
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {visibleRecipes.map((recipe) => (
+          {recipes.map((recipe) => (
             <li
               key={recipe.id}
               className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4"

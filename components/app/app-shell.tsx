@@ -21,7 +21,6 @@ export function AppShell({
   trial,
   sidebarAiMeter,
   lowestPaidPrice,
-  needsPricingCount = 0,
 }: {
   children: React.ReactNode;
   /** Forwarded to both Sidebar instances; hides Finance for kitchen role. */
@@ -32,8 +31,6 @@ export function AppShell({
   sidebarAiMeter: SidebarAiMeterView | null;
   /** Lowest paid price label for the banner copy (empty for kitchen). */
   lowestPaidPrice: string;
-  /** Active ingredients still needing a price — badge on the Ingredients nav row. */
-  needsPricingCount?: number;
 }) {
   const tTop = useTranslations('topbar');
   const [open, setOpen] = React.useState(false);
@@ -105,7 +102,6 @@ export function AppShell({
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         sidebarAiMeter={sidebarAiMeter}
-        needsPricingCount={needsPricingCount}
       />
 
       {/* Mobile drawer */}
@@ -136,7 +132,6 @@ export function AppShell({
             onNavigate={() => setOpen(false)}
             canSeeFinance={canSeeFinance}
             sidebarAiMeter={sidebarAiMeter}
-            needsPricingCount={needsPricingCount}
           />
         </div>
       </div>

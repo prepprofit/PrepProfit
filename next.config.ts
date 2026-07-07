@@ -18,12 +18,6 @@ const CLERK =
   'https://*.clerk.com https://*.clerk.accounts.dev https://clerk.prepprofit.com https://clerk-telemetry.com';
 const SENTRY = 'https://*.sentry.io https://*.ingest.sentry.io https://*.ingest.de.sentry.io';
 const POSTHOG = 'https://*.posthog.com https://*.i.posthog.com';
-// Crisp live-chat (components/support/crisp-chat.tsx). Promoting the CSP to
-// enforcing (2026-07-05) blocked the widget script — Crisp's required sources:
-// https://docs.crisp.chat/guides/chatbox-sdks/web-sdk/csp-policy/
-const CRISP = 'https://client.crisp.chat';
-const CRISP_CONNECT =
-  'https://client.crisp.chat https://storage.crisp.chat wss://client.relay.crisp.chat wss://stream.relay.crisp.chat';
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -31,14 +25,13 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${CLERK} ${POSTHOG} ${CRISP} https://settings.crisp.chat https://challenges.cloudflare.com`,
-  `style-src 'self' 'unsafe-inline' ${CRISP}`,
-  `img-src 'self' data: blob: https://img.clerk.com ${CLERK} https://*.crisp.chat`,
-  `font-src 'self' data: ${CRISP}`,
-  `connect-src 'self' ${CLERK} ${SENTRY} ${POSTHOG} ${CRISP_CONNECT}`,
-  `media-src 'self' ${CRISP} https://storage.crisp.chat`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${CLERK} ${POSTHOG} https://challenges.cloudflare.com`,
+  "style-src 'self' 'unsafe-inline'",
+  `img-src 'self' data: blob: https://img.clerk.com ${CLERK}`,
+  "font-src 'self' data:",
+  `connect-src 'self' ${CLERK} ${SENTRY} ${POSTHOG}`,
   "worker-src 'self' blob:",
-  `frame-src 'self' ${CLERK} https://game.crisp.chat https://challenges.cloudflare.com https://js.stripe.com https://checkout.stripe.com`,
+  `frame-src 'self' ${CLERK} https://challenges.cloudflare.com https://js.stripe.com https://checkout.stripe.com`,
 ]
   .join('; ')
   // Collapse the spacing introduced by the multi-token third-party constants.
