@@ -30,6 +30,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
     },
+    // iPhone/WebKit: every iOS browser is WebKit, and its hydration/transition
+    // timing has crashed the app router where Chromium passed (2026-07-08
+    // incident: consent mount-effect setState → "Rendered more hooks…").
+    {
+      name: 'webkit',
+      use: { ...devices['iPhone 13'] },
+      dependencies: ['setup'],
+    },
   ],
   // Skip standing up a server when pointing at an already-running/remote target.
   webServer: process.env.E2E_BASE_URL
