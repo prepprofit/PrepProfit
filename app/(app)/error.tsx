@@ -47,6 +47,27 @@ export default function AppError({
               <Link href="/dashboard">{t('back')}</Link>
             </Button>
           </div>
+          {/* TEMPORARY diagnostic panel for the iPhone WebKit crash investigation.
+              Remove once the root cause is found. */}
+          <div className="mt-2 w-full rounded-md bg-muted p-3 text-left font-mono text-[11px] whitespace-pre-wrap break-words text-muted-foreground">
+            <div>
+              <strong>message:</strong> {error.message || '(empty)'}
+            </div>
+            {error.digest && (
+              <div>
+                <strong>digest:</strong> {error.digest}
+              </div>
+            )}
+            <div className="mt-2">
+              <strong>stack:</strong>
+              {'\n'}
+              {error.stack || '(no stack)'}
+            </div>
+            <div className="mt-2">
+              <strong>ua:</strong>{' '}
+              {typeof navigator !== 'undefined' ? navigator.userAgent : '(n/a)'}
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
