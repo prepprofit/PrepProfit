@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import posthog from 'posthog-js';
 import { useTranslations } from 'next-intl';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,11 @@ export default function AppError({
 
   React.useEffect(() => {
     logError({ action: 'app-error-boundary' }, error);
+    // TEMPORARY: second capture path (only fires if PostHog already loaded)
+    // while diagnosing the iPhone crash.
+    if (posthog.__loaded) {
+      posthog.captureException(error, { boundary: 'app-error' });
+    }
   }, [error]);
 
   return (

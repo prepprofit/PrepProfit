@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import posthog from 'posthog-js';
 import { logError } from '@/lib/observability';
 
 /**
@@ -18,6 +19,12 @@ export default function GlobalError({
 }) {
   React.useEffect(() => {
     logError({ action: 'global-error' }, error);
+    // TEMPORARY: only fires if PostHog already loaded (consent granted before
+    // the crash) — a best-effort second capture path while diagnosing the
+    // iPhone crash, since Sentry alone hasn't produced a usable stack yet.
+    if (posthog.__loaded) {
+      posthog.captureException(error, { boundary: 'global-error' });
+    }
   }, [error]);
 
   return (
