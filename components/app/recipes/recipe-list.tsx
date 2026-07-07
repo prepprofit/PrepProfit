@@ -4,7 +4,6 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { startWorkflow } from '@flows/react';
 import { ChevronRight, Plus, Trash2 } from 'lucide-react';
 import type { Recipe } from '@/lib/db/schema';
 import { Input } from '@/components/ui/input';
@@ -84,10 +83,6 @@ export function RecipeList({
         packagingCostCents: 0,
       });
       if (result.ok) {
-        // Best-effort celebratory nudge — never block navigation on Flows, and a Flows
-        // outage must not break recipe creation. Canonical checklist completion still
-        // comes from the `recipeCount` user property, so imports aren't missed.
-        void startWorkflow('first-recipe-created').catch(() => undefined);
         router.push(`/recipes/${result.data.id}`);
       } else {
         setError(actionError(result.code));

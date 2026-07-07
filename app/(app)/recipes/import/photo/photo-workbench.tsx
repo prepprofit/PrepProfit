@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, useActionState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { startWorkflow } from '@flows/react';
 import {
   Camera,
   CheckCircle2,
@@ -181,9 +180,6 @@ function PhotoFlow({
       // repeat upload this session shows honest availability. Failures/USAGE_LIMIT
       // returned above (via !res.ok) never reach here, so they don't decrement.
       onExtracted();
-      // Best-effort celebratory nudge — never block the flow on Flows. Canonical
-      // checklist completion still comes from the `hasRunPhotoExtraction` user property.
-      void startWorkflow('first-photo-extraction-done').catch(() => undefined);
     } catch {
       setError('UNEXPECTED');
     } finally {
