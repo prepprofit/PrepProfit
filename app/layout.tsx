@@ -6,6 +6,7 @@ import { getLocale } from 'next-intl/server';
 import { ThemeProvider } from '@/components/theme-provider';
 import { CrispChat } from '@/components/support/crisp-chat';
 import { PostHogInit } from '@/components/analytics/posthog-init';
+import { CookieBanner } from '@/components/consent/cookie-banner';
 import './globals.css';
 
 // Google-product type pairing: Roboto for UI/body (the Android system font) and
@@ -53,9 +54,9 @@ export default async function RootLayout({
               {/* Browser PostHog (pageviews/autocapture/replay). No-op until
                   NEXT_PUBLIC_POSTHOG_KEY is set. */}
               <PostHogInit />
-              {/* CookieBanner TEMPORARILY removed to bisect the 2026-07-08
-                  iPhone/WebKit router crash. PostHog stays consent-gated (no
-                  banner = no new grants). Restore once the crash is isolated. */}
+              {/* GDPR cookie banner: gates PostHog (analytics + replay) on
+                  explicit opt-in; Clerk/theme/Crisp are strictly necessary. */}
+              <CookieBanner />
             </NextIntlClientProvider>
           </ThemeProvider>
         </body>
