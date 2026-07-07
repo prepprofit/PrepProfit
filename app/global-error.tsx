@@ -57,6 +57,42 @@ export default function GlobalError({
           >
             Try again
           </button>
+          {/* TEMPORARY diagnostic panel for the iPhone WebKit crash investigation.
+              Remove once the root cause is found — this is intentionally visible
+              to whoever hits the error so it can be read/photographed off-device
+              without needing a Mac for remote Safari debugging. */}
+          <div
+            style={{
+              marginTop: 24,
+              textAlign: 'left',
+              fontFamily: 'ui-monospace, monospace',
+              fontSize: 11,
+              color: '#334155',
+              background: '#f1f5f9',
+              borderRadius: 8,
+              padding: 12,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            <div>
+              <strong>message:</strong> {error.message || '(empty)'}
+            </div>
+            {error.digest && (
+              <div>
+                <strong>digest:</strong> {error.digest}
+              </div>
+            )}
+            <div style={{ marginTop: 8 }}>
+              <strong>stack:</strong>
+              {'\n'}
+              {error.stack || '(no stack)'}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <strong>ua:</strong>{' '}
+              {typeof navigator !== 'undefined' ? navigator.userAgent : '(n/a)'}
+            </div>
+          </div>
         </div>
       </body>
     </html>
