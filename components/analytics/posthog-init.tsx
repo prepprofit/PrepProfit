@@ -1,13 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import posthog from 'posthog-js';
 import { useAuth } from '@clerk/nextjs';
-import {
-  CONSENT_CHANGE_EVENT,
-  readConsent,
-  type ConsentValue,
-} from '@/lib/consent';
+import { readConsent, subscribeConsent } from '@/lib/consent';
 
 const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 
@@ -24,15 +20,10 @@ const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
  */
 export function PostHogInit() {
   const { userId, orgId } = useAuth();
-  const [consent, setConsent] = useState<ConsentValue | null>(null);
-
-  useEffect(() => {
-    setConsent(readConsent());
-    const onChange = (e: Event) =>
-      setConsent((e as CustomEvent<ConsentValue>).detail);
-    window.addEventListener(CONSENT_CHANGE_EVENT, onChange);
-    return () => window.removeEventListener(CONSENT_CHANGE_EVENT, onChange);
-  }, []);
+  // useSyncExternalStore, NOT a mount-effect setState: a post-hydration setState
+  // cascade in the root layout crashes the Next router on WebKit/iOS
+  // ("Rendered more hooks…", facebook/react#33580).
+  const consent = useSyncExternalStore(subscribeConsent, readConsent, () => null);
 
   useEffect(() => {
     if (!KEY) return;

@@ -39,6 +39,18 @@ export function writeConsent(value: ConsentValue): void {
   );
 }
 
+/**
+ * `useSyncExternalStore` subscription for consent changes. Components read
+ * consent via `useSyncExternalStore(subscribeConsent, readConsent, () => null)`
+ * instead of a mount-effect `setState` — a post-hydration setState cascade in
+ * the root layout triggers a React 19 "Rendered more hooks than during the
+ * previous render" crash in the Next router on WebKit (facebook/react#33580).
+ */
+export function subscribeConsent(onChange: () => void): () => void {
+  window.addEventListener(CONSENT_CHANGE_EVENT, onChange);
+  return () => window.removeEventListener(CONSENT_CHANGE_EVENT, onChange);
+}
+
 /** Reopen the banner (footer "Cookie settings" / settings page). */
 export function openConsentBanner(): void {
   window.dispatchEvent(new Event(CONSENT_OPEN_EVENT));

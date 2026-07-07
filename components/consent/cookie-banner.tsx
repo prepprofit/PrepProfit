@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import {
   CONSENT_OPEN_EVENT,
   readConsent,
+  subscribeConsent,
   writeConsent,
 } from '@/lib/consent';
 
@@ -15,24 +16,28 @@ import {
  * reopenable via openConsentBanner() (footer / settings "Cookie settings").
  * Reject must be as easy as Accept, so both are equal-weight buttons and
  * there is no cookie wall — the site works fully either way.
+ *
+ * Consent is read via useSyncExternalStore, NOT a mount-effect setState: a
+ * post-hydration setState cascade in the root layout crashes the Next router
+ * on WebKit/iOS ("Rendered more hooks…", facebook/react#33580).
  */
 export function CookieBanner() {
   const t = useTranslations('consent');
-  const [open, setOpen] = useState(false);
+  const consent = useSyncExternalStore(subscribeConsent, readConsent, () => null);
+  const [reopened, setReopened] = useState(false);
 
   useEffect(() => {
-    // Read after mount so SSR markup never depends on the cookie.
-    setOpen(readConsent() === null);
-    const reopen = () => setOpen(true);
+    // Event-handler setState (user click), not a hydration cascade.
+    const reopen = () => setReopened(true);
     window.addEventListener(CONSENT_OPEN_EVENT, reopen);
     return () => window.removeEventListener(CONSENT_OPEN_EVENT, reopen);
   }, []);
 
-  if (!open) return null;
+  if (consent !== null && !reopened) return null;
 
   const choose = (value: 'granted' | 'denied') => {
     writeConsent(value);
-    setOpen(false);
+    setReopened(false);
   };
 
   return (

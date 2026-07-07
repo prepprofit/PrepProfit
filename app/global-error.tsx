@@ -17,6 +17,22 @@ export default function GlobalError({
 }) {
   React.useEffect(() => {
     logError({ action: 'global-error' }, error);
+    // Stale-client crashes (old build in a restored tab, WebKit hooks bug,
+    // missing chunks after a deploy) are fixed by fetching the current build —
+    // auto-reload ONCE per session so an iPhone user isn't stranded here, with
+    // a sessionStorage guard so a genuinely persistent error never loops.
+    const staleClient =
+      /Rendered more hooks|ChunkLoadError|Loading chunk|dynamically imported module/i.test(
+        error.message,
+      );
+    try {
+      if (staleClient && !sessionStorage.getItem('pp-global-error-reloaded')) {
+        sessionStorage.setItem('pp-global-error-reloaded', '1');
+        window.location.reload();
+      }
+    } catch {
+      // sessionStorage unavailable (private mode): leave the manual button.
+    }
   }, [error]);
 
   return (
