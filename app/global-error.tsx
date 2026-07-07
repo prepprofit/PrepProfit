@@ -11,7 +11,6 @@ import { logError } from '@/lib/observability';
  */
 export default function GlobalError({
   error,
-  reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
@@ -43,7 +42,11 @@ export default function GlobalError({
           </p>
           <button
             type="button"
-            onClick={reset}
+            // Full reload, NOT reset(): a root-layout crash here is often a stale
+            // client (tab restored from bfcache after a deploy, old build against
+            // the new server). reset() re-renders the same broken in-memory state
+            // forever; a hard reload fetches the current build and recovers.
+            onClick={() => window.location.reload()}
             style={{
               cursor: 'pointer',
               borderRadius: 9999,
