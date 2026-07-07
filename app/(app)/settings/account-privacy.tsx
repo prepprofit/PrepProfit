@@ -13,7 +13,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { useActionError } from '@/lib/i18n/use-action-error';
-import { openConsentBanner } from '@/lib/consent';
 import {
   requestAccountDeletionAction,
   cancelAccountDeletionAction,
@@ -66,19 +65,6 @@ export function AccountPrivacy({ deletionRequestedAt }: AccountPrivacyProps) {
               <a href="/api/account/export" download>
                 {t('export.action')}
               </a>
-            </Button>
-          </div>
-        </div>
-
-        {/* Cookie consent (GDPR withdrawal must be as easy as granting) */}
-        <div className="flex flex-col gap-2 border-t border-border pt-6">
-          <h3 className="text-sm font-medium text-foreground">
-            {t('cookies.title')}
-          </h3>
-          <p className="text-xs text-muted-foreground">{t('cookies.help')}</p>
-          <div>
-            <Button variant="outline" onClick={openConsentBanner}>
-              {t('cookies.action')}
             </Button>
           </div>
         </div>

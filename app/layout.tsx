@@ -3,12 +3,9 @@ import { Roboto, Outfit } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
-import { cookies } from 'next/headers';
-import { CONSENT_COOKIE, parseConsent } from '@/lib/consent-shared';
 import { ThemeProvider } from '@/components/theme-provider';
 import { CrispChat } from '@/components/support/crisp-chat';
 import { PostHogInit } from '@/components/analytics/posthog-init';
-import { CookieBanner } from '@/components/consent/cookie-banner';
 import './globals.css';
 
 // Google-product type pairing: Roboto for UI/body (the Android system font) and
@@ -31,12 +28,6 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const locale = await getLocale();
-  // Server-read consent so the client components' server snapshot matches the
-  // first client render — a null-vs-cookie mismatch during root-layout
-  // hydration crashes WebKit/iOS ("Rendered more hooks…").
-  const initialConsent = parseConsent(
-    (await cookies()).get(CONSENT_COOKIE)?.value,
-  );
 
   return (
     <ClerkProvider>
@@ -61,10 +52,7 @@ export default async function RootLayout({
               <CrispChat />
               {/* Browser PostHog (pageviews/autocapture/replay). No-op until
                   NEXT_PUBLIC_POSTHOG_KEY is set. */}
-              <PostHogInit initialConsent={initialConsent} />
-              {/* GDPR cookie banner: gates PostHog (analytics + replay) on
-                  explicit opt-in; Clerk/theme/Crisp are strictly necessary. */}
-              <CookieBanner initialConsent={initialConsent} />
+              <PostHogInit />
             </NextIntlClientProvider>
           </ThemeProvider>
         </body>

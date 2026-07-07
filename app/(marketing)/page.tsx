@@ -13,7 +13,6 @@ import { PricingSection } from '@/components/marketing/pricing-section';
 import { TestimonialsMarquee } from '@/components/marketing/testimonials-marquee';
 import { FaqSection } from '@/components/marketing/faq-section';
 import { Reveal } from '@/components/marketing/reveal';
-import { CookieSettingsLink } from '@/components/consent/cookie-settings-link';
 
 const AUDIENCE = [
   { key: 'chefs', icon: '/icons/chefs.webp' },
@@ -343,23 +342,14 @@ export default async function MarketingPage() {
                   </a>
                 </li>
                 <li>
-                  <Link
-                    href="/privacy"
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                  >
+                  <span className="text-sm text-muted-foreground">
                     {t('footer.privacy')}
-                  </Link>
+                  </span>
                 </li>
                 <li>
-                  <Link
-                    href="/terms"
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                  >
+                  <span className="text-sm text-muted-foreground">
                     {t('footer.terms')}
-                  </Link>
-                </li>
-                <li>
-                  <CookieSettingsLink />
+                  </span>
                 </li>
               </ul>
             </div>

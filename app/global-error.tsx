@@ -11,28 +11,13 @@ import { logError } from '@/lib/observability';
  */
 export default function GlobalError({
   error,
+  reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
   React.useEffect(() => {
     logError({ action: 'global-error' }, error);
-    // Stale-client crashes (old build in a restored tab, WebKit hooks bug,
-    // missing chunks after a deploy) are fixed by fetching the current build —
-    // auto-reload ONCE per session so an iPhone user isn't stranded here, with
-    // a sessionStorage guard so a genuinely persistent error never loops.
-    const staleClient =
-      /Rendered more hooks|ChunkLoadError|Loading chunk|dynamically imported module/i.test(
-        error.message,
-      );
-    try {
-      if (staleClient && !sessionStorage.getItem('pp-global-error-reloaded')) {
-        sessionStorage.setItem('pp-global-error-reloaded', '1');
-        window.location.reload();
-      }
-    } catch {
-      // sessionStorage unavailable (private mode): leave the manual button.
-    }
   }, [error]);
 
   return (
@@ -58,11 +43,7 @@ export default function GlobalError({
           </p>
           <button
             type="button"
-            // Full reload, NOT reset(): a root-layout crash here is often a stale
-            // client (tab restored from bfcache after a deploy, old build against
-            // the new server). reset() re-renders the same broken in-memory state
-            // forever; a hard reload fetches the current build and recovers.
-            onClick={() => window.location.reload()}
+            onClick={reset}
             style={{
               cursor: 'pointer',
               borderRadius: 9999,

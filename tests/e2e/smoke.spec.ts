@@ -39,68 +39,6 @@ test.describe('public', () => {
   });
 });
 
-test.describe('consent hydration', () => {
-  // Regression for the 2026-07-08 iPhone incident: a post-hydration setState in
-  // the root layout (cookie banner / PostHog consent) crashed the Next router on
-  // WebKit with "Rendered more hooks than during the previous render". Exercise
-  // hydration + client-side navigation with and without the consent cookie and
-  // assert the router survives (runs on both chromium and webkit projects).
-  const assertNoHooksCrash = async (page: import('@playwright/test').Page) => {
-    const errors: string[] = [];
-    page.on('pageerror', (e) => errors.push(e.message));
-    await page.goto('/');
-    await page.locator('header a[href="/"]').first().waitFor();
-    // Client-side navigation: sign-in and back via real links.
-    await page.goto('/sign-in');
-    await page.goto('/');
-    expect(errors.filter((m) => /Rendered more hooks/i.test(m))).toEqual([]);
-    await expect(page.getByText('An unexpected error occurred')).toHaveCount(0);
-  };
-
-  test('no consent cookie: banner shows, choosing works, router survives', async ({
-    page,
-  }) => {
-    const errors: string[] = [];
-    page.on('pageerror', (e) => errors.push(e.message));
-    await page.goto('/');
-    const banner = page.getByRole('dialog', { name: /cookies/i });
-    await expect(banner).toBeVisible();
-    await banner.getByRole('button', { name: /reject/i }).click();
-    await expect(banner).toHaveCount(0);
-    expect(errors.filter((m) => /Rendered more hooks/i.test(m))).toEqual([]);
-  });
-
-  test('consent granted cookie: router survives hydration + navigation', async ({
-    page,
-    context,
-    baseURL,
-  }) => {
-    await context.addCookies([
-      {
-        name: 'pp_cookie_consent',
-        value: 'granted',
-        url: baseURL ?? 'http://localhost:3000',
-      },
-    ]);
-    await assertNoHooksCrash(page);
-  });
-
-  test('consent denied cookie: router survives hydration + navigation', async ({
-    page,
-    context,
-    baseURL,
-  }) => {
-    await context.addCookies([
-      {
-        name: 'pp_cookie_consent',
-        value: 'denied',
-        url: baseURL ?? 'http://localhost:3000',
-      },
-    ]);
-    await assertNoHooksCrash(page);
-  });
-});
-
 test.describe('authed manager', () => {
   test.skip(!managerConfigured, 'Clerk test instance + E2E_USER_* not configured');
 
