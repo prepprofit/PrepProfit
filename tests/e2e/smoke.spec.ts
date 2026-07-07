@@ -60,6 +60,9 @@ test.describe('consent hydration', () => {
   test('no consent cookie: banner shows, choosing works, router survives', async ({
     page,
   }) => {
+    // CookieBanner temporarily removed from the root layout (2026-07-08 iPhone
+    // crash bisect) — re-enable this spec when the banner is restored.
+    test.skip(true, 'CookieBanner temporarily removed from root layout');
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('/');
