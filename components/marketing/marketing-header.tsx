@@ -44,6 +44,9 @@ export function MarketingHeader({ productName }: { productName: string }) {
     if (el) {
       const top = el.getBoundingClientRect().top + window.scrollY - 80;
       window.scrollTo({ top, behavior: 'smooth' });
+    } else {
+      // Not on the landing page (e.g. /terms, /privacy): go there first.
+      window.location.href = `/${href}`;
     }
   };
 

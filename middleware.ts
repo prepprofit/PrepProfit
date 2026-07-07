@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server';
 
 const isPublicRoute = createRouteMatcher([
   '/',
+  // Legal documents must be readable by anonymous visitors (GDPR/ToS links).
+  '/terms',
+  '/privacy',
   '/sign-in(.*)',
   '/sign-up(.*)',
   // Cron jobs authenticate with CRON_SECRET (see lib/cron-auth.ts), not a
