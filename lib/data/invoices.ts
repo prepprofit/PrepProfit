@@ -8,6 +8,8 @@ import {
 import type { Invoice, InvoiceItem, InvoiceStatus } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { invoiceTotals } from '@/lib/calculations/invoice';
+import type { InvoiceSummary } from '@/lib/calculations/invoice';
+import { toSafeCents } from '@/lib/data/transactions';
 import type { InvoiceDraftInput, InvoiceItemInput } from '@/lib/validation/invoices';
 
 /**
@@ -104,6 +106,40 @@ export async function listInvoices(
     dueDate: r.dueDate,
     createdAt: r.createdAt,
   }));
+}
+
+/**
+ * Dashboard aggregate: lifetime AR/status summary computed in SQL instead of
+ * fetching every invoice row (`listInvoices()` is intentionally unbounded and
+ * wrong for this once history grows). Same semantics as the pure
+ * `invoiceSummary()`: void is ignored, outstanding = issued totals, overdue =
+ * issued past `today` (bare 'YYYY-MM-DD', lexicographic). Org-scoped,
+ * soft-delete-aware.
+ */
+export async function summarizeInvoicesForDashboard(
+  db: TenantClient,
+  organizationId: string,
+  today: string,
+): Promise<InvoiceSummary> {
+  const [row] = await db
+    .select({
+      outstanding: sql<string>`coalesce(sum(${invoices.totalCents}) filter (where ${invoices.status} = 'issued'), 0)`,
+      overdue: sql<string>`coalesce(sum(${invoices.totalCents}) filter (where ${invoices.status} = 'issued' and ${invoices.dueDate} is not null and ${invoices.dueDate} < ${today}), 0)`,
+      draftCount: sql<number>`count(*) filter (where ${invoices.status} = 'draft')::int`,
+      issuedCount: sql<number>`count(*) filter (where ${invoices.status} = 'issued')::int`,
+      paidCount: sql<number>`count(*) filter (where ${invoices.status} = 'paid')::int`,
+    })
+    .from(invoices)
+    .where(
+      and(eq(invoices.organizationId, organizationId), isNull(invoices.deletedAt)),
+    );
+  return {
+    outstandingCents: toSafeCents(row?.outstanding, 'invoiceSummary.outstanding'),
+    overdueCents: toSafeCents(row?.overdue, 'invoiceSummary.overdue'),
+    draftCount: row?.draftCount ?? 0,
+    issuedCount: row?.issuedCount ?? 0,
+    paidCount: row?.paidCount ?? 0,
+  };
 }
 
 export type InvoiceWithItems = {

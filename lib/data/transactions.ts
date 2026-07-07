@@ -135,6 +135,103 @@ export async function listTransactions(
   }));
 }
 
+/**
+ * Postgres `SUM(integer)` comes back as a bigint-ish string/number from the
+ * driver. App money stays integer cents, so convert at the data edge and refuse
+ * anything that is not a safe integer (never silently coerce an unsafe sum).
+ */
+export function toSafeCents(value: unknown, label: string): number {
+  const n = Number(value ?? 0);
+  if (!Number.isSafeInteger(n)) {
+    throw new Error(`${label}: aggregate is not a safe integer cent value.`);
+  }
+  return n;
+}
+
+export type TransactionTypeTotals = {
+  incomeCents: number;
+  expenseCents: number;
+  profitCents: number;
+};
+
+export type TransactionMonthlyTotals = {
+  month: number;
+  incomeCents: number;
+  expenseCents: number;
+  profitCents: number;
+};
+
+/**
+ * Dashboard aggregate: income/expense/profit totals for an inclusive date range,
+ * computed in SQL (no row transfer, no category/recipe joins). Org-scoped,
+ * soft-delete-aware. Zero rows → all zeros.
+ */
+export async function sumTransactionsByType(
+  db: TenantClient,
+  organizationId: string,
+  range: { from: string; to: string },
+): Promise<TransactionTypeTotals> {
+  const [row] = await db
+    .select({
+      income: sql<string>`coalesce(sum(${transactions.amountCents}) filter (where ${transactions.type} = 'income'), 0)`,
+      expense: sql<string>`coalesce(sum(${transactions.amountCents}) filter (where ${transactions.type} = 'expense'), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.organizationId, organizationId),
+        isNull(transactions.deletedAt),
+        gte(transactions.occurredOn, range.from),
+        lte(transactions.occurredOn, range.to),
+      ),
+    );
+  const incomeCents = toSafeCents(row?.income, 'sumTransactionsByType.income');
+  const expenseCents = toSafeCents(row?.expense, 'sumTransactionsByType.expense');
+  return { incomeCents, expenseCents, profitCents: incomeCents - expenseCents };
+}
+
+/**
+ * Dashboard aggregate: per-month income/expense/profit totals for one calendar
+ * year, computed in SQL. Always returns exactly 12 buckets (months with no
+ * activity stay zeroed), matching `monthlyBuckets()`. Bare-date string bounds —
+ * no timezone math. Org-scoped, soft-delete-aware.
+ */
+export async function sumTransactionsByMonth(
+  db: TenantClient,
+  organizationId: string,
+  year: number,
+): Promise<TransactionMonthlyTotals[]> {
+  const rows = await db
+    .select({
+      month: sql<number>`extract(month from ${transactions.occurredOn})::int`,
+      income: sql<string>`coalesce(sum(${transactions.amountCents}) filter (where ${transactions.type} = 'income'), 0)`,
+      expense: sql<string>`coalesce(sum(${transactions.amountCents}) filter (where ${transactions.type} = 'expense'), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.organizationId, organizationId),
+        isNull(transactions.deletedAt),
+        gte(transactions.occurredOn, `${year}-01-01`),
+        lte(transactions.occurredOn, `${year}-12-31`),
+      ),
+    )
+    .groupBy(sql`extract(month from ${transactions.occurredOn})::int`);
+
+  const buckets: TransactionMonthlyTotals[] = Array.from(
+    { length: 12 },
+    (_, i) => ({ month: i + 1, incomeCents: 0, expenseCents: 0, profitCents: 0 }),
+  );
+  for (const r of rows) {
+    const bucket = buckets[r.month - 1];
+    if (!bucket) continue;
+    bucket.incomeCents = toSafeCents(r.income, 'sumTransactionsByMonth.income');
+    bucket.expenseCents = toSafeCents(r.expense, 'sumTransactionsByMonth.expense');
+    bucket.profitCents = bucket.incomeCents - bucket.expenseCents;
+  }
+  return buckets;
+}
+
 export async function getTransactionById(
   db: TenantClient,
   organizationId: string,
