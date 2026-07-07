@@ -2,10 +2,12 @@ import { cache } from 'react';
 import { getTranslations } from 'next-intl/server';
 import { AppShell } from '@/components/app/app-shell';
 import Flows, { type FlowsUserProperties } from '@/app/flows';
-import { canAccessFinancials, getUserRole } from '@/lib/auth';
+import { canAccessFinancials, getOrgId, getUserRole } from '@/lib/auth';
+import { withOrg } from '@/lib/db';
+import { countNeedsPricing } from '@/lib/data/ingredients';
 import { getTrialView } from '@/lib/trial';
 import { getEffectiveEntitlementState } from '@/lib/entitlements';
-import { getActivationSnapshot } from '@/lib/data/activation';
+import { readActivationSnapshot } from '@/lib/data/activation';
 import {
   buildSidebarAiMeterView,
   getAiUsageThisMonth,
@@ -20,6 +22,18 @@ const getSidebarAiMeterView = cache(
     buildSidebarAiMeterView(await getAiUsageThisMonth()),
 );
 
+// One org transaction for all DB-backed manager layout data (activation snapshot
+// for Flows + the needs-pricing sidebar badge) instead of two serial `withOrg`s.
+// Layout-local (lib/data stays React-free); entitlement/trial reads stay outside —
+// they are Clerk/session-derived, not DB-backed.
+const getManagerLayoutDbSnapshot = cache(async () => {
+  const organizationId = await getOrgId();
+  return withOrg(organizationId, async (tx) => ({
+    activation: await readActivationSnapshot(tx, organizationId),
+    needsPricingCount: await countNeedsPricing(tx, organizationId),
+  }));
+});
+
 export default async function AppLayout({
   children,
 }: {
@@ -33,14 +47,18 @@ export default async function AppLayout({
   // Trial surfaces, the AI meter, and the Flows onboarding payload are manager-only.
   // Kitchen staff never see checkout/upgrade/onboarding CTAs in v1, so we skip the reads
   // (incl. the entitlement + activation reads) entirely for them.
-  const [trial, sidebarAiMeter, entitlement, activation] = canSeeFinance
+  const [trial, sidebarAiMeter, entitlement, dbSnapshot] = canSeeFinance
     ? await Promise.all([
         getTrialView(),
         getSidebarAiMeterView(),
         getEffectiveEntitlementState(),
-        getActivationSnapshot(),
+        getManagerLayoutDbSnapshot(),
       ])
     : [null, null, null, null];
+  const activation = dbSnapshot?.activation ?? null;
+  // Sidebar "Ingredients" badge: how many active ingredients still need a price.
+  // Manager-only (pricing is financial); kitchen gets no badge and no extra read.
+  const needsPricingCount = dbSnapshot?.needsPricingCount ?? 0;
   const lowestPaidPrice = canSeeFinance
     ? (await getTranslations('marketing.pricing.solo'))('price')
     : '';
@@ -66,6 +84,7 @@ export default async function AppLayout({
         trial={trial}
         sidebarAiMeter={sidebarAiMeter}
         lowestPaidPrice={lowestPaidPrice}
+        needsPricingCount={needsPricingCount}
       >
         {children}
       </AppShell>

@@ -685,7 +685,9 @@
     "delete": "Delete",
     "add": "Add",
     "moveToTrash": "Move to Trash",
-    "deleteForever": "Delete permanently"
+    "deleteForever": "Delete permanently",
+    "searchPlaceholder": "Search…",
+    "noMatches": "Nothing matches your search."
   },
   "dimensions": {
     "weight": "Weight",
@@ -696,6 +698,9 @@
     "title": "Ingredients",
     "subtitle": "Your pantry. Prices feed straight into recipe costs.",
     "empty": "No ingredients yet. Add your first one below.",
+    "searchPlaceholder": "Search ingredients…",
+    "noMatches": "No ingredients match your search.",
+    "addTitle": "Add a new ingredient",
     "saved": "Saved",
     "needsPricing": "Needs pricing",
     "columns": {
@@ -1090,6 +1095,11 @@
         "title": "Export your data",
         "help": "Download a complete JSON copy of your organization's data — recipes, ingredients, financials, invoices, payroll, imports and activity log.",
         "action": "Download data export"
+      },
+      "cookies": {
+        "title": "Cookie preferences",
+        "help": "Analytics and session replay run only with your consent. Change your choice at any time.",
+        "action": "Cookie settings"
       },
       "delete": {
         "title": "Delete this organization",
@@ -2453,6 +2463,229 @@
       "contact": "Contact",
       "note": "Multi-tenant, role-based and secure by design.",
       "rights": "All rights reserved."
+    }
+  },
+  "consent": {
+    "title": "Cookies on PrepProfit",
+    "body": "We use cookies for analytics and session replay (PostHog, EU-hosted) to understand how the product is used and improve it. These run only if you accept. Essential cookies for sign-in, security and support chat are always on.",
+    "learnMore": "Privacy policy",
+    "accept": "Accept",
+    "reject": "Reject",
+    "settingsLink": "Cookie settings"
+  },
+  "legal": {
+    "common": {
+      "disclaimer": "This document is provided in English only. Contact us if anything is unclear.",
+      "questions": "Questions about this document?",
+      "backHome": "Home",
+      "termsLink": "Terms of service",
+      "privacyLink": "Privacy policy"
+    },
+    "signupNotice": "By creating an account you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
+    "terms": {
+      "title": "Terms of Service",
+      "lastUpdated": "Last updated: 7 July 2026",
+      "sections": [
+        {
+          "heading": "1. Who we are",
+          "body": [
+            "PrepProfit is a software service operated by a private trader registered in Finland (Business ID 3399953-5, VAT FI33999535), referred to below as \"PrepProfit\", \"we\" or \"us\". You can reach us at info@prepprofit.com.",
+            "These Terms of Service (the \"Terms\") govern your access to and use of the PrepProfit web application and website at prepprofit.com (the \"Service\")."
+          ]
+        },
+        {
+          "heading": "2. The Service",
+          "body": [
+            "PrepProfit is a business tool for restaurants, bakeries, patisseries and other food businesses: recipe costing, inventory, financial records, break-even analysis, invoicing, payroll summaries, document generation, data imports and AI-assisted recipe extraction.",
+            "The Service is offered to businesses and professionals (B2B). By creating an account you confirm that you are acting in the course of a trade, business or profession, not as a consumer."
+          ]
+        },
+        {
+          "heading": "3. Accounts and workspaces",
+          "body": [
+            "You need an account to use the Service. You are responsible for keeping your credentials secure and for all activity under your account.",
+            "Data in the Service is organized in workspaces (organizations). Access within a workspace is controlled by roles that the workspace administrator assigns.",
+            "You must provide accurate information when signing up and keep it up to date."
+          ]
+        },
+        {
+          "heading": "4. Plans, trial and payment",
+          "body": [
+            "Current plans, prices and plan limits are shown on our pricing page and at checkout. Prices may change; changes apply from your next billing period after reasonable notice.",
+            "Every new workspace starts with a 14-day trial with access to Business-level features, no payment card required. If you do not choose a paid plan by the end of the trial, the workspace moves to the Free plan automatically and your data is retained.",
+            "Paid subscriptions are billed in advance on a monthly or annual basis and renew automatically until cancelled. Payments are processed by our payment provider (Stripe); we do not store card numbers.",
+            "You can cancel at any time; cancellation takes effect at the end of the paid period already invoiced. Except where required by law, fees are non-refundable."
+          ]
+        },
+        {
+          "heading": "5. Your data",
+          "body": [
+            "The business data you enter into the Service (recipes, ingredients, prices, financial records, invoices, employee records and similar) remains yours. We claim no ownership of it.",
+            "You grant us the limited right to host, process, back up and display that data solely to provide the Service.",
+            "You can export your data from the Service at any time, and you are responsible for the accuracy and lawfulness of the data you enter — including having a legal basis for any personal data (for example employee names) you store in the Service."
+          ]
+        },
+        {
+          "heading": "6. AI features",
+          "body": [
+            "Some features use artificial intelligence (for example extracting recipes or supplier invoice data from photos). AI output is a draft that always requires your review and confirmation before it affects your data.",
+            "AI output can be inaccurate. You are responsible for reviewing it before relying on it. AI features are subject to monthly usage quotas that depend on your plan."
+          ]
+        },
+        {
+          "heading": "7. Acceptable use",
+          "body": [
+            "You agree not to:",
+            "- use the Service for anything unlawful, or to store content you have no right to store;",
+            "- attempt to gain access to other customers' workspaces or data;",
+            "- probe, scan, overload or disrupt the Service or its infrastructure;",
+            "- resell, sublicense or provide the Service to third parties as a service bureau;",
+            "- reverse engineer the Service except where the law permits it despite this clause.",
+            "We may suspend accounts that violate these rules, where practical after notice."
+          ]
+        },
+        {
+          "heading": "8. Availability and changes",
+          "body": [
+            "We aim to keep the Service available at all times but do not guarantee uninterrupted availability. Maintenance, updates and factors outside our control may cause interruptions.",
+            "We may improve or change features over time. If we discontinue a material feature you pay for, we will give reasonable advance notice."
+          ]
+        },
+        {
+          "heading": "9. Intellectual property",
+          "body": [
+            "The Service, its software, design and branding are owned by us or our licensors. These Terms do not transfer any intellectual property rights to you beyond the right to use the Service while your subscription is active."
+          ]
+        },
+        {
+          "heading": "10. Disclaimer",
+          "body": [
+            "The Service is provided \"as is\" and \"as available\". PrepProfit is a management tool: figures it produces (costs, margins, break-even, payroll summaries, tax-related amounts) depend on the data you enter and are not accounting, tax or legal advice. Verify important figures with your accountant or advisor."
+          ]
+        },
+        {
+          "heading": "11. Limitation of liability",
+          "body": [
+            "To the maximum extent permitted by law, we are not liable for indirect or consequential damages, including lost profits, lost revenue or lost data.",
+            "Our total aggregate liability arising out of or related to the Service is limited to the fees you paid for the Service during the 12 months preceding the event giving rise to the claim.",
+            "Nothing in these Terms limits liability that cannot be limited under mandatory law, such as liability for intentional misconduct or gross negligence."
+          ]
+        },
+        {
+          "heading": "12. Termination",
+          "body": [
+            "You may stop using the Service and delete your account at any time; account deletion can be requested in Settings.",
+            "We may terminate or suspend access for material breach of these Terms if the breach is not cured within a reasonable period after notice, or immediately for serious abuse or legal necessity.",
+            "After termination we will retain your data for a reasonable wind-down period so you can export it, unless you request earlier deletion, after which it is deleted in line with our Privacy Policy."
+          ]
+        },
+        {
+          "heading": "13. Changes to these Terms",
+          "body": [
+            "We may update these Terms from time to time. For material changes we will notify you (for example by email or in-app notice) before they take effect. Continued use of the Service after the effective date constitutes acceptance of the updated Terms."
+          ]
+        },
+        {
+          "heading": "14. Governing law and disputes",
+          "body": [
+            "These Terms are governed by the laws of Finland, excluding its conflict-of-law rules and the UN Convention on Contracts for the International Sale of Goods.",
+            "Disputes that cannot be resolved amicably are settled by the District Court of Helsinki, Finland."
+          ]
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Privacy Policy",
+      "lastUpdated": "Last updated: 7 July 2026",
+      "sections": [
+        {
+          "heading": "1. Controller",
+          "body": [
+            "The controller of personal data processed through PrepProfit is a private trader registered in Finland (Business ID 3399953-5, VAT FI33999535), operating under the name \"PrepProfit\". Contact: info@prepprofit.com.",
+            "This policy explains what personal data we process when you visit prepprofit.com or use the PrepProfit application, why, and what rights you have under the EU General Data Protection Regulation (GDPR)."
+          ]
+        },
+        {
+          "heading": "2. Data we process",
+          "body": [
+            "Account data: name, email address and authentication identifiers, managed through our authentication provider (Clerk).",
+            "Workspace data: the business data you and your team enter — recipes, ingredients, prices, financial transactions, invoices (which may contain your customers' names and contact details), employee records for payroll summaries, suppliers and similar.",
+            "Photos you upload for AI extraction: images of recipes or supplier invoices you choose to submit. They are processed to produce a draft for your review; we store extraction metadata (provider, cost, status), not the image as a permanent record.",
+            "Billing data: subscription plan, invoices and payment status. Card details are processed by Stripe and never touch our servers.",
+            "Usage data (only with your consent): pageviews, product interactions and session replays via PostHog, hosted in the EU.",
+            "Support data: messages you send us by email or through the support chat (Crisp).",
+            "Technical logs: IP addresses and request logs kept short-term for security and error diagnosis (Vercel, Sentry)."
+          ]
+        },
+        {
+          "heading": "3. Why and on what legal basis",
+          "body": [
+            "- Providing the Service, including hosting your workspace data and processing payments — performance of a contract (GDPR Art. 6(1)(b)).",
+            "- Security, abuse prevention, audit logging and error monitoring — legitimate interest (Art. 6(1)(f)).",
+            "- Product analytics and session replay — your consent (Art. 6(1)(a)), given through the cookie banner and withdrawable at any time.",
+            "- Transactional email (receipts, trial reminders, reports you opt into) — performance of a contract; optional report emails are opt-in.",
+            "- Legal obligations such as bookkeeping — compliance with law (Art. 6(1)(c))."
+          ]
+        },
+        {
+          "heading": "4. Your customers' and employees' data",
+          "body": [
+            "When you store personal data about your own customers or employees in your workspace (for example on invoices or payroll records), you are the controller of that data and PrepProfit processes it on your behalf as a processor, only to provide the Service. Contact us at info@prepprofit.com if you need a data processing agreement."
+          ]
+        },
+        {
+          "heading": "5. Cookies",
+          "body": [
+            "Strictly necessary (always on): authentication and security cookies (Clerk), your cookie-consent choice, theme preference, and the support chat session (Crisp).",
+            "Analytics (opt-in only): PostHog cookies for pageviews, product analytics and session replay. These are set only after you click Accept in the cookie banner, and you can withdraw consent at any time via \"Cookie settings\" in the footer.",
+            "Session replays are used to diagnose usability problems. PostHog is configured on EU servers, and keystrokes in sensitive fields are masked by default."
+          ]
+        },
+        {
+          "heading": "6. Processors and recipients",
+          "body": [
+            "We use the following service providers as processors:",
+            "- Vercel (USA/EU) — application hosting and logs.",
+            "- Neon (EU region) — PostgreSQL database hosting.",
+            "- Clerk (USA) — authentication and organization management.",
+            "- Stripe — payment processing.",
+            "- Resend — transactional email delivery.",
+            "- Google (Gemini API) — AI extraction of the photos you submit for that purpose.",
+            "- PostHog (EU) — product analytics and session replay, only with your consent.",
+            "- Crisp (EU) — support chat.",
+            "- Sentry — error monitoring.",
+            "Where a provider processes data outside the EU/EEA, transfers rely on the European Commission's Standard Contractual Clauses and, for US providers, the EU-US Data Privacy Framework where certified. We do not sell personal data."
+          ]
+        },
+        {
+          "heading": "7. Retention",
+          "body": [
+            "Account and workspace data is kept while your account is active. Items you delete in the app go to a trash area and are purged on a schedule or when you purge them manually.",
+            "If you delete your account, we delete or anonymize your personal data within a reasonable wind-down period, except where law (for example bookkeeping rules) requires longer retention.",
+            "Technical logs and analytics data are kept for shorter, provider-standard periods."
+          ]
+        },
+        {
+          "heading": "8. Your rights",
+          "body": [
+            "Under the GDPR you have the right to access, rectify and erase your personal data, restrict or object to processing, data portability, and to withdraw consent at any time without affecting prior processing.",
+            "You can export your workspace data and request account deletion directly in Settings, or contact us at info@prepprofit.com.",
+            "You also have the right to lodge a complaint with a supervisory authority — in Finland, the Office of the Data Protection Ombudsman (Tietosuojavaltuutetun toimisto, tietosuoja.fi)."
+          ]
+        },
+        {
+          "heading": "9. Security",
+          "body": [
+            "Workspace data is isolated per organization with database-level row security, access is role-based, connections are encrypted in transit, and sensitive operations are audit-logged. No system is perfectly secure, but we design for tenant isolation first."
+          ]
+        },
+        {
+          "heading": "10. Changes to this policy",
+          "body": [
+            "We may update this policy as the Service evolves. Material changes will be announced by email or in-app notice. The date at the top shows the latest revision."
+          ]
+        }
+      ]
     }
   },
   "selectOrg": {

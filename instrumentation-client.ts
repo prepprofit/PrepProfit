@@ -19,7 +19,18 @@ Sentry.init({
   // unhandled rejection inside `clerk.browser.js`. Clerk retries on its own and the
   // session is unaffected, so this is noise, not an actionable app error. Scoped to
   // ClerkJS's network-error message so genuine app failures are never masked.
-  ignoreErrors: [/ClerkJS: Network error/],
+  ignoreErrors: [
+    /ClerkJS: Network error/,
+    // The Flows SDK (@flows/react) opens a wss:// socket for live block updates
+    // with a bare `new WebSocket(url)` — no try/catch. On iOS WebKit (all iOS
+    // browsers, incl. Chrome) with Lockdown Mode or a content blocker, the
+    // constructor itself throws SecurityError "The operation is insecure", which
+    // bubbles to the global error handler. Nothing app-side is wrong and the app
+    // works without the socket (Flows still loads blocks over HTTP), so this is
+    // unactionable client-environment noise. ponytail: vendor bug — drop the
+    // filter if @flows/react ever wraps its WebSocket constructor.
+    'The operation is insecure.',
+  ],
 });
 
 // Capture client-side navigation transitions when tracing is enabled.
