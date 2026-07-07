@@ -13,20 +13,23 @@
  * out to listeners (the PostHog initializer) without a state library.
  */
 
-export const CONSENT_COOKIE = 'pp_cookie_consent';
-export const CONSENT_MAX_AGE_DAYS = 365;
+import {
+  CONSENT_COOKIE,
+  CONSENT_MAX_AGE_DAYS,
+  parseConsent,
+  type ConsentValue,
+} from '@/lib/consent-shared';
+
+export { CONSENT_COOKIE, CONSENT_MAX_AGE_DAYS, type ConsentValue };
 export const CONSENT_CHANGE_EVENT = 'pp-consent-change';
 export const CONSENT_OPEN_EVENT = 'pp-consent-open';
-
-export type ConsentValue = 'granted' | 'denied';
 
 export function readConsent(): ConsentValue | null {
   if (typeof document === 'undefined') return null;
   const match = document.cookie
     .split('; ')
     .find((c) => c.startsWith(`${CONSENT_COOKIE}=`));
-  const value = match?.split('=')[1];
-  return value === 'granted' || value === 'denied' ? value : null;
+  return parseConsent(match?.split('=')[1]);
 }
 
 export function writeConsent(value: ConsentValue): void {

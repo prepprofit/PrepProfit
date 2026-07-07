@@ -18,12 +18,22 @@ const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
  * cookie banner records "granted" (lib/consent.ts); revoking consent later
  * opts the loaded SDK out of capturing.
  */
-export function PostHogInit() {
+export function PostHogInit({
+  initialConsent,
+}: {
+  /** Server-read consent cookie: keeps the server snapshot identical to the
+   * first client render (see CookieBanner — a mismatch here crashes iOS). */
+  initialConsent: 'granted' | 'denied' | null;
+}) {
   const { userId, orgId } = useAuth();
   // useSyncExternalStore, NOT a mount-effect setState: a post-hydration setState
   // cascade in the root layout crashes the Next router on WebKit/iOS
   // ("Rendered more hooks…", facebook/react#33580).
-  const consent = useSyncExternalStore(subscribeConsent, readConsent, () => null);
+  const consent = useSyncExternalStore(
+    subscribeConsent,
+    readConsent,
+    () => initialConsent,
+  );
 
   useEffect(() => {
     if (!KEY) return;

@@ -21,9 +21,21 @@ import {
  * post-hydration setState cascade in the root layout crashes the Next router
  * on WebKit/iOS ("Rendered more hooks…", facebook/react#33580).
  */
-export function CookieBanner() {
+export function CookieBanner({
+  initialConsent,
+}: {
+  /** Consent cookie as read by the SERVER for this request — used as the
+   * server snapshot so server HTML and first client render agree. A `null`
+   * server snapshot while the cookie exists forces a sync re-render during
+   * root-layout hydration, which crashes WebKit/iOS. */
+  initialConsent: 'granted' | 'denied' | null;
+}) {
   const t = useTranslations('consent');
-  const consent = useSyncExternalStore(subscribeConsent, readConsent, () => null);
+  const consent = useSyncExternalStore(
+    subscribeConsent,
+    readConsent,
+    () => initialConsent,
+  );
   const [reopened, setReopened] = useState(false);
 
   useEffect(() => {
