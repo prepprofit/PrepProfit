@@ -334,7 +334,7 @@ export function IngredientGrid({
           const draft = meta.drafts[row.original.id];
           if (!draft) return null;
           return (
-            <div className="flex flex-col gap-1">
+            <div className="flex min-w-40 flex-col gap-1">
               <Input
                 aria-label={t('columns.name')}
                 value={draft.name}

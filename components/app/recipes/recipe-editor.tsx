@@ -674,7 +674,7 @@ export function RecipeEditor({
                             </Button>
                           </div>
                         </td>
-                        <td className="py-2 pr-2">
+                        <td className="whitespace-nowrap py-2 pr-2">
                           <span className="font-medium text-foreground">
                             {line.ingredient.name}
                           </span>
