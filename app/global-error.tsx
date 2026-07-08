@@ -23,16 +23,16 @@ export default function GlobalError({
     if (posthog.__loaded) {
       posthog.captureException(error, { boundary: 'global-error' });
     }
-    // Stale-client crashes (old build in a restored tab, WebKit hooks bug,
-    // missing chunks after a deploy) are fixed by fetching the current build —
-    // auto-reload ONCE per session so an iPhone user isn't stranded here, with
-    // a sessionStorage guard so a genuinely persistent error never loops.
-    const staleClient =
-      /Rendered more hooks|ChunkLoadError|Loading chunk|dynamically imported module/i.test(
-        error.message,
-      );
+    // Stale-client crashes (old build in a restored tab/bfcache after a deploy:
+    // missing chunks, WebKit hooks bug, vendor code the current build no longer
+    // ships — e.g. the removed Flows SDK's `new WebSocket` throwing
+    // SecurityError "The operation is insecure" on iOS) are fixed by fetching
+    // the current build. A message allowlist can't enumerate every stale-bundle
+    // failure, so auto-reload ONCE for ANY global error; the sessionStorage
+    // guard means a genuinely persistent error reloads once, then shows this
+    // screen instead of looping.
     try {
-      if (staleClient && !sessionStorage.getItem('pp-global-error-reloaded')) {
+      if (!sessionStorage.getItem('pp-global-error-reloaded')) {
         sessionStorage.setItem('pp-global-error-reloaded', '1');
         window.location.reload();
       }
