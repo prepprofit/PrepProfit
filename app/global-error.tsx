@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import posthog from 'posthog-js';
 import { logError } from '@/lib/observability';
 
 /**
@@ -18,11 +17,6 @@ export default function GlobalError({
 }) {
   React.useEffect(() => {
     logError({ action: 'global-error' }, error);
-    // TEMPORARY: only fires if PostHog already loaded (consent granted before
-    // the crash) — a second capture path while diagnosing the iPhone crash.
-    if (posthog.__loaded) {
-      posthog.captureException(error, { boundary: 'global-error' });
-    }
     // Stale-client crashes (old build in a restored tab/bfcache after a deploy:
     // missing chunks, WebKit hooks bug, vendor code the current build no longer
     // ships — e.g. the removed Flows SDK's `new WebSocket` throwing
@@ -82,42 +76,6 @@ export default function GlobalError({
           >
             Try again
           </button>
-          {/* TEMPORARY diagnostic panel for the iPhone WebKit crash investigation.
-              Remove once the root cause is found — this is intentionally visible
-              to whoever hits the error so it can be read/photographed off-device
-              without needing a Mac for remote Safari debugging. */}
-          <div
-            style={{
-              marginTop: 24,
-              textAlign: 'left',
-              fontFamily: 'ui-monospace, monospace',
-              fontSize: 11,
-              color: '#334155',
-              background: '#f1f5f9',
-              borderRadius: 8,
-              padding: 12,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            <div>
-              <strong>message:</strong> {error.message || '(empty)'}
-            </div>
-            {error.digest && (
-              <div>
-                <strong>digest:</strong> {error.digest}
-              </div>
-            )}
-            <div style={{ marginTop: 8 }}>
-              <strong>stack:</strong>
-              {'\n'}
-              {error.stack || '(no stack)'}
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <strong>ua:</strong>{' '}
-              {typeof navigator !== 'undefined' ? navigator.userAgent : '(n/a)'}
-            </div>
-          </div>
         </div>
       </body>
     </html>
