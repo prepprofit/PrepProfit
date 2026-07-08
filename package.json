@@ -24,8 +24,6 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.7",
-    "@flows/react": "^1.26.0",
-    "@flows/react-components": "^2.9.1",
     "@google/genai": "^2.9.0",
     "@neondatabase/serverless": "^1.1.0",
     "@number-flow/react": "^0.6.1",

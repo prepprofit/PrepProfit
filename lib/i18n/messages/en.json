@@ -1930,12 +1930,6 @@
       "upgrade": "Upgrade"
     }
   },
-  "flowsOnboarding": {
-    "progress": "{done}/{total}",
-    "dismiss": "Dismiss",
-    "stepDone": "Done",
-    "stepTodo": "Not done yet"
-  },
   "pricing": {
     "title": "Choose a plan",
     "subtitle": "Pick the plan that fits your kitchen. You can change it any time."
