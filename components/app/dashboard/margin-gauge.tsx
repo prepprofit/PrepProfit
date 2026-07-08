@@ -58,7 +58,13 @@ export function MarginGauge({
       <CardContent className="flex flex-1 flex-col">
         <div className="relative flex-1">
           <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            {/* initialDimension: see components/ui/chart.tsx — silences the
+                Recharts -1×-1 first-measure warning. */}
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              initialDimension={{ width: 400, height: 224 }}
+            >
               <RadialBarChart
                 data={data}
                 startAngle={220}

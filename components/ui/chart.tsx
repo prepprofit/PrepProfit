@@ -38,7 +38,14 @@ export function ChartContainer({
 }) {
   return (
     <div className={cn('h-64 w-full', className)}>
-      <ResponsiveContainer width="100%" height="100%">
+      {/* initialDimension: before the ResizeObserver's first measure the
+          container reports -1×-1, which Recharts warns about on every mount.
+          Any positive size silences it; the observer corrects it next frame. */}
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        initialDimension={{ width: 600, height: 256 }}
+      >
         {children}
       </ResponsiveContainer>
     </div>
