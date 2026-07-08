@@ -18,6 +18,9 @@ const CLERK =
   'https://*.clerk.com https://*.clerk.accounts.dev https://clerk.prepprofit.com https://clerk-telemetry.com';
 const SENTRY = 'https://*.sentry.io https://*.ingest.sentry.io https://*.ingest.de.sentry.io';
 const POSTHOG = 'https://*.posthog.com https://*.i.posthog.com';
+// Flows onboarding SDK fetches blocks over HTTPS and opens a live-update
+// WebSocket from the same API host.
+const FLOWS = 'https://api.flows-cloud.com wss://api.flows-cloud.com';
 // Crisp live-chat (components/support/crisp-chat.tsx). Promoting the CSP to
 // enforcing (2026-07-05) blocked the widget script — Crisp's required sources:
 // https://docs.crisp.chat/guides/chatbox-sdks/web-sdk/csp-policy/
@@ -35,7 +38,7 @@ const contentSecurityPolicy = [
   `style-src 'self' 'unsafe-inline' ${CRISP}`,
   `img-src 'self' data: blob: https://img.clerk.com ${CLERK} https://*.crisp.chat`,
   `font-src 'self' data: ${CRISP}`,
-  `connect-src 'self' ${CLERK} ${SENTRY} ${POSTHOG} ${CRISP_CONNECT}`,
+  `connect-src 'self' ${CLERK} ${SENTRY} ${POSTHOG} ${FLOWS} ${CRISP_CONNECT}`,
   `media-src 'self' ${CRISP} https://storage.crisp.chat`,
   "worker-src 'self' blob:",
   `frame-src 'self' ${CLERK} https://game.crisp.chat https://challenges.cloudflare.com https://js.stripe.com https://checkout.stripe.com`,

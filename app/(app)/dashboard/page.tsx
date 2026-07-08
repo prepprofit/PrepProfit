@@ -63,6 +63,7 @@ import {
 import { loadProfitLeaks } from '@/lib/data/profit-leaks';
 import { MARGIN_THRESHOLDS } from '@/lib/calculations/margin';
 import { leakHref, leakLabel } from '@/lib/profit-leaks/labels';
+import { FlowsSlot } from '@flows/react';
 import { getTrialView } from '@/lib/trial';
 import { DashboardTrialCard } from '@/components/app/trial/dashboard-trial-card';
 
@@ -349,6 +350,10 @@ export default async function DashboardPage({
   return (
     <div className="flex flex-col gap-5">
       {trial && <DashboardTrialCard trial={trial} />}
+      {/* Onboarding/activation guidance — renders only when a published Flows block
+          targets this slot for the current user; otherwise nothing (no conditional
+          needed). Placed below the trial status strip, above the dashboard content. */}
+      <FlowsSlot id="dashboard-onboarding" />
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
