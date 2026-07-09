@@ -31,6 +31,13 @@ export type RecipeCostInput = {
   energyCostCents: number;
   packagingCostCents: number;
   lines: RecipeCostLine[];
+  /**
+   * Raw material cost of each sub-recipe component line, in (possibly
+   * fractional) cents — from `componentRawCostCents()`. Components are material
+   * inputs: they join the direct ingredient lines BEFORE the parent's yield-loss
+   * adjustment. Hidden costs stay after loss adjustment, unchanged.
+   */
+  componentMaterialCostsCents?: number[];
 };
 
 export type RecipeCost = {
@@ -105,11 +112,39 @@ export function presetCostCents(
   return Math.round((totalCostCents * targetWeightGrams) / yieldWeightGrams);
 }
 
+/**
+ * Raw material cost of one sub-recipe component line, in (possibly fractional)
+ * cents — a finished-weight slice of the component's EXACT batch total:
+ *
+ *   componentRawCostCents = subRecipeTotalCostCents × quantityGrams / subRecipeYieldWeightGrams
+ *
+ * NOT rounded here: like `lineCostCents()`, fractions survive until the single
+ * batch-boundary rounding in `recipeCost()`. Returns `null` when it can't be
+ * computed honestly (missing/zero/negative/non-finite yield weight or quantity,
+ * or a non-finite total) — the resolver turns a `null` into an INCOMPLETE parent
+ * cost (`costCents: null`), never a free 0.
+ */
+export function componentRawCostCents(
+  subRecipeTotalCostCents: number,
+  quantityGrams: number,
+  subRecipeYieldWeightGrams: number | null | undefined,
+): number | null {
+  if (
+    subRecipeYieldWeightGrams == null ||
+    !Number.isFinite(subRecipeYieldWeightGrams) ||
+    subRecipeYieldWeightGrams <= 0
+  ) {
+    return null;
+  }
+  if (!Number.isFinite(quantityGrams) || quantityGrams <= 0) return null;
+  if (!Number.isFinite(subRecipeTotalCostCents)) return null;
+  return (subRecipeTotalCostCents * quantityGrams) / subRecipeYieldWeightGrams;
+}
+
 export function recipeCost(input: RecipeCostInput): RecipeCost {
-  const rawIngredientCost = input.lines.reduce(
-    (sum, line) => sum + lineCostCents(line),
-    0,
-  );
+  const rawIngredientCost =
+    input.lines.reduce((sum, line) => sum + lineCostCents(line), 0) +
+    (input.componentMaterialCostsCents ?? []).reduce((sum, c) => sum + c, 0);
 
   // Trim/loss inflates the ingredient cost needed per usable output. Hidden costs
   // are per batch and are NOT loss-adjusted.

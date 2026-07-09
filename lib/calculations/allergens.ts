@@ -77,12 +77,28 @@ function combine(current: Presence | null, next: Presence): Presence {
 export function recipeAllergens(
   lines: AllergenLine[],
   overrides: AllergenOverride[],
+  /**
+   * Effective rollups of the recipe's sub-recipe components (sub-recipes plan).
+   * Inherited allergens count as DERIVED: they feed the same max() and the same
+   * no-downgrade guarantee, so a parent override can never suppress a component
+   * allergen. A component subtree's unreviewed flag bubbles up.
+   */
+  inheritedComponentRollups: RecipeAllergenRollup[] = [],
 ): RecipeAllergenRollup {
   // Accumulate the strongest derived presence per allergen across all lines.
   const derived = new Map<AllergenSlug, Presence>();
   for (const line of lines) {
     for (const tag of line.allergens) {
       derived.set(tag.allergen, combine(derived.get(tag.allergen) ?? null, tag.presence));
+    }
+  }
+  // Component EFFECTIVE presences (their own overrides included) join as derived.
+  for (const rollup of inheritedComponentRollups) {
+    for (const entry of rollup.allergens) {
+      derived.set(
+        entry.allergen,
+        combine(derived.get(entry.allergen) ?? null, entry.effectivePresence),
+      );
     }
   }
 
@@ -111,6 +127,8 @@ export function recipeAllergens(
 
   return {
     allergens,
-    hasUnreviewedIngredient: lines.some((line) => !line.reviewed),
+    hasUnreviewedIngredient:
+      lines.some((line) => !line.reviewed) ||
+      inheritedComponentRollups.some((r) => r.hasUnreviewedIngredient),
   };
 }

@@ -160,6 +160,160 @@ function invalid(
   };
 }
 
+/**
+ * Graph-aware explosion (sub-recipes). Mirrors the write-time invariant's
+ * ceiling: chains deeper than this are corrupted data and make the result
+ * incomplete instead of recursing forever. Shared by cost/allergen resolvers.
+ */
+export const MAX_COMPONENT_DEPTH = 5;
+
+/** One recipe node in the component graph, keyed by `recipeId` in the node map. */
+export type RecipeTreeNode = {
+  /** False when the recipe is trashed/missing → the explosion is incomplete. */
+  available: boolean;
+  yieldPortions: number;
+  /** Usable yield after trim/loss as a percentage (100 = no loss). */
+  yieldPercentage: number;
+  /** Finished batch weight in grams; required (positive) to be USED as a component. */
+  yieldWeightGrams: number | null;
+  lines: ProductionRecipeLine[];
+  /** Sub-recipe component lines: grams of the child's finished output per batch. */
+  components: { componentRecipeId: string; quantityGrams: number }[];
+};
+
+/**
+ * Aggregate the canonical RAW-ingredient requirement for `recipes × portions`,
+ * traversing sub-recipe components to raw ingredients. Scaling contract
+ * (sub-recipes plan, locked):
+ *
+ *   parentScaleAfterLoss = plannedQty / yieldPortions / yieldFraction
+ *   direct line          → line.quantity × parentScaleAfterLoss
+ *   component line       → finishedGramsNeeded = quantityGrams × parentScaleAfterLoss
+ *                          childBatchScale = finishedGramsNeeded / child.yieldWeightGrams
+ *                          recurse with childBatchScale / childYieldFraction
+ *
+ * Same complete-or-incomplete contract as `explodeProduction`: a trashed or
+ * missing component is `recipe_unavailable` (its id listed); a component with
+ * missing/invalid yield weight, a cycle, or a chain beyond MAX_COMPONENT_DEPTH
+ * is `invalid_math`. Contributions accumulate UNROUNDED and round ONCE.
+ */
+export function explodeRecipeTree(
+  items: { recipeId: string; plannedQty: number }[],
+  nodes: Map<string, RecipeTreeNode>,
+): ProductionExplosion {
+  if (items.length === 0) return invalid('invalid_math');
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (seen.has(item.recipeId)) return invalid('invalid_math');
+    seen.add(item.recipeId);
+    if (!isPositiveInt(item.plannedQty)) return invalid('invalid_math');
+  }
+
+  const totals = new Map<string, number>();
+  const unavailable = new Set<string>();
+  let corrupted = false;
+
+  // Walk one recipe's batch at `scaleAfterLoss` (loss already applied), adding
+  // its direct lines and recursing into components. Returns false on corrupted
+  // graph data (bad yields, cycle, depth) — a hard `invalid_math`, not partial.
+  const walk = (
+    recipeId: string,
+    scaleAfterLoss: number,
+    depth: number,
+    visited: Set<string>,
+  ): boolean => {
+    const node = nodes.get(recipeId);
+    if (!node || !node.available) {
+      unavailable.add(recipeId);
+      return true; // recipe_unavailable is a partial-preview state, not corruption
+    }
+    for (const line of node.lines) {
+      if (!Number.isFinite(line.quantity) || line.quantity < 0) return false;
+      totals.set(
+        line.ingredientId,
+        (totals.get(line.ingredientId) ?? 0) + line.quantity * scaleAfterLoss,
+      );
+    }
+    for (const component of node.components) {
+      if (depth >= MAX_COMPONENT_DEPTH) return false;
+      if (visited.has(component.componentRecipeId)) return false;
+      if (
+        !Number.isFinite(component.quantityGrams) ||
+        component.quantityGrams <= 0
+      ) {
+        return false;
+      }
+      const child = nodes.get(component.componentRecipeId);
+      if (!child || !child.available) {
+        unavailable.add(component.componentRecipeId);
+        continue;
+      }
+      if (
+        child.yieldWeightGrams == null ||
+        !Number.isFinite(child.yieldWeightGrams) ||
+        child.yieldWeightGrams <= 0
+      ) {
+        return false;
+      }
+      if (
+        !Number.isFinite(child.yieldPercentage) ||
+        child.yieldPercentage <= 0
+      ) {
+        return false;
+      }
+      const childBatchScale =
+        (component.quantityGrams * scaleAfterLoss) / child.yieldWeightGrams;
+      const childScaleAfterLoss = childBatchScale / (child.yieldPercentage / 100);
+      const nextVisited = new Set(visited);
+      nextVisited.add(component.componentRecipeId);
+      if (
+        !walk(component.componentRecipeId, childScaleAfterLoss, depth + 1, nextVisited)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  for (const item of items) {
+    const node = nodes.get(item.recipeId);
+    if (!node || !node.available) {
+      unavailable.add(item.recipeId);
+      continue;
+    }
+    if (!isPositiveInt(node.yieldPortions)) return invalid('invalid_math');
+    if (!Number.isFinite(node.yieldPercentage) || node.yieldPercentage <= 0) {
+      return invalid('invalid_math');
+    }
+    const scaleAfterLoss =
+      item.plannedQty / node.yieldPortions / (node.yieldPercentage / 100);
+    if (!walk(item.recipeId, scaleAfterLoss, 0, new Set([item.recipeId]))) {
+      corrupted = true;
+      break;
+    }
+  }
+  if (corrupted) return invalid('invalid_math');
+
+  const requirements: IngredientRequirement[] = [];
+  for (const [ingredientId, raw] of totals) {
+    if (!Number.isFinite(raw) || raw < 0) return invalid('invalid_math');
+    const quantityCanonical = roundCanonical(raw);
+    if (quantityCanonical > NUMERIC_12_2_MAX) return invalid('overflow');
+    requirements.push({ ingredientId, quantityCanonical });
+  }
+  requirements.sort((a, b) => (a.ingredientId < b.ingredientId ? -1 : 1));
+
+  if (unavailable.size > 0) {
+    return {
+      complete: false,
+      partialRequirements: requirements,
+      unavailableRecipeIds: [...unavailable].sort(),
+      reason: 'recipe_unavailable',
+    };
+  }
+  return { complete: true, requirements, unavailableRecipeIds: [] };
+}
+
 /** One ingredient's stock position for a complete production requirement. */
 export type ShortfallLine = {
   ingredientId: string;
