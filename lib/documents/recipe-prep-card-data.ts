@@ -28,6 +28,8 @@ export function buildRecipePrepCardData(
   /** Clerk organization name, used when `businessName` is blank. */
   orgNameFallback: string | null,
   scale?: RecipeScaleResult | null,
+  /** Sub-recipe component lines — name + finished grams ONLY (money-free). */
+  components: { name: string; quantityGrams: number }[] = [],
 ): RecipePrepCardData {
   const { recipe, lines: recipeLines } = data;
   const factor = scale && scale.ok ? scale.factor : 1;
@@ -52,6 +54,11 @@ export function buildRecipePrepCardData(
     yieldPercentage: recipe.yieldPercentage,
     scale: scaleMeta,
     lines,
+    // Component grams scale with the factor like ingredient lines.
+    components: components.map((c) => ({
+      name: c.name,
+      quantityGrams: scaleLineQuantity(c.quantityGrams, factor),
+    })),
     notes: recipe.notes,
   };
 }

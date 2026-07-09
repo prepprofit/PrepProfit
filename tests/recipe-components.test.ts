@@ -3,6 +3,7 @@ import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import type { TenantDb } from '@/lib/db/tenant';
 import { createRecipe, softDeleteRecipe } from '@/lib/data/recipes';
+import { purgeRecipeWithGuards } from '@/lib/data/recipe-purge';
 import {
   addRecipeComponent,
   assertNoRecipeComponentCycle,
@@ -349,5 +350,28 @@ describe('listRecipeComponents / picker / usage counts', () => {
     await softDeleteRecipe(db, ORG, p1.id);
     expect(await countActiveParentsUsingComponent(db, ORG, child.id)).toBe(1);
     expect(await countAnyParentsUsingComponent(db, ORG, child.id)).toBe(2);
+  });
+});
+
+describe('purge guards (sub-recipes)', () => {
+  it('blocks purging a component with surviving references, even under a trashed parent', async () => {
+    const parent = await makeRecipe('Purge parent');
+    const child = await makeRecipe('Purge child');
+    const added = await addRecipeComponent(db, ORG, parent.id, {
+      componentRecipeId: child.id,
+      quantityGrams: 100,
+    });
+    expect(added.ok).toBe(true);
+
+    // Trash BOTH (bypassing action guards to simulate the surviving-row state).
+    await softDeleteRecipe(db, ORG, parent.id);
+    await softDeleteRecipe(db, ORG, child.id);
+
+    // The child is still referenced by the trashed parent's component row.
+    expect(await purgeRecipeWithGuards(db, ORG, child.id)).toBe('in_component');
+
+    // Purging the PARENT cascades its component rows; then the child purges fine.
+    expect(await purgeRecipeWithGuards(db, ORG, parent.id)).toBe('ok');
+    expect(await purgeRecipeWithGuards(db, ORG, child.id)).toBe('ok');
   });
 });

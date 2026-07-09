@@ -154,6 +154,28 @@ function RecipeCardDocument({
           ))}
         </View>
 
+        {/* Sub-recipe component lines (finished grams used + manager line cost) */}
+        {data.components.length > 0 && (
+          <View style={styles.table}>
+            <View style={styles.tHead}>
+              <Text style={[styles.th, styles.cName]}>{labels.subRecipes}</Text>
+              <Text style={[styles.th, styles.cNum]}>{labels.quantity}</Text>
+              <Text style={[styles.th, styles.cMoney]}>{labels.cost}</Text>
+            </View>
+            {data.components.map((line, i) => (
+              <View style={styles.tRow} key={i} wrap={false}>
+                <Text style={styles.cName}>{safeText(line.name)}</Text>
+                <Text style={styles.cNum}>
+                  {line.quantityGrams} {labels.units.weight}
+                </Text>
+                <Text style={styles.cMoney}>
+                  {line.costCents == null ? '—' : money(line.costCents)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Cost breakdown + margin */}
         <View style={styles.totals}>
           <View style={styles.totalLine}>

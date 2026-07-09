@@ -17,6 +17,7 @@ export function buildRecipePrepCardLabels(
     scaledTo: ({ portions, factor }) => t('scaledTo', { portions, factor }),
     ingredient: t('ingredient'),
     quantity: t('quantity'),
+    subRecipes: t('subRecipes'),
     notes: t('notes'),
     units: {
       weight: t('units.weight'),

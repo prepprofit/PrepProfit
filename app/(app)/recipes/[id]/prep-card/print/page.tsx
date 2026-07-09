@@ -8,6 +8,7 @@ import {
   getRecipeWithIngredients,
   toKitchenRecipeWithIngredients,
 } from '@/lib/data/recipes';
+import { listRecipeComponents } from '@/lib/data/recipe-components';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
 import { buildRecipePrepCardData } from '@/lib/documents/recipe-prep-card-data';
 import { buildRecipePrepCardLabels } from '@/lib/documents/recipe-prep-card-labels';
@@ -44,7 +45,11 @@ export default async function RecipePrepCardPrintPage({
       const recipe = await getRecipeWithIngredients(tx, organizationId, id);
       if (!recipe) return null;
       const settings = await getOrgSettingsRow(tx, organizationId);
-      return { recipe, settings };
+      // Sub-recipe component lines — name + grams only (money-free surface).
+      const components = (
+        await listRecipeComponents(tx, organizationId, [id])
+      ).map((c) => ({ name: c.componentName, quantityGrams: c.quantityGrams }));
+      return { recipe, settings, components };
     }),
     getTranslations('recipePrepCardDocument'),
     getTranslations('recipes.prepCard'),
@@ -71,7 +76,13 @@ export default async function RecipePrepCardPrintPage({
   const settings = loaded.settings ?? DEFAULT_ORG_SETTINGS;
   const orgName = settings.businessName?.trim() ? null : await getOrgName();
   const labels = buildRecipePrepCardLabels(t);
-  const data = buildRecipePrepCardData(operational, settings, orgName, scale);
+  const data = buildRecipePrepCardData(
+    operational,
+    settings,
+    orgName,
+    scale,
+    loaded.components,
+  );
   const { seller } = data;
 
   return (
@@ -156,6 +167,30 @@ export default async function RecipePrepCardPrintPage({
               ))}
             </tbody>
           </table>
+
+          {/* Sub-recipe component lines — finished grams only, money-free */}
+          {data.components.length > 0 && (
+            <table className="mt-6 w-full">
+              <thead>
+                <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
+                  <th className="py-2 pr-3 font-semibold">{labels.subRecipes}</th>
+                  <th className="py-2 pl-3 text-right font-semibold">
+                    {labels.quantity}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.components.map((line, i) => (
+                  <tr key={i} className="border-b border-neutral-200">
+                    <td className="py-2 pr-3 text-neutral-800">{line.name}</td>
+                    <td className="py-2 pl-3 text-right text-neutral-600">
+                      {line.quantityGrams} {labels.units.weight}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
 
           {data.notes && (
             <p className="mt-8 text-xs text-neutral-500">

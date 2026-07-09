@@ -131,6 +131,24 @@ function RecipePrepCardDocument({
           ))}
         </View>
 
+        {/* Sub-recipe component lines — finished grams only, money-free */}
+        {data.components.length > 0 && (
+          <View style={styles.table}>
+            <View style={styles.tHead}>
+              <Text style={[styles.th, styles.cName]}>{labels.subRecipes}</Text>
+              <Text style={[styles.th, styles.cNum]}>{labels.quantity}</Text>
+            </View>
+            {data.components.map((line, i) => (
+              <View style={styles.tRow} key={i} wrap={false}>
+                <Text style={styles.cName}>{safeText(line.name)}</Text>
+                <Text style={styles.cNum}>
+                  {line.quantityGrams} {labels.units.weight}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         {data.notes && (
           <Text style={styles.notes}>
             {labels.notes}: {data.notes}

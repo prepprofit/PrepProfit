@@ -17,6 +17,7 @@ export function buildRecipeCardLabels(
     ingredient: t('ingredient'),
     quantity: t('quantity'),
     cost: t('cost'),
+    subRecipes: t('subRecipes'),
     ingredientCost: t('ingredientCost'),
     labor: t('labor'),
     energy: t('energy'),

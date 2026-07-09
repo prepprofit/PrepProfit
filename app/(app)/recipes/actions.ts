@@ -25,7 +25,9 @@ import {
 } from '@/lib/data/recipe-ingredients';
 import {
   addRecipeComponent,
+  countActiveParentsUsingComponent,
   listAncestorRecipeIds,
+  lockRecipeComponentEndpoints,
   removeRecipeComponent,
   reorderRecipeComponents,
   updateRecipeComponent,
@@ -42,6 +44,7 @@ import {
 } from '@/lib/validation/recipes';
 import type { ActionResult } from '@/lib/action-result';
 import type { Recipe } from '@/lib/db/schema';
+import type { TenantClient } from '@/lib/db/tenant';
 
 /**
  * Server Actions for the Recipes module. RULE #1: org id from Clerk on the
@@ -241,6 +244,23 @@ export async function createRecipeAction(
   return { ok: true, data: manager ? row : toKitchenRecipe(row) };
 }
 
+/**
+ * Yield-clear guard (sub-recipes invariant): a recipe used as a component by an
+ * ACTIVE parent must keep a positive `yieldWeightGrams` — component math divides
+ * by it. Locks the recipe row (same lock as component-add) before counting.
+ * Returns true when the update must be rejected.
+ */
+async function clearsYieldOfInUseComponent(
+  tx: TenantClient,
+  organizationId: string,
+  recipeId: string,
+  nextYieldWeightGrams: number | null | undefined,
+): Promise<boolean> {
+  if (nextYieldWeightGrams != null && nextYieldWeightGrams > 0) return false;
+  await lockRecipeComponentEndpoints(tx, organizationId, [recipeId]);
+  return (await countActiveParentsUsingComponent(tx, organizationId, recipeId)) > 0;
+}
+
 export async function updateRecipeAction(
   id: string,
   input: unknown,
@@ -256,6 +276,16 @@ export async function updateRecipeAction(
     const row = await withOrg(organizationId, async (tx) => {
       const current = await getRecipeById(tx, organizationId, id);
       if (!current) return null;
+      if (
+        await clearsYieldOfInUseComponent(
+          tx,
+          organizationId,
+          id,
+          parsed.data.yieldWeightGrams ?? null,
+        )
+      ) {
+        return 'requires_yield' as const;
+      }
       return updateRecipe(tx, organizationId, id, {
         name: parsed.data.name,
         folderId: parsed.data.folderId ?? null,
@@ -271,6 +301,9 @@ export async function updateRecipeAction(
         notes: parsed.data.notes ?? null,
       });
     });
+    if (row === 'requires_yield') {
+      return { ok: false, code: 'RECIPE_COMPONENT_REQUIRES_YIELD' };
+    }
     if (!row) return { ok: false, code: 'NOT_FOUND' };
     revalidateRecipe(id);
     return { ok: true, data: toKitchenRecipe(row) };
@@ -279,9 +312,22 @@ export async function updateRecipeAction(
   // MANAGER: full edit including the money fields.
   const parsed = recipeSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
-  const row = await withOrg(organizationId, (tx) =>
-    updateRecipe(tx, organizationId, id, parsed.data),
-  );
+  const row = await withOrg(organizationId, async (tx) => {
+    if (
+      await clearsYieldOfInUseComponent(
+        tx,
+        organizationId,
+        id,
+        parsed.data.yieldWeightGrams ?? null,
+      )
+    ) {
+      return 'requires_yield' as const;
+    }
+    return updateRecipe(tx, organizationId, id, parsed.data);
+  });
+  if (row === 'requires_yield') {
+    return { ok: false, code: 'RECIPE_COMPONENT_REQUIRES_YIELD' };
+  }
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateRecipe(id);
   return { ok: true, data: row };
@@ -290,10 +336,21 @@ export async function updateRecipeAction(
 /** Moves a recipe to the trash (soft-delete). Restorable for 30 days via /trash. */
 export async function deleteRecipeAction(id: string): Promise<ActionResult> {
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    softDeleteRecipe(tx, organizationId, id),
-  );
-  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  // A recipe used as a sub-recipe by an ACTIVE parent cannot be trashed — the
+  // parent's cost/allergens/explosion would silently break. Lock the recipe row
+  // first (the same lock component-add takes), so a concurrent add can't slip
+  // its check between our count and the soft-delete.
+  const outcome = await withOrg(organizationId, async (tx) => {
+    await lockRecipeComponentEndpoints(tx, organizationId, [id]);
+    if ((await countActiveParentsUsingComponent(tx, organizationId, id)) > 0) {
+      return 'in_component' as const;
+    }
+    return softDeleteRecipe(tx, organizationId, id);
+  });
+  if (outcome === 'in_component') {
+    return { ok: false, code: 'RECIPE_IN_COMPONENT' };
+  }
+  if (!outcome) return { ok: false, code: 'NOT_FOUND' };
   revalidateRecipe();
   revalidatePath('/dashboard');
   revalidatePath('/trash');

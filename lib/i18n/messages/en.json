@@ -1825,6 +1825,7 @@
     "ingredient": "Ingredient",
     "quantity": "Qty",
     "cost": "Cost",
+    "subRecipes": "Sub-recipes",
     "ingredientCost": "Ingredient cost",
     "labor": "Labor",
     "energy": "Energy",
@@ -1848,6 +1849,7 @@
     "scaledTo": "Scaled to {portions} portions (×{factor})",
     "ingredient": "Ingredient",
     "quantity": "Qty",
+    "subRecipes": "Sub-recipes",
     "notes": "Notes",
     "units": {
       "weight": "g",

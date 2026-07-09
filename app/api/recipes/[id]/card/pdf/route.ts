@@ -9,6 +9,9 @@ import {
 } from '@/lib/auth';
 import { getDb, withOrg } from '@/lib/db';
 import { getRecipeWithIngredients } from '@/lib/data/recipes';
+import { listRecipeComponents } from '@/lib/data/recipe-components';
+import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
+import { componentRawCostCents } from '@/lib/calculations/recipeCost';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
 import { writeAuditEvent } from '@/lib/data/audit';
 import { enforceRateLimit } from '@/lib/rate-limit';
@@ -73,7 +76,28 @@ export async function GET(
     const recipe = await getRecipeWithIngredients(tx, organizationId, id);
     if (!recipe) return null;
     const settings = await getOrgSettingsRow(tx, organizationId);
-    return { recipe, settings };
+    // Sub-recipe component lines with their resolved raw material cost.
+    const componentLines = await listRecipeComponents(tx, organizationId, [id]);
+    const resolutions = await resolveRecipeCostTree(
+      tx,
+      organizationId,
+      componentLines.map((c) => c.componentRecipeId),
+    );
+    const components = componentLines.map((c) => {
+      const resolution = resolutions.get(c.componentRecipeId);
+      return {
+        name: c.componentName,
+        quantityGrams: c.quantityGrams,
+        rawCostCents: resolution?.complete
+          ? componentRawCostCents(
+              resolution.cost.totalCostCents,
+              c.quantityGrams,
+              c.componentYieldWeightGrams,
+            )
+          : null,
+      };
+    });
+    return { recipe, settings, components };
   });
 
   if (!loaded) {
@@ -97,7 +121,13 @@ export async function GET(
   const settings = loaded.settings ?? DEFAULT_ORG_SETTINGS;
   const orgName = settings.businessName?.trim() ? null : await getOrgName();
   const t = await getTranslations('recipeCardDocument');
-  const data = buildRecipeCardData(loaded.recipe, settings, orgName, scale);
+  const data = buildRecipeCardData(
+    loaded.recipe,
+    settings,
+    orgName,
+    scale,
+    loaded.components,
+  );
   // SSRF/DoS-safe: fetch + validate the logo ourselves and embed local bytes.
   data.seller.logoUrl = await loadSafeLogo(data.seller.logoUrl);
 

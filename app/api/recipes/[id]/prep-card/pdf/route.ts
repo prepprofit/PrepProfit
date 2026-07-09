@@ -6,6 +6,7 @@ import {
   getRecipeWithIngredients,
   toKitchenRecipeWithIngredients,
 } from '@/lib/data/recipes';
+import { listRecipeComponents } from '@/lib/data/recipe-components';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
 import { writeAuditEvent } from '@/lib/data/audit';
 import { enforceRateLimit } from '@/lib/rate-limit';
@@ -68,7 +69,11 @@ export async function GET(
     const recipe = await getRecipeWithIngredients(tx, organizationId, id);
     if (!recipe) return null;
     const settings = await getOrgSettingsRow(tx, organizationId);
-    return { recipe, settings };
+    // Sub-recipe component lines — name + grams only (money-free surface).
+    const components = (
+      await listRecipeComponents(tx, organizationId, [id])
+    ).map((c) => ({ name: c.componentName, quantityGrams: c.quantityGrams }));
+    return { recipe, settings, components };
   });
 
   if (!loaded) {
@@ -94,7 +99,13 @@ export async function GET(
   const settings = loaded.settings ?? DEFAULT_ORG_SETTINGS;
   const orgName = settings.businessName?.trim() ? null : await getOrgName();
   const t = await getTranslations('recipePrepCardDocument');
-  const data = buildRecipePrepCardData(operational, settings, orgName, scale);
+  const data = buildRecipePrepCardData(
+    operational,
+    settings,
+    orgName,
+    scale,
+    loaded.components,
+  );
   // SSRF/DoS-safe: fetch + validate the logo ourselves and embed local bytes.
   data.seller.logoUrl = await loadSafeLogo(data.seller.logoUrl);
 

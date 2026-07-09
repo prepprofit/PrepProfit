@@ -30,6 +30,13 @@ export function buildRecipeCardData(
   /** Clerk organization name, used when `businessName` is blank. */
   orgNameFallback: string | null,
   scale?: RecipeScaleResult | null,
+  /**
+   * Sub-recipe component lines with their UNROUNDED raw material cost (from
+   * `resolveRecipeCostTree`). `rawCostCents: null` = unresolvable (renders "—"
+   * and is excluded from totals — the corrupted-data corner; live guards keep
+   * active trees resolvable).
+   */
+  components: { name: string; quantityGrams: number; rawCostCents: number | null }[] = [],
 ): RecipeCardDocumentData {
   const { recipe, lines: recipeLines } = data;
   const factor = scale && scale.ok ? scale.factor : 1;
@@ -55,6 +62,14 @@ export function buildRecipeCardData(
     ),
   }));
 
+  // Component lines: quantity + cost scale linearly with the factor; the line
+  // display cost rounds once from the unrounded scaled raw cost.
+  const componentLines = components.map((c) => ({
+    name: c.name,
+    quantityGrams: Math.round(c.quantityGrams * factor * 100) / 100,
+    costCents: c.rawCostCents == null ? null : Math.round(c.rawCostCents * factor),
+  }));
+
   const cost = recipeCost({
     yieldPortions: recipe.yieldPortions,
     yieldPercentage: recipe.yieldPercentage,
@@ -66,6 +81,9 @@ export function buildRecipeCardData(
       priceCents: l.ingredient.priceCents,
       quantity: l.quantity,
     })),
+    componentMaterialCostsCents: components
+      .map((c) => c.rawCostCents)
+      .filter((c): c is number => c != null),
   });
 
   const sellingPriceCents = recipe.sellingPriceCents;
@@ -81,6 +99,7 @@ export function buildRecipeCardData(
     yieldPercentage: recipe.yieldPercentage,
     scale: scaleMeta,
     lines,
+    components: componentLines,
     // Batch figures scale from the originals; unit economics stay invariant.
     ingredientCostCents: scaleMoneyCents(cost.ingredientCostCents, factor),
     laborCostCents: scaleMoneyCents(recipe.laborCostCents, factor),

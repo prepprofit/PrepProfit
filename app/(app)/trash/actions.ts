@@ -15,6 +15,10 @@ import {
 import { purgeMenu, restoreMenu } from '@/lib/data/menus';
 import { purgeRecipeWithGuards } from '@/lib/data/recipe-purge';
 import {
+  listRecipeComponents,
+  lockRecipeComponentEndpoints,
+} from '@/lib/data/recipe-components';
+import {
   countProductionMovementsForIngredient,
   purgeProduction,
   restoreProduction,
@@ -81,6 +85,28 @@ export async function restoreRecipeAction(id: string): Promise<ActionResult> {
       id,
     );
     if (trashedIngredients > 0) return { status: 'blocked' as const };
+    // Sub-recipes invariant: an active parent only references ACTIVE components
+    // with a positive yield weight. Lock the referenced component recipes (same
+    // locks the trash/yield-clear guards take) and refuse the restore while any
+    // component is trashed/missing or yield-less.
+    const componentLines = await listRecipeComponents(tx, organizationId, [id]);
+    if (componentLines.length > 0) {
+      const locked = await lockRecipeComponentEndpoints(
+        tx,
+        organizationId,
+        componentLines.map((c) => c.componentRecipeId),
+      );
+      const invalid = componentLines.some((c) => {
+        const component = locked.get(c.componentRecipeId);
+        return (
+          !component ||
+          component.deletedAt !== null ||
+          component.yieldWeightGrams == null ||
+          component.yieldWeightGrams <= 0
+        );
+      });
+      if (invalid) return { status: 'component_invalid' as const };
+    }
     const row = await restoreRecipe(tx, organizationId, id);
     if (!row) return { status: 'not_found' as const };
     await writeAuditEvent(tx, organizationId, actor, {
@@ -93,6 +119,9 @@ export async function restoreRecipeAction(id: string): Promise<ActionResult> {
 
   if (outcome.status === 'blocked') {
     return { ok: false, code: 'RECIPE_HAS_TRASHED_INGREDIENTS' };
+  }
+  if (outcome.status === 'component_invalid') {
+    return { ok: false, code: 'RECIPE_COMPONENT_INVALID' };
   }
   if (outcome.status === 'not_found') {
     return { ok: false, code: 'NOT_FOUND' };
@@ -145,6 +174,7 @@ export async function purgeRecipeAction(id: string): Promise<ActionResult> {
   if (outcome === 'in_menu') return { ok: false, code: 'RECIPE_IN_MENU' };
   if (outcome === 'in_production') return { ok: false, code: 'RECIPE_IN_PRODUCTION' };
   if (outcome === 'in_sale') return { ok: false, code: 'RECIPE_IN_SALE' };
+  if (outcome === 'in_component') return { ok: false, code: 'RECIPE_IN_COMPONENT' };
   // It can unlink transactions, so refresh the financial views too.
   revalidateTrashFinance();
   return { ok: true, data: undefined };

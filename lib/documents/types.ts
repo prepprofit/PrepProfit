@@ -114,6 +114,15 @@ export type RecipeScaleMeta = {
   scaledPortions: number;
 };
 
+/** One sub-recipe component line on a recipe card (finished grams + line cost). */
+export type RecipeCardComponentLine = {
+  name: string;
+  /** Grams of the component recipe's finished output used (scaled if scaled). */
+  quantityGrams: number;
+  /** Rounded line cost in integer cents, or null when unresolvable (renders "—"). */
+  costCents: number | null;
+};
+
 /** Recipe card (cost sheet) view-model. Reuses the recipe cost/margin calcs. */
 export type RecipeCardDocumentData = {
   seller: SellerIdentity;
@@ -124,6 +133,8 @@ export type RecipeCardDocumentData = {
   /** Present only when the card was scaled; drives the "Scaled to …" header line. */
   scale: RecipeScaleMeta | null;
   lines: RecipeCardLine[];
+  /** Sub-recipe component lines (may be empty). Rendered as a separate section. */
+  components: RecipeCardComponentLine[];
   ingredientCostCents: number;
   laborCostCents: number;
   energyCostCents: number;
@@ -148,6 +159,8 @@ export type RecipeCardDocumentLabels = {
   ingredient: string;
   quantity: string;
   cost: string;
+  /** Section title for the sub-recipe component lines. */
+  subRecipes: string;
   ingredientCost: string;
   labor: string;
   energy: string;
@@ -266,6 +279,8 @@ export type RecipePrepCardData = {
   /** Present only when scaled; drives the "Scaled to …" header line. */
   scale: RecipeScaleMeta | null;
   lines: RecipePrepCardLine[];
+  /** Sub-recipe component lines — name + finished grams ONLY (money-free). */
+  components: { name: string; quantityGrams: number }[];
   notes: string | null;
 };
 
@@ -278,6 +293,8 @@ export type RecipePrepCardLabels = {
   scaledTo: (args: { portions: string; factor: string }) => string;
   ingredient: string;
   quantity: string;
+  /** Section title for the sub-recipe component lines. */
+  subRecipes: string;
   notes: string;
   /** Unit suffix by dimension (e.g. g / ml / ×). */
   units: Record<'weight' | 'volume' | 'count', string>;

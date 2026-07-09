@@ -2,6 +2,7 @@ import type { TenantClient } from '@/lib/db/tenant';
 import { countMenusUsingRecipe } from '@/lib/data/menus';
 import { countProductionsUsingRecipe } from '@/lib/data/productions';
 import { countSalesUsingRecipe } from '@/lib/data/sales';
+import { countAnyParentsUsingComponent } from '@/lib/data/recipe-components';
 import { purgeRecipe } from '@/lib/data/recipes';
 
 /**
@@ -15,7 +16,7 @@ import { purgeRecipe } from '@/lib/data/recipes';
  * counters plus `purgeRecipe` without an import cycle.
  */
 
-export type RecipePurgeBlocker = 'menu' | 'production' | 'sale';
+export type RecipePurgeBlocker = 'menu' | 'production' | 'sale' | 'component';
 
 /** The set of reasons a recipe cannot be purged (empty = purgeable). */
 export async function recipePurgeBlockers(
@@ -23,19 +24,28 @@ export async function recipePurgeBlockers(
   organizationId: string,
   recipeId: string,
 ): Promise<Set<RecipePurgeBlocker>> {
-  const [menus, productions, sales] = await Promise.all([
+  const [menus, productions, sales, parents] = await Promise.all([
     countMenusUsingRecipe(db, organizationId, recipeId),
     countProductionsUsingRecipe(db, organizationId, recipeId),
     countSalesUsingRecipe(db, organizationId, recipeId),
+    // ANY surviving component row (incl. under trashed parents) blocks — the
+    // `recipe_components_component_fk` restrict FK is the DB backstop.
+    countAnyParentsUsingComponent(db, organizationId, recipeId),
   ]);
   const blockers = new Set<RecipePurgeBlocker>();
   if (menus > 0) blockers.add('menu');
   if (productions > 0) blockers.add('production');
   if (sales > 0) blockers.add('sale');
+  if (parents > 0) blockers.add('component');
   return blockers;
 }
 
-export type RecipePurgeOutcome = 'ok' | 'in_menu' | 'in_production' | 'in_sale';
+export type RecipePurgeOutcome =
+  | 'ok'
+  | 'in_menu'
+  | 'in_production'
+  | 'in_sale'
+  | 'in_component';
 
 /**
  * Manual recipe purge with the menu + production + sale guards. Evaluates blockers
@@ -56,6 +66,7 @@ export async function purgeRecipeWithGuards(
   if (blockers.has('menu')) return 'in_menu';
   if (blockers.has('production')) return 'in_production';
   if (blockers.has('sale')) return 'in_sale';
+  if (blockers.has('component')) return 'in_component';
   await purgeRecipe(db, organizationId, recipeId);
   return 'ok';
 }

@@ -5,6 +5,9 @@ import { ArrowLeft } from 'lucide-react';
 import { getOrgId, getOrgName, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { getRecipeWithIngredients } from '@/lib/data/recipes';
+import { listRecipeComponents } from '@/lib/data/recipe-components';
+import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
+import { componentRawCostCents } from '@/lib/calculations/recipeCost';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
 import { buildRecipeCardData } from '@/lib/documents/recipe-card-data';
 import { buildRecipeCardLabels } from '@/lib/documents/recipe-card-labels';
@@ -49,7 +52,28 @@ export default async function RecipeCardPrintPage({
       const recipe = await getRecipeWithIngredients(tx, organizationId, id);
       if (!recipe) return null;
       const settings = await getOrgSettingsRow(tx, organizationId);
-      return { recipe, settings };
+      // Sub-recipe component lines with their resolved raw material cost.
+      const componentLines = await listRecipeComponents(tx, organizationId, [id]);
+      const resolutions = await resolveRecipeCostTree(
+        tx,
+        organizationId,
+        componentLines.map((c) => c.componentRecipeId),
+      );
+      const components = componentLines.map((c) => {
+        const resolution = resolutions.get(c.componentRecipeId);
+        return {
+          name: c.componentName,
+          quantityGrams: c.quantityGrams,
+          rawCostCents: resolution?.complete
+            ? componentRawCostCents(
+                resolution.cost.totalCostCents,
+                c.quantityGrams,
+                c.componentYieldWeightGrams,
+              )
+            : null,
+        };
+      });
+      return { recipe, settings, components };
     }),
     getTranslations('recipeCardDocument'),
     getTranslations('recipes.card'),
@@ -79,7 +103,13 @@ export default async function RecipeCardPrintPage({
     scale && scale.ok ? (parsedScale.ok ? parsedScale.portions : null) : null;
   const scaleQuery = appliedPortions != null ? `?portions=${appliedPortions}` : '';
 
-  const data = buildRecipeCardData(loaded.recipe, settings, orgName, scale);
+  const data = buildRecipeCardData(
+    loaded.recipe,
+    settings,
+    orgName,
+    scale,
+    loaded.components,
+  );
   const money = (cents: number) => formatMoney(cents, data.currency);
   const { seller } = data;
 
@@ -180,6 +210,34 @@ export default async function RecipeCardPrintPage({
               ))}
             </tbody>
           </table>
+
+          {/* Sub-recipe component lines (finished grams used + line cost) */}
+          {data.components.length > 0 && (
+            <table className="mt-6 w-full">
+              <thead>
+                <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
+                  <th className="py-2 pr-3 font-semibold">{labels.subRecipes}</th>
+                  <th className="py-2 px-3 text-right font-semibold">
+                    {labels.quantity}
+                  </th>
+                  <th className="py-2 pl-3 text-right font-semibold">{labels.cost}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.components.map((line, i) => (
+                  <tr key={i} className="border-b border-neutral-200">
+                    <td className="py-2 pr-3 text-neutral-800">{line.name}</td>
+                    <td className="py-2 px-3 text-right text-neutral-600">
+                      {line.quantityGrams} {labels.units.weight}
+                    </td>
+                    <td className="py-2 pl-3 text-right font-medium text-neutral-900">
+                      {line.costCents == null ? '—' : money(line.costCents)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
 
           {/* Cost breakdown + margin */}
           <div className="ml-auto mt-6 flex w-64 flex-col gap-1">

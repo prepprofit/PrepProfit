@@ -16,6 +16,7 @@ const data: RecipeCardDocumentData = {
     { name: 'Flour', dimension: 'weight', quantity: 1000, costCents: 120 },
     { name: 'Eggs', dimension: 'count', quantity: 3, costCents: 90 },
   ],
+  components: [{ name: 'Pastry cream', quantityGrams: 250, costCents: 175 }],
   ingredientCostCents: 233,
   laborCostCents: 500,
   energyCostCents: 120,
