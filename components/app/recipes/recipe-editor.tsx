@@ -54,11 +54,15 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import {
+  addRecipeComponentAction,
   addRecipeIngredientAction,
   deleteRecipeAction,
+  removeRecipeComponentAction,
   removeRecipeIngredientAction,
+  reorderRecipeComponentsAction,
   reorderRecipeIngredientsAction,
   updateRecipeAction,
+  updateRecipeComponentAction,
   updateRecipeIngredientAction,
 } from '@/app/(app)/recipes/actions';
 import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
@@ -110,6 +114,38 @@ type IngredientOption = {
 
 type Line = EditorLineBase & { unit: Unit; valueText: string };
 
+/**
+ * A sub-recipe component line as the editor sees it. OPERATIONAL for both roles
+ * (name + finished grams); `unitCostCentsPerGram` is MANAGER-ONLY metadata
+ * (component batch total ÷ finished weight) so the line cost and the live batch
+ * cost stay linear in the quantity — kitchen payloads never carry the key.
+ * `null` (manager) = the component tree is unresolvable → cost tiles show "—".
+ */
+export type EditorComponentLine = {
+  id: string;
+  componentRecipeId: string;
+  name: string;
+  quantityGrams: number;
+  sortOrder: number;
+  unitCostCentsPerGram?: number | null;
+};
+
+/**
+ * A picker candidate. Operational fields for both roles; `unitCostCentsPerGram`
+ * is MANAGER-ONLY (absent from kitchen payloads) so a newly added line costs
+ * live without a round-trip.
+ */
+export type ComponentPickerOption = {
+  id: string;
+  name: string;
+  yieldWeightGrams: number | null;
+  selectable: boolean;
+  disabledReason: 'no_yield' | 'cycle' | null;
+  unitCostCentsPerGram?: number | null;
+};
+
+type ComponentLine = EditorComponentLine & { valueText: string };
+
 function numberToText(n: number): string {
   return String(Math.round(n * 1000) / 1000);
 }
@@ -122,6 +158,8 @@ export function RecipeEditor({
   canSeeCosts,
   recipe,
   initialLines,
+  initialComponents,
+  componentPicker,
   initialPresets,
   ingredients,
   folders,
@@ -132,6 +170,8 @@ export function RecipeEditor({
   canSeeCosts: boolean;
   recipe: EditorRecipe;
   initialLines: EditorLineBase[];
+  initialComponents: EditorComponentLine[];
+  componentPicker: ComponentPickerOption[];
   initialPresets: EditorPreset[];
   ingredients: IngredientOption[];
   folders: RecipeFolder[];
@@ -193,6 +233,12 @@ export function RecipeEditor({
   const [lines, setLines] = React.useState<Line[]>(() =>
     initialLines.map(makeLine),
   );
+  // Sub-recipe component lines — quantities are grams of finished output.
+  const [components, setComponents] = React.useState<ComponentLine[]>(() =>
+    initialComponents.map((c) => ({ ...c, valueText: numberToText(c.quantityGrams) })),
+  );
+  const [newComponentId, setNewComponentId] = React.useState('');
+  const [newComponentGramsText, setNewComponentGramsText] = React.useState('');
   // Canonical preset list — owned here and passed down to RecipePresets.
   const [presets, setPresets] = React.useState<EditorPreset[]>(initialPresets);
   const [newIngredientId, setNewIngredientId] = React.useState('');
@@ -255,20 +301,29 @@ export function RecipeEditor({
   };
 
   // --- live cost & margin (managers only — kitchen sees no money) ---
-  const cost = canSeeCosts
-    ? recipeCost({
-        yieldPortions: Number(form.yieldPortions) || 0,
-        yieldPercentage: Number(form.yieldPercentage) || 0,
-        laborCostCents: parseMoneyToCents(form.laborText),
-        energyCostCents: parseMoneyToCents(form.energyText),
-        packagingCostCents: parseMoneyToCents(form.packagingText),
-        lines: lines.map((l) => ({
-          dimension: l.ingredient.dimension,
-          priceCents: l.ingredient.priceCents ?? 0,
-          quantity: l.quantity,
-        })),
-      })
-    : null;
+  // A component with unresolvable cost metadata makes the live cost UNTRUE →
+  // hide the money tiles ("—") rather than render a partial sum.
+  const componentCostUnresolved =
+    canSeeCosts && components.some((c) => c.unitCostCentsPerGram == null);
+  const cost =
+    canSeeCosts && !componentCostUnresolved
+      ? recipeCost({
+          yieldPortions: Number(form.yieldPortions) || 0,
+          yieldPercentage: Number(form.yieldPercentage) || 0,
+          laborCostCents: parseMoneyToCents(form.laborText),
+          energyCostCents: parseMoneyToCents(form.energyText),
+          packagingCostCents: parseMoneyToCents(form.packagingText),
+          lines: lines.map((l) => ({
+            dimension: l.ingredient.dimension,
+            priceCents: l.ingredient.priceCents ?? 0,
+            quantity: l.quantity,
+          })),
+          // Component raw cost is linear in the finished grams used.
+          componentMaterialCostsCents: components.map(
+            (c) => (c.unitCostCentsPerGram ?? 0) * c.quantityGrams,
+          ),
+        })
+      : null;
   const sellingCents = parseMoneyToCents(form.sellingText);
   const hasPrice = canSeeCosts && form.sellingText.trim() !== '' && sellingCents > 0;
   const margin = cost ? marginPercent(cost.costPerPortionCents, sellingCents) : 0;
@@ -455,6 +510,104 @@ export function RecipeEditor({
       const units = displayUnitsFor(ing.dimension, measurementSystem);
       setNewUnit(units[0] ?? 'g');
     }
+  };
+
+  // --- sub-recipe component lines (operational; manager also sees line cost) ---
+  const setComponentValue = (lineId: string, valueText: string) => {
+    setComponents((prev) =>
+      prev.map((c) =>
+        c.id === lineId
+          ? { ...c, valueText, quantityGrams: Number(valueText) || 0 }
+          : c,
+      ),
+    );
+  };
+
+  const persistComponent = (lineId: string) => {
+    const line = components.find((c) => c.id === lineId);
+    if (!line || !(line.quantityGrams > 0)) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await updateRecipeComponentAction(recipe.id, lineId, {
+        quantityGrams: line.quantityGrams,
+      });
+      if (result.ok) flashSavedLine(lineId);
+      else setError(actionError(result.code));
+    });
+  };
+
+  const removeComponent = (lineId: string) => {
+    setError(null);
+    startTransition(async () => {
+      const result = await removeRecipeComponentAction(recipe.id, lineId);
+      if (result.ok) setComponents((prev) => prev.filter((c) => c.id !== lineId));
+      else setError(actionError(result.code));
+    });
+  };
+
+  const componentDragIndex = React.useRef<number | null>(null);
+  const commitComponentReorder = (next: ComponentLine[]) => {
+    const previous = components;
+    setComponents(next);
+    setError(null);
+    startTransition(async () => {
+      const result = await reorderRecipeComponentsAction(recipe.id, {
+        orderedLineIds: next.map((c) => c.id),
+      });
+      if (!result.ok) {
+        setComponents(previous);
+        setError(actionError(result.code));
+      }
+    });
+  };
+
+  const moveComponent = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= components.length) return;
+    const next = components.slice();
+    const [moved] = next.splice(index, 1);
+    next.splice(target, 0, moved!);
+    commitComponentReorder(next);
+  };
+
+  const availableComponentOptions = componentPicker.filter(
+    (option) => !components.some((c) => c.componentRecipeId === option.id),
+  );
+
+  const addComponent = () => {
+    const option = componentPicker.find((o) => o.id === newComponentId);
+    const quantityGrams = Number(newComponentGramsText) || 0;
+    if (!option || !(quantityGrams > 0)) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await addRecipeComponentAction(recipe.id, {
+        componentRecipeId: option.id,
+        quantityGrams,
+        sortOrder: components.length,
+      });
+      if (result.ok) {
+        // The server owns cost metadata — refresh to pull the resolved line
+        // cost; optimistically show the operational line meanwhile.
+        setComponents((prev) => [
+          ...prev,
+          {
+            id: result.data.id,
+            componentRecipeId: option.id,
+            name: option.name,
+            quantityGrams,
+            sortOrder: prev.length,
+            unitCostCentsPerGram: canSeeCosts
+              ? (option.unitCostCentsPerGram ?? null)
+              : undefined,
+            valueText: numberToText(quantityGrams),
+          },
+        ]);
+        setNewComponentId('');
+        setNewComponentGramsText('');
+      } else {
+        setError(actionError(result.code));
+      }
+    });
   };
 
   const addLine = () => {
@@ -808,6 +961,217 @@ export function RecipeEditor({
               >
                 <Plus className="size-4" />
                 {t('ingredients.add')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sub-recipes — recipes used as finished components (grams of finished
+            output). Operational for both roles; only managers see line costs. */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('components.title')}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <th className="w-20 pb-2">
+                      <span className="sr-only">{t('components.reorder')}</span>
+                    </th>
+                    <th className="pb-2">{t('components.name')}</th>
+                    <th className="pb-2">{t('components.quantity')}</th>
+                    {canSeeCosts && (
+                      <th className="pb-2 text-right">{t('components.cost')}</th>
+                    )}
+                    <th className="pb-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {components.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={canSeeCosts ? 5 : 4}
+                        className="py-6 text-center text-sm text-muted-foreground"
+                      >
+                        {t('components.empty')}
+                      </td>
+                    </tr>
+                  )}
+                  {components.map((line, idx) => (
+                    <tr
+                      key={line.id}
+                      className="border-b border-border last:border-0"
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        const from = componentDragIndex.current;
+                        componentDragIndex.current = null;
+                        if (from === null || from === idx) return;
+                        const next = components.slice();
+                        const [moved] = next.splice(from, 1);
+                        next.splice(idx, 0, moved!);
+                        commitComponentReorder(next);
+                      }}
+                    >
+                      <td className="py-2 pr-2">
+                        <div className="flex items-center gap-0.5">
+                          <span
+                            draggable={!pending}
+                            onDragStart={() => {
+                              componentDragIndex.current = idx;
+                            }}
+                            onDragEnd={() => {
+                              componentDragIndex.current = null;
+                            }}
+                            aria-hidden
+                            className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                          >
+                            <GripVertical className="size-4" />
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="size-7 p-0"
+                            aria-label={t('components.moveUp')}
+                            disabled={pending || idx === 0}
+                            onClick={() => moveComponent(idx, -1)}
+                          >
+                            <ChevronUp className="size-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="size-7 p-0"
+                            aria-label={t('components.moveDown')}
+                            disabled={pending || idx === components.length - 1}
+                            onClick={() => moveComponent(idx, 1)}
+                          >
+                            <ChevronDown className="size-4" />
+                          </Button>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap py-2 pr-2">
+                        <Link
+                          href={`/recipes/${line.componentRecipeId}`}
+                          className="font-medium text-foreground hover:underline"
+                        >
+                          {line.name}
+                        </Link>
+                      </td>
+                      <td className="py-2 pr-2">
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            aria-label={t('components.quantity')}
+                            inputMode="decimal"
+                            className="w-24"
+                            value={line.valueText}
+                            disabled={pending}
+                            onChange={(e) =>
+                              setComponentValue(line.id, e.target.value)
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') e.currentTarget.blur();
+                            }}
+                            onBlur={() => persistComponent(line.id)}
+                          />
+                          <span className="text-xs text-muted-foreground">g</span>
+                        </div>
+                      </td>
+                      {canSeeCosts && (
+                        <td className="py-2 pr-2 text-right tabular-nums">
+                          {line.unitCostCentsPerGram == null
+                            ? '—'
+                            : formatMoney(
+                                Math.round(
+                                  line.unitCostCentsPerGram * line.quantityGrams,
+                                ),
+                                currency,
+                              )}
+                        </td>
+                      )}
+                      <td className="py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {savedLineId === line.id && (
+                            <span
+                              className="inline-flex items-center gap-1 text-xs text-brand-700 dark:text-brand-300"
+                              role="status"
+                            >
+                              <Check className="size-4" />
+                              {t('saved')}
+                            </span>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label={t('components.remove')}
+                            disabled={pending}
+                            onClick={() => removeComponent(line.id)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Add component */}
+            <div className="grid grid-cols-1 gap-2 rounded-lg border border-dashed border-border p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+              <Select
+                aria-label={t('components.add')}
+                value={newComponentId}
+                disabled={pending || availableComponentOptions.length === 0}
+                onChange={(e) => setNewComponentId(e.target.value)}
+              >
+                <option value="">
+                  {availableComponentOptions.length === 0
+                    ? t('components.noneAvailable')
+                    : t('components.select')}
+                </option>
+                {availableComponentOptions.map((option) => (
+                  <option
+                    key={option.id}
+                    value={option.id}
+                    disabled={!option.selectable}
+                  >
+                    {option.name}
+                    {option.disabledReason === 'no_yield'
+                      ? ` — ${t('components.needsYield')}`
+                      : option.disabledReason === 'cycle'
+                        ? ` — ${t('components.wouldCycle')}`
+                        : ''}
+                  </option>
+                ))}
+              </Select>
+              <Input
+                aria-label={t('components.quantity')}
+                inputMode="decimal"
+                placeholder="0 g"
+                className="w-28"
+                value={newComponentGramsText}
+                disabled={pending || newComponentId === ''}
+                onChange={(e) => setNewComponentGramsText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newComponentId !== '') addComponent();
+                }}
+              />
+              <Button
+                type="button"
+                onClick={addComponent}
+                disabled={
+                  pending ||
+                  newComponentId === '' ||
+                  !(Number(newComponentGramsText) > 0)
+                }
+              >
+                <Plus className="size-4" />
+                {t('components.addAction')}
               </Button>
             </div>
           </CardContent>

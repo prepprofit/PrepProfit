@@ -112,3 +112,48 @@ export const reorderRecipeIngredientsSchema = z
 export type ReorderRecipeIngredientsInput = z.infer<
   typeof reorderRecipeIngredientsSchema
 >;
+
+/**
+ * A sub-recipe component line: grams of the component recipe's finished output
+ * (v1 unit is grams only). Quantity is strictly positive — a 0 g component line
+ * is meaningless (unlike ingredient lines, which allow 0 as a placeholder).
+ */
+export const recipeComponentSchema = z.object({
+  componentRecipeId: z.string().trim().min(1),
+  quantityGrams: z
+    .number()
+    .refine(Number.isFinite, { message: 'Quantity must be finite.' })
+    .gt(0)
+    .max(100_000_000),
+  sortOrder: z.number().int().min(0).optional(),
+});
+
+export type RecipeComponentInput = z.infer<typeof recipeComponentSchema>;
+
+export const recipeComponentUpdateSchema = z.object({
+  quantityGrams: z
+    .number()
+    .refine(Number.isFinite, { message: 'Quantity must be finite.' })
+    .gt(0)
+    .max(100_000_000),
+  sortOrder: z.number().int().min(0).optional(),
+});
+
+export type RecipeComponentUpdateInput = z.infer<typeof recipeComponentUpdateSchema>;
+
+/** Reorder payload for component lines — same contract as ingredient reorder. */
+export const reorderRecipeComponentsSchema = z
+  .object({
+    orderedLineIds: z
+      .array(z.string().trim().min(1))
+      .min(1)
+      .max(MAX_REORDER_LINES),
+  })
+  .refine(
+    (v) => new Set(v.orderedLineIds).size === v.orderedLineIds.length,
+    { message: 'Duplicate line ids are not allowed.', path: ['orderedLineIds'] },
+  );
+
+export type ReorderRecipeComponentsInput = z.infer<
+  typeof reorderRecipeComponentsSchema
+>;

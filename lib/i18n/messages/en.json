@@ -75,6 +75,13 @@
     "RECIPE_PRESETS_CHANGED": "The presets changed. Reload and try again.",
     "RECIPE_PRESET_LIMIT_REACHED": "You've reached the preset limit for this recipe. Remove one before adding another.",
     "INGREDIENT_IN_TRASHED_RECIPE": "This ingredient is still part of a trashed recipe. Delete that recipe permanently first.",
+    "RECIPE_COMPONENT_INVALID": "That recipe can't be used as a sub-recipe. It must be active and have a finished batch weight.",
+    "RECIPE_COMPONENT_ALREADY_EXISTS": "This recipe already uses that sub-recipe. Edit the existing line instead.",
+    "RECIPE_CYCLE": "That would make the recipes contain each other. Pick a different sub-recipe.",
+    "RECIPE_DEPTH_EXCEEDED": "Recipes can only be nested up to 5 levels deep.",
+    "RECIPE_COMPONENTS_CHANGED": "The sub-recipes changed. Reload and try again.",
+    "RECIPE_COMPONENT_REQUIRES_YIELD": "This recipe is used as a sub-recipe, so it needs a finished batch weight. Remove it from those recipes first.",
+    "RECIPE_IN_COMPONENT": "This recipe is used as a sub-recipe by other recipes. Remove those sub-recipe lines first.",
     "CATEGORY_IN_USE": "This category is used by one or more transactions, so it can't be deleted. Reassign or remove those transactions first.",
     "INVOICE_LOCKED": "This invoice has already been issued, so it can no longer be edited or deleted. Void it instead.",
     "INVOICE_NO_CUSTOMER": "Add a customer before issuing this invoice.",
@@ -928,6 +935,23 @@
       "reorder": "Drag to reorder",
       "moveUp": "Move ingredient up",
       "moveDown": "Move ingredient down"
+    },
+    "components": {
+      "title": "Sub-recipes",
+      "name": "Recipe",
+      "quantity": "Finished weight (g)",
+      "cost": "Cost",
+      "remove": "Remove sub-recipe",
+      "add": "Add a sub-recipe",
+      "addAction": "Add",
+      "select": "Select a recipe…",
+      "noneAvailable": "No recipes available",
+      "empty": "No sub-recipes yet. Use another recipe's finished output as an ingredient.",
+      "reorder": "Drag to reorder",
+      "moveUp": "Move sub-recipe up",
+      "moveDown": "Move sub-recipe down",
+      "needsYield": "needs a batch weight",
+      "wouldCycle": "would contain itself"
     },
     "parameters": {
       "title": "Parameters"

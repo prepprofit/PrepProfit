@@ -185,6 +185,19 @@ async function collectDescendants(
   return resultRows(res);
 }
 
+/**
+ * All recipes reachable UPWARD from `recipeId` — the parents whose derived
+ * cost/allergens/explosion change when this recipe changes. Public for the
+ * actions' revalidate-the-graph step.
+ */
+export async function listAncestorRecipeIds(
+  db: TenantClient,
+  organizationId: string,
+  recipeId: string,
+): Promise<string[]> {
+  return [...(await collectAncestorIds(db, organizationId, recipeId))];
+}
+
 /** All recipes reachable UPWARD from `recipeId` (its ancestors as a set). */
 async function collectAncestorIds(
   db: TenantClient,

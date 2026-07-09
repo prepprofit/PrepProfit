@@ -31,6 +31,21 @@ export type ActionErrorCode =
   // before adding another (Recipe-editor parity).
   | 'RECIPE_PRESET_LIMIT_REACHED'
   | 'INGREDIENT_IN_TRASHED_RECIPE'
+  // ── Sub-recipes (recipe-in-recipe) ──
+  // Missing, cross-org, trashed, self, or no-positive-yield component recipe.
+  | 'RECIPE_COMPONENT_INVALID'
+  // The parent already has a component line for that recipe.
+  | 'RECIPE_COMPONENT_ALREADY_EXISTS'
+  // The proposed component line would make the recipe graph cyclic.
+  | 'RECIPE_CYCLE'
+  // The proposed line would push the longest chain beyond MAX_COMPONENT_DEPTH.
+  | 'RECIPE_DEPTH_EXCEEDED'
+  // Stale component reorder payload (lines changed since page load) — no write.
+  | 'RECIPE_COMPONENTS_CHANGED'
+  // Tried to clear yield_weight_grams on a recipe used as a component.
+  | 'RECIPE_COMPONENT_REQUIRES_YIELD'
+  // The recipe cannot be trashed/purged while a component line references it.
+  | 'RECIPE_IN_COMPONENT'
   | 'CATEGORY_IN_USE'
   // An issued/paid/void invoice was edited or trashed — only drafts are mutable.
   | 'INVOICE_LOCKED'

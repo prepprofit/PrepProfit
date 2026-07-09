@@ -24,10 +24,20 @@ import {
   updateRecipeIngredient,
 } from '@/lib/data/recipe-ingredients';
 import {
+  addRecipeComponent,
+  listAncestorRecipeIds,
+  removeRecipeComponent,
+  reorderRecipeComponents,
+  updateRecipeComponent,
+} from '@/lib/data/recipe-components';
+import {
   kitchenRecipeSchema,
+  recipeComponentSchema,
+  recipeComponentUpdateSchema,
   recipeLineSchema,
   recipeLineUpdateSchema,
   recipeSchema,
+  reorderRecipeComponentsSchema,
   reorderRecipeIngredientsSchema,
 } from '@/lib/validation/recipes';
 import type { ActionResult } from '@/lib/action-result';
@@ -41,6 +51,142 @@ import type { Recipe } from '@/lib/db/schema';
 function revalidateRecipe(id?: string): void {
   revalidatePath('/recipes');
   if (id) revalidatePath(`/recipes/${id}`);
+}
+
+/**
+ * A component line change affects the parent AND every ancestor recipe, plus the
+ * high-level surfaces that derive cost/allergens/explosion from the graph
+ * (sub-recipes plan §UI). `ancestorIds` comes from the same transaction as the
+ * write, so it can't miss a just-added parent.
+ */
+function revalidateRecipeGraph(recipeId: string, ancestorIds: string[]): void {
+  revalidateRecipe(recipeId);
+  for (const id of ancestorIds) revalidatePath(`/recipes/${id}`);
+  revalidatePath('/dashboard');
+  revalidatePath('/menus');
+  revalidatePath('/productions');
+  revalidatePath('/tasks/ai-prep-planner');
+}
+
+/** Map a data-layer component failure reason to its stable ActionErrorCode. */
+function componentErrorCode(
+  reason:
+    | 'recipe_not_active'
+    | 'component_invalid'
+    | 'duplicate'
+    | 'cycle'
+    | 'depth_exceeded',
+) {
+  switch (reason) {
+    case 'recipe_not_active':
+      return 'NOT_FOUND' as const;
+    case 'component_invalid':
+      return 'RECIPE_COMPONENT_INVALID' as const;
+    case 'duplicate':
+      return 'RECIPE_COMPONENT_ALREADY_EXISTS' as const;
+    case 'cycle':
+      return 'RECIPE_CYCLE' as const;
+    case 'depth_exceeded':
+      return 'RECIPE_DEPTH_EXCEEDED' as const;
+  }
+}
+
+/**
+ * Sub-recipe component lines are OPERATIONAL like ingredient lines (locked
+ * decision 8): both roles may add/update/remove/reorder them, no audit events
+ * (decision 9), and the payloads carry no money. The graph invariants (active +
+ * positive-yield component, no cycles, depth ≤ 5) are enforced in the data
+ * layer under FOR UPDATE locks.
+ */
+export async function addRecipeComponentAction(
+  recipeId: string,
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  const parsed = recipeComponentSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const result = await addRecipeComponent(tx, organizationId, recipeId, parsed.data);
+    const ancestorIds = result.ok
+      ? await listAncestorRecipeIds(tx, organizationId, recipeId)
+      : [];
+    return { result, ancestorIds };
+  });
+  if (!outcome.result.ok) {
+    return { ok: false, code: componentErrorCode(outcome.result.reason) };
+  }
+  revalidateRecipeGraph(recipeId, outcome.ancestorIds);
+  return { ok: true, data: { id: outcome.result.row.id } };
+}
+
+export async function updateRecipeComponentAction(
+  recipeId: string,
+  componentLineId: string,
+  input: unknown,
+): Promise<ActionResult> {
+  const parsed = recipeComponentUpdateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const row = await updateRecipeComponent(
+      tx,
+      organizationId,
+      recipeId,
+      componentLineId,
+      parsed.data,
+    );
+    const ancestorIds = row
+      ? await listAncestorRecipeIds(tx, organizationId, recipeId)
+      : [];
+    return { row, ancestorIds };
+  });
+  if (!outcome.row) return { ok: false, code: 'NOT_FOUND' };
+  revalidateRecipeGraph(recipeId, outcome.ancestorIds);
+  return { ok: true, data: undefined };
+}
+
+export async function removeRecipeComponentAction(
+  recipeId: string,
+  componentLineId: string,
+): Promise<ActionResult> {
+  const organizationId = await getOrgId();
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const removed = await removeRecipeComponent(
+      tx,
+      organizationId,
+      recipeId,
+      componentLineId,
+    );
+    const ancestorIds = removed
+      ? await listAncestorRecipeIds(tx, organizationId, recipeId)
+      : [];
+    return { removed, ancestorIds };
+  });
+  if (!outcome.removed) return { ok: false, code: 'NOT_FOUND' };
+  revalidateRecipeGraph(recipeId, outcome.ancestorIds);
+  return { ok: true, data: undefined };
+}
+
+export async function reorderRecipeComponentsAction(
+  recipeId: string,
+  input: unknown,
+): Promise<ActionResult<{ count: number }>> {
+  const parsed = reorderRecipeComponentsSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  const outcome = await withOrg(organizationId, (tx) =>
+    reorderRecipeComponents(tx, organizationId, recipeId, parsed.data.orderedLineIds),
+  );
+  if (outcome.status === 'not_found') return { ok: false, code: 'NOT_FOUND' };
+  if (outcome.status === 'stale') {
+    return { ok: false, code: 'RECIPE_COMPONENTS_CHANGED' };
+  }
+  // Reorder is presentation-only — ancestors' derived data is unchanged.
+  revalidateRecipe(recipeId);
+  return { ok: true, data: { count: outcome.count } };
 }
 
 export async function createRecipeAction(

@@ -1,11 +1,5 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
-import {
-  ingredients,
-  menuItems,
-  menus,
-  recipeIngredients,
-  recipes,
-} from '@/lib/db/schema';
+import { menuItems, menus, recipes } from '@/lib/db/schema';
 import type { Menu } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
