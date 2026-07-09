@@ -430,11 +430,11 @@ export function RecipePresets({
                 </option>
               ))}
             </Select>
-            <Button type="button" onClick={addPreset} disabled={pending}>
-              <Plus className="size-4" />
-              {t('add')}
-            </Button>
           </div>
+          <Button type="button" onClick={addPreset} disabled={pending}>
+            <Plus className="size-4" />
+            {t('add')}
+          </Button>
         </div>
       </CardContent>
     </Card>
