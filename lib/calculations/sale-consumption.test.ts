@@ -2,29 +2,42 @@ import { describe, expect, it } from 'vitest';
 import {
   explodeSaleConsumption,
   type SaleConsumptionInput,
-  type SaleRecipeInput,
 } from '@/lib/calculations/sale-consumption';
+import type { RecipeTreeNode } from '@/lib/calculations/production';
 
-/** A minimal active recipe input for the explosion (yield 1 portion, no loss). */
+/** A minimal active recipe (item + graph node): yield 1 portion, no loss. */
 function recipe(
   recipeId: string,
   plannedQty: number,
   lines: { ingredientId: string; quantity: number }[],
-  extra: Partial<SaleRecipeInput> = {},
-): SaleRecipeInput {
+  extra: Partial<RecipeTreeNode> = {},
+): { item: { recipeId: string; plannedQty: number }; node: RecipeTreeNode } {
   return {
-    recipeId,
-    plannedQty,
-    available: true,
-    yieldPortions: 1,
-    yieldPercentage: 100,
-    lines,
-    ...extra,
+    item: { recipeId, plannedQty },
+    node: {
+      available: true,
+      yieldPortions: 1,
+      yieldPercentage: 100,
+      yieldWeightGrams: null,
+      lines,
+      components: [],
+      ...extra,
+    },
   };
 }
 
-function input(over: Partial<SaleConsumptionInput> = {}): SaleConsumptionInput {
-  return { recipes: [], ingredientLines: [], ...over };
+function input(
+  over: Partial<Omit<SaleConsumptionInput, 'recipes' | 'recipeNodes'>> & {
+    recipes?: { item: { recipeId: string; plannedQty: number }; node: RecipeTreeNode }[];
+  } = {},
+): SaleConsumptionInput {
+  const { recipes = [], ...rest } = over;
+  return {
+    recipes: recipes.map((r) => r.item),
+    recipeNodes: new Map(recipes.map((r) => [r.item.recipeId, r.node])),
+    ingredientLines: [],
+    ...rest,
+  };
 }
 
 describe('explodeSaleConsumption', () => {

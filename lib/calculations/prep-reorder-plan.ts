@@ -56,6 +56,12 @@ export type PrepRecipeInput = {
   /** Usable yield after trim/loss, percent (100 = no loss; ≤ 0 treated as 100). */
   yieldPercentage: number;
   lines: PrepRecipeLineInput[];
+  /**
+   * True when the recipe's sub-recipe component tree could not be flattened
+   * into `lines` (see ActiveCatalogue) — the demand below would silently omit
+   * component ingredients, so it is surfaced as UNRESOLVED_COMPONENTS.
+   */
+  componentsUnresolved?: boolean;
 };
 
 /** An active ingredient with its stock ledger snapshot — MONEY-FREE. */
@@ -82,7 +88,10 @@ export type PrepPlanIssueCode =
   // The recipe has no ingredient lines to prep from.
   | 'MISSING_LINES'
   // A line points at an ingredient not in the active set (trashed/deleted).
-  | 'DELETED_INGREDIENT';
+  | 'DELETED_INGREDIENT'
+  // The recipe's sub-recipe components could not be resolved to raw
+  // ingredients — the listed demand omits them (never silently).
+  | 'UNRESOLVED_COMPONENTS';
 
 export type PrepPlanIssue = {
   code: PrepPlanIssueCode;
@@ -187,6 +196,10 @@ export function buildPrepReorderPlan(
     }
     if (recipe.lines.length === 0) {
       issues.push({ code: 'MISSING_LINES', recipeId, recipeName: recipe.name });
+      hasIssues = true;
+    }
+    if (recipe.componentsUnresolved === true) {
+      issues.push({ code: 'UNRESOLVED_COMPONENTS', recipeId, recipeName: recipe.name });
       hasIssues = true;
     }
 

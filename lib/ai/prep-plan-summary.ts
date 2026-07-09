@@ -130,7 +130,12 @@ export type PrepPlanSummaryFacts = {
     projected: number;
   }[];
   /** Counts of surfaced data gaps so the model can nudge the manager to fix them. */
-  issues: { missingYield: number; missingLines: number; deletedIngredient: number };
+  issues: {
+    missingYield: number;
+    missingLines: number;
+    deletedIngredient: number;
+    unresolvedComponents: number;
+  };
 };
 
 /** Cap the list sizes sent to the model — the tail adds tokens, not signal. */
@@ -168,6 +173,9 @@ export function buildPrepPlanSummaryFacts(
       missingLines: plan.issues.filter((i) => i.code === 'MISSING_LINES').length,
       deletedIngredient: plan.issues.filter((i) => i.code === 'DELETED_INGREDIENT')
         .length,
+      unresolvedComponents: plan.issues.filter(
+        (i) => i.code === 'UNRESOLVED_COMPONENTS',
+      ).length,
     },
   };
 }

@@ -27,15 +27,15 @@
  */
 
 import {
-  explodeProduction,
+  explodeRecipeTree,
   roundCanonical,
   NUMERIC_12_2_MAX,
   type IngredientRequirement,
-  type ProductionRecipeInput,
+  type RecipeTreeNode,
 } from '@/lib/calculations/production';
 
 /** A distinct recipe to explode: the SUMMED portions across all recipe + menu refs. */
-export type SaleRecipeInput = ProductionRecipeInput;
+export type SaleRecipeInput = { recipeId: string; plannedQty: number };
 
 /** One direct-ingredient consumption line: `units × qtyCanonicalPerUnit`. */
 export type SaleIngredientLine = {
@@ -51,6 +51,12 @@ export type SaleIngredientLine = {
 export type SaleConsumptionInput = {
   /** Distinct recipes (recipe lines + menu expansion folded into plannedQty). */
   recipes: SaleRecipeInput[];
+  /**
+   * Graph nodes (yield, lines, sub-recipe components) for every referenced
+   * recipe AND its component closure — the explosion traverses components to
+   * raw ingredients (sub-recipes plan).
+   */
+  recipeNodes: Map<string, RecipeTreeNode>;
   /** Direct raw-ingredient lines. */
   ingredientLines: SaleIngredientLine[];
   /**
@@ -81,7 +87,7 @@ function isPositiveInt(value: number): boolean {
 
 /**
  * Aggregate the canonical ingredient requirement for a posted sale. Reuses
- * `explodeProduction` for the recipe/menu-derived part (it handles unavailable
+ * `explodeRecipeTree` for the recipe/menu-derived part (it handles unavailable
  * recipes, invalid math and over-domain overflow + the single post-aggregation
  * round), and aggregates the direct ingredient lines independently. The two rounded
  * contributions are then summed per ingredient and the total re-checked for the
@@ -102,7 +108,7 @@ export function explodeSaleConsumption(
   // --- recipe/menu-derived requirement (delegated to the production explosion) ---
   let recipeRequirements: IngredientRequirement[] = [];
   if (input.recipes.length > 0) {
-    const explosion = explodeProduction(input.recipes);
+    const explosion = explodeRecipeTree(input.recipes, input.recipeNodes);
     if (!explosion.complete) {
       if (explosion.reason === 'recipe_unavailable') {
         return {

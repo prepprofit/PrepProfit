@@ -4,6 +4,7 @@ import {
   inventoryMovements,
   menuItems,
   menus,
+  recipeComponents,
   recipeIngredients,
   recipes,
   saleItems,
@@ -19,6 +20,10 @@ import {
   type SaleIngredientLine,
   type SaleRecipeInput,
 } from '@/lib/calculations/sale-consumption';
+import {
+  MAX_COMPONENT_DEPTH,
+  type RecipeTreeNode,
+} from '@/lib/calculations/production';
 import {
   buildMovementKey,
   recordMovements,
@@ -1007,20 +1012,14 @@ async function buildConsumption(
     }
   }
 
-  // Recipe explosion info for every referenced recipe (recipe lines + menu components).
+  // Recipe explosion nodes for every referenced recipe (recipe lines + menu
+  // components) AND their sub-recipe component closure.
   const recipeIds = [...portionsByRecipe.keys()];
-  const recipeInfo = await loadRecipeExplosionInfo(db, organizationId, recipeIds);
-  const recipeInputs: SaleRecipeInput[] = recipeIds.map((recipeId) => {
-    const info = recipeInfo.get(recipeId);
-    return {
-      recipeId,
-      plannedQty: portionsByRecipe.get(recipeId) ?? 0,
-      available: info?.available ?? false,
-      yieldPortions: info?.yieldPortions ?? 1,
-      yieldPercentage: info?.yieldPercentage ?? 100,
-      lines: info?.lines ?? [],
-    };
-  });
+  const recipeNodes = await loadRecipeExplosionInfo(db, organizationId, recipeIds);
+  const recipeInputs: SaleRecipeInput[] = recipeIds.map((recipeId) => ({
+    recipeId,
+    plannedQty: portionsByRecipe.get(recipeId) ?? 0,
+  }));
 
   // Direct ingredient lines.
   const directIngredientIds = distinct(
@@ -1045,26 +1044,58 @@ async function buildConsumption(
 
   return explodeSaleConsumption({
     recipes: recipeInputs,
+    recipeNodes,
     ingredientLines,
     unavailableSourceIds,
   });
 }
 
-type RecipeExplosionInfo = {
-  available: boolean;
-  yieldPortions: number;
-  yieldPercentage: number;
-  lines: { ingredientId: string; quantity: number }[];
-};
-
-/** Resolve recipe yield + ingredient lines (incl. trashed → available:false). */
+/**
+ * Resolve recipe yield + ingredient lines + sub-recipe component lines for the
+ * given recipes AND their component closure (incl. trashed → available:false),
+ * as graph nodes for `explodeRecipeTree`.
+ */
 async function loadRecipeExplosionInfo(
   db: TenantClient,
   organizationId: string,
   recipeIds: string[],
-): Promise<Map<string, RecipeExplosionInfo>> {
-  const map = new Map<string, RecipeExplosionInfo>();
+): Promise<Map<string, RecipeTreeNode>> {
+  const map = new Map<string, RecipeTreeNode>();
   if (recipeIds.length === 0) return map;
+
+  // Component closure, bounded like the shared cost resolver.
+  const closure = new Set<string>(recipeIds);
+  let frontier = [...new Set(recipeIds)];
+  const componentEdges: {
+    recipeId: string;
+    componentRecipeId: string;
+    quantityGrams: number;
+  }[] = [];
+  for (let level = 0; frontier.length > 0 && level <= MAX_COMPONENT_DEPTH + 1; level += 1) {
+    const rows = await db
+      .select({
+        recipeId: recipeComponents.recipeId,
+        componentRecipeId: recipeComponents.componentRecipeId,
+        quantityGrams: recipeComponents.quantityGrams,
+      })
+      .from(recipeComponents)
+      .where(
+        and(
+          eq(recipeComponents.organizationId, organizationId),
+          inArray(recipeComponents.recipeId, frontier),
+        ),
+      );
+    componentEdges.push(...rows);
+    const next = new Set<string>();
+    for (const row of rows) {
+      if (!closure.has(row.componentRecipeId)) {
+        closure.add(row.componentRecipeId);
+        next.add(row.componentRecipeId);
+      }
+    }
+    frontier = [...next];
+  }
+  const closureIds = [...closure];
 
   const recipeRows = await db
     .select({
@@ -1072,15 +1103,18 @@ async function loadRecipeExplosionInfo(
       deletedAt: recipes.deletedAt,
       yieldPortions: recipes.yieldPortions,
       yieldPercentage: recipes.yieldPercentage,
+      yieldWeightGrams: recipes.yieldWeightGrams,
     })
     .from(recipes)
-    .where(and(eq(recipes.organizationId, organizationId), inArray(recipes.id, recipeIds)));
+    .where(and(eq(recipes.organizationId, organizationId), inArray(recipes.id, closureIds)));
   for (const r of recipeRows) {
     map.set(r.id, {
       available: r.deletedAt === null,
       yieldPortions: r.yieldPortions,
       yieldPercentage: r.yieldPercentage,
+      yieldWeightGrams: r.yieldWeightGrams,
       lines: [],
+      components: [],
     });
   }
 
@@ -1094,13 +1128,19 @@ async function loadRecipeExplosionInfo(
     .where(
       and(
         eq(recipeIngredients.organizationId, organizationId),
-        inArray(recipeIngredients.recipeId, recipeIds),
+        inArray(recipeIngredients.recipeId, closureIds),
       ),
     );
   for (const l of lineRows) {
     map.get(l.recipeId)?.lines.push({
       ingredientId: l.ingredientId,
       quantity: Number(l.quantity),
+    });
+  }
+  for (const edge of componentEdges) {
+    map.get(edge.recipeId)?.components.push({
+      componentRecipeId: edge.componentRecipeId,
+      quantityGrams: edge.quantityGrams,
     });
   }
   return map;

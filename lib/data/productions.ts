@@ -6,6 +6,7 @@ import {
   productionItems,
   productionRecipeSnapshots,
   productions,
+  recipeComponents,
   recipeIngredients,
   recipes,
 } from '@/lib/db/schema';
@@ -15,10 +16,11 @@ import type { Dimension } from '@/lib/units';
 import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
 import { componentCost } from '@/lib/calculations/componentCost';
 import {
-  explodeProduction,
+  explodeRecipeTree,
+  MAX_COMPONENT_DEPTH,
   shortfallVsStock,
   type ProductionExplosion,
-  type ProductionRecipeInput,
+  type RecipeTreeNode,
 } from '@/lib/calculations/production';
 import {
   buildMovementKey,
@@ -274,7 +276,11 @@ type RecipeExplosionInfo = {
   available: boolean;
   yieldPortions: number;
   yieldPercentage: number;
+  /** Finished batch weight (grams) — needed when USED as a component. */
+  yieldWeightGrams: number | null;
   lines: { ingredientId: string; quantity: number }[];
+  /** Sub-recipe component lines (grams of the child's finished output). */
+  components: { componentRecipeId: string; quantityGrams: number }[];
 };
 
 type IngredientInfo = {
@@ -304,6 +310,42 @@ async function loadExplosionInputs(
   const ingredientMap = new Map<string, IngredientInfo>();
   if (recipeIds.length === 0) return { recipes: recipeMap, ingredients: ingredientMap };
 
+  // Component closure (sub-recipes): breadth-first over recipe_components,
+  // bounded like the shared cost resolver, so nested components explode to raw
+  // ingredients instead of being silently dropped.
+  const closure = new Set<string>(recipeIds);
+  let frontier = [...new Set(recipeIds)];
+  const componentEdges: {
+    recipeId: string;
+    componentRecipeId: string;
+    quantityGrams: number;
+  }[] = [];
+  for (let level = 0; frontier.length > 0 && level <= MAX_COMPONENT_DEPTH + 1; level += 1) {
+    const rows = await db
+      .select({
+        recipeId: recipeComponents.recipeId,
+        componentRecipeId: recipeComponents.componentRecipeId,
+        quantityGrams: recipeComponents.quantityGrams,
+      })
+      .from(recipeComponents)
+      .where(
+        and(
+          eq(recipeComponents.organizationId, organizationId),
+          inArray(recipeComponents.recipeId, frontier),
+        ),
+      );
+    componentEdges.push(...rows);
+    const next = new Set<string>();
+    for (const row of rows) {
+      if (!closure.has(row.componentRecipeId)) {
+        closure.add(row.componentRecipeId);
+        next.add(row.componentRecipeId);
+      }
+    }
+    frontier = [...next];
+  }
+  const closureIds = [...closure];
+
   const recipeRows = await db
     .select({
       id: recipes.id,
@@ -311,10 +353,11 @@ async function loadExplosionInputs(
       deletedAt: recipes.deletedAt,
       yieldPortions: recipes.yieldPortions,
       yieldPercentage: recipes.yieldPercentage,
+      yieldWeightGrams: recipes.yieldWeightGrams,
     })
     .from(recipes)
     .where(
-      and(eq(recipes.organizationId, organizationId), inArray(recipes.id, recipeIds)),
+      and(eq(recipes.organizationId, organizationId), inArray(recipes.id, closureIds)),
     );
 
   for (const r of recipeRows) {
@@ -323,7 +366,15 @@ async function loadExplosionInputs(
       available: r.deletedAt === null,
       yieldPortions: r.yieldPortions,
       yieldPercentage: r.yieldPercentage,
+      yieldWeightGrams: r.yieldWeightGrams,
       lines: [],
+      components: [],
+    });
+  }
+  for (const edge of componentEdges) {
+    recipeMap.get(edge.recipeId)?.components.push({
+      componentRecipeId: edge.componentRecipeId,
+      quantityGrams: edge.quantityGrams,
     });
   }
 
@@ -347,7 +398,7 @@ async function loadExplosionInputs(
     .where(
       and(
         eq(recipeIngredients.organizationId, organizationId),
-        inArray(recipeIngredients.recipeId, recipeIds),
+        inArray(recipeIngredients.recipeId, closureIds),
       ),
     );
 
@@ -402,21 +453,24 @@ function buildExplosion(
   items: ProductionItemRow[],
   recipeMap: Map<string, RecipeExplosionInfo>,
 ): ProductionExplosion {
-  const inputs: ProductionRecipeInput[] = items.map((item) => {
-    const recipe = recipeMap.get(item.recipeId);
-    // A recipe id with no resolved row is missing/corrupt → unavailable (never
-    // dropped). yield defaults are placeholders; an unavailable recipe never
-    // contributes to the requirement.
-    return {
-      recipeId: item.recipeId,
-      plannedQty: item.plannedQty,
-      available: recipe?.available ?? false,
-      yieldPortions: recipe?.yieldPortions ?? 1,
-      yieldPercentage: recipe?.yieldPercentage ?? 100,
-      lines: recipe?.lines ?? [],
-    };
-  });
-  return explodeProduction(inputs);
+  // Graph-aware: nodes carry sub-recipe component lines, so the explosion
+  // traverses components to raw ingredients (a missing/no-yield/trashed
+  // component makes it incomplete, never a silent drop).
+  const nodes = new Map<string, RecipeTreeNode>();
+  for (const [id, recipe] of recipeMap) {
+    nodes.set(id, {
+      available: recipe.available,
+      yieldPortions: recipe.yieldPortions,
+      yieldPercentage: recipe.yieldPercentage,
+      yieldWeightGrams: recipe.yieldWeightGrams,
+      lines: recipe.lines,
+      components: recipe.components,
+    });
+  }
+  return explodeRecipeTree(
+    items.map((item) => ({ recipeId: item.recipeId, plannedQty: item.plannedQty })),
+    nodes,
+  );
 }
 
 /** Project the explosion into the money-free DTO view (requirements + shortfall). */

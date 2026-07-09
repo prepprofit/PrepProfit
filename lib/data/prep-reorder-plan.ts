@@ -77,6 +77,7 @@ export async function loadPrepReorderPlan(
         dimension: l.dimension,
         quantity: l.quantity,
       })),
+      componentsUnresolved: r.costUnresolved,
     })),
     ingredients: ingredientRows.map((i) => ({
       id: i.id,

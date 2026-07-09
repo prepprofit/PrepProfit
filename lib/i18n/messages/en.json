@@ -1386,7 +1386,8 @@
       "code": {
         "MISSING_YIELD": "Set a yield (portions) on this recipe so it can be scaled.",
         "MISSING_LINES": "This recipe has no ingredients to prep from.",
-        "DELETED_INGREDIENT": "An ingredient on this recipe is missing or in the trash."
+        "DELETED_INGREDIENT": "An ingredient on this recipe is missing or in the trash.",
+        "UNRESOLVED_COMPONENTS": "This recipe's sub-recipes could not be resolved, so their ingredients are not included."
       }
     },
     "summary": {

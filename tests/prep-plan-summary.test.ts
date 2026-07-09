@@ -116,6 +116,7 @@ describe('buildPrepPlanSummaryFacts (money-free pass-through)', () => {
       missingYield: 1,
       missingLines: 0,
       deletedIngredient: 1,
+      unresolvedComponents: 0,
     });
   });
 
