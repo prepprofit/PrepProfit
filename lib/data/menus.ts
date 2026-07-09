@@ -8,7 +8,7 @@ import {
 } from '@/lib/db/schema';
 import type { Menu } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
-import { recipeCost, type RecipeCostLine } from '@/lib/calculations/recipeCost';
+import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
 import {
   marginPercent,
   trafficLight,
@@ -245,60 +245,23 @@ async function costRecipesByIds(
   if (recipeIds.length === 0) return map;
 
   const recipeRows = await db
-    .select()
+    .select({ id: recipes.id, name: recipes.name, deletedAt: recipes.deletedAt })
     .from(recipes)
     .where(
       and(eq(recipes.organizationId, organizationId), inArray(recipes.id, recipeIds)),
     );
 
-  const lineRows = await db
-    .select({
-      recipeId: recipeIngredients.recipeId,
-      quantity: recipeIngredients.quantity,
-      dimension: ingredients.dimension,
-      priceCents: ingredients.priceCents,
-    })
-    .from(recipeIngredients)
-    .innerJoin(
-      ingredients,
-      and(
-        eq(recipeIngredients.ingredientId, ingredients.id),
-        eq(ingredients.organizationId, organizationId),
-      ),
-    )
-    .where(
-      and(
-        eq(recipeIngredients.organizationId, organizationId),
-        inArray(recipeIngredients.recipeId, recipeIds),
-      ),
-    );
-
-  const linesByRecipe = new Map<string, RecipeCostLine[]>();
-  for (const r of lineRows) {
-    const line: RecipeCostLine = {
-      dimension: r.dimension,
-      priceCents: r.priceCents,
-      quantity: Number(r.quantity),
-    };
-    const existing = linesByRecipe.get(r.recipeId);
-    if (existing) existing.push(line);
-    else linesByRecipe.set(r.recipeId, [line]);
-  }
+  // Costs cascade through sub-recipe components via the shared resolver; a
+  // trashed recipe or an unresolvable component tree yields null (never zero).
+  const resolutions = await resolveRecipeCostTree(db, organizationId, recipeIds);
 
   for (const recipe of recipeRows) {
     const available = recipe.deletedAt === null;
-    // A trashed component is unavailable → null cost (never zero). Only an active
-    // recipe contributes a real per-portion cost.
-    const costPerPortionCents = available
-      ? recipeCost({
-          yieldPortions: recipe.yieldPortions,
-          yieldPercentage: recipe.yieldPercentage,
-          laborCostCents: recipe.laborCostCents,
-          energyCostCents: recipe.energyCostCents,
-          packagingCostCents: recipe.packagingCostCents,
-          lines: linesByRecipe.get(recipe.id) ?? [],
-        }).costPerPortionCents
-      : null;
+    const resolution = resolutions.get(recipe.id);
+    const costPerPortionCents =
+      available && resolution?.complete
+        ? resolution.cost.costPerPortionCents
+        : null;
     map.set(recipe.id, { name: recipe.name, available, costPerPortionCents });
   }
   return map;
@@ -527,35 +490,36 @@ export async function getManagerMenu(
 export type MenuRecipeOption = {
   id: string;
   name: string;
-  costPerPortionCents: number;
+  /** Null when the recipe's component tree cannot be resolved (never zero). */
+  costPerPortionCents: number | null;
 };
 
 /**
  * Active recipes as menu-editor options, each with its current cost per portion
- * (MANAGER-only — carries money). Reuses `listRecipesWithLines` + `recipeCost`, so
- * the picker's live menu cost matches the saved menu's derived cost exactly.
+ * (MANAGER-only — carries money). Resolves through `resolveRecipeCostTree`, so
+ * the picker's live menu cost matches the saved menu's derived cost exactly,
+ * including sub-recipe component costs.
  */
 export async function listMenuRecipeOptions(
   db: TenantClient,
   organizationId: string,
 ): Promise<MenuRecipeOption[]> {
   const recipesWithLines = await listRecipesWithLines(db, organizationId);
-  return recipesWithLines.map(({ recipe, lines }) => ({
-    id: recipe.id,
-    name: recipe.name,
-    costPerPortionCents: recipeCost({
-      yieldPortions: recipe.yieldPortions,
-      yieldPercentage: recipe.yieldPercentage,
-      laborCostCents: recipe.laborCostCents,
-      energyCostCents: recipe.energyCostCents,
-      packagingCostCents: recipe.packagingCostCents,
-      lines: lines.map((l) => ({
-        dimension: l.ingredient.dimension,
-        priceCents: l.ingredient.priceCents,
-        quantity: l.quantity,
-      })),
-    }).costPerPortionCents,
-  }));
+  const resolutions = await resolveRecipeCostTree(
+    db,
+    organizationId,
+    recipesWithLines.map(({ recipe }) => recipe.id),
+  );
+  return recipesWithLines.map(({ recipe }) => {
+    const resolution = resolutions.get(recipe.id);
+    return {
+      id: recipe.id,
+      name: recipe.name,
+      costPerPortionCents: resolution?.complete
+        ? resolution.cost.costPerPortionCents
+        : null,
+    };
+  });
 }
 
 // ── Mutations ─────────────────────────────────────────────────────────────────

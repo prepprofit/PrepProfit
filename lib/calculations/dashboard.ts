@@ -18,6 +18,8 @@ export type DashboardRecipeInput = {
   /** Selling price per portion in cents, or null when the chef hasn't priced it. */
   sellingPriceCents: number | null;
   cost: RecipeCostInput;
+  /** True when the sub-recipe tree is unresolvable → cost untrue → no margin. */
+  costUnresolved?: boolean;
 };
 
 export type TopRecipe = {
@@ -52,7 +54,10 @@ export function dashboardSummary(
   topN = 5,
 ): DashboardSummary {
   const priced = recipes.filter(
-    (r) => r.sellingPriceCents != null && r.sellingPriceCents > 0,
+    (r) =>
+      r.sellingPriceCents != null &&
+      r.sellingPriceCents > 0 &&
+      r.costUnresolved !== true,
   );
 
   const metrics = priced.map((r) => {

@@ -12,7 +12,7 @@ import {
 import type { Production } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import type { Dimension } from '@/lib/units';
-import { recipeCost, type RecipeCostLine } from '@/lib/calculations/recipeCost';
+import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
 import { componentCost } from '@/lib/calculations/componentCost';
 import {
   explodeProduction,
@@ -375,7 +375,7 @@ async function loadExplosionInputs(
  * Resolve recipe name + availability + current cost per portion for a set of recipe
  * ids, INCLUDING trashed rows. A trashed/missing recipe yields `costPerPortionCents
  * = null` (never zero, D5). Batched (recipes, then all their lines + ingredient
- * prices), then `recipeCost` once per recipe. For MANAGER loaders only — carries money.
+ * prices), via `resolveRecipeCostTree`. For MANAGER loaders only — carries money.
  */
 async function costRecipesByIds(
   db: TenantClient,
@@ -385,62 +385,12 @@ async function costRecipesByIds(
   const map = new Map<string, number | null>();
   if (recipeIds.length === 0) return map;
 
-  const recipeRows = await db
-    .select()
-    .from(recipes)
-    .where(
-      and(eq(recipes.organizationId, organizationId), inArray(recipes.id, recipeIds)),
-    );
-
-  const lineRows = await db
-    .select({
-      recipeId: recipeIngredients.recipeId,
-      quantity: recipeIngredients.quantity,
-      dimension: ingredients.dimension,
-      priceCents: ingredients.priceCents,
-    })
-    .from(recipeIngredients)
-    .innerJoin(
-      ingredients,
-      and(
-        eq(recipeIngredients.ingredientId, ingredients.id),
-        eq(ingredients.organizationId, organizationId),
-      ),
-    )
-    .where(
-      and(
-        eq(recipeIngredients.organizationId, organizationId),
-        inArray(recipeIngredients.recipeId, recipeIds),
-      ),
-    );
-
-  const linesByRecipe = new Map<string, RecipeCostLine[]>();
-  for (const r of lineRows) {
-    const line: RecipeCostLine = {
-      dimension: r.dimension,
-      priceCents: r.priceCents,
-      quantity: Number(r.quantity),
-    };
-    const existing = linesByRecipe.get(r.recipeId);
-    if (existing) existing.push(line);
-    else linesByRecipe.set(r.recipeId, [line]);
-  }
-
-  for (const recipe of recipeRows) {
-    const available = recipe.deletedAt === null;
-    map.set(
-      recipe.id,
-      available
-        ? recipeCost({
-            yieldPortions: recipe.yieldPortions,
-            yieldPercentage: recipe.yieldPercentage,
-            laborCostCents: recipe.laborCostCents,
-            energyCostCents: recipe.energyCostCents,
-            packagingCostCents: recipe.packagingCostCents,
-            lines: linesByRecipe.get(recipe.id) ?? [],
-          }).costPerPortionCents
-        : null,
-    );
+  // Costs cascade through sub-recipe components via the shared resolver; a
+  // trashed recipe or an unresolvable component tree yields null (never zero).
+  const resolutions = await resolveRecipeCostTree(db, organizationId, recipeIds);
+  for (const id of new Set(recipeIds)) {
+    const resolution = resolutions.get(id);
+    map.set(id, resolution?.complete ? resolution.cost.costPerPortionCents : null);
   }
   return map;
 }

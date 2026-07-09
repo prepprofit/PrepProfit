@@ -81,8 +81,12 @@ export async function loadCfoReport(
         priceCents: l.priceCents,
         quantity: l.quantity,
       })),
+      componentMaterialCostsCents: [recipe.componentHiddenCostCents],
     });
-    recipeCostPerPortion.set(recipe.id, unpriced ? null : cost.costPerPortionCents);
+    recipeCostPerPortion.set(
+      recipe.id,
+      unpriced || recipe.costUnresolved ? null : cost.costPerPortionCents,
+    );
   }
   const menuCostById = new Map<string, number | null>();
   for (const menu of catalogue.menus) {
@@ -114,8 +118,10 @@ export async function loadCfoReport(
           priceCents: l.priceCents,
           quantity: l.quantity,
         })),
+        componentMaterialCostsCents: [recipe.componentHiddenCostCents],
       },
       ingredientIds: [...new Set(recipe.lines.map((l) => l.ingredientId))],
+      costUnresolved: recipe.costUnresolved,
     })),
     menus: catalogue.menus,
   };

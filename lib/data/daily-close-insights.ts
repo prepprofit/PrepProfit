@@ -87,8 +87,12 @@ export async function loadDailyCloseInsights(
         priceCents: l.priceCents,
         quantity: l.quantity,
       })),
+      componentMaterialCostsCents: [recipe.componentHiddenCostCents],
     });
-    recipeCostPerPortion.set(recipe.id, unpriced ? null : cost.costPerPortionCents);
+    recipeCostPerPortion.set(
+      recipe.id,
+      unpriced || recipe.costUnresolved ? null : cost.costPerPortionCents,
+    );
   }
 
   const menuCostById = new Map<string, number | null>();

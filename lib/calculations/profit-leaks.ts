@@ -65,6 +65,12 @@ export type ProfitLeakRecipe = {
   cost: RecipeCostInput;
   /** Distinct ingredient ids referenced by this recipe's active lines. */
   ingredientIds: string[];
+  /**
+   * True when the recipe's sub-recipe component tree could not be resolved —
+   * its cost is UNTRUE (understated), so like `needsPricing` it must never
+   * emit a margin finding.
+   */
+  costUnresolved?: boolean;
 };
 
 export type ProfitLeakMenu = {
@@ -121,9 +127,10 @@ export function detectProfitLeaks(input: ProfitLeakInput): ProfitLeakFinding[] {
   const recipeCostPerPortion = new Map<string, number | null>();
 
   for (const recipe of input.recipes) {
-    const unpriced = recipe.ingredientIds.some(
-      (id) => ingredientById.get(id)?.needsPricing === true,
-    );
+    const unpriced =
+      recipe.ingredientIds.some(
+        (id) => ingredientById.get(id)?.needsPricing === true,
+      ) || recipe.costUnresolved === true;
     // An unpriced line means the cost is understated → never trust the margin.
     const cost = recipeCost(recipe.cost);
     recipeCostPerPortion.set(recipe.id, unpriced ? null : cost.costPerPortionCents);

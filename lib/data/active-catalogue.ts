@@ -1,10 +1,11 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
-import { menuItems } from '@/lib/db/schema';
+import { menuItems, recipeComponents } from '@/lib/db/schema';
 import type { Dimension } from '@/lib/units';
 import type { TenantClient } from '@/lib/db/tenant';
 import { listRecipesWithLines } from '@/lib/data/recipes';
 import { listIngredients } from '@/lib/data/ingredients';
 import { listMenus } from '@/lib/data/menus';
+import { MAX_COMPONENT_DEPTH } from '@/lib/calculations/production';
 
 /**
  * Active-catalogue reader shared by the Profit Leak Detector (Sprint 1) and the
@@ -44,7 +45,28 @@ export type CatalogueRecipe = {
   laborCostCents: number;
   energyCostCents: number;
   packagingCostCents: number;
+  /**
+   * Direct ingredient lines PLUS the recipe's sub-recipe component subtrees
+   * FLATTENED into equivalent raw-ingredient lines (quantities scaled by the
+   * component grams / child yield weight / child loss chain — the locked
+   * sub-recipes math). Because the flattened lines keep their real
+   * `ingredientId` + per-unit `priceCents`, every catalogue consumer — cost,
+   * price simulation, unpriced detection, prep/reorder demand — cascades
+   * through components with no consumer-side recursion.
+   */
   lines: CatalogueRecipeLine[];
+  /**
+   * Price-INDEPENDENT slice of the component subtrees (child labor/energy/
+   * packaging, scaled). Feed as `componentMaterialCostsCents: [this]` so it
+   * joins the material bucket before the parent's loss adjustment.
+   */
+  componentHiddenCostCents: number;
+  /**
+   * True when a component subtree could not be resolved (missing/trashed/
+   * no-yield child, cycle, over-depth — corrupted data). Consumers must treat
+   * this recipe's cost as unknown (null), never as the partial sum.
+   */
+  costUnresolved: boolean;
 };
 
 export type CatalogueMenu = {
@@ -102,22 +124,135 @@ export async function loadActiveCatalogue(
     needsPricing: i.needsPricing,
   }));
 
-  const recipes: CatalogueRecipe[] = recipesWithLines.map(({ recipe, lines }) => ({
-    id: recipe.id,
-    name: recipe.name,
-    sellingPriceCents: recipe.sellingPriceCents,
-    yieldPortions: recipe.yieldPortions,
-    yieldPercentage: recipe.yieldPercentage,
-    laborCostCents: recipe.laborCostCents,
-    energyCostCents: recipe.energyCostCents,
-    packagingCostCents: recipe.packagingCostCents,
-    lines: lines.map((l) => ({
+  // ── Sub-recipe flattening ────────────────────────────────────────────────────
+  // One org-scoped query for all component edges among active recipes, then a
+  // memoized DFS that turns each recipe's component subtree into (a) raw
+  // ingredient lines scaled by Π (grams / childYieldWeight / childYieldFraction)
+  // and (b) a scaled price-independent hidden-cost constant. Guards mirror the
+  // shared resolver: missing/trashed/no-yield child, cycle, or over-depth makes
+  // the recipe `costUnresolved` instead of silently under-counting.
+  const componentEdges =
+    recipesWithLines.length === 0
+      ? []
+      : await db
+          .select({
+            recipeId: recipeComponents.recipeId,
+            componentRecipeId: recipeComponents.componentRecipeId,
+            quantityGrams: recipeComponents.quantityGrams,
+          })
+          .from(recipeComponents)
+          .where(
+            and(
+              eq(recipeComponents.organizationId, organizationId),
+              inArray(
+                recipeComponents.recipeId,
+                recipesWithLines.map(({ recipe }) => recipe.id),
+              ),
+            ),
+          );
+  const edgesByParent = new Map<string, typeof componentEdges>();
+  for (const edge of componentEdges) {
+    const existing = edgesByParent.get(edge.recipeId);
+    if (existing) existing.push(edge);
+    else edgesByParent.set(edge.recipeId, [edge]);
+  }
+  const activeById = new Map(recipesWithLines.map((r) => [r.recipe.id, r]));
+
+  type Flattened = { lines: CatalogueRecipeLine[]; hiddenCents: number } | null;
+  // Per-BATCH flattened subtree of a recipe (its own direct lines + descendants).
+  const flatMemo = new Map<string, Flattened>();
+  const flattenBatch = (
+    recipeId: string,
+    depth: number,
+    visited: Set<string>,
+  ): Flattened => {
+    const cached = flatMemo.get(recipeId);
+    if (cached !== undefined) return cached;
+    const entry = activeById.get(recipeId);
+    if (!entry) {
+      flatMemo.set(recipeId, null);
+      return null;
+    }
+    const out: CatalogueRecipeLine[] = entry.lines.map((l) => ({
       ingredientId: l.ingredientId,
       dimension: l.ingredient.dimension,
       priceCents: l.ingredient.priceCents,
       quantity: l.quantity,
-    })),
-  }));
+    }));
+    let hiddenCents = 0;
+    for (const edge of edgesByParent.get(recipeId) ?? []) {
+      if (depth >= MAX_COMPONENT_DEPTH || visited.has(edge.componentRecipeId)) {
+        flatMemo.set(recipeId, null);
+        return null;
+      }
+      const child = activeById.get(edge.componentRecipeId);
+      const childYield = child?.recipe.yieldWeightGrams;
+      const childLossPct = child?.recipe.yieldPercentage;
+      if (
+        !child ||
+        childYield == null ||
+        !Number.isFinite(childYield) ||
+        childYield <= 0 ||
+        !Number.isFinite(childLossPct) ||
+        (childLossPct ?? 0) <= 0
+      ) {
+        flatMemo.set(recipeId, null);
+        return null;
+      }
+      const nextVisited = new Set(visited);
+      nextVisited.add(edge.componentRecipeId);
+      const sub = flattenBatch(edge.componentRecipeId, depth + 1, nextVisited);
+      if (sub === null) {
+        flatMemo.set(recipeId, null);
+        return null;
+      }
+      // Finished-output slice of the child batch, then the child's own loss
+      // (material only — hidden costs are per-batch, never loss-adjusted).
+      const batchScale = edge.quantityGrams / childYield;
+      const materialScale = batchScale / ((childLossPct as number) / 100);
+      for (const line of sub.lines) {
+        out.push({ ...line, quantity: line.quantity * materialScale });
+      }
+      const childHidden =
+        child.recipe.laborCostCents +
+        child.recipe.energyCostCents +
+        child.recipe.packagingCostCents;
+      // The child's own hidden costs enter the child TOTAL after the child's
+      // loss → scale by the plain batch slice. Grandchild hidden constants sit
+      // inside the child's MATERIAL bucket (component raw costs), so they get
+      // the child's loss adjustment too → scale like material.
+      hiddenCents += batchScale * childHidden + materialScale * sub.hiddenCents;
+    }
+    const result = { lines: out, hiddenCents };
+    flatMemo.set(recipeId, result);
+    return result;
+  };
+
+  const recipes: CatalogueRecipe[] = recipesWithLines.map(({ recipe, lines }) => {
+    const directLines: CatalogueRecipeLine[] = lines.map((l) => ({
+      ingredientId: l.ingredientId,
+      dimension: l.ingredient.dimension,
+      priceCents: l.ingredient.priceCents,
+      quantity: l.quantity,
+    }));
+    const hasComponents = edgesByParent.has(recipe.id);
+    const flattened = hasComponents
+      ? flattenBatch(recipe.id, 0, new Set([recipe.id]))
+      : null;
+    return {
+      id: recipe.id,
+      name: recipe.name,
+      sellingPriceCents: recipe.sellingPriceCents,
+      yieldPortions: recipe.yieldPortions,
+      yieldPercentage: recipe.yieldPercentage,
+      laborCostCents: recipe.laborCostCents,
+      energyCostCents: recipe.energyCostCents,
+      packagingCostCents: recipe.packagingCostCents,
+      lines: hasComponents && flattened ? flattened.lines : directLines,
+      componentHiddenCostCents: hasComponents && flattened ? flattened.hiddenCents : 0,
+      costUnresolved: hasComponents && flattened === null,
+    };
+  });
 
   const linesByMenu = new Map<string, { recipeId: string; quantity: number }[]>();
   for (const row of menuItemRows) {

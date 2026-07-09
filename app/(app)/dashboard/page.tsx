@@ -11,6 +11,7 @@ import {
 import { canAccessFinancials, getFirstName, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listRecipesWithLines } from '@/lib/data/recipes';
+import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
 import { listIngredients } from '@/lib/data/ingredients';
 import {
   listTransactions,
@@ -174,10 +175,16 @@ export default async function DashboardPage({
       if (settings.onboardedAt == null) {
         return { needsOnboarding: true as const, settings };
       }
+      const recipesWithLines = await listRecipesWithLines(tx, organizationId);
       return {
         needsOnboarding: false as const,
         settings,
-        recipes: await listRecipesWithLines(tx, organizationId),
+        recipes: recipesWithLines,
+        recipeCostResolutions: await resolveRecipeCostTree(
+          tx,
+          organizationId,
+          recipesWithLines.map(({ recipe }) => recipe.id),
+        ),
         ingredients: await listIngredients(tx, organizationId),
         profitLeaks: await loadProfitLeaks(tx, organizationId),
       };
@@ -204,25 +211,34 @@ export default async function DashboardPage({
   if (operational.needsOnboarding) {
     redirect('/onboarding');
   }
-  const { settings, recipes, ingredients, profitLeaks } = operational;
+  const { settings, recipes, recipeCostResolutions, ingredients, profitLeaks } =
+    operational;
 
-  const input: DashboardRecipeInput[] = recipes.map(({ recipe, lines }) => ({
-    id: recipe.id,
-    name: recipe.name,
-    sellingPriceCents: recipe.sellingPriceCents,
-    cost: {
-      yieldPortions: recipe.yieldPortions,
-      yieldPercentage: recipe.yieldPercentage,
-      laborCostCents: recipe.laborCostCents,
-      energyCostCents: recipe.energyCostCents,
-      packagingCostCents: recipe.packagingCostCents,
-      lines: lines.map((l) => ({
-        dimension: l.ingredient.dimension,
-        priceCents: l.ingredient.priceCents,
-        quantity: l.quantity,
-      })),
-    },
-  }));
+  const input: DashboardRecipeInput[] = recipes.map(({ recipe, lines }) => {
+    const resolution = recipeCostResolutions.get(recipe.id);
+    return {
+      id: recipe.id,
+      name: recipe.name,
+      sellingPriceCents: recipe.sellingPriceCents,
+      cost: {
+        yieldPortions: recipe.yieldPortions,
+        yieldPercentage: recipe.yieldPercentage,
+        laborCostCents: recipe.laborCostCents,
+        energyCostCents: recipe.energyCostCents,
+        packagingCostCents: recipe.packagingCostCents,
+        lines: lines.map((l) => ({
+          dimension: l.ingredient.dimension,
+          priceCents: l.ingredient.priceCents,
+          quantity: l.quantity,
+        })),
+        // Sub-recipe component material costs from the shared resolver.
+        componentMaterialCostsCents: resolution?.complete
+          ? resolution.componentMaterialCostsCents
+          : [],
+      },
+      costUnresolved: resolution ? !resolution.complete : false,
+    };
+  });
 
   const summary = dashboardSummary(input);
 

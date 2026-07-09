@@ -63,6 +63,10 @@ export type CostImpactRecipe = {
   energyCostCents: number;
   packagingCostCents: number;
   lines: CostImpactRecipeLine[];
+  /** Price-independent sub-recipe hidden-cost slice (see ActiveCatalogue). */
+  componentHiddenCostCents?: number;
+  /** True when the sub-recipe tree is unresolvable → cost is untrue → null. */
+  costUnresolved?: boolean;
 };
 
 export type CostImpactMenu = {
@@ -149,6 +153,7 @@ function recipeCostPerPortion(
   recipe: CostImpactRecipe,
   priceOf: (ingredientId: string) => PriceView,
 ): number | null {
+  if (recipe.costUnresolved === true) return null;
   let anyUnpriced = false;
   const lines = recipe.lines.map((line) => {
     const view = priceOf(line.ingredientId);
@@ -164,6 +169,7 @@ function recipeCostPerPortion(
     energyCostCents: recipe.energyCostCents,
     packagingCostCents: recipe.packagingCostCents,
     lines,
+    componentMaterialCostsCents: [recipe.componentHiddenCostCents ?? 0],
   });
   return Number.isFinite(cost.costPerPortionCents) ? cost.costPerPortionCents : null;
 }

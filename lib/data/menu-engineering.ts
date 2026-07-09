@@ -57,8 +57,12 @@ export async function loadMenuEngineering(
         priceCents: l.priceCents,
         quantity: l.quantity,
       })),
+      componentMaterialCostsCents: [recipe.componentHiddenCostCents],
     });
-    recipeCostPerPortion.set(recipe.id, unpriced ? null : cost.costPerPortionCents);
+    recipeCostPerPortion.set(
+      recipe.id,
+      unpriced || recipe.costUnresolved ? null : cost.costPerPortionCents,
+    );
   }
 
   // Current menu cost — complete-or-null (an incomplete menu stays incomplete).
