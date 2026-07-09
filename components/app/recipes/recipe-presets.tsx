@@ -393,7 +393,7 @@ export function RecipePresets({
         )}
 
         {/* Add row */}
-        <div className="grid grid-cols-1 gap-2 rounded-lg border border-dashed border-border p-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
+        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border p-3">
           <Input
             aria-label={t('name')}
             placeholder={t('namePlaceholder')}
@@ -404,35 +404,37 @@ export function RecipePresets({
               if (e.key === 'Enter') addPreset();
             }}
           />
-          <Input
-            aria-label={t('targetWeight')}
-            inputMode="decimal"
-            placeholder="0"
-            className="w-24"
-            value={newWeightText}
-            disabled={pending}
-            onChange={(e) => setNewWeightText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') addPreset();
-            }}
-          />
-          <Select
-            aria-label={t('targetWeight')}
-            className="w-24"
-            value={newUnit}
-            disabled={pending || weightUnits.length <= 1}
-            onChange={(e) => setNewUnit(e.target.value as Unit)}
-          >
-            {weightUnits.map((u) => (
-              <option key={u} value={u}>
-                {unitOptionLabel(u)}
-              </option>
-            ))}
-          </Select>
-          <Button type="button" onClick={addPreset} disabled={pending}>
-            <Plus className="size-4" />
-            {t('add')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label={t('targetWeight')}
+              inputMode="decimal"
+              placeholder="0"
+              className="min-w-0 flex-1"
+              value={newWeightText}
+              disabled={pending}
+              onChange={(e) => setNewWeightText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') addPreset();
+              }}
+            />
+            <Select
+              aria-label={t('targetWeight')}
+              className="w-24"
+              value={newUnit}
+              disabled={pending || weightUnits.length <= 1}
+              onChange={(e) => setNewUnit(e.target.value as Unit)}
+            >
+              {weightUnits.map((u) => (
+                <option key={u} value={u}>
+                  {unitOptionLabel(u)}
+                </option>
+              ))}
+            </Select>
+            <Button type="button" onClick={addPreset} disabled={pending}>
+              <Plus className="size-4" />
+              {t('add')}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
