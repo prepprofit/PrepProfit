@@ -3,8 +3,10 @@ import {
   ingredientAllergens,
   ingredients,
   recipeAllergenOverrides,
+  recipeComponents,
   recipeIngredients,
 } from '@/lib/db/schema';
+import { MAX_COMPONENT_DEPTH } from '@/lib/calculations/production';
 import type { TenantClient } from '@/lib/db/tenant';
 import type { AllergenSlug, Presence } from '@/lib/allergens/catalog';
 import { ALLERGEN_ORDER } from '@/lib/allergens/catalog';
@@ -135,39 +137,9 @@ export async function loadRecipeAllergenRollup(
   organizationId: string,
   recipeId: string,
 ): Promise<RecipeAllergenRollup> {
-  const lineRows = await db
-    .select({
-      ingredientId: recipeIngredients.ingredientId,
-      reviewedAt: ingredients.allergensReviewedAt,
-    })
-    .from(recipeIngredients)
-    .innerJoin(
-      ingredients,
-      and(
-        eq(recipeIngredients.ingredientId, ingredients.id),
-        eq(ingredients.organizationId, organizationId),
-      ),
-    )
-    .where(
-      and(
-        eq(recipeIngredients.organizationId, organizationId),
-        eq(recipeIngredients.recipeId, recipeId),
-      ),
-    );
-
-  const tagsByIngredient = await loadIngredientAllergensByIngredient(
-    db,
-    organizationId,
-    lineRows.map((r) => r.ingredientId),
-  );
-
-  const lines: AllergenLine[] = lineRows.map((row) => ({
-    reviewed: row.reviewedAt !== null,
-    allergens: tagsByIngredient.get(row.ingredientId) ?? [],
-  }));
-
-  const overrides = await getRecipeOverrides(db, organizationId, recipeId);
-  return recipeAllergens(lines, overrides);
+  const rollups = await loadRecipeAllergensByIds(db, organizationId, [recipeId]);
+  // Every requested id is present in the map by contract.
+  return rollups.get(recipeId)!;
 }
 
 /** One recipe's name + its computed allergen rollup (for the matrix document). */
@@ -192,66 +164,15 @@ export async function loadOrgRecipeAllergens(
   const recipeRows = await listRecipes(db, organizationId);
   if (recipeRows.length === 0) return [];
 
-  const lineRows = await db
-    .select({
-      recipeId: recipeIngredients.recipeId,
-      ingredientId: recipeIngredients.ingredientId,
-      reviewedAt: ingredients.allergensReviewedAt,
-    })
-    .from(recipeIngredients)
-    .innerJoin(
-      ingredients,
-      and(
-        eq(recipeIngredients.ingredientId, ingredients.id),
-        eq(ingredients.organizationId, organizationId),
-      ),
-    )
-    .where(eq(recipeIngredients.organizationId, organizationId));
-
-  const tagsByIngredient = await loadIngredientAllergensByIngredient(
+  const rollups = await loadRecipeAllergensByIds(
     db,
     organizationId,
-    lineRows.map((r) => r.ingredientId),
+    recipeRows.map((r) => r.id),
   );
-
-  const overrideRows = await db
-    .select({
-      recipeId: recipeAllergenOverrides.recipeId,
-      allergen: recipeAllergenOverrides.allergen,
-      presence: recipeAllergenOverrides.presence,
-    })
-    .from(recipeAllergenOverrides)
-    .where(eq(recipeAllergenOverrides.organizationId, organizationId));
-
-  const linesByRecipe = new Map<string, AllergenLine[]>();
-  for (const row of lineRows) {
-    const line: AllergenLine = {
-      reviewed: row.reviewedAt !== null,
-      allergens: tagsByIngredient.get(row.ingredientId) ?? [],
-    };
-    const existing = linesByRecipe.get(row.recipeId);
-    if (existing) existing.push(line);
-    else linesByRecipe.set(row.recipeId, [line]);
-  }
-
-  const overridesByRecipe = new Map<string, AllergenTag[]>();
-  for (const row of overrideRows) {
-    const tag: AllergenTag = {
-      allergen: row.allergen as AllergenSlug,
-      presence: row.presence as Presence,
-    };
-    const existing = overridesByRecipe.get(row.recipeId);
-    if (existing) existing.push(tag);
-    else overridesByRecipe.set(row.recipeId, [tag]);
-  }
-
   return recipeRows.map((recipe) => ({
     recipeId: recipe.id,
     recipeName: recipe.name,
-    rollup: recipeAllergens(
-      linesByRecipe.get(recipe.id) ?? [],
-      overridesByRecipe.get(recipe.id) ?? [],
-    ),
+    rollup: rollups.get(recipe.id)!,
   }));
 }
 
@@ -272,6 +193,36 @@ export async function loadRecipeAllergensByIds(
   const map = new Map<string, RecipeAllergenRollup>();
   if (recipeIds.length === 0) return map;
 
+  // ── Component closure (sub-recipes): inherited allergens come from the whole
+  // subtree, so load lines/tags/overrides for every reachable recipe too. ──
+  const closure = new Set<string>(recipeIds);
+  let frontier = [...new Set(recipeIds)];
+  const componentEdges: { recipeId: string; componentRecipeId: string }[] = [];
+  for (let level = 0; frontier.length > 0 && level <= MAX_COMPONENT_DEPTH + 1; level += 1) {
+    const rows = await db
+      .select({
+        recipeId: recipeComponents.recipeId,
+        componentRecipeId: recipeComponents.componentRecipeId,
+      })
+      .from(recipeComponents)
+      .where(
+        and(
+          eq(recipeComponents.organizationId, organizationId),
+          inArray(recipeComponents.recipeId, frontier),
+        ),
+      );
+    componentEdges.push(...rows);
+    const next = new Set<string>();
+    for (const row of rows) {
+      if (!closure.has(row.componentRecipeId)) {
+        closure.add(row.componentRecipeId);
+        next.add(row.componentRecipeId);
+      }
+    }
+    frontier = [...next];
+  }
+  const closureIds = [...closure];
+
   const lineRows = await db
     .select({
       recipeId: recipeIngredients.recipeId,
@@ -289,7 +240,7 @@ export async function loadRecipeAllergensByIds(
     .where(
       and(
         eq(recipeIngredients.organizationId, organizationId),
-        inArray(recipeIngredients.recipeId, recipeIds),
+        inArray(recipeIngredients.recipeId, closureIds),
       ),
     );
 
@@ -309,7 +260,7 @@ export async function loadRecipeAllergensByIds(
     .where(
       and(
         eq(recipeAllergenOverrides.organizationId, organizationId),
-        inArray(recipeAllergenOverrides.recipeId, recipeIds),
+        inArray(recipeAllergenOverrides.recipeId, closureIds),
       ),
     );
 
@@ -335,14 +286,51 @@ export async function loadRecipeAllergensByIds(
     else overridesByRecipe.set(row.recipeId, [tag]);
   }
 
-  for (const recipeId of recipeIds) {
-    map.set(
-      recipeId,
-      recipeAllergens(
-        linesByRecipe.get(recipeId) ?? [],
-        overridesByRecipe.get(recipeId) ?? [],
-      ),
+  const edgesByParent = new Map<string, string[]>();
+  for (const edge of componentEdges) {
+    const existing = edgesByParent.get(edge.recipeId);
+    if (existing) existing.push(edge.componentRecipeId);
+    else edgesByParent.set(edge.recipeId, [edge.componentRecipeId]);
+  }
+
+  // Memoized bottom-up rollup with visited/depth guards. On corrupted data
+  // (cycle/over-depth) a component contributes an EMPTY rollup flagged
+  // unreviewed — the recipe warns the kitchen instead of silently dropping
+  // allergens or looping. A component's EFFECTIVE presences (its own overrides
+  // included) inherit as derived (no-downgrade upheld by the pure rollup).
+  const memo = new Map<string, RecipeAllergenRollup>();
+  const UNRESOLVED: RecipeAllergenRollup = {
+    allergens: [],
+    hasUnreviewedIngredient: true,
+  };
+  const resolve = (
+    recipeId: string,
+    depth: number,
+    visited: Set<string>,
+  ): RecipeAllergenRollup => {
+    const cached = memo.get(recipeId);
+    if (cached) return cached;
+    const inherited: RecipeAllergenRollup[] = [];
+    for (const componentId of edgesByParent.get(recipeId) ?? []) {
+      if (depth >= MAX_COMPONENT_DEPTH || visited.has(componentId)) {
+        inherited.push(UNRESOLVED);
+        continue;
+      }
+      const nextVisited = new Set(visited);
+      nextVisited.add(componentId);
+      inherited.push(resolve(componentId, depth + 1, nextVisited));
+    }
+    const rollup = recipeAllergens(
+      linesByRecipe.get(recipeId) ?? [],
+      overridesByRecipe.get(recipeId) ?? [],
+      inherited,
     );
+    memo.set(recipeId, rollup);
+    return rollup;
+  };
+
+  for (const recipeId of recipeIds) {
+    map.set(recipeId, resolve(recipeId, 0, new Set([recipeId])));
   }
   return map;
 }
