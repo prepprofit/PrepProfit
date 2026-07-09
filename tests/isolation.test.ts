@@ -8,6 +8,7 @@ import {
   recipes,
   recipeIngredients,
   recipePresets,
+  recipeComponents,
 } from '@/lib/db/schema';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
@@ -536,6 +537,191 @@ describe('recipe_presets — org isolation + cross-org integrity (Recipe-editor 
           .delete(recipePresets)
           .where(eq(recipePresets.organizationId, ORG_B))
           .returning({ id: recipePresets.id }),
+      );
+      expect(deleted).toHaveLength(0);
+    });
+  });
+});
+
+describe('recipe_components — org isolation + cross-org integrity (sub-recipes)', () => {
+  let cClient: PGlite;
+  let cDb: TenantDb;
+  let parentA: string;
+  let childA: string;
+  let parentB: string;
+  let childB: string;
+  let lineAId: string;
+
+  beforeAll(async () => {
+    const test = await createTestDb();
+    cClient = test.client;
+    cDb = test.db as unknown as TenantDb;
+
+    // Seed two recipes per org as superuser (bypasses RLS); children carry the
+    // positive finished yield weight required of a component recipe.
+    const inserted = await cDb
+      .insert(recipes)
+      .values([
+        { organizationId: ORG_A, name: 'Parent A' },
+        { organizationId: ORG_A, name: 'Child A', yieldWeightGrams: 500 },
+        { organizationId: ORG_B, name: 'Parent B' },
+        { organizationId: ORG_B, name: 'Child B', yieldWeightGrams: 800 },
+      ])
+      .returning();
+    const byName = (n: string) => {
+      const row = inserted.find((r) => r.name === n);
+      if (!row) throw new Error(`seed: missing recipe ${n}`);
+      return row.id;
+    };
+    parentA = byName('Parent A');
+    childA = byName('Child A');
+    parentB = byName('Parent B');
+    childB = byName('Child B');
+
+    const [lineA] = await cDb
+      .insert(recipeComponents)
+      .values({
+        organizationId: ORG_A,
+        recipeId: parentA,
+        componentRecipeId: childA,
+        quantityGrams: 250,
+      })
+      .returning();
+    lineAId = lineA!.id;
+    await cDb.insert(recipeComponents).values({
+      organizationId: ORG_B,
+      recipeId: parentB,
+      componentRecipeId: childB,
+      quantityGrams: 100,
+    });
+  });
+
+  afterAll(async () => {
+    await cClient.close();
+  });
+
+  it("rejects a component line linking to another org's recipe (composite FK)", async () => {
+    await expect(
+      cDb.insert(recipeComponents).values({
+        organizationId: ORG_A,
+        recipeId: parentA,
+        componentRecipeId: childB,
+        quantityGrams: 100,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('rejects a self-referencing component line (CHECK)', async () => {
+    await expect(
+      cDb.insert(recipeComponents).values({
+        organizationId: ORG_A,
+        recipeId: parentA,
+        componentRecipeId: parentA,
+        quantityGrams: 100,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('rejects a non-positive quantity (CHECK)', async () => {
+    await expect(
+      cDb.insert(recipeComponents).values({
+        organizationId: ORG_A,
+        recipeId: childA,
+        componentRecipeId: parentA,
+        quantityGrams: 0,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('rejects a duplicate (parent, component) line (UNIQUE)', async () => {
+    await expect(
+      cDb.insert(recipeComponents).values({
+        organizationId: ORG_A,
+        recipeId: parentA,
+        componentRecipeId: childA,
+        quantityGrams: 999,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('blocks purging a recipe still referenced as a component (ON DELETE restrict)', async () => {
+    await expect(
+      cDb.delete(recipes).where(eq(recipes.id, childA)),
+    ).rejects.toThrow();
+  });
+
+  it('purging a parent cascades its outgoing component lines (ON DELETE cascade)', async () => {
+    const [tempParent] = await cDb
+      .insert(recipes)
+      .values({ organizationId: ORG_A, name: 'Temp parent A' })
+      .returning();
+    const [tempLine] = await cDb
+      .insert(recipeComponents)
+      .values({
+        organizationId: ORG_A,
+        recipeId: tempParent!.id,
+        componentRecipeId: childA,
+        quantityGrams: 10,
+      })
+      .returning();
+    await cDb.delete(recipes).where(eq(recipes.id, tempParent!.id));
+    const survivors = await cDb
+      .select({ id: recipeComponents.id })
+      .from(recipeComponents)
+      .where(eq(recipeComponents.id, tempLine!.id));
+    expect(survivors).toHaveLength(0);
+  });
+
+  describe('with RLS enforced (non-privileged role)', () => {
+    beforeAll(async () => {
+      await cDb.execute(sql.raw('SET ROLE tenant_app;'));
+    });
+    afterAll(async () => {
+      await cDb.execute(sql.raw('RESET ROLE;'));
+    });
+
+    it("SELECT only returns the active org's component lines", async () => {
+      const orgs = await runInOrg(cDb, ORG_A, async (tx) =>
+        (
+          await tx
+            .select({ org: recipeComponents.organizationId })
+            .from(recipeComponents)
+        ).map((r) => r.org),
+      );
+      expect(orgs.length).toBeGreaterThan(0);
+      expect(orgs.every((o) => o === ORG_A)).toBe(true);
+    });
+
+    it('rejects an INSERT carrying another org id (WITH CHECK)', async () => {
+      await expect(
+        runInOrg(cDb, ORG_A, (tx) =>
+          tx.insert(recipeComponents).values({
+            organizationId: ORG_B,
+            recipeId: parentB,
+            componentRecipeId: childB,
+            quantityGrams: 50,
+          }),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('rejects re-tagging a component line to another org via UPDATE (WITH CHECK)', async () => {
+      await expect(
+        runInOrg(cDb, ORG_A, (tx) =>
+          tx
+            .update(recipeComponents)
+            .set({ organizationId: ORG_B })
+            .where(eq(recipeComponents.id, lineAId)),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("a DELETE cannot reach another org's component line (USING hides it → 0 rows)", async () => {
+      const deleted = await runInOrg(cDb, ORG_A, (tx) =>
+        tx
+          .delete(recipeComponents)
+          .where(eq(recipeComponents.organizationId, ORG_B))
+          .returning({ id: recipeComponents.id }),
       );
       expect(deleted).toHaveLength(0);
     });

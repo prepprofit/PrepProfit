@@ -386,6 +386,75 @@ export const recipePresets = pgTable(
 );
 
 /**
+ * Sub-recipe component lines (recipe-in-recipe). A parent recipe uses another
+ * recipe's FINISHED OUTPUT as a material input, measured in grams of that
+ * finished output (v1 unit is grams only). Costs, allergens, and stock
+ * explosion are derive-on-read through the component graph — nothing cached.
+ * Cycle/depth (max 5) invariants are enforced by the data layer at write time
+ * under FOR UPDATE row locks; read resolvers re-guard with visited/depth.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Composite same-org FKs on both endpoints: parent ON
+ * DELETE cascade (purging a recipe removes its outgoing component lines),
+ * component ON DELETE restrict (a recipe referenced as a component cannot be
+ * purged while any component row survives).
+ */
+export const recipeComponents = pgTable(
+  'recipe_components',
+  {
+    id: id(),
+    organizationId: orgId(),
+    recipeId: text('recipe_id').notNull(),
+    componentRecipeId: text('component_recipe_id').notNull(),
+    // Grams of the component recipe's finished output; strictly positive
+    // (CHECK below). `mode: 'number'` like recipes.yield_weight_grams.
+    quantityGrams: numeric('quantity_grams', {
+      precision: 10,
+      scale: 2,
+      mode: 'number',
+    }).notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    index('recipe_components_org_idx').on(t.organizationId),
+    // Serves per-recipe listing in manual order.
+    index('recipe_components_org_recipe_sort_idx').on(
+      t.organizationId,
+      t.recipeId,
+      t.sortOrder,
+    ),
+    // Serves reverse lookups: "which parents use this component?" (trash/purge/
+    // yield-clear guards) and the upward revalidation walk.
+    index('recipe_components_org_component_idx').on(
+      t.organizationId,
+      t.componentRecipeId,
+    ),
+    // One component line per (parent, component) pair.
+    unique('recipe_components_org_parent_component_key').on(
+      t.organizationId,
+      t.recipeId,
+      t.componentRecipeId,
+    ),
+    check(
+      'recipe_components_not_self_chk',
+      sql`${t.recipeId} <> ${t.componentRecipeId}`,
+    ),
+    check('recipe_components_quantity_chk', sql`${t.quantityGrams} > 0`),
+    check('recipe_components_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_components_parent_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.organizationId, t.componentRecipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_components_component_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
  * Allergen tags on an ingredient (Sprint 9). One row per (ingredient, allergen)
  * with a `presence` level (certainty, NOT severity). The recipe rollup derives
  * its allergens from these (lib/calculations/allergens.ts). OPERATIONAL data —
@@ -2948,6 +3017,8 @@ export type RecipeIngredient = InferSelectModel<typeof recipeIngredients>;
 export type NewRecipeIngredient = InferInsertModel<typeof recipeIngredients>;
 export type RecipePreset = InferSelectModel<typeof recipePresets>;
 export type NewRecipePreset = InferInsertModel<typeof recipePresets>;
+export type RecipeComponent = InferSelectModel<typeof recipeComponents>;
+export type NewRecipeComponent = InferInsertModel<typeof recipeComponents>;
 export type IngredientAllergen = InferSelectModel<typeof ingredientAllergens>;
 export type NewIngredientAllergen = InferInsertModel<typeof ingredientAllergens>;
 export type RecipeAllergenOverride = InferSelectModel<typeof recipeAllergenOverrides>;
@@ -3050,6 +3121,8 @@ export const businessTables = [
   'recipe_ingredients',
   // Kitchen presets (Recipe-editor parity) — standard org_isolation RLS.
   'recipe_presets',
+  // Sub-recipe component lines — standard org_isolation RLS.
+  'recipe_components',
   // Allergen tags + recipe overrides (Sprint 9) — standard org_isolation RLS.
   'ingredient_allergens',
   'recipe_allergen_overrides',
