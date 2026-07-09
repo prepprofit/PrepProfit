@@ -1293,11 +1293,25 @@ export function RecipeEditor({
               )}
             </CardContent>
           </Card>
+
+          {/* Kitchen presets — OPERATIONAL config, both roles manage name + weight; the
+              per-preset cost preview is derived manager-side only from the live batch
+              total + yield weight (never loaded from the server). */}
+          <RecipePresets
+            recipeId={recipe.id}
+            presets={presets}
+            onPresetsChange={setPresets}
+            measurementSystem={measurementSystem}
+            canSeeCosts={canSeeCosts}
+            currency={currency}
+            batchTotalCents={cost ? cost.totalCostCents : null}
+            yieldWeightGrams={yieldWeightGramsLive}
+          />
         </div>
       </div>
 
       {/* Cost breakdown + pricing are financial — managers only (Sprint F4).
-          Full-width (same as Kitchen presets), two columns side by side. */}
+          Two columns side by side. */}
       {cost && (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <Card>
@@ -1366,20 +1380,6 @@ export function RecipeEditor({
           </Card>
         </div>
       )}
-
-      {/* Kitchen presets — OPERATIONAL config, both roles manage name + weight; the
-          per-preset cost preview is derived manager-side only from the live batch
-          total + yield weight (never loaded from the server). */}
-      <RecipePresets
-        recipeId={recipe.id}
-        presets={presets}
-        onPresetsChange={setPresets}
-        measurementSystem={measurementSystem}
-        canSeeCosts={canSeeCosts}
-        currency={currency}
-        batchTotalCents={cost ? cost.totalCostCents : null}
-        yieldWeightGrams={yieldWeightGramsLive}
-      />
 
       <ConfirmDialog
         open={confirmOpen}
