@@ -892,6 +892,8 @@
       "yieldPercentage": "Usable yield (%)",
       "yieldWeight": "Batch yield weight",
       "yieldWeightUnit": "Batch yield weight unit",
+      "yieldWeightSuggestion": "Estimated from known weights: ~{value}",
+      "yieldWeightSuggestionPartial": "{count, plural, one {# line without weight not included} other {# lines without weight not included}}",
       "labor": "Labor cost",
       "energy": "Energy cost",
       "packaging": "Packaging cost",

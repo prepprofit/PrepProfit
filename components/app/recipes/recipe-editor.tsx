@@ -36,6 +36,7 @@ import {
   suggestedPriceCents,
   trafficLight,
 } from '@/lib/calculations/margin';
+import { suggestedYieldWeight } from '@/lib/calculations/suggestedYieldWeight';
 import {
   centsToAmountInput,
   formatMoney,
@@ -335,6 +336,17 @@ export function RecipeEditor({
   // Live batch yield weight in canonical grams (null when blank/non-positive) — the
   // summary strip's weight tile (both roles) and, for managers, the cost/kg tile
   // read from this. Cost/kg needs a positive weight AND a manager cost, else null.
+  // Estimate for the manual yield-weight field: raw sum of known weights,
+  // deliberately without the yieldPercentage loss factor (different model).
+  const yieldSuggestion = suggestedYieldWeight({
+    lines: lines.map((line) => ({
+      dimension: line.ingredient.dimension,
+      quantityCanonical: line.quantity,
+    })),
+    components: components.map((line) => ({ quantityGrams: line.quantityGrams })),
+  });
+  const suggestedGrams = yieldSuggestion.grams;
+
   const yieldWeightGramsLive = (() => {
     const text = form.yieldWeightText.trim();
     const n = Number(text);
@@ -1261,6 +1273,47 @@ export function RecipeEditor({
                     ))}
                   </Select>
                 </div>
+                {suggestedGrams !== null &&
+                  !(
+                    yieldWeightGramsLive != null &&
+                    Math.abs(yieldWeightGramsLive - suggestedGrams) < 0.01
+                  ) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span>
+                        {t('fields.yieldWeightSuggestion', {
+                          value: formatQuantity(
+                            suggestedGrams,
+                            'weight',
+                            measurementSystem,
+                          ),
+                        })}
+                        {yieldSuggestion.skippedLines > 0 && (
+                          <>
+                            {' · '}
+                            {t('fields.yieldWeightSuggestionPartial', {
+                              count: yieldSuggestion.skippedLines,
+                            })}
+                          </>
+                        )}
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs"
+                        disabled={pending}
+                        onClick={() =>
+                          setField({
+                            yieldWeightText: numberToText(
+                              fromCanonical(suggestedGrams, yieldWeightUnit),
+                            ),
+                          })
+                        }
+                      >
+                        {t('pricing.apply')}
+                      </Button>
+                    </div>
+                  )}
               </Field>
               {/* Hidden costs are financial — managers only (Sprint F4). */}
               {canSeeCosts && (
