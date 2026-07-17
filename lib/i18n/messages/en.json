@@ -780,7 +780,10 @@
       "method": {
         "empty": "No structured method yet.",
         "legacyNotes": "Notes (legacy)",
-        "step": "Step {number}"
+        "step": "Step {number}",
+        "stepPlaceholder": "Describe this step…",
+        "addStep": "Add step",
+        "removeStep": "Remove step"
       },
       "cost": {
         "totalCost": "Total cost",

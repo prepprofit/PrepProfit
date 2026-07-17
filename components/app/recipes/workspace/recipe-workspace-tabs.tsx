@@ -25,6 +25,7 @@ export function RecipeWorkspaceTabs({
   tab,
   onTabChange,
   methodSections,
+  methodEditor,
   legacyNotes,
   cost,
   factor,
@@ -33,6 +34,8 @@ export function RecipeWorkspaceTabs({
   tab: WorkspaceTab;
   onTabChange: (tab: WorkspaceTab) => void;
   methodSections: MethodSectionView[];
+  /** Edit-mode replacement for the read-only method panel (Fase 3). */
+  methodEditor?: React.ReactNode;
   legacyNotes: string | null;
   /** null = kitchen (never shipped); `incomplete` = tree unresolvable. */
   cost: { complete: true; cost: RecipeCost } | { complete: false } | null;
@@ -69,7 +72,9 @@ export function RecipeWorkspaceTabs({
 
       <div className="pt-4">
         {tab === 'method' ? (
-          <MethodPanel sections={methodSections} legacyNotes={legacyNotes} />
+          (methodEditor ?? (
+            <MethodPanel sections={methodSections} legacyNotes={legacyNotes} />
+          ))
         ) : null}
         {tab === 'cost' ? (
           <CostPanel cost={cost} factor={factor} currency={currency} />

@@ -144,6 +144,17 @@ export async function RecipeWorkspacePage({
     })),
     lines,
     methodSections,
+    methodDraftSections: dto.methodSections.map((s) => ({
+      ref: s.id,
+      id: s.id,
+      title: s.title,
+    })),
+    methodDraftSteps: dto.steps.map((s) => ({
+      key: s.id,
+      id: s.id,
+      instruction: s.instruction,
+      sectionRef: s.sectionId,
+    })),
     books: dto.books,
     ingredientOptions: ingredientRows.map((i) => ({ id: i.id, name: i.name })),
     componentOptions: pickerRecipes

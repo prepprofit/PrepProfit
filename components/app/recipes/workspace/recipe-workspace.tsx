@@ -18,6 +18,11 @@ import {
   type PickerOption,
 } from './recipe-input-list';
 import {
+  RecipeMethodEdit,
+  type DraftMethodSection,
+  type DraftStep,
+} from './recipe-method-edit';
+import {
   RecipeWorkspaceTabs,
   type MethodSectionView,
   type WorkspaceTab,
@@ -44,6 +49,9 @@ export type WorkspaceClientData = {
   sections: DraftSection[];
   lines: DraftLine[];
   methodSections: MethodSectionView[];
+  /** Raw method draft the edit mode starts from (same rows, ungrouped). */
+  methodDraftSections: DraftMethodSection[];
+  methodDraftSteps: DraftStep[];
   books: { bookId: string; bookName: string }[];
   ingredientOptions: PickerOption[];
   componentOptions: PickerOption[];
@@ -89,6 +97,8 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
     yieldUnit: string;
     sections: DraftSection[];
     lines: DraftLine[];
+    methodSections: DraftMethodSection[];
+    steps: DraftStep[];
   } | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -105,6 +115,8 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
       yieldUnit: data.recipe.yieldUnit ?? '',
       sections: data.sections,
       lines: data.lines,
+      methodSections: data.methodDraftSections,
+      steps: data.methodDraftSteps,
     });
     setError(null);
     setConflict(false);
@@ -161,6 +173,18 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
               sectionRef: l.sectionRef,
             },
       ),
+      methodSections: draft.methodSections.map((s) => ({
+        id: s.id,
+        tempId: s.id ? undefined : s.ref,
+        title: s.title.trim() || '…',
+      })),
+      steps: draft.steps
+        .filter((s) => s.instruction.trim() !== '')
+        .map((s) => ({
+          id: s.id,
+          instruction: s.instruction.trim(),
+          sectionRef: s.sectionRef,
+        })),
     });
     setSaving(false);
     if (result.ok) {
@@ -352,6 +376,18 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
             tab={tab}
             onTabChange={(next) => setParam('tab', next)}
             methodSections={data.methodSections}
+            methodEditor={
+              editing ? (
+                <RecipeMethodEdit
+                  sections={draft.methodSections}
+                  steps={draft.steps}
+                  onSectionsChange={(methodSections) =>
+                    setDraft({ ...draft, methodSections })
+                  }
+                  onStepsChange={(steps) => setDraft({ ...draft, steps })}
+                />
+              ) : null
+            }
             legacyNotes={data.recipe.notes}
             cost={data.cost}
             factor={factor}
