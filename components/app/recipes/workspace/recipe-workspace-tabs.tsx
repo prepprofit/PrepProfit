@@ -31,6 +31,7 @@ export function RecipeWorkspaceTabs({
   onTabChange,
   methodSections,
   methodEditor,
+  uomPanel,
   legacyNotes,
   cost,
   factor,
@@ -41,6 +42,8 @@ export function RecipeWorkspaceTabs({
   methodSections: MethodSectionView[];
   /** Edit-mode replacement for the read-only method panel (Fase 3). */
   methodEditor?: React.ReactNode;
+  /** UoM Equivalency panel (Fase 4) — rendered when the tab is active. */
+  uomPanel?: React.ReactNode;
   legacyNotes: string | null;
   /** null = kitchen (never shipped); `incomplete` = tree unresolvable. */
   cost: { complete: true; cost: RecipeCost } | { complete: false } | null;
@@ -84,7 +87,12 @@ export function RecipeWorkspaceTabs({
         {tab === 'cost' ? (
           <CostPanel cost={cost} factor={factor} currency={currency} />
         ) : null}
-        {tab === 'nutrition' || tab === 'uom' ? (
+        {tab === 'uom' ? (
+          (uomPanel ?? (
+            <p className="text-sm text-muted-foreground">{t('comingSoon')}</p>
+          ))
+        ) : null}
+        {tab === 'nutrition' ? (
           <p className="text-sm text-muted-foreground">{t('comingSoon')}</p>
         ) : null}
       </div>

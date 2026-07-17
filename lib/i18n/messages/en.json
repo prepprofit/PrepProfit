@@ -778,6 +778,34 @@
         "nutrition": "Nutrition",
         "uom": "UoM Equivalency"
       },
+      "uom": {
+        "empty": "No ingredients yet — add lines first, then define their unit equivalencies here.",
+        "noEquivalency": "No equivalency — volume/count amounts of this ingredient cannot convert to weight.",
+        "anchorsHint": "All anchors describe the SAME amount of this ingredient (e.g. 141.75 g = 236.59 ml = 1 each).",
+        "anchorName": {
+          "weight": "Weight",
+          "volume": "Volume",
+          "count": "Each"
+        },
+        "eachUnit": "each",
+        "eachSummary": "{count, plural, one {# each} other {# each}}",
+        "missingAnchors": "Missing anchor: {anchors}. Lines using those units cannot be converted until you add it.",
+        "needTwoAnchors": "Enter at least two anchors to save an equivalency.",
+        "edit": "Edit",
+        "editEquivalency": "Edit equivalency for {name}",
+        "save": "Save",
+        "cancel": "Cancel",
+        "remove": "Remove",
+        "prepActions": "Prep actions",
+        "noPrepActions": "No prep actions yet.",
+        "add": "Add",
+        "addPrepAction": "Add prep action for {name}",
+        "editPrepAction": "Edit prep action {name}",
+        "removePrepAction": "Remove prep action {name}",
+        "prepNamePlaceholder": "Name (e.g. diced)",
+        "yield": "Yield",
+        "yieldSummary": "{pct}% yield"
+      },
       "method": {
         "empty": "No structured method yet.",
         "legacyNotes": "Notes (legacy)",

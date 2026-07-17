@@ -6,6 +6,7 @@ import { listIngredients } from '@/lib/data/ingredients';
 import { listComponentPickerRecipes } from '@/lib/data/recipe-components';
 import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
 import { loadRecipeAllergenRollup } from '@/lib/data/allergens';
+import { loadIngredientUomByIngredient } from '@/lib/data/ingredient-uom';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { getRecipeMediaStorage } from '@/lib/media/recipe-media-storage';
 import { logError } from '@/lib/observability';
@@ -15,6 +16,7 @@ import {
   type WorkspaceClientData,
 } from '@/components/app/recipes/workspace/recipe-workspace';
 import type { DraftLine } from '@/components/app/recipes/workspace/recipe-input-list';
+import type { UomTabItem } from '@/components/app/recipes/workspace/recipe-uom-tab';
 
 const UNIT_LABEL: Record<'weight' | 'volume' | 'count', string> = {
   weight: 'g',
@@ -156,6 +158,45 @@ export async function RecipeWorkspacePage({
     })),
   ];
 
+  // UoM tab (Fase 4): equivalency + prep state for the recipe's UNIQUE
+  // ingredients, in first-appearance order. Operational — both roles get it.
+  // `missingAnchorDimensions` is filled by the missing-equivalency pass once
+  // entered units land on lines (Fase 4 slice 6).
+  const uomIngredientIds = [...new Set(dto.ingredientLines.map((l) => l.ingredientId))];
+  const uomByIngredient = await withOrg(organizationId, (tx) =>
+    loadIngredientUomByIngredient(tx, organizationId, uomIngredientIds),
+  );
+  const ingredientNameById = new Map(
+    dto.ingredientLines.map((l) => [l.ingredientId, l.ingredient]),
+  );
+  const uom: UomTabItem[] = uomIngredientIds.map((ingredientId) => {
+    const state = uomByIngredient.get(ingredientId);
+    const ingredient = ingredientNameById.get(ingredientId)!;
+    return {
+      ingredientId,
+      name: ingredient.name,
+      dimension: ingredient.dimension,
+      equivalency: state?.equivalency
+        ? {
+            weightGrams: state.equivalency.weightGrams,
+            volumeMl: state.equivalency.volumeMl,
+            eachCount: state.equivalency.eachCount,
+            source: state.equivalency.source,
+          }
+        : null,
+      prepActions: (state?.prepActions ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        yieldBps: p.yieldBps,
+        weightGrams: p.weightGrams,
+        volumeMl: p.volumeMl,
+        eachCount: p.eachCount,
+        sortOrder: p.sortOrder,
+      })),
+      missingAnchorDimensions: [],
+    };
+  });
+
   // Manager-only cost summary from the shared resolver (kitchen: null).
   let cost: WorkspaceClientData['cost'] = null;
   if (dto.role === 'manager') {
@@ -216,6 +257,7 @@ export async function RecipeWorkspacePage({
       .map((p) => ({ id: p.id, name: p.name })),
     cost,
     currency: settings.currency,
+    uom,
   };
 
   return (
