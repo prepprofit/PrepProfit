@@ -15,6 +15,7 @@ import {
   RecipeInputListView,
   type DraftLine,
   type DraftSection,
+  type LineUom,
   type PickerOption,
 } from './recipe-input-list';
 import { RecipeMediaUpload } from './recipe-media-upload';
@@ -96,6 +97,27 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
   // ── view-mode derived scale (never persisted) ──────────────────────────
   const [factor, setFactor] = React.useState(1);
 
+  // Per-ingredient UoM context for the line editor (anchors + prep picker),
+  // derived from the UoM tab payload (operational, both roles).
+  const lineUom = React.useMemo(() => {
+    const map: Record<string, LineUom> = {};
+    for (const item of data.uom) {
+      map[item.ingredientId] = {
+        anchors: item.equivalency,
+        prepActions: item.prepActions.map((p) => ({
+          id: p.id,
+          name: p.name,
+          anchors: {
+            weightGrams: p.weightGrams,
+            volumeMl: p.volumeMl,
+            eachCount: p.eachCount,
+          },
+        })),
+      };
+    }
+    return map;
+  }, [data.uom]);
+
   // ── edit draft (local until Done) ──────────────────────────────────────
   const [draft, setDraft] = React.useState<{
     name: string;
@@ -173,6 +195,9 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
               id: l.id,
               ingredientId: l.ingredientId,
               quantity: l.quantity,
+              prepActionId: l.prepActionId,
+              enteredQuantity: l.enteredQuantity,
+              enteredUnit: l.enteredUnit,
               note: l.note.trim() === '' ? null : l.note.trim(),
               sectionRef: l.sectionRef,
             }
@@ -423,6 +448,7 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
               lines={draft.lines}
               ingredientOptions={data.ingredientOptions}
               componentOptions={data.componentOptions}
+              lineUom={lineUom}
               onSectionsChange={(sections) => setDraft({ ...draft, sections })}
               onLinesChange={(lines) => setDraft({ ...draft, lines })}
             />

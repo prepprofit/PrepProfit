@@ -6,6 +6,8 @@ import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import {
   ingredients,
+  ingredientPrepActions,
+  ingredientUomEquivalencies,
   recipes,
   recipeIngredients,
   recipeIngredientSections,
@@ -781,5 +783,231 @@ describe('saveRecipeWorkspace (prep-method full-replace, Fase 3)', () => {
       tx.select().from(recipeStepMedia).where(eq(recipeStepMedia.organizationId, ORG)),
     );
     expect(links).toHaveLength(0);
+  });
+});
+
+describe('saveRecipeWorkspace (entered units + prep actions, Fase 4)', () => {
+  let onionId: string;
+  let dicedPrepId: string;
+  let otherPrepId: string;
+
+  beforeAll(async () => {
+    const [onion] = await db
+      .insert(ingredients)
+      .values({
+        organizationId: ORG,
+        name: 'Onion F4',
+        dimension: 'weight',
+        priceCents: 300,
+      })
+      .returning();
+    onionId = onion!.id;
+    // Base equivalency: 200 g = 250 ml.
+    await db.insert(ingredientUomEquivalencies).values({
+      organizationId: ORG,
+      ingredientId: onionId,
+      weightGrams: 200,
+      volumeMl: 250,
+      source: 'manual',
+    });
+    const preps = await db
+      .insert(ingredientPrepActions)
+      .values([
+        {
+          organizationId: ORG,
+          ingredientId: onionId,
+          name: 'diced',
+          yieldBps: 8000,
+          // Anchor OVERRIDE: diced packs 100 g per 250 ml.
+          weightGrams: 100,
+          volumeMl: 250,
+        },
+        {
+          organizationId: ORG,
+          // Prep action of a DIFFERENT ingredient (Flour recipe fixture uses
+          // its own ids) — used for the ownership rejection case.
+          ingredientId: (await db
+            .select({ id: ingredients.id })
+            .from(ingredients)
+            .where(eq(ingredients.name, 'Flour'))
+            .limit(1))[0]!.id,
+          name: 'sifted',
+          yieldBps: 9500,
+        },
+      ])
+      .returning();
+    dicedPrepId = preps[0]!.id;
+    otherPrepId = preps[1]!.id;
+  });
+
+  const loadVersion = async () =>
+    (await runInOrg(db, ORG, (tx) => getRecipeVersion(tx, ORG, recipeId)))!;
+
+  it('recomputes canonical quantity from the entered pair via the equivalency', async () => {
+    const version = await loadVersion();
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          sections: [],
+          lines: [
+            {
+              kind: 'ingredient',
+              ingredientId: onionId,
+              quantity: 0, // client preview ignored — server recomputes
+              enteredQuantity: 500,
+              enteredUnit: 'ml',
+            },
+          ],
+        },
+        actor,
+      ),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result));
+
+    const dto = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (dto?.role !== 'manager') throw new Error('expected manager DTO');
+    const line = dto.ingredientLines[0]!;
+    // 500 ml / 250 ml * 200 g = 400 g.
+    expect(line.quantity).toBe(400);
+    expect(line.enteredQuantity).toBe(500);
+    expect(line.enteredUnit).toBe('ml');
+  });
+
+  it('prep anchors OVERRIDE the base equivalency for the conversion', async () => {
+    const version = await loadVersion();
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          lines: [
+            {
+              kind: 'ingredient',
+              ingredientId: onionId,
+              quantity: 0,
+              prepActionId: dicedPrepId,
+              enteredQuantity: 500,
+              enteredUnit: 'ml',
+            },
+          ],
+        },
+        actor,
+      ),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result));
+
+    const dto = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (dto?.role !== 'manager') throw new Error('expected manager DTO');
+    const line = dto.ingredientLines[0]!;
+    // Diced override: 500 ml / 250 ml * 100 g = 200 g (NOT 400 g).
+    expect(line.quantity).toBe(200);
+    expect(line.prepActionId).toBe(dicedPrepId);
+  });
+
+  it("rejects a prep action of another ingredient before any write", async () => {
+    const version = await loadVersion();
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          lines: [
+            {
+              kind: 'ingredient',
+              ingredientId: onionId,
+              quantity: 100,
+              prepActionId: otherPrepId,
+            },
+          ],
+        },
+        actor,
+      ),
+    );
+    expect(result).toEqual({
+      ok: false,
+      reason: 'invalid_draft',
+      detail: 'prep_action_invalid',
+    });
+    expect(await loadVersion()).toBe(version);
+  });
+
+  it('rejects an entered unit with no equivalency — never a silent zero', async () => {
+    const [plain] = await db
+      .insert(ingredients)
+      .values({
+        organizationId: ORG,
+        name: 'No Equivalency F4',
+        dimension: 'weight',
+        priceCents: 100,
+      })
+      .returning();
+    const version = await loadVersion();
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          lines: [
+            {
+              kind: 'ingredient',
+              ingredientId: plain!.id,
+              quantity: 0,
+              enteredQuantity: 2,
+              enteredUnit: 'cup',
+            },
+          ],
+        },
+        actor,
+      ),
+    );
+    expect(result).toEqual({
+      ok: false,
+      reason: 'invalid_draft',
+      detail: 'line_conversion_invalid',
+    });
+  });
+
+  it('same-dimension entered units convert without an equivalency', async () => {
+    const version = await loadVersion();
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          lines: [
+            {
+              kind: 'ingredient',
+              ingredientId: onionId,
+              quantity: 0,
+              enteredQuantity: 1.5,
+              enteredUnit: 'kg',
+            },
+          ],
+        },
+        actor,
+      ),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result));
+    const dto = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (dto?.role !== 'manager') throw new Error('expected manager DTO');
+    expect(dto.ingredientLines[0]!.quantity).toBe(1500);
   });
 });

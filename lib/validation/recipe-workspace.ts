@@ -38,15 +38,47 @@ export const workspaceSectionSchema = z
     message: 'section needs id or tempId',
   });
 
+/** Entry units accepted on a line (lib/units Unit union, incl. tsp/tbsp). */
+export const WORKSPACE_ENTERED_UNITS = [
+  'g',
+  'kg',
+  'oz',
+  'lb',
+  'ml',
+  'l',
+  'floz',
+  'cup',
+  'tsp',
+  'tbsp',
+  'count',
+] as const;
+
+/** Matches recipe_ingredients.entered_quantity numeric(12,4). */
+const ENTERED_QUANTITY_MAX = 99_999_999.9999;
+
 export const workspaceLineSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('ingredient'),
-    id: refSchema.optional(),
-    ingredientId: refSchema,
-    quantity: quantitySchema,
-    note: noteSchema,
-    sectionRef: refSchema.nullish(),
-  }),
+  z
+    .object({
+      kind: z.literal('ingredient'),
+      id: refSchema.optional(),
+      ingredientId: refSchema,
+      quantity: quantitySchema,
+      prepActionId: refSchema.nullish(),
+      enteredQuantity: z
+        .number()
+        .finite()
+        .min(0)
+        .max(ENTERED_QUANTITY_MAX)
+        .nullish(),
+      enteredUnit: z.enum(WORKSPACE_ENTERED_UNITS).nullish(),
+      note: noteSchema,
+      sectionRef: refSchema.nullish(),
+    })
+    // The entered pair travels together: a quantity without its unit (or vice
+    // versa) is meaningless and would desync `quantity` from what was typed.
+    .refine((l) => (l.enteredQuantity == null) === (l.enteredUnit == null), {
+      message: 'enteredQuantity and enteredUnit must be set together',
+    }),
   z.object({
     kind: z.literal('component'),
     id: refSchema.optional(),

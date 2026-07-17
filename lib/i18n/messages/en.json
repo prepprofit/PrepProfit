@@ -771,6 +771,9 @@
       "conflictBody": "Your changes were NOT saved. Reload to see the latest version, then re-apply your edits.",
       "reload": "Reload",
       "emptyLines": "No ingredients yet. Switch to Edit to add some.",
+      "enteredUnit": "Unit",
+      "prepAction": "Prep",
+      "noPrep": "No prep",
       "legacyEditorLink": "Open classic editor",
       "tabs": {
         "method": "Prep Method",

@@ -7,6 +7,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { roundCanonical } from '@/lib/calculations/recipeScale';
+import {
+  convertQuantity,
+  effectiveAnchors,
+  type UomAnchors,
+} from '@/lib/calculations/uom';
+import {
+  dimensionOf,
+  unitLabel,
+  type Dimension,
+  type Unit,
+} from '@/lib/units';
 
 /**
  * The workspace's MERGED input sequence (plan §6.2/§9.2-9.3): section headers,
@@ -24,7 +35,14 @@ export type DraftLine =
       ingredientId: string;
       name: string;
       unitLabel: string;
+      dimension: Dimension;
       quantity: number;
+      /** Fase 4: what the chef typed. Both set, or both null (canonical entry). */
+      enteredQuantity: number | null;
+      enteredUnit: Unit | null;
+      prepActionId: string | null;
+      /** Display-only prep name resolved server-side (view mode). */
+      prepName?: string | null;
       note: string;
       sectionRef: string | null;
     }
@@ -39,7 +57,27 @@ export type DraftLine =
       sectionRef: string | null;
     };
 
-export type PickerOption = { id: string; name: string };
+export type PickerOption = { id: string; name: string; dimension?: Dimension };
+
+/** Per-ingredient UoM context the line editor needs (anchors + prep picker). */
+export type LineUom = {
+  anchors: UomAnchors | null;
+  prepActions: { id: string; name: string; anchors: UomAnchors }[];
+};
+
+const ALL_UNITS: Unit[] = [
+  'g',
+  'kg',
+  'oz',
+  'lb',
+  'ml',
+  'l',
+  'floz',
+  'cup',
+  'tsp',
+  'tbsp',
+  'count',
+];
 
 function lineQuantity(line: DraftLine): number {
   return line.kind === 'ingredient' ? line.quantity : line.quantityGrams;
@@ -87,7 +125,12 @@ export function RecipeInputListView({
 
   const commitAnchor = (line: DraftLine) => {
     const value = Number(target.replace(',', '.'));
-    const base = lineQuantity(line);
+    // The typed target is relative to what is DISPLAYED (entered pair when
+    // present) — both scale linearly, so the factor is the same either way.
+    const base =
+      line.kind === 'ingredient' && line.enteredQuantity !== null
+        ? line.enteredQuantity
+        : lineQuantity(line);
     if (Number.isFinite(value) && value > 0 && base > 0) {
       onAnchorScale(base, value);
     }
@@ -104,6 +147,17 @@ export function RecipeInputListView({
           <ul className="divide-y divide-border">
             {group.lines.map((line) => {
               const scaled = roundCanonical(lineQuantity(line) * factor);
+              // Fase 4: show what the chef TYPED (scaled) when present; the
+              // canonical amount stays the anchor-scale + cost source.
+              const entered =
+                line.kind === 'ingredient' &&
+                line.enteredQuantity !== null &&
+                line.enteredUnit !== null
+                  ? {
+                      value: roundCanonical(line.enteredQuantity * factor),
+                      label: unitLabel(line.enteredUnit),
+                    }
+                  : null;
               return (
                 <li key={line.key} className="flex items-start gap-3 py-2">
                   {editingKey === line.key ? (
@@ -126,19 +180,28 @@ export function RecipeInputListView({
                       className="w-24 shrink-0 rounded px-1 text-right font-medium tabular-nums underline-offset-2 hover:underline"
                       onClick={() => {
                         setEditingKey(line.key);
-                        setTarget(String(scaled));
+                        setTarget(String(entered ? entered.value : scaled));
                       }}
                       title={t('scale')}
                     >
-                      {scaled}{' '}
+                      {entered ? entered.value : scaled}{' '}
                       <span className="text-muted-foreground">
-                        {line.kind === 'ingredient' ? line.unitLabel : 'g'}
+                        {entered
+                          ? entered.label
+                          : line.kind === 'ingredient'
+                            ? line.unitLabel
+                            : 'g'}
                       </span>
                     </button>
                   )}
                   <div className="min-w-0">
                     <p className="truncate text-sm">
                       {line.name}
+                      {line.kind === 'ingredient' && line.prepName ? (
+                        <span className="ml-1 text-muted-foreground">
+                          · {line.prepName}
+                        </span>
+                      ) : null}
                       {line.kind === 'component' ? (
                         <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted-foreground">
                           {t('subRecipe')}
@@ -165,6 +228,7 @@ export function RecipeInputListEdit({
   lines,
   ingredientOptions,
   componentOptions,
+  lineUom,
   onSectionsChange,
   onLinesChange,
 }: {
@@ -172,10 +236,36 @@ export function RecipeInputListEdit({
   lines: DraftLine[];
   ingredientOptions: PickerOption[];
   componentOptions: PickerOption[];
+  /** UoM context per ingredient id (anchors + prep picker). Missing = none. */
+  lineUom: Record<string, LineUom>;
   onSectionsChange: (sections: DraftSection[]) => void;
   onLinesChange: (lines: DraftLine[]) => void;
 }) {
   const t = useTranslations('recipes.workspace');
+
+  const uomFor = (ingredientId: string): LineUom =>
+    lineUom[ingredientId] ?? { anchors: null, prepActions: [] };
+
+  /** Anchors in effect for a line given its selected prep action. */
+  const anchorsFor = (
+    line: Extract<DraftLine, { kind: 'ingredient' }>,
+  ): UomAnchors | null => {
+    const uom = uomFor(line.ingredientId);
+    const prep = uom.prepActions.find((p) => p.id === line.prepActionId);
+    return effectiveAnchors(uom.anchors, prep?.anchors ?? null);
+  };
+
+  /** Units offered for a line: same dimension always; others only when convertible. */
+  const unitOptionsFor = (
+    line: Extract<DraftLine, { kind: 'ingredient' }>,
+  ): Unit[] => {
+    const anchors = anchorsFor(line);
+    return ALL_UNITS.filter(
+      (u) =>
+        dimensionOf(u) === line.dimension ||
+        convertQuantity(1, u, line.dimension, anchors).ok,
+    );
+  };
 
   const moveLine = (index: number, delta: -1 | 1) => {
     const next = [...lines];
@@ -203,7 +293,11 @@ export function RecipeInputListEdit({
         ingredientId: option.id,
         name: option.name,
         unitLabel: '',
+        dimension: option.dimension ?? 'weight',
         quantity: 0,
+        enteredQuantity: null,
+        enteredUnit: null,
+        prepActionId: null,
         note: '',
         sectionRef: null,
       },
@@ -297,24 +391,100 @@ export function RecipeInputListEdit({
               ) : null}
             </span>
             <Input
-              value={String(lineQuantity(line))}
+              value={String(
+                line.kind === 'ingredient' && line.enteredUnit !== null
+                  ? (line.enteredQuantity ?? 0)
+                  : lineQuantity(line),
+              )}
               onChange={(e) => {
                 const value = Number(e.target.value.replace(',', '.'));
-                const quantity = Number.isFinite(value) && value >= 0 ? value : 0;
-                updateLine(
-                  line.key,
-                  line.kind === 'ingredient'
-                    ? { quantity }
-                    : { quantityGrams: quantity },
+                const amount = Number.isFinite(value) && value >= 0 ? value : 0;
+                if (line.kind !== 'ingredient') {
+                  updateLine(line.key, { quantityGrams: amount });
+                  return;
+                }
+                if (line.enteredUnit === null) {
+                  updateLine(line.key, { quantity: amount });
+                  return;
+                }
+                const converted = convertQuantity(
+                  amount,
+                  line.enteredUnit,
+                  line.dimension,
+                  anchorsFor(line),
                 );
+                updateLine(line.key, {
+                  enteredQuantity: amount,
+                  quantity: converted.ok
+                    ? roundCanonical(converted.canonical)
+                    : line.quantity,
+                });
               }}
               inputMode="decimal"
               className="h-8 w-24 text-right tabular-nums"
               aria-label={t('scale')}
             />
-            <span className="w-8 text-xs text-muted-foreground">
-              {line.kind === 'ingredient' ? line.unitLabel : 'g'}
-            </span>
+            {line.kind === 'ingredient' ? (
+              <Select
+                value={line.enteredUnit ?? ''}
+                onChange={(e) => {
+                  const unit = e.target.value === '' ? null : (e.target.value as Unit);
+                  if (unit === null) {
+                    // Back to canonical entry: the canonical amount stays.
+                    updateLine(line.key, {
+                      enteredUnit: null,
+                      enteredQuantity: null,
+                    });
+                    return;
+                  }
+                  const amount = line.enteredQuantity ?? lineQuantity(line);
+                  const converted = convertQuantity(
+                    amount,
+                    unit,
+                    line.dimension,
+                    anchorsFor(line),
+                  );
+                  updateLine(line.key, {
+                    enteredUnit: unit,
+                    enteredQuantity: amount,
+                    quantity: converted.ok
+                      ? roundCanonical(converted.canonical)
+                      : line.quantity,
+                  });
+                }}
+                className="h-8 w-24"
+                aria-label={t('enteredUnit')}
+              >
+                <option value="">{line.unitLabel}</option>
+                {unitOptionsFor(line).map((u) => (
+                  <option key={u} value={u}>
+                    {unitLabel(u) || t('uom.eachUnit')}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <span className="w-8 text-xs text-muted-foreground">g</span>
+            )}
+            {line.kind === 'ingredient' &&
+            uomFor(line.ingredientId).prepActions.length > 0 ? (
+              <Select
+                value={line.prepActionId ?? ''}
+                onChange={(e) =>
+                  updateLine(line.key, {
+                    prepActionId: e.target.value === '' ? null : e.target.value,
+                  })
+                }
+                className="h-8 w-32"
+                aria-label={t('prepAction')}
+              >
+                <option value="">{t('noPrep')}</option>
+                {uomFor(line.ingredientId).prepActions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
             <Input
               value={line.note}
               onChange={(e) => updateLine(line.key, { note: e.target.value })}

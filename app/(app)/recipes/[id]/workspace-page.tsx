@@ -17,6 +17,7 @@ import {
 } from '@/components/app/recipes/workspace/recipe-workspace';
 import type { DraftLine } from '@/components/app/recipes/workspace/recipe-input-list';
 import type { UomTabItem } from '@/components/app/recipes/workspace/recipe-uom-tab';
+import type { Unit } from '@/lib/units';
 
 const UNIT_LABEL: Record<'weight' | 'volume' | 'count', string> = {
   weight: 'g',
@@ -65,7 +66,13 @@ export async function RecipeWorkspacePage({
     ingredientId: l.ingredientId,
     name: l.ingredient.name,
     unitLabel: UNIT_LABEL[l.ingredient.dimension],
+    dimension: l.ingredient.dimension,
     quantity: l.quantity,
+    enteredQuantity: l.enteredQuantity,
+    // Stored as text; writes only ever persist the lib/units Unit union.
+    enteredUnit: (l.enteredUnit as Unit | null) ?? null,
+    prepActionId: l.prepActionId,
+    prepName: null,
     note: l.note ?? '',
     sectionRef: l.sectionId,
     displaySortOrder: l.displaySortOrder,
@@ -197,6 +204,17 @@ export async function RecipeWorkspacePage({
     };
   });
 
+  // Resolve display-only prep names onto the view lines.
+  const prepNameById = new Map<string, string>();
+  for (const item of uom) {
+    for (const p of item.prepActions) prepNameById.set(p.id, p.name);
+  }
+  for (const line of lines) {
+    if (line.kind === 'ingredient' && line.prepActionId) {
+      line.prepName = prepNameById.get(line.prepActionId) ?? null;
+    }
+  }
+
   // Manager-only cost summary from the shared resolver (kitchen: null).
   let cost: WorkspaceClientData['cost'] = null;
   if (dto.role === 'manager') {
@@ -251,7 +269,11 @@ export async function RecipeWorkspacePage({
         .filter((m) => m !== null),
     })),
     books: dto.books,
-    ingredientOptions: ingredientRows.map((i) => ({ id: i.id, name: i.name })),
+    ingredientOptions: ingredientRows.map((i) => ({
+      id: i.id,
+      name: i.name,
+      dimension: i.dimension,
+    })),
     componentOptions: pickerRecipes
       .filter((p) => p.selectable)
       .map((p) => ({ id: p.id, name: p.name })),

@@ -2,6 +2,8 @@ import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
   ingredients,
+  ingredientPrepActions,
+  ingredientUomEquivalencies,
   organizationSettings,
   recipes,
   recipeIngredients,
@@ -29,6 +31,13 @@ import {
   type AuditActor,
 } from '@/lib/data/audit';
 import { assertNoRecipeComponentCycle } from '@/lib/data/recipe-components';
+import {
+  convertQuantity,
+  effectiveAnchors,
+  type UomAnchors,
+} from '@/lib/calculations/uom';
+import { roundCanonical } from '@/lib/calculations/recipeScale';
+import type { Unit } from '@/lib/units';
 
 /**
  * Recipes 2.0 workspace facade (Meez-parity plan §10). ONE loader produces the
@@ -402,8 +411,18 @@ export type WorkspaceLineDraft =
       /** Existing line id — absent for a newly added line. */
       id?: string;
       ingredientId: string;
-      /** Canonical amount (g / ml / count), >= 0. */
+      /**
+       * Canonical amount (g / ml / count), >= 0. When an entered pair is
+       * present the SERVER recomputes this from `enteredQuantity`/`enteredUnit`
+       * through the ingredient's equivalency (+ prep-action anchor override) —
+       * the client value is a preview, never the source of truth (§7.2).
+       */
       quantity: number;
+      /** Prep state of the line ("diced"); must belong to THIS ingredient. */
+      prepActionId?: string | null;
+      /** What the chef typed, preserved verbatim (Fase 4). Both or neither. */
+      enteredQuantity?: number | null;
+      enteredUnit?: Unit | null;
       note?: string | null;
       sectionRef?: string | null;
     }
@@ -475,7 +494,12 @@ export type SaveRecipeWorkspaceResult =
         | 'unknown_method_section_id'
         | 'unknown_method_section_ref'
         | 'unknown_step_id'
-        | 'unknown_media_id';
+        | 'unknown_media_id'
+        // Fase 4: prep action missing, cross-org, or of another ingredient.
+        | 'prep_action_invalid'
+        // Fase 4: entered quantity/unit cannot convert to the ingredient's
+        // dimension (missing equivalency anchor or invalid number).
+        | 'line_conversion_invalid';
     };
 
 /**
@@ -686,9 +710,10 @@ export async function saveRecipeWorkspace(
           .map((l) => (l as { ingredientId: string }).ingredientId),
       ),
     ];
+    const ingredientDimensionById = new Map<string, 'weight' | 'volume' | 'count'>();
     if (ingredientIds.length > 0) {
       const found = await db
-        .select({ id: ingredients.id })
+        .select({ id: ingredients.id, dimension: ingredients.dimension })
         .from(ingredients)
         .where(
           and(
@@ -699,6 +724,96 @@ export async function saveRecipeWorkspace(
         );
       if (found.length !== ingredientIds.length) {
         return invalid('ingredient_unavailable');
+      }
+      for (const row of found) ingredientDimensionById.set(row.id, row.dimension);
+    }
+
+    // ── Fase 4: prep-action ownership + entered-unit conversion, BEFORE any
+    // write. A prep action must belong to the LINE's ingredient (same org —
+    // RLS scopes the load). When a line carries an entered pair, the CANONICAL
+    // quantity is recomputed here through the equivalency (+ the prep's anchor
+    // override); a missing anchor is a typed failure, never a zero (§7.2).
+    const ingredientLineDrafts = lines.filter(
+      (l): l is Extract<WorkspaceLineDraft, { kind: 'ingredient' }> =>
+        l.kind === 'ingredient',
+    );
+    const prepActionIds = [
+      ...new Set(
+        ingredientLineDrafts
+          .map((l) => l.prepActionId)
+          .filter((id): id is string => id != null),
+      ),
+    ];
+    const prepById = new Map<
+      string,
+      { ingredientId: string } & UomAnchors
+    >();
+    if (prepActionIds.length > 0) {
+      const prepRows = await db
+        .select({
+          id: ingredientPrepActions.id,
+          ingredientId: ingredientPrepActions.ingredientId,
+          weightGrams: ingredientPrepActions.weightGrams,
+          volumeMl: ingredientPrepActions.volumeMl,
+          eachCount: ingredientPrepActions.eachCount,
+        })
+        .from(ingredientPrepActions)
+        .where(
+          and(
+            eq(ingredientPrepActions.organizationId, organizationId),
+            inArray(ingredientPrepActions.id, prepActionIds),
+          ),
+        );
+      for (const row of prepRows) prepById.set(row.id, row);
+      if (prepById.size !== prepActionIds.length) {
+        return invalid('prep_action_invalid');
+      }
+    }
+    const equivalencyByIngredient = new Map<string, UomAnchors>();
+    if (ingredientIds.length > 0) {
+      const equivalencyRows = await db
+        .select({
+          ingredientId: ingredientUomEquivalencies.ingredientId,
+          weightGrams: ingredientUomEquivalencies.weightGrams,
+          volumeMl: ingredientUomEquivalencies.volumeMl,
+          eachCount: ingredientUomEquivalencies.eachCount,
+        })
+        .from(ingredientUomEquivalencies)
+        .where(
+          and(
+            eq(ingredientUomEquivalencies.organizationId, organizationId),
+            inArray(ingredientUomEquivalencies.ingredientId, ingredientIds),
+          ),
+        );
+      for (const row of equivalencyRows) {
+        equivalencyByIngredient.set(row.ingredientId, row);
+      }
+    }
+    // Canonical quantity per draft line (keyed by array index — line ids may
+    // be absent for new lines).
+    const resolvedQuantityByIndex = new Map<number, number>();
+    for (const [index, line] of lines.entries()) {
+      if (line.kind !== 'ingredient') continue;
+      const prep = line.prepActionId != null ? prepById.get(line.prepActionId) : null;
+      if (prep && prep.ingredientId !== line.ingredientId) {
+        return invalid('prep_action_invalid');
+      }
+      if (line.enteredQuantity != null && line.enteredUnit != null) {
+        const anchors = effectiveAnchors(
+          equivalencyByIngredient.get(line.ingredientId) ?? null,
+          prep ?? null,
+        );
+        const dimension = ingredientDimensionById.get(line.ingredientId)!;
+        const converted = convertQuantity(
+          line.enteredQuantity,
+          line.enteredUnit,
+          dimension,
+          anchors,
+        );
+        if (!converted.ok) return invalid('line_conversion_invalid');
+        resolvedQuantityByIndex.set(index, roundCanonical(converted.canonical));
+      } else {
+        resolvedQuantityByIndex.set(index, line.quantity);
       }
     }
 
@@ -774,12 +889,16 @@ export async function saveRecipeWorkspace(
           ? (sectionIdByRef.get(line.sectionRef) ?? null)
           : null;
       if (line.kind === 'ingredient') {
+        const resolvedQuantity = resolvedQuantityByIndex.get(index)!;
         if (line.id) {
           await db
             .update(recipeIngredients)
             .set({
               ingredientId: line.ingredientId,
-              quantity: String(line.quantity),
+              quantity: String(resolvedQuantity),
+              prepActionId: line.prepActionId ?? null,
+              enteredQuantity: line.enteredQuantity ?? null,
+              enteredUnit: line.enteredUnit ?? null,
               note: line.note ?? null,
               sectionId,
               displaySortOrder: index,
@@ -798,7 +917,10 @@ export async function saveRecipeWorkspace(
               organizationId,
               recipeId,
               ingredientId: line.ingredientId,
-              quantity: String(line.quantity),
+              quantity: String(resolvedQuantity),
+              prepActionId: line.prepActionId ?? null,
+              enteredQuantity: line.enteredQuantity ?? null,
+              enteredUnit: line.enteredUnit ?? null,
               note: line.note ?? null,
               sectionId,
               displaySortOrder: index,
