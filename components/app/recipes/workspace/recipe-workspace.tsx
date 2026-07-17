@@ -376,6 +376,13 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
           >
             {t('legacyEditorLink')}
           </Link>
+          {!editing ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/recipes/${data.recipe.id}/slideshow`}>
+                {t('slideshow.open')}
+              </Link>
+            </Button>
+          ) : null}
           {editing ? (
             <>
               <Button

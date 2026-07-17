@@ -785,6 +785,14 @@
         "addStep": "Add step",
         "removeStep": "Remove step"
       },
+      "slideshow": {
+        "open": "Slideshow",
+        "stepOf": "Step {current} of {total}",
+        "previous": "Previous",
+        "next": "Next",
+        "exit": "Exit",
+        "empty": "This recipe has no structured steps yet."
+      },
       "media": {
         "addPhoto": "Add photo/video",
         "uploading": "Uploading…",
