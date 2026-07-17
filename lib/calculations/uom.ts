@@ -87,6 +87,50 @@ export function missingAnchorDimensions(
   return [from, to].filter((d) => anchorFor(anchors, d) === null);
 }
 
+export type MissingAnchorLine = {
+  ingredientId: string;
+  /** The ingredient's canonical dimension (the conversion TARGET). */
+  targetDimension: Dimension;
+  /** Dimension of the line's entered unit, or null when entered canonically. */
+  enteredDimension: Dimension | null;
+  baseAnchors: UomAnchors | null;
+  prepAnchors: UomAnchors | null;
+};
+
+/**
+ * Per-ingredient anchor dimensions that its lines cannot convert to the
+ * ingredient's dimension (§7.2). Powers the UoM tab's actionable
+ * missing-equivalency warning: a line entered in ml/each whose equivalency (or
+ * the line's prep override) lacks a required anchor. Same-dimension and
+ * canonical-entry lines never contribute. Deterministic order per ingredient.
+ */
+export function missingAnchorsByIngredient(
+  lines: MissingAnchorLine[],
+): Map<string, Dimension[]> {
+  const sets = new Map<string, Set<Dimension>>();
+  for (const line of lines) {
+    if (line.enteredDimension === null || line.enteredDimension === line.targetDimension) {
+      continue;
+    }
+    const anchors = effectiveAnchors(line.baseAnchors, line.prepAnchors);
+    const missing = missingAnchorDimensions(
+      line.enteredDimension,
+      line.targetDimension,
+      anchors,
+    );
+    if (missing.length === 0) continue;
+    const set = sets.get(line.ingredientId) ?? new Set<Dimension>();
+    for (const d of missing) set.add(d);
+    sets.set(line.ingredientId, set);
+  }
+  const result = new Map<string, Dimension[]>();
+  const order: Dimension[] = ['weight', 'volume', 'count'];
+  for (const [id, set] of sets) {
+    result.set(id, order.filter((d) => set.has(d)));
+  }
+  return result;
+}
+
 /**
  * Convert an entered `value` in `unit` to the canonical amount of
  * `targetDimension` (g / ml / count). Zero is a valid input (a draft line may

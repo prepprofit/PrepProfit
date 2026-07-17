@@ -4,6 +4,8 @@ import {
   effectiveAnchors,
   hasUsableAnchorPair,
   missingAnchorDimensions,
+  missingAnchorsByIngredient,
+  type MissingAnchorLine,
   type UomAnchors,
 } from './uom';
 
@@ -129,5 +131,54 @@ describe('missingAnchorDimensions', () => {
       'volume',
       'weight',
     ]);
+  });
+});
+
+describe('missingAnchorsByIngredient', () => {
+  const line = (over: Partial<MissingAnchorLine>): MissingAnchorLine => ({
+    ingredientId: 'i1',
+    targetDimension: 'weight',
+    enteredDimension: null,
+    baseAnchors: null,
+    prepAnchors: null,
+    ...over,
+  });
+
+  it('flags a volume-entered line with no volume anchor', () => {
+    const result = missingAnchorsByIngredient([
+      line({ enteredDimension: 'volume', baseAnchors: WEIGHT_ONLY }),
+    ]);
+    expect(result.get('i1')).toEqual(['volume']);
+  });
+
+  it('ignores same-dimension and canonical-entry lines', () => {
+    const result = missingAnchorsByIngredient([
+      line({ enteredDimension: 'weight', baseAnchors: WEIGHT_ONLY }),
+      line({ enteredDimension: null, baseAnchors: WEIGHT_ONLY }),
+      line({ enteredDimension: 'volume', baseAnchors: FULL }),
+    ]);
+    expect(result.size).toBe(0);
+  });
+
+  it('uses the prep override anchors when the line has a prep action', () => {
+    // Base has volume; prep override lacks it → the line becomes unconvertible.
+    const result = missingAnchorsByIngredient([
+      line({
+        enteredDimension: 'volume',
+        baseAnchors: FULL,
+        prepAnchors: WEIGHT_ONLY,
+      }),
+    ]);
+    expect(result.get('i1')).toEqual(['volume']);
+  });
+
+  it('merges missing dimensions across lines, catalog-ordered', () => {
+    const result = missingAnchorsByIngredient([
+      line({ enteredDimension: 'volume', baseAnchors: WEIGHT_ONLY }),
+      line({ enteredDimension: 'count', baseAnchors: WEIGHT_ONLY }),
+    ]);
+    // volume line misses [volume]; count line misses [count] (both need each+vol
+    // vs weight-only → weight present, so from-dim missing).
+    expect(result.get('i1')).toEqual(['volume', 'count']);
   });
 });

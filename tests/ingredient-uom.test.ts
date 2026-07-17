@@ -226,6 +226,42 @@ describe('prep actions', () => {
   });
 });
 
+/** Collects every own key of a JSON-serialized value, recursively. */
+function allKeysDeep(value: unknown, keys = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const v of value) allKeysDeep(v, keys);
+  } else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) {
+      keys.add(k);
+      allKeysDeep(v, keys);
+    }
+  }
+  return keys;
+}
+
+describe('operational surface carries no money (deep key-scan)', () => {
+  it('UoM state has no financial keys — safe for kitchen', async () => {
+    const state = await runInOrg(db, ORG_A, (tx) =>
+      getIngredientUom(tx, ORG_A, flourId),
+    );
+    const keys = allKeysDeep(JSON.parse(JSON.stringify(state)));
+    for (const forbidden of [
+      'priceCents',
+      'pendingPriceCents',
+      'needsPricing',
+      'sellingPriceCents',
+      'costCents',
+      'targetFoodCostBps',
+      'supplier',
+    ]) {
+      expect(keys.has(forbidden), `UoM state leaked "${forbidden}"`).toBe(false);
+    }
+    // Operational fields still present.
+    expect(keys.has('weightGrams')).toBe(true);
+    expect(keys.has('yieldBps') || state.prepActions.length === 0).toBe(true);
+  });
+});
+
 describe('cross-org isolation', () => {
   it('cannot write an equivalency for another org ingredient', async () => {
     const result = await runInOrg(db, ORG_A, (tx) =>

@@ -17,7 +17,11 @@ import {
 } from '@/components/app/recipes/workspace/recipe-workspace';
 import type { DraftLine } from '@/components/app/recipes/workspace/recipe-input-list';
 import type { UomTabItem } from '@/components/app/recipes/workspace/recipe-uom-tab';
-import type { Unit } from '@/lib/units';
+import { dimensionOf, type Unit } from '@/lib/units';
+import {
+  missingAnchorsByIngredient,
+  type UomAnchors,
+} from '@/lib/calculations/uom';
 
 const UNIT_LABEL: Record<'weight' | 'volume' | 'count', string> = {
   weight: 'g',
@@ -176,6 +180,43 @@ export async function RecipeWorkspacePage({
   const ingredientNameById = new Map(
     dto.ingredientLines.map((l) => [l.ingredientId, l.ingredient]),
   );
+  // For each ingredient, the anchor dimensions its OWN lines still can't
+  // convert to weight (§7.2): a line entered in ml/each whose equivalency (or
+  // the line's prep override) lacks a required anchor. This is the actionable
+  // "add a weight anchor" signal — never a silent unconvertible line.
+  const prepAnchorsById = new Map<string, UomAnchors>();
+  for (const state of uomByIngredient.values()) {
+    for (const p of state.prepActions) {
+      prepAnchorsById.set(p.id, {
+        weightGrams: p.weightGrams,
+        volumeMl: p.volumeMl,
+        eachCount: p.eachCount,
+      });
+    }
+  }
+  const missingByIngredient = missingAnchorsByIngredient(
+    dto.ingredientLines.map((line) => {
+      const equivalency = uomByIngredient.get(line.ingredientId)?.equivalency ?? null;
+      return {
+        ingredientId: line.ingredientId,
+        targetDimension: line.ingredient.dimension,
+        enteredDimension:
+          line.enteredUnit != null ? dimensionOf(line.enteredUnit as Unit) : null,
+        baseAnchors: equivalency
+          ? {
+              weightGrams: equivalency.weightGrams,
+              volumeMl: equivalency.volumeMl,
+              eachCount: equivalency.eachCount,
+            }
+          : null,
+        prepAnchors:
+          line.prepActionId != null
+            ? (prepAnchorsById.get(line.prepActionId) ?? null)
+            : null,
+      };
+    }),
+  );
+
   const uom: UomTabItem[] = uomIngredientIds.map((ingredientId) => {
     const state = uomByIngredient.get(ingredientId);
     const ingredient = ingredientNameById.get(ingredientId)!;
@@ -200,7 +241,7 @@ export async function RecipeWorkspacePage({
         eachCount: p.eachCount,
         sortOrder: p.sortOrder,
       })),
-      missingAnchorDimensions: [],
+      missingAnchorDimensions: missingByIngredient.get(ingredientId) ?? [],
     };
   });
 
