@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
   ingredients,
@@ -27,6 +27,7 @@ import {
   writeAuditEvent,
   type AuditActor,
 } from '@/lib/data/audit';
+import { assertNoRecipeComponentCycle } from '@/lib/data/recipe-components';
 
 /**
  * Recipes 2.0 workspace facade (Meez-parity plan §10). ONE loader produces the
@@ -361,11 +362,7 @@ export async function getRecipeWorkspace(
   };
 }
 
-/**
- * Header fields the workspace save may change in this foundation slice. The
- * full structural save (sections/lines/method in one transaction) lands with
- * the workspace UI (plan Fase 2); the concurrency contract is identical.
- */
+/** Header fields the workspace save may change. */
 export type RecipeWorkspaceHeaderDraft = {
   name?: string;
   subtitle?: string | null;
@@ -376,24 +373,87 @@ export type RecipeWorkspaceHeaderDraft = {
   servingsPerContainer?: number | null;
 };
 
+/**
+ * Structural draft (plan Fase 2): the workspace's ingredient area as ONE
+ * document. Sections and lines are FULL-REPLACE sets — a section/line absent
+ * from the draft is deleted; array position IS the persisted order
+ * (`sort_order` for sections, `display_sort_order` for the merged line
+ * sequence). New sections carry a client `tempId`; lines reference their
+ * section by `sectionRef` = existing section id OR that tempId (null = the
+ * default group). Duplicate ingredients across lines are legal (§6.2).
+ */
+export type WorkspaceSectionDraft = {
+  /** Existing section id — absent for a newly added section. */
+  id?: string;
+  /** Client-side handle for lines of a NEW section. */
+  tempId?: string;
+  title: string;
+};
+
+export type WorkspaceLineDraft =
+  | {
+      kind: 'ingredient';
+      /** Existing line id — absent for a newly added line. */
+      id?: string;
+      ingredientId: string;
+      /** Canonical amount (g / ml / count), >= 0. */
+      quantity: number;
+      note?: string | null;
+      sectionRef?: string | null;
+    }
+  | {
+      kind: 'component';
+      id?: string;
+      componentRecipeId: string;
+      /** Grams of the component recipe's finished output, > 0. */
+      quantityGrams: number;
+      note?: string | null;
+      sectionRef?: string | null;
+    };
+
+export type RecipeWorkspaceStructureDraft = {
+  header?: RecipeWorkspaceHeaderDraft;
+  /** undefined = leave the structure untouched (header-only save). */
+  sections?: WorkspaceSectionDraft[];
+  lines?: WorkspaceLineDraft[];
+};
+
 export type SaveRecipeWorkspaceResult =
   | { ok: true; version: number }
   | { ok: false; reason: 'not_found' }
-  | { ok: false; reason: 'version_conflict'; currentVersion: number };
+  | { ok: false; reason: 'version_conflict'; currentVersion: number }
+  | {
+      ok: false;
+      reason: 'invalid_draft';
+      detail:
+        | 'unknown_section_ref'
+        | 'unknown_line_id'
+        | 'unknown_section_id'
+        | 'ingredient_unavailable'
+        | 'component_invalid'
+        | 'component_cycle';
+    };
 
 /**
  * Atomic, optimistic-concurrency workspace save. MUST run inside a `withOrg`
  * transaction: locks the recipe FOR UPDATE, compares `expectedVersion`,
- * applies the draft, increments `version` and writes ONE summarizing audit
- * event (metadata carries versions + changed field NAMES only — no content,
- * no money).
+ * applies the whole draft (header + full-replace sections/lines when
+ * provided), increments `version` and writes ONE summarizing audit event
+ * (metadata carries versions, changed area names and counts only — no
+ * content, no money).
+ *
+ * `sections`/`lines` undefined = leave the structure untouched (header-only
+ * save). Any validation failure returns a typed `invalid_draft` and the
+ * transaction caller must roll back (throwing inside `withOrg` does that; the
+ * server action wraps this accordingly) — a draft is applied fully or not at
+ * all.
  */
 export async function saveRecipeWorkspace(
   db: TenantClient,
   organizationId: string,
   recipeId: string,
   expectedVersion: number,
-  draft: RecipeWorkspaceHeaderDraft,
+  draft: RecipeWorkspaceStructureDraft,
   actor: AuditActor,
 ): Promise<SaveRecipeWorkspaceResult> {
   const locked = await db
@@ -418,14 +478,301 @@ export async function saveRecipeWorkspace(
     };
   }
 
-  const changedFields = Object.keys(draft).filter(
-    (k) => draft[k as keyof RecipeWorkspaceHeaderDraft] !== undefined,
+  const changedAreas: string[] = [];
+  const invalid = (
+    detail: Extract<
+      SaveRecipeWorkspaceResult,
+      { reason: 'invalid_draft' }
+    >['detail'],
+  ): SaveRecipeWorkspaceResult => ({
+    ok: false,
+    reason: 'invalid_draft',
+    detail,
+  });
+
+  if (draft.sections !== undefined || draft.lines !== undefined) {
+    const sections = draft.sections ?? [];
+    const lines = draft.lines ?? [];
+
+    // ── existing structure ───────────────────────────────────────────────
+    const [existingSections, existingLines, existingComponents] =
+      await Promise.all([
+        db
+          .select({ id: recipeIngredientSections.id })
+          .from(recipeIngredientSections)
+          .where(
+            and(
+              eq(recipeIngredientSections.organizationId, organizationId),
+              eq(recipeIngredientSections.recipeId, recipeId),
+            ),
+          ),
+        db
+          .select({ id: recipeIngredients.id })
+          .from(recipeIngredients)
+          .where(
+            and(
+              eq(recipeIngredients.organizationId, organizationId),
+              eq(recipeIngredients.recipeId, recipeId),
+            ),
+          ),
+        db
+          .select({
+            id: recipeComponents.id,
+            componentRecipeId: recipeComponents.componentRecipeId,
+          })
+          .from(recipeComponents)
+          .where(
+            and(
+              eq(recipeComponents.organizationId, organizationId),
+              eq(recipeComponents.recipeId, recipeId),
+            ),
+          ),
+      ]);
+    const existingSectionIds = new Set(existingSections.map((s) => s.id));
+    const existingLineIds = new Set(existingLines.map((l) => l.id));
+    const existingComponentIds = new Set(existingComponents.map((c) => c.id));
+
+    // ── validate the draft BEFORE any write ──────────────────────────────
+    for (const s of sections) {
+      if (s.id !== undefined && !existingSectionIds.has(s.id)) {
+        return invalid('unknown_section_id');
+      }
+    }
+    const draftSectionRefs = new Set<string>();
+    for (const s of sections) {
+      if (s.id) draftSectionRefs.add(s.id);
+      if (s.tempId) draftSectionRefs.add(s.tempId);
+    }
+    for (const line of lines) {
+      if (line.sectionRef != null && !draftSectionRefs.has(line.sectionRef)) {
+        return invalid('unknown_section_ref');
+      }
+      if (line.kind === 'ingredient') {
+        if (line.id !== undefined && !existingLineIds.has(line.id)) {
+          return invalid('unknown_line_id');
+        }
+      } else if (line.id !== undefined && !existingComponentIds.has(line.id)) {
+        return invalid('unknown_line_id');
+      }
+    }
+
+    const ingredientIds = [
+      ...new Set(
+        lines
+          .filter((l) => l.kind === 'ingredient')
+          .map((l) => (l as { ingredientId: string }).ingredientId),
+      ),
+    ];
+    if (ingredientIds.length > 0) {
+      const found = await db
+        .select({ id: ingredients.id })
+        .from(ingredients)
+        .where(
+          and(
+            eq(ingredients.organizationId, organizationId),
+            inArray(ingredients.id, ingredientIds),
+            isNull(ingredients.deletedAt),
+          ),
+        );
+      if (found.length !== ingredientIds.length) {
+        return invalid('ingredient_unavailable');
+      }
+    }
+
+    const componentLines = lines.filter((l) => l.kind === 'component') as
+      Extract<WorkspaceLineDraft, { kind: 'component' }>[];
+    const componentRecipeIds = componentLines.map((l) => l.componentRecipeId);
+    // The DB keeps one component line per (parent, component) pair.
+    if (new Set(componentRecipeIds).size !== componentRecipeIds.length) {
+      return invalid('component_invalid');
+    }
+    if (componentRecipeIds.length > 0) {
+      const found = await db
+        .select({ id: recipes.id })
+        .from(recipes)
+        .where(
+          and(
+            eq(recipes.organizationId, organizationId),
+            inArray(recipes.id, componentRecipeIds),
+            isNull(recipes.deletedAt),
+          ),
+        );
+      if (found.length !== new Set(componentRecipeIds).size) {
+        return invalid('component_invalid');
+      }
+      for (const componentRecipeId of new Set(componentRecipeIds)) {
+        const check = await assertNoRecipeComponentCycle(
+          db,
+          organizationId,
+          recipeId,
+          componentRecipeId,
+        );
+        if (!check.ok) return invalid('component_cycle');
+      }
+    }
+
+    // ── apply: sections first (upsert + temp-id resolution) ─────────────
+    const sectionIdByRef = new Map<string, string>();
+    const keptSectionIds = new Set<string>();
+    for (const [index, s] of sections.entries()) {
+      if (s.id) {
+        await db
+          .update(recipeIngredientSections)
+          .set({ title: s.title, sortOrder: index })
+          .where(
+            and(
+              eq(recipeIngredientSections.organizationId, organizationId),
+              eq(recipeIngredientSections.id, s.id),
+            ),
+          );
+        sectionIdByRef.set(s.id, s.id);
+        keptSectionIds.add(s.id);
+      } else {
+        const [insertedSection] = await db
+          .insert(recipeIngredientSections)
+          .values({
+            organizationId,
+            recipeId,
+            title: s.title,
+            sortOrder: index,
+          })
+          .returning({ id: recipeIngredientSections.id });
+        if (s.tempId) sectionIdByRef.set(s.tempId, insertedSection!.id);
+        keptSectionIds.add(insertedSection!.id);
+      }
+    }
+
+    // ── lines: upsert with merged display order = array index ───────────
+    const keptIngredientLineIds = new Set<string>();
+    const keptComponentLineIds = new Set<string>();
+    for (const [index, line] of lines.entries()) {
+      const sectionId =
+        line.sectionRef != null
+          ? (sectionIdByRef.get(line.sectionRef) ?? null)
+          : null;
+      if (line.kind === 'ingredient') {
+        if (line.id) {
+          await db
+            .update(recipeIngredients)
+            .set({
+              ingredientId: line.ingredientId,
+              quantity: String(line.quantity),
+              note: line.note ?? null,
+              sectionId,
+              displaySortOrder: index,
+            })
+            .where(
+              and(
+                eq(recipeIngredients.organizationId, organizationId),
+                eq(recipeIngredients.id, line.id),
+              ),
+            );
+          keptIngredientLineIds.add(line.id);
+        } else {
+          const [insertedLine] = await db
+            .insert(recipeIngredients)
+            .values({
+              organizationId,
+              recipeId,
+              ingredientId: line.ingredientId,
+              quantity: String(line.quantity),
+              note: line.note ?? null,
+              sectionId,
+              displaySortOrder: index,
+              sortOrder: index,
+            })
+            .returning({ id: recipeIngredients.id });
+          keptIngredientLineIds.add(insertedLine!.id);
+        }
+      } else if (line.id) {
+        await db
+          .update(recipeComponents)
+          .set({
+            componentRecipeId: line.componentRecipeId,
+            quantityGrams: line.quantityGrams,
+            note: line.note ?? null,
+            sectionId,
+            displaySortOrder: index,
+          })
+          .where(
+            and(
+              eq(recipeComponents.organizationId, organizationId),
+              eq(recipeComponents.id, line.id),
+            ),
+          );
+        keptComponentLineIds.add(line.id);
+      } else {
+        const [insertedComponent] = await db
+          .insert(recipeComponents)
+          .values({
+            organizationId,
+            recipeId,
+            componentRecipeId: line.componentRecipeId,
+            quantityGrams: line.quantityGrams,
+            note: line.note ?? null,
+            sectionId,
+            displaySortOrder: index,
+            sortOrder: index,
+          })
+          .returning({ id: recipeComponents.id });
+        keptComponentLineIds.add(insertedComponent!.id);
+      }
+    }
+
+    // ── deletions: lines absent from the draft, then emptied sections ───
+    const removedLineIds = [...existingLineIds].filter(
+      (id) => !keptIngredientLineIds.has(id),
+    );
+    if (removedLineIds.length > 0) {
+      await db
+        .delete(recipeIngredients)
+        .where(
+          and(
+            eq(recipeIngredients.organizationId, organizationId),
+            inArray(recipeIngredients.id, removedLineIds),
+          ),
+        );
+    }
+    const removedComponentIds = [...existingComponentIds].filter(
+      (id) => !keptComponentLineIds.has(id),
+    );
+    if (removedComponentIds.length > 0) {
+      await db
+        .delete(recipeComponents)
+        .where(
+          and(
+            eq(recipeComponents.organizationId, organizationId),
+            inArray(recipeComponents.id, removedComponentIds),
+          ),
+        );
+    }
+    const removedSectionIds = [...existingSectionIds].filter(
+      (id) => !keptSectionIds.has(id),
+    );
+    if (removedSectionIds.length > 0) {
+      await db
+        .delete(recipeIngredientSections)
+        .where(
+          and(
+            eq(recipeIngredientSections.organizationId, organizationId),
+            inArray(recipeIngredientSections.id, removedSectionIds),
+          ),
+        );
+    }
+
+    changedAreas.push('structure');
+  }
+
+  const header = draft.header ?? {};
+  const changedFields = Object.keys(header).filter(
+    (k) => header[k as keyof RecipeWorkspaceHeaderDraft] !== undefined,
   );
+  if (changedFields.length > 0) changedAreas.push('header');
   const newVersion = expectedVersion + 1;
 
   await db
     .update(recipes)
-    .set({ ...draft, version: newVersion })
+    .set({ ...header, version: newVersion })
     .where(
       and(eq(recipes.organizationId, organizationId), eq(recipes.id, recipeId)),
     );
@@ -437,7 +784,10 @@ export async function saveRecipeWorkspace(
     metadata: {
       fromVersion: expectedVersion,
       toVersion: newVersion,
+      changedAreas,
       changedFields,
+      sectionCount: draft.sections?.length,
+      lineCount: draft.lines?.length,
     },
   });
 

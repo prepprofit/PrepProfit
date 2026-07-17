@@ -242,7 +242,7 @@ describe('saveRecipeWorkspace (optimistic concurrency)', () => {
         ORG,
         recipeId,
         1,
-        { subtitle: 'Sourdough', yieldQuantity: 3, yieldUnit: 'qt' },
+        { header: { subtitle: 'Sourdough', yieldQuantity: 3, yieldUnit: 'qt' } },
         actor,
       ),
     );
@@ -259,7 +259,7 @@ describe('saveRecipeWorkspace (optimistic concurrency)', () => {
 
   it('rejects a stale expectedVersion without applying anything', async () => {
     const result = await runInOrg(db, ORG, (tx) =>
-      saveRecipeWorkspace(tx, ORG, recipeId, 1, { subtitle: 'stale' }, actor),
+      saveRecipeWorkspace(tx, ORG, recipeId, 1, { header: { subtitle: 'stale' } }, actor),
     );
     expect(result).toEqual({
       ok: false,
@@ -275,7 +275,7 @@ describe('saveRecipeWorkspace (optimistic concurrency)', () => {
 
   it('returns not_found for a missing recipe', async () => {
     const result = await runInOrg(db, ORG, (tx) =>
-      saveRecipeWorkspace(tx, ORG, 'nope', 1, { subtitle: 'x' }, actor),
+      saveRecipeWorkspace(tx, ORG, 'nope', 1, { header: { subtitle: 'x' } }, actor),
     );
     expect(result).toEqual({ ok: false, reason: 'not_found' });
   });
@@ -283,12 +283,12 @@ describe('saveRecipeWorkspace (optimistic concurrency)', () => {
   it('two sequential saves from the same loaded version: second one conflicts', async () => {
     // Both "users" loaded version 2. First save wins…
     const first = await runInOrg(db, ORG, (tx) =>
-      saveRecipeWorkspace(tx, ORG, recipeId, 2, { subtitle: 'User A' }, actor),
+      saveRecipeWorkspace(tx, ORG, recipeId, 2, { header: { subtitle: 'User A' } }, actor),
     );
     expect(first).toEqual({ ok: true, version: 3 });
     // …second must conflict instead of silently overwriting User A's work.
     const second = await runInOrg(db, ORG, (tx) =>
-      saveRecipeWorkspace(tx, ORG, recipeId, 2, { subtitle: 'User B' }, actor),
+      saveRecipeWorkspace(tx, ORG, recipeId, 2, { header: { subtitle: 'User B' } }, actor),
     );
     expect(second).toEqual({
       ok: false,
@@ -299,5 +299,210 @@ describe('saveRecipeWorkspace (optimistic concurrency)', () => {
       getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
     );
     expect(dto?.recipe.subtitle).toBe('User A');
+  });
+});
+
+describe('saveRecipeWorkspace (structural full-replace)', () => {
+  it('applies sections + merged lines atomically and preserves order', async () => {
+    const before = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (before?.role !== 'manager') throw new Error('expected manager DTO');
+    const doughSection = before.ingredientSections[0]!;
+    const sifted = before.ingredientLines.find((l) => l.note === 'sifted')!;
+    const dusting = before.ingredientLines.find((l) => l.note === 'for dusting')!;
+    const component = before.componentLines[0]!;
+
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        before.recipe.version,
+        {
+          sections: [
+            { id: doughSection.id, title: 'Dough (renamed)' },
+            { tempId: 'tmp-finish', title: 'Finishing' },
+          ],
+          lines: [
+            // New merged order: component first, then dough flour, then the
+            // dusting flour moved into the NEW section with a new quantity.
+            {
+              kind: 'component',
+              id: component.id,
+              componentRecipeId: component.componentRecipeId,
+              quantityGrams: 175,
+            },
+            {
+              kind: 'ingredient',
+              id: sifted.id,
+              ingredientId: sifted.ingredientId,
+              quantity: 480,
+              note: 'sifted twice',
+              sectionRef: doughSection.id,
+            },
+            {
+              kind: 'ingredient',
+              id: dusting.id,
+              ingredientId: dusting.ingredientId,
+              quantity: 30,
+              note: 'for dusting',
+              sectionRef: 'tmp-finish',
+            },
+            // Brand-new duplicate flour line in the default group.
+            {
+              kind: 'ingredient',
+              ingredientId: dusting.ingredientId,
+              quantity: 10,
+              note: 'work surface',
+            },
+          ],
+        },
+        actor,
+      ),
+    );
+    if (!result.ok) throw new Error(`save failed: ${JSON.stringify(result)}`);
+
+    const after = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (after?.role !== 'manager') throw new Error('expected manager DTO');
+    expect(after.recipe.version).toBe(result.version);
+    expect(after.ingredientSections.map((s) => s.title)).toEqual([
+      'Dough (renamed)',
+      'Finishing',
+    ]);
+    expect(after.ingredientLines).toHaveLength(3);
+    // Merged display order across kinds: component 0, then lines 1, 2, 3.
+    expect(after.componentLines[0]!.displaySortOrder).toBe(0);
+    expect(after.componentLines[0]!.quantityGrams).toBe(175);
+    expect(after.ingredientLines.map((l) => l.displaySortOrder)).toEqual([
+      1, 2, 3,
+    ]);
+    expect(after.ingredientLines[0]!.quantity).toBe(480);
+    const finishing = after.ingredientSections.find(
+      (s) => s.title === 'Finishing',
+    )!;
+    expect(after.ingredientLines[1]!.sectionId).toBe(finishing.id);
+    expect(after.ingredientLines[2]!.note).toBe('work surface');
+    expect(after.ingredientLines[2]!.sectionId).toBeNull();
+  });
+
+  it('deletes lines and sections absent from the draft', async () => {
+    const before = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (before?.role !== 'manager') throw new Error('expected manager DTO');
+    const keep = before.ingredientLines[0]!;
+
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        before.recipe.version,
+        {
+          sections: [],
+          lines: [
+            {
+              kind: 'ingredient',
+              id: keep.id,
+              ingredientId: keep.ingredientId,
+              quantity: keep.quantity,
+              note: keep.note,
+            },
+          ],
+        },
+        actor,
+      ),
+    );
+    expect(result.ok).toBe(true);
+
+    const after = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (after?.role !== 'manager') throw new Error('expected manager DTO');
+    expect(after.ingredientSections).toHaveLength(0);
+    expect(after.ingredientLines).toHaveLength(1);
+    expect(after.componentLines).toHaveLength(0);
+    expect(after.ingredientLines[0]!.sectionId).toBeNull();
+  });
+
+  it('rejects a component that would create a cycle', async () => {
+    // Try to make Bread a component of itself via the draft.
+    const version = (await getRecipeVersion(db, ORG, recipeId))!;
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          sections: [],
+          lines: [
+            {
+              kind: 'component',
+              componentRecipeId: recipeId,
+              quantityGrams: 100,
+            },
+          ],
+        },
+        actor,
+      ),
+    );
+    expect(result).toEqual({
+      ok: false,
+      reason: 'invalid_draft',
+      detail: 'component_cycle',
+    });
+    expect(await getRecipeVersion(db, ORG, recipeId)).toBe(version);
+  });
+
+  it('rejects unknown section refs and trashed ingredients', async () => {
+    const version = (await getRecipeVersion(db, ORG, recipeId))!;
+    const badRef = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          sections: [],
+          lines: [
+            {
+              kind: 'ingredient',
+              ingredientId: 'whatever',
+              quantity: 1,
+              sectionRef: 'missing-section',
+            },
+          ],
+        },
+        actor,
+      ),
+    );
+    expect(badRef).toEqual({
+      ok: false,
+      reason: 'invalid_draft',
+      detail: 'unknown_section_ref',
+    });
+
+    const ghostIngredient = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          sections: [],
+          lines: [{ kind: 'ingredient', ingredientId: 'ghost', quantity: 1 }],
+        },
+        actor,
+      ),
+    );
+    expect(ghostIngredient).toEqual({
+      ok: false,
+      reason: 'invalid_draft',
+      detail: 'ingredient_unavailable',
+    });
   });
 });
