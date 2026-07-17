@@ -7,6 +7,8 @@ import { listComponentPickerRecipes } from '@/lib/data/recipe-components';
 import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
 import { loadRecipeAllergenRollup } from '@/lib/data/allergens';
 import { getOrgSettings } from '@/lib/data/org-settings';
+import { getRecipeMediaStorage } from '@/lib/media/recipe-media-storage';
+import { logError } from '@/lib/observability';
 import { RecipeAllergenPanel } from '@/components/app/recipes/recipe-allergen-panel';
 import {
   RecipeWorkspace,
@@ -82,6 +84,42 @@ export async function RecipeWorkspacePage({
     .sort((a, b) => a.displaySortOrder - b.displaySortOrder)
     .map(({ displaySortOrder: _order, ...line }) => line as DraftLine);
 
+  // Signed short-lived download URLs for READY media (cover + step photos).
+  // Fail-soft: without blob credentials (e.g. local dev) the page renders
+  // without media instead of crashing — media is never load-bearing.
+  const readyMedia = dto.media.filter((m) => m.status === 'ready');
+  const mediaById = new Map(readyMedia.map((m) => [m.id, m]));
+  let mediaUrls = new Map<string, string>();
+  if (readyMedia.length > 0) {
+    try {
+      const storage = getRecipeMediaStorage();
+      const entries = await Promise.all(
+        readyMedia.map(
+          async (m) =>
+            [
+              m.id,
+              await storage.createDownloadUrl(m.storageKey, {
+                expiresMs: 15 * 60 * 1000,
+              }),
+            ] as const,
+        ),
+      );
+      mediaUrls = new Map(entries);
+    } catch (error) {
+      logError({ action: 'recipeWorkspaceMediaUrls', orgId: organizationId }, error);
+      mediaUrls = new Map();
+    }
+  }
+  const mediaView = (mediaId: string) => {
+    const media = mediaById.get(mediaId);
+    if (!media) return null;
+    return {
+      mediaId,
+      url: mediaUrls.get(mediaId) ?? null,
+      kind: media.kind,
+    };
+  };
+
   // Method view: steps grouped under their section (default section = '').
   const stepsBySection = new Map<string | null, typeof dto.steps>();
   for (const step of dto.steps) {
@@ -98,6 +136,9 @@ export async function RecipeWorkspacePage({
             steps: (stepsBySection.get(null) ?? []).map((s) => ({
               id: s.id,
               instruction: s.instruction,
+              media: s.media
+                .map((link) => mediaView(link.mediaId))
+                .filter((m) => m !== null),
             })),
           },
         ]
@@ -108,6 +149,9 @@ export async function RecipeWorkspacePage({
       steps: (stepsBySection.get(section.id) ?? []).map((s) => ({
         id: s.id,
         instruction: s.instruction,
+        media: s.media
+          .map((link) => mediaView(link.mediaId))
+          .filter((m) => m !== null),
       })),
     })),
   ];
@@ -136,6 +180,10 @@ export async function RecipeWorkspacePage({
       yieldPortions: dto.recipe.yieldPortions,
       yieldWeightGrams: dto.recipe.yieldWeightGrams,
       notes: dto.recipe.notes,
+      coverMediaId: dto.recipe.coverMediaId,
+      coverUrl: dto.recipe.coverMediaId
+        ? (mediaUrls.get(dto.recipe.coverMediaId) ?? null)
+        : null,
     },
     sections: dto.ingredientSections.map((s) => ({
       ref: s.id,
@@ -154,6 +202,12 @@ export async function RecipeWorkspacePage({
       id: s.id,
       instruction: s.instruction,
       sectionRef: s.sectionId,
+      media: s.media
+        .map((link) => {
+          const view = mediaView(link.mediaId);
+          return view ? { mediaId: view.mediaId, url: view.url } : null;
+        })
+        .filter((m) => m !== null),
     })),
     books: dto.books,
     ingredientOptions: ingredientRows.map((i) => ({ id: i.id, name: i.name })),

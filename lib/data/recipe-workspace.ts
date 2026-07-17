@@ -372,6 +372,11 @@ export type RecipeWorkspaceHeaderDraft = {
   nutritionServingQuantity?: number | null;
   nutritionServingUnit?: string | null;
   servingsPerContainer?: number | null;
+  /**
+   * Cover media (Fase 3). No DB FK (circular tables) — the save validates the
+   * id references a READY, non-deleted media row of THIS recipe. null clears.
+   */
+  coverMediaId?: string | null;
 };
 
 /**
@@ -435,6 +440,12 @@ export type WorkspaceStepDraft = {
   /** Rendered as TEXT — never HTML. */
   instruction: string;
   sectionRef?: string | null;
+  /**
+   * READY media of this recipe attached to the step, in display order.
+   * Full-replace like everything else: undefined = keep the step's current
+   * links untouched; [] = remove them all.
+   */
+  mediaIds?: string[];
 };
 
 export type RecipeWorkspaceStructureDraft = {
@@ -463,7 +474,8 @@ export type SaveRecipeWorkspaceResult =
         | 'component_cycle'
         | 'unknown_method_section_id'
         | 'unknown_method_section_ref'
-        | 'unknown_step_id';
+        | 'unknown_step_id'
+        | 'unknown_media_id';
     };
 
 /**
@@ -573,6 +585,31 @@ export async function saveRecipeWorkspace(
       if (step.id !== undefined && !existingStepIds.has(step.id)) {
         return invalid('unknown_step_id');
       }
+    }
+  }
+
+  // ── media references: cover + step attachments must be READY media rows of
+  // THIS recipe (no DB FK for the cover — circular tables — so this check is
+  // the integrity guarantee). Validated here, before ANY write.
+  const draftMediaIds = new Set<string>();
+  if (draft.header?.coverMediaId) draftMediaIds.add(draft.header.coverMediaId);
+  for (const step of stepsDraft) {
+    for (const mediaId of step.mediaIds ?? []) draftMediaIds.add(mediaId);
+  }
+  if (draftMediaIds.size > 0) {
+    const found = await db
+      .select({ id: recipeMedia.id })
+      .from(recipeMedia)
+      .where(
+        and(
+          eq(recipeMedia.organizationId, organizationId),
+          eq(recipeMedia.recipeId, recipeId),
+          eq(recipeMedia.status, 'ready'),
+          inArray(recipeMedia.id, [...draftMediaIds]),
+        ),
+      );
+    if (found.length !== draftMediaIds.size) {
+      return invalid('unknown_media_id');
     }
   }
 
@@ -893,6 +930,7 @@ export async function saveRecipeWorkspace(
         step.sectionRef != null
           ? (methodSectionIdByRef.get(step.sectionRef) ?? null)
           : null;
+      let stepId: string;
       if (step.id) {
         await db
           .update(recipeSteps)
@@ -908,6 +946,7 @@ export async function saveRecipeWorkspace(
             ),
           );
         keptStepIds.add(step.id);
+        stepId = step.id;
       } else {
         const [insertedStep] = await db
           .insert(recipeSteps)
@@ -920,6 +959,29 @@ export async function saveRecipeWorkspace(
           })
           .returning({ id: recipeSteps.id });
         keptStepIds.add(insertedStep!.id);
+        stepId = insertedStep!.id;
+      }
+
+      // Step media links: full-replace when the draft carries `mediaIds`
+      // (undefined = leave the step's current attachments untouched).
+      if (step.mediaIds !== undefined) {
+        await db
+          .delete(recipeStepMedia)
+          .where(
+            and(
+              eq(recipeStepMedia.organizationId, organizationId),
+              eq(recipeStepMedia.stepId, stepId),
+            ),
+          );
+        for (const [mediaIndex, mediaId] of step.mediaIds.entries()) {
+          await db.insert(recipeStepMedia).values({
+            organizationId,
+            recipeId,
+            stepId,
+            mediaId,
+            sortOrder: mediaIndex,
+          });
+        }
       }
     }
 

@@ -785,6 +785,14 @@
         "addStep": "Add step",
         "removeStep": "Remove step"
       },
+      "media": {
+        "addPhoto": "Add photo/video",
+        "uploading": "Uploading…",
+        "uploadFailed": "Upload failed. Check the file type and size, then try again.",
+        "removeMedia": "Remove media",
+        "setCover": "Set cover photo",
+        "removeCover": "Remove cover"
+      },
       "cost": {
         "totalCost": "Total cost",
         "ingredientCost": "Ingredient cost",

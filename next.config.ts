@@ -27,6 +27,11 @@ const FLOWS = 'https://api.flows-cloud.com wss://api.flows-cloud.com';
 const CRISP = 'https://client.crisp.chat';
 const CRISP_CONNECT =
   'https://client.crisp.chat https://storage.crisp.chat wss://client.relay.crisp.chat wss://stream.relay.crisp.chat';
+// Recipe media (Fase 3): PRIVATE Vercel Blob store, reached only via short
+// signed URLs. `img-src`/`media-src` render them; `connect-src` covers the
+// browser's direct signed PUT upload. ONLY the configured media host (plan
+// invariant: CSP restricted to the media host, nothing wider).
+const BLOB_MEDIA = 'https://*.private.blob.vercel-storage.com';
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -36,10 +41,10 @@ const contentSecurityPolicy = [
   "form-action 'self'",
   `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${CLERK} ${POSTHOG} ${CRISP} https://settings.crisp.chat https://challenges.cloudflare.com`,
   `style-src 'self' 'unsafe-inline' ${CRISP}`,
-  `img-src 'self' data: blob: https://img.clerk.com ${CLERK} https://*.crisp.chat`,
+  `img-src 'self' data: blob: https://img.clerk.com ${CLERK} https://*.crisp.chat ${BLOB_MEDIA}`,
   `font-src 'self' data: ${CRISP}`,
-  `connect-src 'self' ${CLERK} ${SENTRY} ${POSTHOG} ${FLOWS} ${CRISP_CONNECT}`,
-  `media-src 'self' ${CRISP} https://storage.crisp.chat`,
+  `connect-src 'self' ${CLERK} ${SENTRY} ${POSTHOG} ${FLOWS} ${CRISP_CONNECT} ${BLOB_MEDIA}`,
+  `media-src 'self' ${CRISP} https://storage.crisp.chat ${BLOB_MEDIA}`,
   "worker-src 'self' blob:",
   `frame-src 'self' ${CLERK} https://game.crisp.chat https://challenges.cloudflare.com https://js.stripe.com https://checkout.stripe.com`,
 ]

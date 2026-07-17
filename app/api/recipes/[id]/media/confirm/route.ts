@@ -77,9 +77,14 @@ export async function POST(
     }
 
     const m = result.media;
+    // Short signed GET so the uploader can preview immediately (private store).
+    const url = await storage.createDownloadUrl(m.storageKey, {
+      expiresMs: 15 * 60 * 1000,
+    });
     return NextResponse.json(
       {
         mediaId: m.id,
+        url,
         kind: m.kind,
         mimeType: m.mimeType,
         byteSize: m.byteSize,

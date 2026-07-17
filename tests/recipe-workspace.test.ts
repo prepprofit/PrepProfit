@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import type { TenantDb } from '@/lib/db/tenant';
@@ -11,6 +12,8 @@ import {
   recipeComponents,
   recipeMethodSections,
   recipeSteps,
+  recipeStepMedia,
+  recipeMedia,
   recipeBooks,
   recipeBookEntries,
   recipePortionOptions,
@@ -682,5 +685,101 @@ describe('saveRecipeWorkspace (prep-method full-replace, Fase 3)', () => {
       after?.ingredientSections.find((s) => s.title === 'Half applied'),
     ).toBeUndefined();
     expect(await getRecipeVersion(db, ORG, recipeId)).toBe(version);
+  });
+
+  it('attaches READY media to cover + steps, rejects non-ready/foreign media', async () => {
+    const [ready] = await db
+      .insert(recipeMedia)
+      .values({
+        organizationId: ORG,
+        recipeId,
+        storageKey: `org/${ORG}/recipes/${recipeId}/m-ready`,
+        kind: 'image',
+        mimeType: 'image/png',
+        status: 'ready',
+      })
+      .returning();
+    const [pending] = await db
+      .insert(recipeMedia)
+      .values({
+        organizationId: ORG,
+        recipeId,
+        storageKey: `org/${ORG}/recipes/${recipeId}/m-pending`,
+        kind: 'image',
+        mimeType: 'image/png',
+        status: 'pending',
+      })
+      .returning();
+
+    // Pending media may not be referenced.
+    const version = (await getRecipeVersion(db, ORG, recipeId))!;
+    const rejected = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        { header: { coverMediaId: pending!.id } },
+        actor,
+      ),
+    );
+    expect(rejected).toEqual({
+      ok: false,
+      reason: 'invalid_draft',
+      detail: 'unknown_media_id',
+    });
+
+    // Ready media works for cover AND a step attachment in one save.
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          header: { coverMediaId: ready!.id },
+          methodSections: [],
+          steps: [
+            { instruction: 'Photograph the crumb.', mediaIds: [ready!.id] },
+          ],
+        },
+        actor,
+      ),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result));
+
+    const dto = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (dto?.role !== 'manager') throw new Error('expected manager DTO');
+    expect(dto.recipe.coverMediaId).toBe(ready!.id);
+    expect(dto.steps).toHaveLength(1);
+    expect(dto.steps[0]!.media.map((m) => m.mediaId)).toEqual([ready!.id]);
+
+    // Full-replace: an empty mediaIds clears the step's links.
+    const cleared = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        result.version,
+        {
+          methodSections: [],
+          steps: [
+            {
+              id: dto.steps[0]!.id,
+              instruction: dto.steps[0]!.instruction,
+              mediaIds: [],
+            },
+          ],
+        },
+        actor,
+      ),
+    );
+    expect(cleared.ok).toBe(true);
+    const links = await runInOrg(db, ORG, (tx) =>
+      tx.select().from(recipeStepMedia).where(eq(recipeStepMedia.organizationId, ORG)),
+    );
+    expect(links).toHaveLength(0);
   });
 });

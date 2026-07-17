@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { RecipeMediaUpload } from './recipe-media-upload';
 
 /**
  * Editable prep method (Fase 3 slice 2): mirrors the ingredient edit list —
@@ -16,19 +17,25 @@ import { Textarea } from '@/components/ui/textarea';
  */
 export type DraftMethodSection = { ref: string; id?: string; title: string };
 
+export type DraftStepMedia = { mediaId: string; url: string | null };
+
 export type DraftStep = {
   key: string;
   id?: string;
   instruction: string;
   sectionRef: string | null;
+  /** Attached READY media in display order (uploaded via the media routes). */
+  media: DraftStepMedia[];
 };
 
 export function RecipeMethodEdit({
+  recipeId,
   sections,
   steps,
   onSectionsChange,
   onStepsChange,
 }: {
+  recipeId: string;
   sections: DraftMethodSection[];
   steps: DraftStep[];
   onSectionsChange: (sections: DraftMethodSection[]) => void;
@@ -56,6 +63,7 @@ export function RecipeMethodEdit({
         key: `new-${crypto.randomUUID()}`,
         instruction: '',
         sectionRef: null,
+        media: [],
       },
     ]);
   };
@@ -127,6 +135,46 @@ export function RecipeMethodEdit({
               className="min-h-9 min-w-48 flex-1"
               aria-label={t('method.step', { number: index + 1 })}
             />
+            <div className="flex w-full flex-wrap items-center gap-2 pl-8">
+              {step.media.map((m) => (
+                <span key={m.mediaId} className="relative">
+                  {m.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- short signed URL from the private store; next/image cannot optimize it
+                    <img
+                      src={m.url}
+                      alt=""
+                      className="h-14 w-14 rounded-md border border-border object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-14 w-14 items-center justify-center rounded-md border border-border bg-surface-2 text-xs text-muted-foreground">
+                      …
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateStep(step.key, {
+                        media: step.media.filter(
+                          (x) => x.mediaId !== m.mediaId,
+                        ),
+                      })
+                    }
+                    aria-label={t('media.removeMedia')}
+                    className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-foreground text-[10px] leading-none text-background"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <RecipeMediaUpload
+                recipeId={recipeId}
+                onUploaded={(m) =>
+                  updateStep(step.key, {
+                    media: [...step.media, { mediaId: m.mediaId, url: m.url }],
+                  })
+                }
+              />
+            </div>
             <Select
               value={step.sectionRef ?? ''}
               onChange={(e) =>

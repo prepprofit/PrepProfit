@@ -25,6 +25,7 @@ export const workspaceHeaderSchema = z.object({
   subtitle: z.string().trim().max(200).nullish(),
   yieldQuantity: z.number().finite().positive().max(QUANTITY_MAX).nullish(),
   yieldUnit: z.string().trim().max(40).nullish(),
+  coverMediaId: refSchema.nullish(),
 });
 
 export const workspaceSectionSchema = z
@@ -69,10 +70,13 @@ export const workspaceMethodSectionSchema = z
     message: 'method section needs id or tempId',
   });
 
+export const WORKSPACE_MAX_STEP_MEDIA = 10;
+
 export const workspaceStepSchema = z.object({
   id: refSchema.optional(),
   instruction: z.string().trim().min(1).max(WORKSPACE_STEP_MAX_LENGTH),
   sectionRef: refSchema.nullish(),
+  mediaIds: z.array(refSchema).max(WORKSPACE_MAX_STEP_MEDIA).optional(),
 });
 
 export const workspaceSaveSchema = z.object({

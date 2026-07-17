@@ -11,7 +11,12 @@ export type WorkspaceTab = 'method' | 'cost' | 'nutrition' | 'uom';
 export type MethodSectionView = {
   id: string;
   title: string;
-  steps: { id: string; instruction: string }[];
+  steps: {
+    id: string;
+    instruction: string;
+    /** Signed short-lived URLs of READY media (empty when signing unavailable). */
+    media: { mediaId: string; url: string | null; kind: 'image' | 'video' }[];
+  }[];
 };
 
 /**
@@ -115,8 +120,36 @@ function MethodPanel({
                 <span className="mt-0.5 size-6 shrink-0 rounded-full bg-surface-2 text-center text-xs font-medium leading-6">
                   {index + 1}
                 </span>
-                {/* Step text renders as TEXT — never HTML (plan §12). */}
-                <p className="whitespace-pre-wrap text-sm">{step.instruction}</p>
+                <div className="min-w-0 flex-1">
+                  {/* Step text renders as TEXT — never HTML (plan §12). */}
+                  <p className="whitespace-pre-wrap text-sm">
+                    {step.instruction}
+                  </p>
+                  {step.media.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {step.media.map((m) =>
+                        m.url === null ? null : m.kind === 'video' ? (
+                          <video
+                            key={m.mediaId}
+                            src={m.url}
+                            controls
+                            preload="metadata"
+                            className="max-h-48 rounded-lg border border-border"
+                          />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element -- short signed URL from the private store; next/image cannot optimize it
+                          <img
+                            key={m.mediaId}
+                            src={m.url}
+                            alt=""
+                            loading="lazy"
+                            className="max-h-48 rounded-lg border border-border object-cover"
+                          />
+                        ),
+                      )}
+                    </div>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ol>

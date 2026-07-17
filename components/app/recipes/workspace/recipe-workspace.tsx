@@ -17,6 +17,7 @@ import {
   type DraftSection,
   type PickerOption,
 } from './recipe-input-list';
+import { RecipeMediaUpload } from './recipe-media-upload';
 import {
   RecipeMethodEdit,
   type DraftMethodSection,
@@ -45,6 +46,9 @@ export type WorkspaceClientData = {
     yieldPortions: number;
     yieldWeightGrams: number | null;
     notes: string | null;
+    coverMediaId: string | null;
+    /** Signed short-lived URL (null when unset or signing unavailable). */
+    coverUrl: string | null;
   };
   sections: DraftSection[];
   lines: DraftLine[];
@@ -99,6 +103,8 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
     lines: DraftLine[];
     methodSections: DraftMethodSection[];
     steps: DraftStep[];
+    coverMediaId: string | null;
+    coverUrl: string | null;
   } | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -117,6 +123,8 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
       lines: data.lines,
       methodSections: data.methodDraftSections,
       steps: data.methodDraftSteps,
+      coverMediaId: data.recipe.coverMediaId,
+      coverUrl: data.recipe.coverUrl,
     });
     setError(null);
     setConflict(false);
@@ -148,6 +156,7 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
             ? yieldQuantity
             : null,
         yieldUnit: draft.yieldUnit.trim() === '' ? null : draft.yieldUnit.trim(),
+        coverMediaId: draft.coverMediaId,
       },
       sections: draft.sections.map((s) => ({
         id: s.id,
@@ -184,6 +193,7 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
           id: s.id,
           instruction: s.instruction.trim(),
           sectionRef: s.sectionRef,
+          mediaIds: s.media.map((m) => m.mediaId),
         })),
     });
     setSaving(false);
@@ -276,9 +286,53 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
                   aria-label={t('yieldUnitPlaceholder')}
                 />
               </div>
+              <div className="flex items-center gap-2">
+                {draft.coverMediaId ? (
+                  <>
+                    {draft.coverUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- short signed URL from the private store; next/image cannot optimize it
+                      <img
+                        src={draft.coverUrl}
+                        alt=""
+                        className="h-14 w-20 rounded-md border border-border object-cover"
+                      />
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setDraft({ ...draft, coverMediaId: null, coverUrl: null })
+                      }
+                    >
+                      {t('media.removeCover')}
+                    </Button>
+                  </>
+                ) : (
+                  <RecipeMediaUpload
+                    recipeId={data.recipe.id}
+                    label={t('media.setCover')}
+                    onUploaded={(m) =>
+                      setDraft({
+                        ...draft,
+                        coverMediaId: m.mediaId,
+                        coverUrl: m.url,
+                      })
+                    }
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <>
+              {data.recipe.coverUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- short signed URL from the private store; next/image cannot optimize it
+                <img
+                  src={data.recipe.coverUrl}
+                  alt=""
+                  className="mb-2 h-32 w-full max-w-md rounded-xl border border-border object-cover"
+                />
+              ) : null}
               <h1 className="truncate text-2xl font-semibold">
                 {data.recipe.name}
               </h1>
@@ -379,6 +433,7 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
             methodEditor={
               editing ? (
                 <RecipeMethodEdit
+                  recipeId={data.recipe.id}
                   sections={draft.methodSections}
                   steps={draft.steps}
                   onSectionsChange={(methodSections) =>
