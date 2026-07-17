@@ -126,6 +126,10 @@ export const organizationSettings = pgTable('organization_settings', {
   deletionRequestedAt: timestamp('deletion_requested_at', { withTimezone: true }),
   deletionRequestedBy: text('deletion_requested_by'),
   deletionReason: text('deletion_reason'),
+  // Feature flag: Recipes 2.0 workspace (Meez-parity plan, Release B). Per-org
+  // opt-in; the legacy editor stays the default until rollout completes. OFF for
+  // every existing org (additive default false).
+  recipesWorkspaceV2: boolean('recipes_workspace_v2').notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -188,6 +192,238 @@ export const ingredients = pgTable(
       'gin',
       t.supplier.op('gin_trgm_ops'),
     ),
+  ],
+);
+
+/**
+ * Cross-dimension unit anchors for one ingredient (Recipes 2.0, plan §6.6). At
+ * most one row per ingredient; at least two positive anchors are required to be
+ * useful (validation layer). Anchors are CANONICAL quantities that describe the
+ * SAME amount of the ingredient (e.g. 141.75 g = 236.59 ml = 1 each), enabling
+ * weight↔volume↔count conversion. Conversion NEVER assumes 1 ml = 1 g — a
+ * missing anchor means the conversion is honestly impossible.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Composite (org, ingredient_id) FK, ON DELETE cascade.
+ */
+export const ingredientUomEquivalencies = pgTable(
+  'ingredient_uom_equivalencies',
+  {
+    id: id(),
+    organizationId: orgId(),
+    ingredientId: text('ingredient_id').notNull(),
+    weightGrams: numeric('weight_grams', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }),
+    volumeMl: numeric('volume_ml', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }),
+    eachCount: numeric('each_count', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }),
+    // 'manual' = typed by the user; 'standard' = accepted from a suggested
+    // standard (locks manual editing in the UI while active).
+    source: text('source', { enum: ['manual', 'standard'] })
+      .notNull()
+      .default('manual'),
+    updatedBy: text('updated_by'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('ingredient_uom_equivalencies_org_idx').on(t.organizationId),
+    // One equivalency row per ingredient.
+    unique('ingredient_uom_equivalencies_org_ingredient_key').on(
+      t.organizationId,
+      t.ingredientId,
+    ),
+    unique('ingredient_uom_equivalencies_org_id_key').on(
+      t.organizationId,
+      t.id,
+    ),
+    // Anchors are strictly positive when present (NULL = no anchor).
+    check(
+      'ingredient_uom_equivalencies_weight_chk',
+      sql`${t.weightGrams} IS NULL OR ${t.weightGrams} > 0`,
+    ),
+    check(
+      'ingredient_uom_equivalencies_volume_chk',
+      sql`${t.volumeMl} IS NULL OR ${t.volumeMl} > 0`,
+    ),
+    check(
+      'ingredient_uom_equivalencies_each_chk',
+      sql`${t.eachCount} IS NULL OR ${t.eachCount} > 0`,
+    ),
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'ingredient_uom_equivalencies_ingredient_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Named prep transformations of an ingredient with their own usable yield
+ * (Recipes 2.0, plan §6.6): "diced" onion yields 78.54% of the whole onion.
+ * `yield_bps` is basis points (7854 = 78.54%). The optional anchors OVERRIDE the
+ * ingredient's base equivalency for this prep state ("onion, diced" packs
+ * differently than "onion, whole"). Prep loss feeds cost / required purchase —
+ * the line's canonical quantity stays what the recipe actually uses (no double
+ * loss application; see lib/calculations contract).
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Composite (org, ingredient_id) FK, ON DELETE cascade.
+ */
+export const ingredientPrepActions = pgTable(
+  'ingredient_prep_actions',
+  {
+    id: id(),
+    organizationId: orgId(),
+    ingredientId: text('ingredient_id').notNull(),
+    name: text('name').notNull(),
+    // Usable yield in basis points; 1..10000 (a 0%-yield prep is meaningless).
+    yieldBps: integer('yield_bps').notNull(),
+    weightGrams: numeric('weight_grams', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }),
+    volumeMl: numeric('volume_ml', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }),
+    eachCount: numeric('each_count', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('ingredient_prep_actions_org_idx').on(t.organizationId),
+    index('ingredient_prep_actions_org_ingredient_sort_idx').on(
+      t.organizationId,
+      t.ingredientId,
+      t.sortOrder,
+    ),
+    // FK target for recipe lines referencing a prep action.
+    unique('ingredient_prep_actions_org_id_key').on(t.organizationId, t.id),
+    // One prep-action name per ingredient, case-insensitive.
+    uniqueIndex('ingredient_prep_actions_org_ingredient_name_key').on(
+      t.organizationId,
+      t.ingredientId,
+      sql`lower(${t.name})`,
+    ),
+    check(
+      'ingredient_prep_actions_yield_bps_chk',
+      sql`${t.yieldBps} > 0 AND ${t.yieldBps} <= 10000`,
+    ),
+    check(
+      'ingredient_prep_actions_weight_chk',
+      sql`${t.weightGrams} IS NULL OR ${t.weightGrams} > 0`,
+    ),
+    check(
+      'ingredient_prep_actions_volume_chk',
+      sql`${t.volumeMl} IS NULL OR ${t.volumeMl} > 0`,
+    ),
+    check(
+      'ingredient_prep_actions_each_chk',
+      sql`${t.eachCount} IS NULL OR ${t.eachCount} > 0`,
+    ),
+    check('ingredient_prep_actions_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'ingredient_prep_actions_ingredient_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Nutrition profile of an ingredient, per 100 g edible weight (Recipes 2.0,
+ * plan §6.7). ONE active profile per ingredient. Every nutrient is nullable —
+ * NULL means UNKNOWN, never zero; recipe nutrition propagates that honestly
+ * (an unknown nutrient makes the recipe's calc incomplete, plan §7.4). A USDA
+ * selection stores a normalized SNAPSHOT + source metadata: later API changes
+ * never rewrite recipes until the user explicitly refreshes from source.
+ * Allergens stay fully independent of this table (absence in USDA never means
+ * allergen-free).
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Composite (org, ingredient_id) FK, ON DELETE cascade.
+ */
+export const ingredientNutritionProfiles = pgTable(
+  'ingredient_nutrition_profiles',
+  {
+    id: id(),
+    organizationId: orgId(),
+    ingredientId: text('ingredient_id').notNull(),
+    source: text('source', { enum: ['usda', 'custom'] }).notNull(),
+    // USDA FoodData Central identifiers (NULL for custom profiles).
+    fdcId: integer('fdc_id'),
+    fdcDataType: text('fdc_data_type'),
+    sourceDescription: text('source_description'),
+    brandOwner: text('brand_owner'),
+    // Reference mass the nutrient columns describe (per-100 g contract).
+    basisGrams: numeric('basis_grams', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    })
+      .notNull()
+      .default(100),
+    caloriesKcal: numeric('calories_kcal', { precision: 12, scale: 4, mode: 'number' }),
+    totalFatG: numeric('total_fat_g', { precision: 12, scale: 4, mode: 'number' }),
+    saturatedFatG: numeric('saturated_fat_g', { precision: 12, scale: 4, mode: 'number' }),
+    transFatG: numeric('trans_fat_g', { precision: 12, scale: 4, mode: 'number' }),
+    cholesterolMg: numeric('cholesterol_mg', { precision: 12, scale: 4, mode: 'number' }),
+    sodiumMg: numeric('sodium_mg', { precision: 12, scale: 4, mode: 'number' }),
+    totalCarbohydrateG: numeric('total_carbohydrate_g', { precision: 12, scale: 4, mode: 'number' }),
+    dietaryFiberG: numeric('dietary_fiber_g', { precision: 12, scale: 4, mode: 'number' }),
+    totalSugarsG: numeric('total_sugars_g', { precision: 12, scale: 4, mode: 'number' }),
+    addedSugarsG: numeric('added_sugars_g', { precision: 12, scale: 4, mode: 'number' }),
+    proteinG: numeric('protein_g', { precision: 12, scale: 4, mode: 'number' }),
+    vitaminDMcg: numeric('vitamin_d_mcg', { precision: 12, scale: 4, mode: 'number' }),
+    calciumMg: numeric('calcium_mg', { precision: 12, scale: 4, mode: 'number' }),
+    ironMg: numeric('iron_mg', { precision: 12, scale: 4, mode: 'number' }),
+    potassiumMg: numeric('potassium_mg', { precision: 12, scale: 4, mode: 'number' }),
+    caffeineMg: numeric('caffeine_mg', { precision: 12, scale: 4, mode: 'number' }),
+    // When the SOURCE last changed its data / when we last pulled it.
+    sourceUpdatedAt: timestamp('source_updated_at', { withTimezone: true }),
+    refreshedAt: timestamp('refreshed_at', { withTimezone: true }),
+    updatedBy: text('updated_by'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('ingredient_nutrition_profiles_org_idx').on(t.organizationId),
+    // One active profile per ingredient.
+    unique('ingredient_nutrition_profiles_org_ingredient_key').on(
+      t.organizationId,
+      t.ingredientId,
+    ),
+    unique('ingredient_nutrition_profiles_org_id_key').on(
+      t.organizationId,
+      t.id,
+    ),
+    check(
+      'ingredient_nutrition_profiles_basis_chk',
+      sql`${t.basisGrams} > 0`,
+    ),
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'ingredient_nutrition_profiles_ingredient_fk',
+    }).onDelete('cascade'),
   ],
 );
 
@@ -255,6 +491,39 @@ export const recipes = pgTable(
     // Optional selling price per portion, in cents — drives margin + traffic light.
     sellingPriceCents: integer('selling_price_cents'),
     notes: text('notes'),
+    // ---- Recipes 2.0 additive columns (plan §6.1) ----
+    // Secondary display line under the name (e.g. category / style).
+    subtitle: text('subtitle'),
+    // Optimistic-concurrency version: incremented on every workspace save.
+    // Saves carry `expectedVersion`; a mismatch is a conflict, never a silent
+    // overwrite (plan decision 3).
+    version: integer('version').notNull().default(1),
+    // Yield as the chef describes it ("3 qt", "30 lb", "1 serving"). NULL = not
+    // set (legacy recipes backfill from yield_portions). `yield_weight_grams`
+    // above remains the physical anchor for cost/kg, presets and conversions.
+    yieldQuantity: numeric('yield_quantity', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }),
+    yieldUnit: text('yield_unit'),
+    // Nutrition serving definition for the label (plan §6.1); NULL = not set →
+    // label stays incomplete/disabled.
+    nutritionServingQuantity: numeric('nutrition_serving_quantity', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }),
+    nutritionServingUnit: text('nutrition_serving_unit'),
+    servingsPerContainer: numeric('servings_per_container', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }),
+    // Cover media. Points at a confirmed recipe_media row of the SAME recipe and
+    // organization — enforced by the workspace save (media-ownership validation),
+    // not a DB FK: recipes ↔ recipe_media would be circular table definitions.
+    coverMediaId: text('cover_media_id'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL`.
@@ -285,6 +554,172 @@ export const recipes = pgTable(
   ],
 );
 
+/**
+ * Ingredient-list section headers inside one recipe (Recipes 2.0, plan §6.2) —
+ * e.g. "Dough", "Filling". Ingredient AND component lines may point at a
+ * section; NULL section = the implicit default group. Ordering across headers
+ * and lines is a single merged visual sequence persisted transactionally.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Composite (org, recipe_id) FK, ON DELETE cascade.
+ */
+export const recipeIngredientSections = pgTable(
+  'recipe_ingredient_sections',
+  {
+    id: id(),
+    organizationId: orgId(),
+    recipeId: text('recipe_id').notNull(),
+    title: text('title').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('recipe_ingredient_sections_org_idx').on(t.organizationId),
+    index('recipe_ingredient_sections_org_recipe_sort_idx').on(
+      t.organizationId,
+      t.recipeId,
+      t.sortOrder,
+    ),
+    // FK target for lines referencing their section.
+    unique('recipe_ingredient_sections_org_id_key').on(t.organizationId, t.id),
+    check(
+      'recipe_ingredient_sections_sort_order_chk',
+      sql`${t.sortOrder} >= 0`,
+    ),
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_ingredient_sections_recipe_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Media objects (image/video) attached to a recipe (Recipes 2.0, plan §6.4).
+ * The actual bytes live in a PRIVATE S3-compatible bucket behind the
+ * `RecipeMediaStorage` adapter — never in Postgres. `storage_key` is built
+ * server-side as `org/{orgId}/recipes/{recipeId}/{mediaId}` (filenames never
+ * form keys). Lifecycle: `pending` (signed upload issued) → `ready` (bytes
+ * validated + confirmed) → `deleted` (soft; async idempotent bucket removal),
+ * or `rejected` (validation failed). Unconfirmed `pending` rows are swept by
+ * cron. Upload/delete are audited without logging media content.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Composite (org, recipe_id) FK, ON DELETE cascade.
+ */
+export const recipeMedia = pgTable(
+  'recipe_media',
+  {
+    id: id(),
+    organizationId: orgId(),
+    recipeId: text('recipe_id').notNull(),
+    storageKey: text('storage_key').notNull().unique(),
+    kind: text('kind', { enum: ['image', 'video'] }).notNull(),
+    mimeType: text('mime_type').notNull(),
+    byteSize: integer('byte_size'),
+    width: integer('width'),
+    height: integer('height'),
+    durationMs: integer('duration_ms'),
+    status: text('status', {
+      enum: ['pending', 'ready', 'rejected', 'deleted'],
+    })
+      .notNull()
+      .default('pending'),
+    sha256: text('sha256'),
+    uploadedBy: text('uploaded_by'),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('recipe_media_org_idx').on(t.organizationId),
+    index('recipe_media_org_recipe_idx').on(t.organizationId, t.recipeId),
+    // Serves the pending-sweeper cron (status + age scan).
+    index('recipe_media_status_created_idx').on(t.status, t.createdAt),
+    // FK target for step-media links and (app-level) cover references.
+    unique('recipe_media_org_id_key').on(t.organizationId, t.id),
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_media_recipe_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Recipe Books (Recipes 2.0, plan §6.5) — the many-to-many replacement for the
+ * visual concept of folders. A recipe can belong to zero or many books. The
+ * folder backfill turns each folder into a book and each `recipes.folder_id`
+ * into a membership; `recipe_folders`/`folder_id` stay untouched (deprecation
+ * is a later, separate migration — plan Release A).
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS.
+ */
+export const recipeBooks = pgTable(
+  'recipe_books',
+  {
+    id: id(),
+    organizationId: orgId(),
+    name: text('name').notNull(),
+    icon: text('icon'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('recipe_books_org_idx').on(t.organizationId),
+    index('recipe_books_org_sort_idx').on(t.organizationId, t.sortOrder),
+    // One book name per organization (also the idempotency key for the folder
+    // backfill).
+    unique('recipe_books_org_name_key').on(t.organizationId, t.name),
+    unique('recipe_books_org_id_key').on(t.organizationId, t.id),
+    check('recipe_books_sort_order_chk', sql`${t.sortOrder} >= 0`),
+  ],
+);
+
+export const recipeBookEntries = pgTable(
+  'recipe_book_entries',
+  {
+    id: id(),
+    organizationId: orgId(),
+    recipeBookId: text('recipe_book_id').notNull(),
+    recipeId: text('recipe_id').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('recipe_book_entries_org_idx').on(t.organizationId),
+    // Serves "recipes of this book" in manual order.
+    index('recipe_book_entries_org_book_sort_idx').on(
+      t.organizationId,
+      t.recipeBookId,
+      t.sortOrder,
+    ),
+    // Serves "books of this recipe".
+    index('recipe_book_entries_org_recipe_idx').on(
+      t.organizationId,
+      t.recipeId,
+    ),
+    // One membership per (book, recipe) pair — also the backfill idempotency key.
+    unique('recipe_book_entries_org_book_recipe_key').on(
+      t.organizationId,
+      t.recipeBookId,
+      t.recipeId,
+    ),
+    foreignKey({
+      columns: [t.organizationId, t.recipeBookId],
+      foreignColumns: [recipeBooks.organizationId, recipeBooks.id],
+      name: 'recipe_book_entries_book_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_book_entries_recipe_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
 export const recipeIngredients = pgTable(
   'recipe_ingredients',
   {
@@ -298,15 +733,33 @@ export const recipeIngredients = pgTable(
       .notNull()
       .default(sql`0`),
     sortOrder: integer('sort_order').notNull().default(0),
+    // ---- Recipes 2.0 additive columns (plan §6.2) ----
+    // Section header this line sits under; NULL = default group.
+    sectionId: text('section_id'),
+    // Position in the MERGED visual sequence (headers + ingredient lines +
+    // component lines). Legacy `sort_order` above keeps the old editor working
+    // until Release C retires it.
+    displaySortOrder: integer('display_sort_order').notNull().default(0),
+    // Free-text note shown under the line ("finely chopped, divided").
+    note: text('note'),
+    // Optional prep state of the ingredient for this line.
+    prepActionId: text('prep_action_id'),
+    // What the chef literally typed ("2 cups"), preserved verbatim. `quantity`
+    // stays the canonical source for cost/stock; the server recalculates it when
+    // unit/prep changes — later equivalency edits never rewrite old lines.
+    enteredQuantity: numeric('entered_quantity', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }),
+    enteredUnit: text('entered_unit'),
   },
   (t) => [
     index('recipe_ingredients_org_idx').on(t.organizationId),
     index('recipe_ingredients_recipe_idx').on(t.recipeId),
-    // One row per ingredient per recipe.
-    unique('recipe_ingredients_recipe_ingredient_key').on(
-      t.recipeId,
-      t.ingredientId,
-    ),
+    // NOTE (Recipes 2.0): the historical unique (recipe_id, ingredient_id) was
+    // DROPPED — the row id is the line identity, so "salt" may appear in two
+    // sections (plan §6.2).
     // Composite FKs force the referenced recipe/ingredient to share THIS row's
     // organization_id — cross-tenant links are impossible at the DB level, not
     // just discouraged by the app layer. Delete semantics preserved: removing a
@@ -321,6 +774,36 @@ export const recipeIngredients = pgTable(
       foreignColumns: [ingredients.organizationId, ingredients.id],
       name: 'recipe_ingredients_ingredient_fk',
     }).onDelete('restrict'),
+    // Recipes 2.0: same-org section link. ON DELETE cascade because a section
+    // only disappears via recipe purge (lines die anyway) or an explicit section
+    // delete, where the workspace save detaches/moves surviving lines in the
+    // same transaction BEFORE removing the header.
+    foreignKey({
+      columns: [t.organizationId, t.sectionId],
+      foreignColumns: [
+        recipeIngredientSections.organizationId,
+        recipeIngredientSections.id,
+      ],
+      name: 'recipe_ingredients_section_fk',
+    }).onDelete('cascade'),
+    // Recipes 2.0: same-org prep-action link; a prep action referenced by any
+    // line cannot be deleted (the UI offers detach first).
+    foreignKey({
+      columns: [t.organizationId, t.prepActionId],
+      foreignColumns: [
+        ingredientPrepActions.organizationId,
+        ingredientPrepActions.id,
+      ],
+      name: 'recipe_ingredients_prep_action_fk',
+    }).onDelete('restrict'),
+    check(
+      'recipe_ingredients_display_sort_order_chk',
+      sql`${t.displaySortOrder} >= 0`,
+    ),
+    check(
+      'recipe_ingredients_entered_quantity_chk',
+      sql`${t.enteredQuantity} IS NULL OR ${t.enteredQuantity} >= 0`,
+    ),
   ],
 );
 
@@ -414,6 +897,11 @@ export const recipeComponents = pgTable(
       mode: 'number',
     }).notNull(),
     sortOrder: integer('sort_order').notNull().default(0),
+    // ---- Recipes 2.0 additive columns (plan §6.2) — mirror recipe_ingredients
+    // so component lines share the merged visual sequence, sections and notes.
+    sectionId: text('section_id'),
+    displaySortOrder: integer('display_sort_order').notNull().default(0),
+    note: text('note'),
   },
   (t) => [
     index('recipe_components_org_idx').on(t.organizationId),
@@ -451,6 +939,217 @@ export const recipeComponents = pgTable(
       foreignColumns: [recipes.organizationId, recipes.id],
       name: 'recipe_components_component_fk',
     }).onDelete('restrict'),
+    // Recipes 2.0: same-org section link (same semantics as
+    // recipe_ingredients_section_fk).
+    foreignKey({
+      columns: [t.organizationId, t.sectionId],
+      foreignColumns: [
+        recipeIngredientSections.organizationId,
+        recipeIngredientSections.id,
+      ],
+      name: 'recipe_components_section_fk',
+    }).onDelete('cascade'),
+    check(
+      'recipe_components_display_sort_order_chk',
+      sql`${t.displaySortOrder} >= 0`,
+    ),
+  ],
+);
+
+/**
+ * Prep-method sections of a recipe (Recipes 2.0, plan §6.3) — e.g. "Make the
+ * dough", "Bake". Structured replacement for the single `recipes.notes` text
+ * (which stays as a legacy block until the user edits it, per the backfill).
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Composite (org, recipe_id) FK, ON DELETE cascade.
+ */
+export const recipeMethodSections = pgTable(
+  'recipe_method_sections',
+  {
+    id: id(),
+    organizationId: orgId(),
+    recipeId: text('recipe_id').notNull(),
+    title: text('title').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('recipe_method_sections_org_idx').on(t.organizationId),
+    index('recipe_method_sections_org_recipe_sort_idx').on(
+      t.organizationId,
+      t.recipeId,
+      t.sortOrder,
+    ),
+    unique('recipe_method_sections_org_id_key').on(t.organizationId, t.id),
+    check('recipe_method_sections_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_method_sections_recipe_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Ordered prep steps (Recipes 2.0, plan §6.3). A step belongs to a method
+ * section (NULL = the implicit default section) and may carry media via
+ * recipe_step_media. Step text is rendered as TEXT — never arbitrary HTML.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Composite FKs: recipe cascade, section cascade.
+ */
+export const recipeSteps = pgTable(
+  'recipe_steps',
+  {
+    id: id(),
+    organizationId: orgId(),
+    recipeId: text('recipe_id').notNull(),
+    sectionId: text('section_id'),
+    instruction: text('instruction').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('recipe_steps_org_idx').on(t.organizationId),
+    index('recipe_steps_org_recipe_sort_idx').on(
+      t.organizationId,
+      t.recipeId,
+      t.sortOrder,
+    ),
+    unique('recipe_steps_org_id_key').on(t.organizationId, t.id),
+    check('recipe_steps_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_steps_recipe_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.organizationId, t.sectionId],
+      foreignColumns: [
+        recipeMethodSections.organizationId,
+        recipeMethodSections.id,
+      ],
+      name: 'recipe_steps_section_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Media attached to one prep step (Recipes 2.0, plan §6.3). Link table only —
+ * the physical object lives in recipe_media and may simultaneously be the
+ * recipe cover (no duplication). Steps without media are valid.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Composite FKs, all ON DELETE cascade.
+ */
+export const recipeStepMedia = pgTable(
+  'recipe_step_media',
+  {
+    id: id(),
+    organizationId: orgId(),
+    recipeId: text('recipe_id').notNull(),
+    stepId: text('step_id').notNull(),
+    mediaId: text('media_id').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    caption: text('caption'),
+  },
+  (t) => [
+    index('recipe_step_media_org_idx').on(t.organizationId),
+    index('recipe_step_media_org_step_sort_idx').on(
+      t.organizationId,
+      t.stepId,
+      t.sortOrder,
+    ),
+    // One link per (step, media) pair.
+    unique('recipe_step_media_org_step_media_key').on(
+      t.organizationId,
+      t.stepId,
+      t.mediaId,
+    ),
+    check('recipe_step_media_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_step_media_recipe_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.organizationId, t.stepId],
+      foreignColumns: [recipeSteps.organizationId, recipeSteps.id],
+      name: 'recipe_step_media_step_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.organizationId, t.mediaId],
+      foreignColumns: [recipeMedia.organizationId, recipeMedia.id],
+      name: 'recipe_step_media_media_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Sellable portion options of a recipe (Recipes 2.0, plan §6.8) — drive the
+ * food-cost calculator. The `is_default` option gradually replaces the legacy
+ * `recipes.selling_price_cents` (dual-read until menus/dashboard/documents
+ * migrate); the backfill creates a "Default serving" option carrying the
+ * current price. FINANCIAL data (selling price / target food cost) — the
+ * kitchen DTO must never include those fields.
+ *
+ * RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Composite (org, recipe_id) FK, ON DELETE cascade.
+ */
+export const recipePortionOptions = pgTable(
+  'recipe_portion_options',
+  {
+    id: id(),
+    organizationId: orgId(),
+    recipeId: text('recipe_id').notNull(),
+    name: text('name').notNull(),
+    quantity: numeric('quantity', {
+      precision: 12,
+      scale: 4,
+      mode: 'number',
+    }).notNull(),
+    unit: text('unit').notNull(),
+    sellingPriceCents: integer('selling_price_cents'),
+    targetFoodCostBps: integer('target_food_cost_bps'),
+    isDefault: boolean('is_default').notNull().default(false),
+    isNutritionServing: boolean('is_nutrition_serving').notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('recipe_portion_options_org_idx').on(t.organizationId),
+    index('recipe_portion_options_org_recipe_sort_idx').on(
+      t.organizationId,
+      t.recipeId,
+      t.sortOrder,
+    ),
+    unique('recipe_portion_options_org_id_key').on(t.organizationId, t.id),
+    // At most ONE default / one nutrition-serving option per recipe.
+    uniqueIndex('recipe_portion_options_one_default_key')
+      .on(t.organizationId, t.recipeId)
+      .where(sql`${t.isDefault}`),
+    uniqueIndex('recipe_portion_options_one_nutrition_key')
+      .on(t.organizationId, t.recipeId)
+      .where(sql`${t.isNutritionServing}`),
+    check('recipe_portion_options_quantity_chk', sql`${t.quantity} > 0`),
+    check(
+      'recipe_portion_options_price_chk',
+      sql`${t.sellingPriceCents} IS NULL OR ${t.sellingPriceCents} >= 0`,
+    ),
+    check(
+      'recipe_portion_options_target_chk',
+      sql`${t.targetFoodCostBps} IS NULL OR (${t.targetFoodCostBps} > 0 AND ${t.targetFoodCostBps} <= 10000)`,
+    ),
+    check('recipe_portion_options_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    foreignKey({
+      columns: [t.organizationId, t.recipeId],
+      foreignColumns: [recipes.organizationId, recipes.id],
+      name: 'recipe_portion_options_recipe_fk',
+    }).onDelete('cascade'),
   ],
 );
 
@@ -3013,6 +3712,26 @@ export type Recipe = InferSelectModel<typeof recipes>;
 export type NewRecipe = InferInsertModel<typeof recipes>;
 export type RecipeFolder = InferSelectModel<typeof recipeFolders>;
 export type NewRecipeFolder = InferInsertModel<typeof recipeFolders>;
+// Recipes 2.0 foundation (Meez-parity plan).
+export type RecipeIngredientSection = InferSelectModel<
+  typeof recipeIngredientSections
+>;
+export type RecipeMedia = InferSelectModel<typeof recipeMedia>;
+export type RecipeBook = InferSelectModel<typeof recipeBooks>;
+export type RecipeBookEntry = InferSelectModel<typeof recipeBookEntries>;
+export type RecipeMethodSection = InferSelectModel<typeof recipeMethodSections>;
+export type RecipeStep = InferSelectModel<typeof recipeSteps>;
+export type RecipeStepMedia = InferSelectModel<typeof recipeStepMedia>;
+export type RecipePortionOption = InferSelectModel<typeof recipePortionOptions>;
+export type IngredientUomEquivalency = InferSelectModel<
+  typeof ingredientUomEquivalencies
+>;
+export type IngredientPrepAction = InferSelectModel<
+  typeof ingredientPrepActions
+>;
+export type IngredientNutritionProfile = InferSelectModel<
+  typeof ingredientNutritionProfiles
+>;
 export type RecipeIngredient = InferSelectModel<typeof recipeIngredients>;
 export type NewRecipeIngredient = InferInsertModel<typeof recipeIngredients>;
 export type RecipePreset = InferSelectModel<typeof recipePresets>;
@@ -3193,6 +3912,19 @@ export const businessTables = [
   // Financial → manager-only at the app layer; posted/void rows are permanent history.
   'sales',
   'sale_items',
+  // Recipes 2.0 foundation (Meez-parity plan, Release A) — all standard
+  // org_isolation RLS.
+  'recipe_ingredient_sections',
+  'recipe_media',
+  'recipe_books',
+  'recipe_book_entries',
+  'recipe_method_sections',
+  'recipe_steps',
+  'recipe_step_media',
+  'recipe_portion_options',
+  'ingredient_uom_equivalencies',
+  'ingredient_prep_actions',
+  'ingredient_nutrition_profiles',
   // NOTE: `rate_limits` is intentionally ABSENT — it is infra, not tenant data,
   // and must work without an org context (see its table comment + lib/db/rls.ts).
 ] as const;
