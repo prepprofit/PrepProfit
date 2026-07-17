@@ -261,6 +261,11 @@ export type AuditAction =
   | 'account.export'
   | 'account.deletionRequest'
   | 'account.deletionCancel'
+  // Recipes 2.0 workspace (Meez-parity plan). `recipe.workspaceSave` = one
+  // atomic workspace save (header/sections/lines/method). metadata = old/new
+  // version and changed area names only — NEVER cost, price or free-text
+  // content.
+  | 'recipe.workspaceSave'
   // Automated cron purge (system actor)
   | 'cron.purge';
 
