@@ -26,7 +26,15 @@ export async function saveWorkspaceAction(
 ): Promise<ActionResult<{ version: number }>> {
   const parsed = workspaceSaveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
-  const { recipeId, expectedVersion, header, sections, lines } = parsed.data;
+  const {
+    recipeId,
+    expectedVersion,
+    header,
+    sections,
+    lines,
+    methodSections,
+    steps,
+  } = parsed.data;
 
   try {
     const organizationId = await getOrgId();
@@ -41,7 +49,7 @@ export async function saveWorkspaceAction(
             organizationId,
             recipeId,
             expectedVersion,
-            { header, sections, lines },
+            { header, sections, lines, methodSections, steps },
             actor,
           );
         // Structure may change component lines → ancestors' derived cost/

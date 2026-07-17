@@ -56,12 +56,36 @@ export const workspaceLineSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+export const WORKSPACE_MAX_STEPS = 300;
+export const WORKSPACE_STEP_MAX_LENGTH = 2000;
+
+export const workspaceMethodSectionSchema = z
+  .object({
+    id: refSchema.optional(),
+    tempId: refSchema.optional(),
+    title: z.string().trim().min(1).max(WORKSPACE_TITLE_MAX_LENGTH),
+  })
+  .refine((s) => s.id !== undefined || s.tempId !== undefined, {
+    message: 'method section needs id or tempId',
+  });
+
+export const workspaceStepSchema = z.object({
+  id: refSchema.optional(),
+  instruction: z.string().trim().min(1).max(WORKSPACE_STEP_MAX_LENGTH),
+  sectionRef: refSchema.nullish(),
+});
+
 export const workspaceSaveSchema = z.object({
   recipeId: refSchema,
   expectedVersion: z.number().int().min(1),
   header: workspaceHeaderSchema.optional(),
   sections: z.array(workspaceSectionSchema).max(WORKSPACE_MAX_SECTIONS).optional(),
   lines: z.array(workspaceLineSchema).max(WORKSPACE_MAX_LINES).optional(),
+  methodSections: z
+    .array(workspaceMethodSectionSchema)
+    .max(WORKSPACE_MAX_SECTIONS)
+    .optional(),
+  steps: z.array(workspaceStepSchema).max(WORKSPACE_MAX_STEPS).optional(),
 });
 
 export type WorkspaceSaveInput = z.infer<typeof workspaceSaveSchema>;

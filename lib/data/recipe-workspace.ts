@@ -412,11 +412,39 @@ export type WorkspaceLineDraft =
       sectionRef?: string | null;
     };
 
+/**
+ * Prep-method draft (plan Fase 3, §6.3): same full-replace + tempId contract
+ * as the ingredient area. A method section absent from the draft is deleted
+ * (its remaining steps cascade); a step absent from the draft is deleted (its
+ * media LINKS cascade — the physical media rows stay). Array position IS the
+ * persisted `sort_order`. Steps reference their section by `sectionRef` =
+ * existing method-section id OR a new section's tempId (null = the implicit
+ * default section).
+ */
+export type WorkspaceMethodSectionDraft = {
+  /** Existing method-section id — absent for a newly added section. */
+  id?: string;
+  /** Client-side handle for steps of a NEW section. */
+  tempId?: string;
+  title: string;
+};
+
+export type WorkspaceStepDraft = {
+  /** Existing step id — absent for a newly added step. */
+  id?: string;
+  /** Rendered as TEXT — never HTML. */
+  instruction: string;
+  sectionRef?: string | null;
+};
+
 export type RecipeWorkspaceStructureDraft = {
   header?: RecipeWorkspaceHeaderDraft;
   /** undefined = leave the structure untouched (header-only save). */
   sections?: WorkspaceSectionDraft[];
   lines?: WorkspaceLineDraft[];
+  /** undefined = leave the prep method untouched. */
+  methodSections?: WorkspaceMethodSectionDraft[];
+  steps?: WorkspaceStepDraft[];
 };
 
 export type SaveRecipeWorkspaceResult =
@@ -432,7 +460,10 @@ export type SaveRecipeWorkspaceResult =
         | 'unknown_section_id'
         | 'ingredient_unavailable'
         | 'component_invalid'
-        | 'component_cycle';
+        | 'component_cycle'
+        | 'unknown_method_section_id'
+        | 'unknown_method_section_ref'
+        | 'unknown_step_id';
     };
 
 /**
@@ -490,6 +521,60 @@ export async function saveRecipeWorkspace(
     reason: 'invalid_draft',
     detail,
   });
+
+  // ── prep-method draft: validate BEFORE any write (the ingredient block
+  // below writes as it validates its own area, so a method failure discovered
+  // later would otherwise commit a partial save — returning non-ok does NOT
+  // roll the transaction back).
+  const hasMethodDraft =
+    draft.methodSections !== undefined || draft.steps !== undefined;
+  const methodSectionsDraft = draft.methodSections ?? [];
+  const stepsDraft = draft.steps ?? [];
+  let existingMethodSectionIds = new Set<string>();
+  let existingStepIds = new Set<string>();
+  if (hasMethodDraft) {
+    const [existingMethodSections, existingSteps] = await Promise.all([
+      db
+        .select({ id: recipeMethodSections.id })
+        .from(recipeMethodSections)
+        .where(
+          and(
+            eq(recipeMethodSections.organizationId, organizationId),
+            eq(recipeMethodSections.recipeId, recipeId),
+          ),
+        ),
+      db
+        .select({ id: recipeSteps.id })
+        .from(recipeSteps)
+        .where(
+          and(
+            eq(recipeSteps.organizationId, organizationId),
+            eq(recipeSteps.recipeId, recipeId),
+          ),
+        ),
+    ]);
+    existingMethodSectionIds = new Set(existingMethodSections.map((s) => s.id));
+    existingStepIds = new Set(existingSteps.map((s) => s.id));
+
+    for (const s of methodSectionsDraft) {
+      if (s.id !== undefined && !existingMethodSectionIds.has(s.id)) {
+        return invalid('unknown_method_section_id');
+      }
+    }
+    const methodSectionRefs = new Set<string>();
+    for (const s of methodSectionsDraft) {
+      if (s.id) methodSectionRefs.add(s.id);
+      if (s.tempId) methodSectionRefs.add(s.tempId);
+    }
+    for (const step of stepsDraft) {
+      if (step.sectionRef != null && !methodSectionRefs.has(step.sectionRef)) {
+        return invalid('unknown_method_section_ref');
+      }
+      if (step.id !== undefined && !existingStepIds.has(step.id)) {
+        return invalid('unknown_step_id');
+      }
+    }
+  }
 
   if (draft.sections !== undefined || draft.lines !== undefined) {
     const sections = draft.sections ?? [];
@@ -764,6 +849,112 @@ export async function saveRecipeWorkspace(
     changedAreas.push('structure');
   }
 
+  if (hasMethodDraft) {
+    // Validated above, before any write.
+    const methodSections = methodSectionsDraft;
+    const steps = stepsDraft;
+
+    // ── apply: sections first (upsert + temp-id resolution) ─────────────
+    const methodSectionIdByRef = new Map<string, string>();
+    const keptMethodSectionIds = new Set<string>();
+    for (const [index, s] of methodSections.entries()) {
+      if (s.id) {
+        await db
+          .update(recipeMethodSections)
+          .set({ title: s.title, sortOrder: index })
+          .where(
+            and(
+              eq(recipeMethodSections.organizationId, organizationId),
+              eq(recipeMethodSections.id, s.id),
+            ),
+          );
+        methodSectionIdByRef.set(s.id, s.id);
+        keptMethodSectionIds.add(s.id);
+      } else {
+        const [insertedSection] = await db
+          .insert(recipeMethodSections)
+          .values({
+            organizationId,
+            recipeId,
+            title: s.title,
+            sortOrder: index,
+          })
+          .returning({ id: recipeMethodSections.id });
+        if (s.tempId) methodSectionIdByRef.set(s.tempId, insertedSection!.id);
+        keptMethodSectionIds.add(insertedSection!.id);
+      }
+    }
+
+    // ── steps: upsert with sort order = array index. Kept steps keep their
+    // media links; only DELETED steps cascade their recipe_step_media rows.
+    const keptStepIds = new Set<string>();
+    for (const [index, step] of steps.entries()) {
+      const sectionId =
+        step.sectionRef != null
+          ? (methodSectionIdByRef.get(step.sectionRef) ?? null)
+          : null;
+      if (step.id) {
+        await db
+          .update(recipeSteps)
+          .set({
+            instruction: step.instruction,
+            sectionId,
+            sortOrder: index,
+          })
+          .where(
+            and(
+              eq(recipeSteps.organizationId, organizationId),
+              eq(recipeSteps.id, step.id),
+            ),
+          );
+        keptStepIds.add(step.id);
+      } else {
+        const [insertedStep] = await db
+          .insert(recipeSteps)
+          .values({
+            organizationId,
+            recipeId,
+            instruction: step.instruction,
+            sectionId,
+            sortOrder: index,
+          })
+          .returning({ id: recipeSteps.id });
+        keptStepIds.add(insertedStep!.id);
+      }
+    }
+
+    // ── deletions: steps first (kept steps were re-pointed above), then
+    // emptied sections — so a section delete never cascades a kept step.
+    const removedStepIds = [...existingStepIds].filter(
+      (stepId) => !keptStepIds.has(stepId),
+    );
+    if (removedStepIds.length > 0) {
+      await db
+        .delete(recipeSteps)
+        .where(
+          and(
+            eq(recipeSteps.organizationId, organizationId),
+            inArray(recipeSteps.id, removedStepIds),
+          ),
+        );
+    }
+    const removedMethodSectionIds = [...existingMethodSectionIds].filter(
+      (sectionId) => !keptMethodSectionIds.has(sectionId),
+    );
+    if (removedMethodSectionIds.length > 0) {
+      await db
+        .delete(recipeMethodSections)
+        .where(
+          and(
+            eq(recipeMethodSections.organizationId, organizationId),
+            inArray(recipeMethodSections.id, removedMethodSectionIds),
+          ),
+        );
+    }
+
+    changedAreas.push('method');
+  }
+
   const header = draft.header ?? {};
   const changedFields = Object.keys(header).filter(
     (k) => header[k as keyof RecipeWorkspaceHeaderDraft] !== undefined,
@@ -789,6 +980,8 @@ export async function saveRecipeWorkspace(
       changedFields,
       sectionCount: draft.sections?.length,
       lineCount: draft.lines?.length,
+      methodSectionCount: draft.methodSections?.length,
+      stepCount: draft.steps?.length,
     },
   });
 

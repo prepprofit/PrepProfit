@@ -506,3 +506,181 @@ describe('saveRecipeWorkspace (structural full-replace)', () => {
     });
   });
 });
+
+describe('saveRecipeWorkspace (prep-method full-replace, Fase 3)', () => {
+  it('applies method sections + steps with tempId resolution and order', async () => {
+    const before = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (before?.role !== 'manager') throw new Error('expected manager DTO');
+    const bake = before.methodSections[0]!;
+    const bakeStep = before.steps[0]!;
+
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        before.recipe.version,
+        {
+          methodSections: [
+            { tempId: 'tmp-mix', title: 'Mix' },
+            { id: bake.id, title: 'Bake (renamed)' },
+          ],
+          steps: [
+            { instruction: 'Combine flour and water.', sectionRef: 'tmp-mix' },
+            { instruction: 'Rest 30 minutes.', sectionRef: 'tmp-mix' },
+            {
+              id: bakeStep.id,
+              instruction: 'Bake at 250C for 25 minutes.',
+              sectionRef: bake.id,
+            },
+            { instruction: 'Cool on a rack.' }, // default section
+          ],
+        },
+        actor,
+      ),
+    );
+    if (!result.ok) throw new Error(`save failed: ${JSON.stringify(result)}`);
+
+    const after = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (after?.role !== 'manager') throw new Error('expected manager DTO');
+    expect(after.recipe.version).toBe(result.version);
+    expect(after.methodSections.map((s) => s.title)).toEqual([
+      'Mix',
+      'Bake (renamed)',
+    ]);
+    const mix = after.methodSections[0]!;
+    expect(after.steps.map((s) => s.instruction)).toEqual([
+      'Combine flour and water.',
+      'Rest 30 minutes.',
+      'Bake at 250C for 25 minutes.',
+      'Cool on a rack.',
+    ]);
+    expect(after.steps.map((s) => s.sortOrder)).toEqual([0, 1, 2, 3]);
+    expect(after.steps[0]!.sectionId).toBe(mix.id);
+    expect(after.steps[2]!.id).toBe(bakeStep.id); // kept, not recreated
+    expect(after.steps[2]!.sectionId).toBe(bake.id);
+    expect(after.steps[3]!.sectionId).toBeNull();
+  });
+
+  it('deletes steps/sections absent from the draft, keeping re-pointed steps', async () => {
+    const before = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (before?.role !== 'manager') throw new Error('expected manager DTO');
+    const kept = before.steps.find((s) => s.instruction.startsWith('Bake'))!;
+
+    // Drop every section; keep ONE step re-pointed to the default group.
+    const result = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        before.recipe.version,
+        {
+          methodSections: [],
+          steps: [{ id: kept.id, instruction: kept.instruction }],
+        },
+        actor,
+      ),
+    );
+    expect(result.ok).toBe(true);
+
+    const after = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    if (after?.role !== 'manager') throw new Error('expected manager DTO');
+    expect(after.methodSections).toHaveLength(0);
+    expect(after.steps).toHaveLength(1);
+    expect(after.steps[0]!.id).toBe(kept.id); // survived its section's deletion
+    expect(after.steps[0]!.sectionId).toBeNull();
+  });
+
+  it('rejects unknown method refs/ids WITHOUT committing partial writes', async () => {
+    const version = (await getRecipeVersion(db, ORG, recipeId))!;
+
+    const badRef = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          methodSections: [],
+          steps: [{ instruction: 'x', sectionRef: 'missing' }],
+        },
+        actor,
+      ),
+    );
+    expect(badRef).toEqual({
+      ok: false,
+      reason: 'invalid_draft',
+      detail: 'unknown_method_section_ref',
+    });
+
+    const badStepId = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        { steps: [{ id: 'ghost-step', instruction: 'x' }] },
+        actor,
+      ),
+    );
+    expect(badStepId).toEqual({
+      ok: false,
+      reason: 'invalid_draft',
+      detail: 'unknown_step_id',
+    });
+
+    const badSectionId = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        { methodSections: [{ id: 'ghost-section', title: 'x' }], steps: [] },
+        actor,
+      ),
+    );
+    expect(badSectionId).toEqual({
+      ok: false,
+      reason: 'invalid_draft',
+      detail: 'unknown_method_section_id',
+    });
+
+    // An invalid METHOD draft must not let a combined draft half-apply the
+    // ingredient area (method validation runs before ANY write).
+    const combined = await runInOrg(db, ORG, (tx) =>
+      saveRecipeWorkspace(
+        tx,
+        ORG,
+        recipeId,
+        version,
+        {
+          sections: [{ tempId: 'tmp-should-not-exist', title: 'Half applied' }],
+          lines: [],
+          methodSections: [],
+          steps: [{ instruction: 'x', sectionRef: 'missing' }],
+        },
+        actor,
+      ),
+    );
+    expect(combined).toEqual({
+      ok: false,
+      reason: 'invalid_draft',
+      detail: 'unknown_method_section_ref',
+    });
+    const after = await runInOrg(db, ORG, (tx) =>
+      getRecipeWorkspace(tx, ORG, recipeId, 'manager'),
+    );
+    expect(
+      after?.ingredientSections.find((s) => s.title === 'Half applied'),
+    ).toBeUndefined();
+    expect(await getRecipeVersion(db, ORG, recipeId)).toBe(version);
+  });
+});
