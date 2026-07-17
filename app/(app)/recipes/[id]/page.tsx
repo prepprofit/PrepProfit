@@ -18,14 +18,28 @@ import { getOrgSettings } from '@/lib/data/org-settings';
 import { RecipeEditor } from '@/components/app/recipes/recipe-editor';
 import { RecipeAllergenPanel } from '@/components/app/recipes/recipe-allergen-panel';
 import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
+import { isRecipesWorkspaceV2Enabled } from '@/lib/data/recipe-workspace';
+import { RecipeWorkspacePage } from './workspace-page';
 
 export default async function RecipeEditorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ editor?: string }>;
 }) {
   const { id } = await params;
+  const { editor } = await searchParams;
   const organizationId = await getOrgId();
+
+  // Recipes 2.0 (plan Release B): the per-org flag prefers the new workspace;
+  // `?editor=legacy` is the rollback escape hatch while both editors coexist.
+  const workspaceV2 = await withOrg(organizationId, (tx) =>
+    isRecipesWorkspaceV2Enabled(tx, organizationId),
+  );
+  if (workspaceV2 && editor !== 'legacy') {
+    return <RecipeWorkspacePage recipeId={id} organizationId={organizationId} />;
+  }
 
   const [
     data,

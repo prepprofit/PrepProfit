@@ -228,6 +228,12 @@ export type ActionErrorCode =
   // Tried to delete a storage area referenced by a draft count (Sprint 12c D8) — commit
   // or discard the draft count first.
   | 'AREA_HAS_DRAFT_COUNT'
+  // Recipes 2.0 workspace: the save's expectedVersion is stale — someone else
+  // saved first. Reload and re-apply (no write happened).
+  | 'WORKSPACE_VERSION_CONFLICT'
+  // Recipes 2.0 workspace: the draft references ids that no longer exist, a
+  // trashed ingredient, or an invalid/cyclic component. Reload and retry.
+  | 'WORKSPACE_DRAFT_INVALID'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

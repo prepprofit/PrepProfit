@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
   ingredients,
+  organizationSettings,
   recipes,
   recipeIngredients,
   recipeIngredientSections,
@@ -792,6 +793,19 @@ export async function saveRecipeWorkspace(
   });
 
   return { ok: true, version: newVersion };
+}
+
+/** Per-org Recipes 2.0 flag (plan Release B). Missing settings row = OFF. */
+export async function isRecipesWorkspaceV2Enabled(
+  db: TenantClient,
+  organizationId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ enabled: organizationSettings.recipesWorkspaceV2 })
+    .from(organizationSettings)
+    .where(eq(organizationSettings.organizationId, organizationId))
+    .limit(1);
+  return row?.enabled ?? false;
 }
 
 /** Narrow helper for tests/consumers: current version of a recipe (or null). */

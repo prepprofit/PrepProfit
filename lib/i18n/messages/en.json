@@ -63,6 +63,8 @@
     }
   },
   "actionErrors": {
+    "WORKSPACE_VERSION_CONFLICT": "Someone else saved this recipe first — reload and retry.",
+    "WORKSPACE_DRAFT_INVALID": "The recipe draft is no longer valid — reload and retry.",
     "INVALID_INPUT": "Please check the values and try again.",
     "NOT_FOUND": "That item could not be found. It may have been removed.",
     "DUPLICATE_NAME": "Something with that name already exists.",
@@ -733,6 +735,64 @@
     }
   },
   "recipes": {
+    "workspace": {
+      "view": "View",
+      "edit": "Edit",
+      "done": "Done",
+      "cancel": "Cancel",
+      "saving": "Saving…",
+      "batch": "Batch",
+      "scale": "Scale",
+      "customFactor": "Custom",
+      "resetScale": "Reset to 1x",
+      "scaledBadge": "Viewing {factor}x — the saved recipe is unchanged",
+      "yield": "Yield",
+      "yieldWeight": "Batch weight",
+      "portions": "{count, plural, one {# portion} other {# portions}}",
+      "ingredients": "Ingredients",
+      "defaultSection": "Ingredients",
+      "subRecipe": "Sub-recipe",
+      "note": "Note",
+      "notePlaceholder": "Note (optional)",
+      "sectionTitlePlaceholder": "Section title",
+      "addIngredient": "Add ingredient",
+      "addSubRecipe": "Add sub-recipe",
+      "addSection": "Add section",
+      "removeLine": "Remove line",
+      "removeSection": "Remove section",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "namePlaceholder": "Recipe name",
+      "subtitlePlaceholder": "Subtitle (optional)",
+      "yieldQuantityPlaceholder": "Qty",
+      "yieldUnitPlaceholder": "Unit (e.g. qt, serving)",
+      "conflictTitle": "Someone else saved this recipe",
+      "conflictBody": "Your changes were NOT saved. Reload to see the latest version, then re-apply your edits.",
+      "reload": "Reload",
+      "emptyLines": "No ingredients yet. Switch to Edit to add some.",
+      "legacyEditorLink": "Open classic editor",
+      "tabs": {
+        "method": "Prep Method",
+        "cost": "Cost",
+        "nutrition": "Nutrition",
+        "uom": "UoM Equivalency"
+      },
+      "method": {
+        "empty": "No structured method yet.",
+        "legacyNotes": "Notes (legacy)",
+        "step": "Step {number}"
+      },
+      "cost": {
+        "totalCost": "Total cost",
+        "ingredientCost": "Ingredient cost",
+        "hiddenCost": "Labor, energy & packaging",
+        "costPerPortion": "Cost per portion",
+        "incomplete": "Cost is incomplete — a sub-recipe or price is missing.",
+        "managersOnly": "Cost is visible to managers only.",
+        "needsPricing": "Needs pricing"
+      },
+      "comingSoon": "Coming soon in Recipes 2.0."
+    },
     "title": "Recipes",
     "subtitle": "Build a recipe, see what it really costs, and price it with confidence.",
     "allergenMatrix": {
