@@ -266,6 +266,14 @@ export type AuditAction =
   // version and changed area names only — NEVER cost, price or free-text
   // content.
   | 'recipe.workspaceSave'
+  // Recipe media lifecycle (Fase 3, plan §6.4). `recipe.mediaUpload` = an
+  // uploaded object was validated and confirmed `ready`; `recipe.mediaReject` =
+  // confirm validation failed; `recipe.mediaDelete` = soft delete requested.
+  // metadata = ids, kind, mime, byte size and reject reason only — NEVER media
+  // content, filenames or URLs.
+  | 'recipe.mediaUpload'
+  | 'recipe.mediaReject'
+  | 'recipe.mediaDelete'
   // Automated cron purge (system actor)
   | 'cron.purge';
 

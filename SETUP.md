@@ -93,6 +93,16 @@ them, and only the email send path requires them. A missing key surfaces as the 
 `EMAIL_FAILED` action error, never a leaked secret. All email bodies are React Email templates
 (`emails/`) rendered to HTML + a plain-text fallback via `renderEmail()` (`lib/email/render.tsx`).
 
+Required for recipe media uploads (Recipes 2.0 Fase 3, `@vercel/blob` private store):
+
+- Create a **private** Vercel Blob store (`vercel blob create-store prepprofit-media --access private`
+  or Dashboard → Storage → Blob → access **Private**) and connect it to the project. On Vercel
+  the SDK then authenticates via OIDC automatically (no env var needed; Vercel injects
+  `BLOB_STORE_ID` + the OIDC token).
+- `BLOB_READ_WRITE_TOKEN` - only needed for local development (code running outside Vercel).
+  A secret; never commit it. Without it the media upload/confirm routes fail with a stable
+  error — the rest of the app is unaffected.
+
 The same `RESEND_*` config also powers the Sprint 5d lifecycle emails — a welcome email on
 organization creation and a daily low-stock digest (to the org's business email) from the
 purge cron — and the opt-in **weekly CFO report** email. The CFO digest is a manager-only
