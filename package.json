@@ -20,6 +20,7 @@
     "seed:demo": "tsx scripts/seed-demo.ts",
     "seed:full": "tsx --tsconfig tsconfig.seed.json scripts/seed-full-demo.ts",
     "backfill:suppliers": "tsx scripts/backfill-suppliers.ts",
+    "backfill:recipes-v2": "tsx scripts/backfill-recipes-v2.ts",
     "eval:extraction": "tsx scripts/eval-extraction.ts"
   },
   "dependencies": {
