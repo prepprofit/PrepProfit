@@ -1,3 +1,5 @@
+import { and, eq } from 'drizzle-orm';
+import { recipeMedia } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { countMenusUsingRecipe } from '@/lib/data/menus';
 import { countProductionsUsingRecipe } from '@/lib/data/productions';
@@ -61,12 +63,31 @@ export async function purgeRecipeWithGuards(
   db: TenantClient,
   organizationId: string,
   recipeId: string,
+  /**
+   * When provided, receives the storage keys of the recipe's media objects
+   * (Fase 3 §6.4) — their DB rows cascade away with the recipe, so the caller
+   * must remove the bucket objects AFTER the transaction commits (idempotent,
+   * best-effort, never inside the tx).
+   */
+  outMediaStorageKeys?: string[],
 ): Promise<RecipePurgeOutcome> {
   const blockers = await recipePurgeBlockers(db, organizationId, recipeId);
   if (blockers.has('menu')) return 'in_menu';
   if (blockers.has('production')) return 'in_production';
   if (blockers.has('sale')) return 'in_sale';
   if (blockers.has('component')) return 'in_component';
+  if (outMediaStorageKeys) {
+    const rows = await db
+      .select({ storageKey: recipeMedia.storageKey })
+      .from(recipeMedia)
+      .where(
+        and(
+          eq(recipeMedia.organizationId, organizationId),
+          eq(recipeMedia.recipeId, recipeId),
+        ),
+      );
+    outMediaStorageKeys.push(...rows.map((r) => r.storageKey));
+  }
   await purgeRecipe(db, organizationId, recipeId);
   return 'ok';
 }

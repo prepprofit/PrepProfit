@@ -13,6 +13,7 @@ import { selectLowStock } from '@/lib/calculations/inventory';
 import { getEmailSender } from '@/lib/email/resend';
 import { sendLowStockEmail, type LowStockLineItem } from '@/lib/email/notifications';
 import { logError } from '@/lib/observability';
+import { getRecipeMediaStorage } from '@/lib/media/recipe-media-storage';
 
 // Needs Node (neon-serverless Pool/WebSocket + node:crypto), never the Edge
 // runtime; force-dynamic so it is never statically cached.
@@ -110,6 +111,20 @@ export async function GET(req: Request): Promise<NextResponse> {
       purgedCustomers += result.customers;
       purgedInvoices += result.invoices;
       orgs += 1;
+
+      // Recipe-media bucket objects orphaned by the recipe purge (Fase 3
+      // §6.4): removed AFTER the purge tx committed — idempotent, best-effort,
+      // and a failure only leaves objects for the media sweeper's retry.
+      if (result.mediaStorageKeys.length > 0) {
+        try {
+          const storage = getRecipeMediaStorage();
+          await Promise.all(
+            result.mediaStorageKeys.map((key) => storage.remove(key)),
+          );
+        } catch (err) {
+          logError({ action: 'cron.purgeRecipeMediaObjects', orgId: org.id }, err);
+        }
+      }
 
       // Best-effort low-stock digest (Sprint 5d): send only when the org has a
       // business email AND ingredients at/below threshold. Fully try/caught and

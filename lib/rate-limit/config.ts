@@ -88,6 +88,9 @@ export const RATE_LIMITS = {
   // each hit issues a signed URL or reads bucket bytes, so it is heavier than a
   // plain read but interactive — a step-by-step photo session needs a brisk cadence.
   recipeMedia: { limit: 20, windowMs: MINUTE },
+  // Recipe-media cleanup cron (Fase 3). Keyed by a hash of the cron auth header
+  // like the other cron buckets. Generous ceiling — only abusive retries trip it.
+  mediaSweep: { limit: 5, windowMs: MINUTE },
   // GDPR account data export (Sprint 5e). TIGHT: reads every business table and
   // serialises the whole org, so it is the heaviest read in the app — a small
   // per-org+user budget is plenty for a legitimate portability request.

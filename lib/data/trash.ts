@@ -12,6 +12,7 @@ import {
   purchaseOrders,
   receiptItems,
   recipeIngredients,
+  recipeMedia,
   recipes,
   saleItems,
   taskLists,
@@ -37,6 +38,12 @@ export type PurgeResult = {
   transactions: number;
   customers: number;
   invoices: number;
+  /**
+   * Storage keys of recipe-media objects whose DB rows were cascaded away by a
+   * recipe purge (Fase 3 §6.4). The CALLER removes them from the bucket AFTER
+   * the transaction commits — idempotent, best-effort, never inside the tx.
+   */
+  mediaStorageKeys: string[];
 };
 
 export async function purgeExpired(
@@ -180,6 +187,21 @@ export async function purgeExpired(
         isNotNull(tasks.sourceRecipeId),
         inArray(
           tasks.sourceRecipeId,
+          db.select({ id: recipes.id }).from(recipes).where(purgeableRecipeWhere),
+        ),
+      ),
+    );
+
+  // Collect the media storage keys BEFORE the recipe delete cascades the
+  // recipe_media rows away — the caller removes the bucket objects post-commit.
+  const mediaKeyRows = await db
+    .select({ storageKey: recipeMedia.storageKey })
+    .from(recipeMedia)
+    .where(
+      and(
+        eq(recipeMedia.organizationId, organizationId),
+        inArray(
+          recipeMedia.recipeId,
           db.select({ id: recipes.id }).from(recipes).where(purgeableRecipeWhere),
         ),
       ),
@@ -448,5 +470,6 @@ export async function purgeExpired(
     transactions: purgedTransactions.length,
     customers: purgedCustomers.length,
     invoices: purgedInvoices.length,
+    mediaStorageKeys: mediaKeyRows.map((r) => r.storageKey),
   };
 }

@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/trial-reminder",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/sweep-recipe-media",
+      "schedule": "45 4 * * *"
     }
   ]
 }

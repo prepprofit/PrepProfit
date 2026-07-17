@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { isForeignKeyViolation } from '@/lib/db/errors';
-import { unexpected } from '@/lib/observability';
+import { logError, unexpected } from '@/lib/observability';
+import { getRecipeMediaStorage } from '@/lib/media/recipe-media-storage';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import { purgeIngredient, restoreIngredient } from '@/lib/data/ingredients';
 import {
@@ -161,8 +162,14 @@ export async function purgeRecipeAction(id: string): Promise<ActionResult> {
   // side effect: the guard checks the menu reference first, so a blocked purge
   // never nulls a referencing transaction. Remove the menu line (or purge the
   // menu) first.
+  const mediaStorageKeys: string[] = [];
   const outcome = await withOrg(organizationId, async (tx) => {
-    const status = await purgeRecipeWithGuards(tx, organizationId, id);
+    const status = await purgeRecipeWithGuards(
+      tx,
+      organizationId,
+      id,
+      mediaStorageKeys,
+    );
     if (status !== 'ok') return status;
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'trash.purge',
@@ -171,6 +178,16 @@ export async function purgeRecipeAction(id: string): Promise<ActionResult> {
     });
     return 'ok' as const;
   });
+  // Bucket objects AFTER commit (Fase 3 §6.4): idempotent, best-effort — a
+  // failure leaves an orphan object, never a broken purge.
+  if (outcome === 'ok' && mediaStorageKeys.length > 0) {
+    try {
+      const storage = getRecipeMediaStorage();
+      await Promise.all(mediaStorageKeys.map((key) => storage.remove(key)));
+    } catch (error) {
+      logError({ action: 'purgeRecipeMediaObjects', orgId: organizationId }, error);
+    }
+  }
   if (outcome === 'in_menu') return { ok: false, code: 'RECIPE_IN_MENU' };
   if (outcome === 'in_production') return { ok: false, code: 'RECIPE_IN_PRODUCTION' };
   if (outcome === 'in_sale') return { ok: false, code: 'RECIPE_IN_SALE' };

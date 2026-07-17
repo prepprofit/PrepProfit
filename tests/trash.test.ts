@@ -229,6 +229,7 @@ describe('trash data layer', () => {
       transactions: 0,
       customers: 0,
       invoices: 0,
+      mediaStorageKeys: [],
     });
     expect(await listTrashedRecipes(db, ORG_A)).toHaveLength(0);
     expect(
@@ -255,6 +256,7 @@ describe('trash data layer', () => {
       transactions: 0,
       customers: 0,
       invoices: 0,
+      mediaStorageKeys: [],
     });
     expect(
       (await listTrashedIngredients(db, ORG_A)).map((i) => i.id),

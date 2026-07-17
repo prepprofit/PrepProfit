@@ -9,7 +9,10 @@ import {
   createPendingRecipeMedia,
   confirmRecipeMedia,
   softDeleteRecipeMedia,
+  listSweepableRecipeMedia,
+  hardDeleteRecipeMedia,
 } from '@/lib/data/recipe-media';
+import { purgeRecipeWithGuards } from '@/lib/data/recipe-purge';
 import type { RecipeMediaStorage } from '@/lib/media/recipe-media-storage';
 import type { AuditActor } from '@/lib/data/audit';
 
@@ -262,5 +265,94 @@ describe('recipe media lifecycle', () => {
       softDeleteRecipeMedia(tx, OTHER_ORG, recipeId, pending.media.id, actor),
     );
     expect(crossOrg).toEqual({ ok: false, reason: 'not_found' });
+  });
+
+  it('sweeper lists stale pending/rejected + old deleted rows, then hard-deletes', async () => {
+    const old = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const stalePending = await runInOrg(db, ORG, (tx) =>
+      createPendingRecipeMedia(
+        tx,
+        ORG,
+        recipeId,
+        { kind: 'image', mimeType: 'image/png' },
+        actor,
+      ),
+    );
+    if (!stalePending.ok) throw new Error('expected ok');
+    await runInOrg(db, ORG, (tx) =>
+      tx
+        .update(recipeMedia)
+        .set({ createdAt: old })
+        .where(eq(recipeMedia.id, stalePending.media.id)),
+    );
+    // A FRESH pending row must NOT be swept.
+    const freshPending = await runInOrg(db, ORG, (tx) =>
+      createPendingRecipeMedia(
+        tx,
+        ORG,
+        recipeId,
+        { kind: 'image', mimeType: 'image/png' },
+        actor,
+      ),
+    );
+    if (!freshPending.ok) throw new Error('expected ok');
+
+    const sweepable = await runInOrg(db, ORG, (tx) =>
+      listSweepableRecipeMedia(tx, ORG, cutoff),
+    );
+    const ids = sweepable.map((s) => s.id);
+    expect(ids).toContain(stalePending.media.id);
+    expect(ids).not.toContain(freshPending.media.id);
+
+    const deleted = await runInOrg(db, ORG, (tx) =>
+      hardDeleteRecipeMedia(tx, ORG, [stalePending.media.id]),
+    );
+    expect(deleted).toBe(1);
+  });
+
+  it('recipe purge surfaces the media storage keys for post-commit removal', async () => {
+    const storage = memoryStorage();
+    const [doomed] = await db
+      .insert(recipes)
+      .values({ organizationId: ORG, name: 'Doomed', yieldPortions: 1 })
+      .returning();
+    const pending = await runInOrg(db, ORG, (tx) =>
+      createPendingRecipeMedia(
+        tx,
+        ORG,
+        doomed!.id,
+        { kind: 'image', mimeType: 'image/png' },
+        actor,
+      ),
+    );
+    if (!pending.ok) throw new Error('expected ok');
+    storage.objects.set(pending.storageKey, pngBytes(10, 10));
+    await runInOrg(db, ORG, (tx) =>
+      confirmRecipeMedia(tx, ORG, doomed!.id, pending.media.id, storage, actor),
+    );
+    // Purge only touches trashed recipes.
+    await runInOrg(db, ORG, (tx) =>
+      tx
+        .update(recipes)
+        .set({ deletedAt: new Date() })
+        .where(eq(recipes.id, doomed!.id)),
+    );
+
+    const keys: string[] = [];
+    const outcome = await runInOrg(db, ORG, (tx) =>
+      purgeRecipeWithGuards(tx, ORG, doomed!.id, keys),
+    );
+    expect(outcome).toBe('ok');
+    expect(keys).toEqual([pending.storageKey]);
+    // Rows cascaded with the recipe.
+    const rows = await runInOrg(db, ORG, (tx) =>
+      tx
+        .select({ id: recipeMedia.id })
+        .from(recipeMedia)
+        .where(eq(recipeMedia.recipeId, doomed!.id)),
+    );
+    expect(rows).toHaveLength(0);
   });
 });

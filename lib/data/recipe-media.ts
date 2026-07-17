@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm';
 import { recipes, recipeMedia, type RecipeMedia } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { writeAuditEvent, type AuditActor } from '@/lib/data/audit';
@@ -220,4 +220,54 @@ export async function softDeleteRecipeMedia(
     metadata: { recipeId },
   });
   return { ok: true, storageKey: row.storageKey };
+}
+
+/**
+ * Rows the cleanup cron may sweep (plan §6.4): `pending`/`rejected` older than
+ * the cutoff (upload never confirmed / failed validation) and soft-`deleted`
+ * rows past the cutoff. The cron removes the bucket objects OUTSIDE the
+ * transaction (idempotent), then hard-deletes the rows it cleaned.
+ */
+export async function listSweepableRecipeMedia(
+  db: TenantClient,
+  organizationId: string,
+  cutoff: Date,
+): Promise<{ id: string; storageKey: string }[]> {
+  return db
+    .select({ id: recipeMedia.id, storageKey: recipeMedia.storageKey })
+    .from(recipeMedia)
+    .where(
+      and(
+        eq(recipeMedia.organizationId, organizationId),
+        or(
+          and(
+            inArray(recipeMedia.status, ['pending', 'rejected']),
+            lte(recipeMedia.createdAt, cutoff),
+          ),
+          and(
+            eq(recipeMedia.status, 'deleted'),
+            lte(recipeMedia.deletedAt, cutoff),
+          ),
+        ),
+      ),
+    );
+}
+
+/** Hard-delete swept rows (their bucket objects were already removed). */
+export async function hardDeleteRecipeMedia(
+  db: TenantClient,
+  organizationId: string,
+  mediaIds: string[],
+): Promise<number> {
+  if (mediaIds.length === 0) return 0;
+  const rows = await db
+    .delete(recipeMedia)
+    .where(
+      and(
+        eq(recipeMedia.organizationId, organizationId),
+        inArray(recipeMedia.id, mediaIds),
+      ),
+    )
+    .returning({ id: recipeMedia.id });
+  return rows.length;
 }
