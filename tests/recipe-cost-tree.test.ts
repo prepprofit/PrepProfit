@@ -185,6 +185,7 @@ describe('loadActiveCatalogue — sub-recipe flattening', () => {
         dimension: 'weight',
         priceCents: 800,
         quantity: 312.5,
+        prepYieldBps: null,
       },
     ]);
     // hidden = 0.5 × 200 = 100.
@@ -230,7 +231,13 @@ describe('loadActiveCatalogue — sub-recipe flattening', () => {
     const catalogue = await loadActiveCatalogue(db, ORG3);
     const flat = catalogue.recipes.find((r) => r.id === recipe.id);
     expect(flat?.lines).toEqual([
-      { ingredientId: salt.id, dimension: 'weight', priceCents: 50, quantity: 10 },
+      {
+        ingredientId: salt.id,
+        dimension: 'weight',
+        priceCents: 50,
+        quantity: 10,
+        prepYieldBps: null,
+      },
     ]);
     expect(flat?.componentHiddenCostCents).toBe(0);
     expect(flat?.costUnresolved).toBe(false);

@@ -34,6 +34,13 @@ export type CatalogueRecipeLine = {
   priceCents: number;
   /** Canonical amount used: grams (weight), millilitres (volume), or count. */
   quantity: number;
+  /**
+   * Prep-action usable yield in basis points, or null/absent when the line has
+   * no prep action (Recipes 2.0 §6.6). Feeds `lineCostCents` so required-
+   * purchase loss inflates cost identically to the recipe cost card. Carried
+   * through sub-recipe flattening via spread.
+   */
+  prepYieldBps?: number | null;
 };
 
 export type CatalogueRecipe = {
@@ -178,6 +185,7 @@ export async function loadActiveCatalogue(
       dimension: l.ingredient.dimension,
       priceCents: l.ingredient.priceCents,
       quantity: l.quantity,
+      prepYieldBps: l.prepYieldBps ?? null,
     }));
     let hiddenCents = 0;
     for (const edge of edgesByParent.get(recipeId) ?? []) {
@@ -234,6 +242,7 @@ export async function loadActiveCatalogue(
       dimension: l.ingredient.dimension,
       priceCents: l.ingredient.priceCents,
       quantity: l.quantity,
+      prepYieldBps: l.prepYieldBps ?? null,
     }));
     const hasComponents = edgesByParent.has(recipe.id);
     const flattened = hasComponents

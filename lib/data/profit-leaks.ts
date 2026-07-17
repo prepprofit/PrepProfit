@@ -37,6 +37,7 @@ export async function loadProfitLeaks(
         dimension: l.dimension,
         priceCents: l.priceCents,
         quantity: l.quantity,
+        prepYieldBps: l.prepYieldBps ?? undefined,
       })),
       componentMaterialCostsCents: [recipe.componentHiddenCostCents],
     },
