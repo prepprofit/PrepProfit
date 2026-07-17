@@ -1,5 +1,11 @@
 import { and, eq, inArray } from 'drizzle-orm';
-import { ingredients, recipeComponents, recipeIngredients, recipes } from '@/lib/db/schema';
+import {
+  ingredientPrepActions,
+  ingredients,
+  recipeComponents,
+  recipeIngredients,
+  recipes,
+} from '@/lib/db/schema';
 import type { Recipe } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import {
@@ -120,6 +126,9 @@ export async function resolveRecipeCostTree(
         quantity: recipeIngredients.quantity,
         dimension: ingredients.dimension,
         priceCents: ingredients.priceCents,
+        // Prep-action usable yield inflates required-purchase cost (§6.6/§7.3).
+        // LEFT JOIN: a line with no prep action keeps yield NULL → no loss.
+        prepYieldBps: ingredientPrepActions.yieldBps,
       })
       .from(recipeIngredients)
       .innerJoin(
@@ -127,6 +136,13 @@ export async function resolveRecipeCostTree(
         and(
           eq(recipeIngredients.ingredientId, ingredients.id),
           eq(ingredients.organizationId, organizationId),
+        ),
+      )
+      .leftJoin(
+        ingredientPrepActions,
+        and(
+          eq(ingredientPrepActions.organizationId, organizationId),
+          eq(ingredientPrepActions.id, recipeIngredients.prepActionId),
         ),
       )
       .where(
@@ -144,6 +160,7 @@ export async function resolveRecipeCostTree(
       dimension: r.dimension,
       priceCents: r.priceCents,
       quantity: Number(r.quantity),
+      ...(r.prepYieldBps != null ? { prepYieldBps: r.prepYieldBps } : {}),
     };
     const existing = linesByRecipe.get(r.recipeId);
     if (existing) existing.push(line);

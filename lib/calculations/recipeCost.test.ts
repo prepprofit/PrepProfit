@@ -22,6 +22,29 @@ describe('lineCostCents', () => {
     expect(lineCostCents({ dimension: 'volume', priceCents: 150, quantity: 1000 })).toBe(150);
     expect(lineCostCents({ dimension: 'count', priceCents: 30, quantity: 6 })).toBe(180);
   });
+
+  it('applies prep yield as required-purchase loss without double counting', () => {
+    // 200 g edible @ 300c/kg = 60c; 80% yield → purchase 250 g → 75c.
+    expect(
+      lineCostCents({
+        dimension: 'weight',
+        priceCents: 300,
+        quantity: 200,
+        prepYieldBps: 8000,
+      }),
+    ).toBe(75);
+  });
+
+  it('treats absent/full/out-of-range/non-finite yield as no loss', () => {
+    const base = { dimension: 'weight' as const, priceCents: 300, quantity: 200 };
+    expect(lineCostCents(base)).toBe(60);
+    expect(lineCostCents({ ...base, prepYieldBps: 10_000 })).toBe(60);
+    expect(lineCostCents({ ...base, prepYieldBps: 0 })).toBe(60);
+    expect(lineCostCents({ ...base, prepYieldBps: -5 })).toBe(60);
+    expect(lineCostCents({ ...base, prepYieldBps: 20_000 })).toBe(60);
+    expect(lineCostCents({ ...base, prepYieldBps: Number.NaN })).toBe(60);
+    expect(lineCostCents({ ...base, prepYieldBps: Number.POSITIVE_INFINITY })).toBe(60);
+  });
 });
 
 describe('recipeCost', () => {

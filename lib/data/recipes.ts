@@ -1,5 +1,6 @@
 import { and, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import {
+  ingredientPrepActions,
   ingredients,
   recipeIngredients,
   recipePresets,
@@ -25,9 +26,15 @@ export type RecipeInput = Omit<
 export type RecipeLineWithIngredient = {
   id: string;
   ingredientId: string;
-  /** Canonical amount (g / ml / count). */
+  /** Canonical amount (g / ml / count) the recipe USES (edible). */
   quantity: number;
   sortOrder: number;
+  /**
+   * Prep-action usable yield in basis points, or null/absent when the line has
+   * no prep action (Recipes 2.0 §6.6). Feeds `lineCostCents` so required-
+   * purchase loss inflates cost without double counting.
+   */
+  prepYieldBps?: number | null;
   ingredient: {
     name: string;
     dimension: Ingredient['dimension'];
@@ -244,6 +251,7 @@ export async function listRecipesWithLines(
       ingredientId: recipeIngredients.ingredientId,
       quantity: recipeIngredients.quantity,
       sortOrder: recipeIngredients.sortOrder,
+      prepYieldBps: ingredientPrepActions.yieldBps,
       name: ingredients.name,
       dimension: ingredients.dimension,
       priceCents: ingredients.priceCents,
@@ -254,6 +262,13 @@ export async function listRecipesWithLines(
       and(
         eq(recipeIngredients.ingredientId, ingredients.id),
         eq(ingredients.organizationId, organizationId),
+      ),
+    )
+    .leftJoin(
+      ingredientPrepActions,
+      and(
+        eq(ingredientPrepActions.organizationId, organizationId),
+        eq(ingredientPrepActions.id, recipeIngredients.prepActionId),
       ),
     )
     .where(eq(recipeIngredients.organizationId, organizationId))
@@ -267,6 +282,7 @@ export async function listRecipesWithLines(
       // numeric columns come back as strings — convert at the data edge.
       quantity: Number(r.quantity),
       sortOrder: r.sortOrder,
+      prepYieldBps: r.prepYieldBps,
       ingredient: {
         name: r.name,
         dimension: r.dimension,
@@ -325,6 +341,7 @@ export async function getRecipeWithIngredients(
       ingredientId: recipeIngredients.ingredientId,
       quantity: recipeIngredients.quantity,
       sortOrder: recipeIngredients.sortOrder,
+      prepYieldBps: ingredientPrepActions.yieldBps,
       name: ingredients.name,
       dimension: ingredients.dimension,
       priceCents: ingredients.priceCents,
@@ -335,6 +352,13 @@ export async function getRecipeWithIngredients(
       and(
         eq(recipeIngredients.ingredientId, ingredients.id),
         eq(ingredients.organizationId, organizationId),
+      ),
+    )
+    .leftJoin(
+      ingredientPrepActions,
+      and(
+        eq(ingredientPrepActions.organizationId, organizationId),
+        eq(ingredientPrepActions.id, recipeIngredients.prepActionId),
       ),
     )
     .where(
@@ -351,6 +375,7 @@ export async function getRecipeWithIngredients(
     // numeric columns come back as strings — convert at the data edge.
     quantity: Number(r.quantity),
     sortOrder: r.sortOrder,
+    prepYieldBps: r.prepYieldBps,
     ingredient: {
       name: r.name,
       dimension: r.dimension,

@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { and, eq } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import {
   ingredients,
+  ingredientPrepActions,
   recipes,
   recipeIngredients,
   recipeComponents,
@@ -150,6 +152,89 @@ describe('frozen cost fixtures', () => {
       costPerPortionCents: 120,
     });
     expect(dish.componentLineCostsCents.get([...dish.componentLineCostsCents.keys()][0]!)).toBe(51);
+  });
+});
+
+describe('prep-yield cost (Fase 4 — NEW fixtures, additive)', () => {
+  // A separate tree so the FROZEN fixtures above stay byte-for-byte identical:
+  // a prep action must only change cost on the line that actually references it.
+  let prepIngId: string;
+  let prepActionId: string;
+  let prepRecipeId: string;
+
+  beforeAll(async () => {
+    const [ing] = await db
+      .insert(ingredients)
+      .values({
+        organizationId: ORG,
+        name: 'Onion FX',
+        dimension: 'weight',
+        priceCents: 300,
+      })
+      .returning();
+    prepIngId = ing!.id;
+    const [prep] = await db
+      .insert(ingredientPrepActions)
+      .values({
+        organizationId: ORG,
+        ingredientId: prepIngId,
+        name: 'diced',
+        yieldBps: 8000,
+      })
+      .returning();
+    prepActionId = prep!.id;
+
+    const [rec] = await db
+      .insert(recipes)
+      .values({
+        organizationId: ORG,
+        name: 'Onion Prep',
+        yieldPortions: 1,
+        yieldPercentage: 100,
+        yieldWeightGrams: 200,
+      })
+      .returning();
+    prepRecipeId = rec!.id;
+    await db.insert(recipeIngredients).values({
+      organizationId: ORG,
+      recipeId: prepRecipeId,
+      ingredientId: prepIngId,
+      quantity: '200',
+      prepActionId,
+      displaySortOrder: 0,
+    });
+  });
+
+  it('inflates cost by the prep yield (required-purchase loss)', async () => {
+    const res = await runInOrg(db, ORG, (tx) =>
+      resolveRecipeCostTree(tx, ORG, [prepRecipeId]),
+    );
+    const r = res.get(prepRecipeId);
+    if (!r?.complete) throw new Error('prep recipe resolution incomplete');
+    // 200 g edible @ 300c/kg = 60c; purchase at 80% yield → 250 g → 75c.
+    expect(r.cost.ingredientCostCents).toBe(75);
+    expect(r.cost.totalCostCents).toBe(75);
+  });
+
+  it('a line WITHOUT a prep action still costs the un-adjusted amount', async () => {
+    // Detach and re-check: proves prep yield only bites where referenced.
+    await runInOrg(db, ORG, (tx) =>
+      tx
+        .update(recipeIngredients)
+        .set({ prepActionId: null })
+        .where(
+          and(
+            eq(recipeIngredients.organizationId, ORG),
+            eq(recipeIngredients.recipeId, prepRecipeId),
+          ),
+        ),
+    );
+    const res = await runInOrg(db, ORG, (tx) =>
+      resolveRecipeCostTree(tx, ORG, [prepRecipeId]),
+    );
+    const r = res.get(prepRecipeId);
+    if (!r?.complete) throw new Error('resolution incomplete');
+    expect(r.cost.ingredientCostCents).toBe(60);
   });
 });
 

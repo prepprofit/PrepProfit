@@ -58,6 +58,7 @@ export function buildRecipeCardData(
         priceCents: l.ingredient.priceCents,
         // Cost from the UNROUNDED scaled quantity (round once, at the end).
         quantity: l.quantity * factor,
+        prepYieldBps: l.prepYieldBps ?? undefined,
       }),
     ),
   }));
@@ -80,6 +81,7 @@ export function buildRecipeCardData(
       dimension: l.ingredient.dimension,
       priceCents: l.ingredient.priceCents,
       quantity: l.quantity,
+      prepYieldBps: l.prepYieldBps ?? undefined,
     })),
     componentMaterialCostsCents: components
       .map((c) => c.rawCostCents)

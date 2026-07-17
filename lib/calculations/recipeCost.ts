@@ -21,7 +21,29 @@ export type RecipeCostLine = {
   priceCents: number;
   /** Canonical amount used: grams (weight), millilitres (volume), or count. */
   quantity: number;
+  /**
+   * Optional prep-action usable yield in basis points (10000 = 100%, no loss).
+   * The line's `quantity` is the EDIBLE amount the recipe uses; to obtain it you
+   * must purchase `quantity / (prepYieldBps/10000)` (Recipes 2.0 §6.6/§7.3), so
+   * the loss inflates cost WITHOUT double-counting. Absent/undefined = no prep
+   * loss (frozen-fixture lines cost exactly as before). Out-of-range/non-finite
+   * values are treated as "no loss" — never a silent zero or a runaway cost.
+   */
+  prepYieldBps?: number;
 };
+
+/** Usable-yield fraction of a prep action, or 1 when there is no valid loss. */
+function prepYieldFraction(prepYieldBps: number | undefined): number {
+  if (
+    prepYieldBps == null ||
+    !Number.isFinite(prepYieldBps) ||
+    prepYieldBps <= 0 ||
+    prepYieldBps >= 10_000
+  ) {
+    return 1;
+  }
+  return prepYieldBps / 10_000;
+}
 
 export type RecipeCostInput = {
   yieldPortions: number;
@@ -63,7 +85,9 @@ export const CANONICAL_PER_PRICE_UNIT: Record<Dimension, number> = {
 };
 
 export function lineCostCents(line: RecipeCostLine): number {
-  return (line.priceCents * line.quantity) / CANONICAL_PER_PRICE_UNIT[line.dimension];
+  const purchased =
+    (line.priceCents * line.quantity) / CANONICAL_PER_PRICE_UNIT[line.dimension];
+  return purchased / prepYieldFraction(line.prepYieldBps);
 }
 
 /**
