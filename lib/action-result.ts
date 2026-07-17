@@ -234,6 +234,9 @@ export type ActionErrorCode =
   // Recipes 2.0 workspace: the draft references ids that no longer exist, a
   // trashed ingredient, or an invalid/cyclic component. Reload and retry.
   | 'WORKSPACE_DRAFT_INVALID'
+  // Recipes 2.0 Fase 4: a prep action referenced by recipe lines cannot be
+  // deleted — detach it from those lines first.
+  | 'PREP_ACTION_IN_USE'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

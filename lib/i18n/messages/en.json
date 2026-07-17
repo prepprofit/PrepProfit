@@ -65,6 +65,7 @@
   "actionErrors": {
     "WORKSPACE_VERSION_CONFLICT": "Someone else saved this recipe first — reload and retry.",
     "WORKSPACE_DRAFT_INVALID": "The recipe draft is no longer valid — reload and retry.",
+    "PREP_ACTION_IN_USE": "This prep action is used by recipe lines. Remove it from those lines first.",
     "INVALID_INPUT": "Please check the values and try again.",
     "NOT_FOUND": "That item could not be found. It may have been removed.",
     "DUPLICATE_NAME": "Something with that name already exists.",
