@@ -31,7 +31,7 @@ beforeAll(async () => {
     .insert(recipeFolders)
     .values({ organizationId: ORG_A, name: 'Desserts', icon: '🍰', sortOrder: 2 })
     .returning();
-  folderAId = folderA.id;
+  folderAId = folderA!.id;
 
   const inserted = await db
     .insert(recipes)
@@ -52,8 +52,8 @@ beforeAll(async () => {
       { organizationId: ORG_B, name: 'Other org recipe', yieldPortions: 2 },
     ])
     .returning();
-  recipeInFolderId = inserted[0].id;
-  recipeLooseId = inserted[1].id;
+  recipeInFolderId = inserted[0]!.id;
+  recipeLooseId = inserted[1]!.id;
 });
 
 afterAll(async () => {
@@ -76,22 +76,23 @@ describe('backfillRecipesV2ForOrg', () => {
       .select()
       .from(recipeBooks)
       .where(eq(recipeBooks.organizationId, ORG_A));
-    expect(book.name).toBe('Desserts');
-    expect(book.icon).toBe('🍰');
-    expect(book.sortOrder).toBe(2);
+    expect(book!.name).toBe('Desserts');
+    expect(book!.icon).toBe('🍰');
+    expect(book!.sortOrder).toBe(2);
 
     const entries = await db
       .select()
       .from(recipeBookEntries)
       .where(eq(recipeBookEntries.organizationId, ORG_A));
     expect(entries).toHaveLength(1);
-    expect(entries[0].recipeId).toBe(recipeInFolderId);
-    expect(entries[0].recipeBookId).toBe(book.id);
+    expect(entries[0]!.recipeId).toBe(recipeInFolderId);
+    expect(entries[0]!.recipeBookId).toBe(book!.id);
 
     const [filed] = await db
       .select()
       .from(recipes)
       .where(and(eq(recipes.organizationId, ORG_A), eq(recipes.id, recipeInFolderId)));
+    if (!filed) throw new Error("filed recipe not found");
     expect(filed.yieldQuantity).toBe(12);
     expect(filed.yieldUnit).toBe('serving');
     // Legacy fields untouched (Release A never mutates the old editor's data).
@@ -138,6 +139,7 @@ describe('backfillRecipesV2ForOrg', () => {
       .select()
       .from(recipes)
       .where(and(eq(recipes.organizationId, ORG_A), eq(recipes.id, recipeLooseId)));
+    if (!loose) throw new Error("loose recipe not found");
     expect(loose.yieldQuantity).toBe(3);
     expect(loose.yieldUnit).toBe('qt');
 
