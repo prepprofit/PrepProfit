@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import { getOrgId, getOrgName, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { getRecipeWithIngredients } from '@/lib/data/recipes';
+import { loadDefaultPortionPrices } from '@/lib/data/recipe-portion-options';
 import { listRecipeComponents } from '@/lib/data/recipe-components';
 import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
 import { componentRawCostCents } from '@/lib/calculations/recipeCost';
@@ -51,6 +52,14 @@ export default async function RecipeCardPrintPage({
     withOrg(organizationId, async (tx) => {
       const recipe = await getRecipeWithIngredients(tx, organizationId, id);
       if (!recipe) return null;
+      // Dual-read (Recipes 2.0 Fase 5): a priced default portion option
+      // overrides the legacy selling price on the cost sheet.
+      const priceOverride = (
+        await loadDefaultPortionPrices(tx, organizationId, [id])
+      ).get(id);
+      if (priceOverride !== undefined) {
+        recipe.recipe = { ...recipe.recipe, sellingPriceCents: priceOverride };
+      }
       const settings = await getOrgSettingsRow(tx, organizationId);
       // Sub-recipe component lines with their resolved raw material cost.
       const componentLines = await listRecipeComponents(tx, organizationId, [id]);

@@ -12,6 +12,7 @@ import { canAccessFinancials, getFirstName, getOrgId, getUserRole } from '@/lib/
 import { withOrg } from '@/lib/db';
 import { listRecipesWithLines } from '@/lib/data/recipes';
 import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
+import { loadDefaultPortionPrices } from '@/lib/data/recipe-portion-options';
 import { listIngredients } from '@/lib/data/ingredients';
 import {
   listTransactions,
@@ -187,6 +188,13 @@ export default async function DashboardPage({
         ),
         ingredients: await listIngredients(tx, organizationId),
         profitLeaks: await loadProfitLeaks(tx, organizationId),
+        // Dual-read (Recipes 2.0 Fase 5): priced default portion option
+        // overrides the legacy selling price in the margin widgets.
+        defaultPortionPrices: await loadDefaultPortionPrices(
+          tx,
+          organizationId,
+          recipesWithLines.map(({ recipe }) => recipe.id),
+        ),
       };
     }),
     withOrg(organizationId, async (tx) => ({
@@ -211,15 +219,22 @@ export default async function DashboardPage({
   if (operational.needsOnboarding) {
     redirect('/onboarding');
   }
-  const { settings, recipes, recipeCostResolutions, ingredients, profitLeaks } =
-    operational;
+  const {
+    settings,
+    recipes,
+    recipeCostResolutions,
+    ingredients,
+    profitLeaks,
+    defaultPortionPrices,
+  } = operational;
 
   const input: DashboardRecipeInput[] = recipes.map(({ recipe, lines }) => {
     const resolution = recipeCostResolutions.get(recipe.id);
     return {
       id: recipe.id,
       name: recipe.name,
-      sellingPriceCents: recipe.sellingPriceCents,
+      sellingPriceCents:
+        defaultPortionPrices.get(recipe.id) ?? recipe.sellingPriceCents,
       cost: {
         yieldPortions: recipe.yieldPortions,
         yieldPercentage: recipe.yieldPercentage,

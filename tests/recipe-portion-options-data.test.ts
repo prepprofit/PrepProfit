@@ -7,6 +7,7 @@ import { runInOrg } from '@/lib/db/tenant';
 import { auditLog, recipes, recipePortionOptions } from '@/lib/db/schema';
 import {
   createPortionOption,
+  loadDefaultPortionPrices,
   deletePortionOption,
   listPortionOptions,
   setDefaultPortionOption,
@@ -213,6 +214,64 @@ describe('exclusive flags', () => {
     expect(after.find((o) => o.isNutritionServing)!.id).toBe(options[1]!.id);
     // Default flag untouched by nutrition-serving moves.
     expect(after.filter((o) => o.isDefault)).toHaveLength(1);
+  });
+});
+
+describe('loadDefaultPortionPrices (dual-read)', () => {
+  it('returns only PRICED default options; others fall back to legacy', async () => {
+    const map = await runInOrg(db, ORG, (tx) =>
+      loadDefaultPortionPrices(tx, ORG, [recipeId, trashedRecipeId, 'nope']),
+    );
+    const options = await runInOrg(db, ORG, (tx) =>
+      listPortionOptions(tx, ORG, recipeId),
+    );
+    const current = options.find((o) => o.isDefault)!;
+    expect(map.get(recipeId)).toBe(current.sellingPriceCents);
+    expect(map.has('nope')).toBe(false);
+
+    // A default option WITHOUT a price is absent from the map (legacy wins).
+    await runInOrg(db, ORG, (tx) =>
+      updatePortionOption(
+        tx,
+        ORG,
+        current.id,
+        {
+          name: current.name,
+          quantity: current.quantity,
+          unit: current.unit,
+          sellingPriceCents: null,
+          targetFoodCostBps: null,
+        },
+        actor,
+      ),
+    );
+    const after = await runInOrg(db, ORG, (tx) =>
+      loadDefaultPortionPrices(tx, ORG, [recipeId]),
+    );
+    expect(after.has(recipeId)).toBe(false);
+    // restore a price for the delete tests below
+    await runInOrg(db, ORG, (tx) =>
+      updatePortionOption(
+        tx,
+        ORG,
+        current.id,
+        {
+          name: current.name,
+          quantity: current.quantity,
+          unit: current.unit,
+          sellingPriceCents: 1500,
+          targetFoodCostBps: null,
+        },
+        actor,
+      ),
+    );
+  });
+
+  it('is empty for another org', async () => {
+    const map = await runInOrg(db, OTHER_ORG, (tx) =>
+      loadDefaultPortionPrices(tx, OTHER_ORG, [recipeId]),
+    );
+    expect(map.size).toBe(0);
   });
 });
 

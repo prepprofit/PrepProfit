@@ -3,6 +3,7 @@ import { getOrgName } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { getInvoiceWithItems } from '@/lib/data/invoices';
 import { getRecipeWithIngredients } from '@/lib/data/recipes';
+import { loadDefaultPortionPrices } from '@/lib/data/recipe-portion-options';
 import { getOrgSettingsRow, DEFAULT_ORG_SETTINGS } from '@/lib/data/org-settings';
 import { currentPeriodKey, type PeriodView } from '@/lib/finance/period';
 import {
@@ -77,6 +78,14 @@ export async function renderDocumentForEmail(
       const loaded = await withOrg(organizationId, async (tx) => {
         const recipe = await getRecipeWithIngredients(tx, organizationId, input.recipeId);
         if (!recipe) return null;
+        // Dual-read (Recipes 2.0 Fase 5): a priced default portion option
+        // overrides the legacy selling price on the emailed card.
+        const priceOverride = (
+          await loadDefaultPortionPrices(tx, organizationId, [input.recipeId])
+        ).get(input.recipeId);
+        if (priceOverride !== undefined) {
+          recipe.recipe = { ...recipe.recipe, sellingPriceCents: priceOverride };
+        }
         const settings = await getOrgSettingsRow(tx, organizationId);
         return { recipe, settings };
       });

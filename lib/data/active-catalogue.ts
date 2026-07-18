@@ -5,6 +5,7 @@ import type { TenantClient } from '@/lib/db/tenant';
 import { listRecipesWithLines } from '@/lib/data/recipes';
 import { listIngredients } from '@/lib/data/ingredients';
 import { listMenus } from '@/lib/data/menus';
+import { loadDefaultPortionPrices } from '@/lib/data/recipe-portion-options';
 import { MAX_COMPONENT_DEPTH } from '@/lib/calculations/production';
 
 /**
@@ -236,6 +237,15 @@ export async function loadActiveCatalogue(
     return result;
   };
 
+  // Dual-read (Fase 5, §6.8): a priced default portion option overrides the
+  // legacy column for every catalogue consumer (CFO, daily-close, menu
+  // engineering, profit leaks).
+  const defaultPortionPrices = await loadDefaultPortionPrices(
+    db,
+    organizationId,
+    recipesWithLines.map(({ recipe }) => recipe.id),
+  );
+
   const recipes: CatalogueRecipe[] = recipesWithLines.map(({ recipe, lines }) => {
     const directLines: CatalogueRecipeLine[] = lines.map((l) => ({
       ingredientId: l.ingredientId,
@@ -251,7 +261,8 @@ export async function loadActiveCatalogue(
     return {
       id: recipe.id,
       name: recipe.name,
-      sellingPriceCents: recipe.sellingPriceCents,
+      sellingPriceCents:
+        defaultPortionPrices.get(recipe.id) ?? recipe.sellingPriceCents,
       yieldPortions: recipe.yieldPortions,
       yieldPercentage: recipe.yieldPercentage,
       laborCostCents: recipe.laborCostCents,

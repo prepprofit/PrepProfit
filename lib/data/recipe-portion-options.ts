@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import {
   recipes,
   recipePortionOptions,
@@ -62,6 +62,39 @@ export async function listPortionOptions(
       ),
     )
     .orderBy(asc(recipePortionOptions.sortOrder), asc(recipePortionOptions.createdAt));
+}
+
+/**
+ * DUAL-READ price resolution (Fase 5, §6.8): the priced DEFAULT portion option
+ * per recipe. Consumers (catalogue reports, dashboard, recipe-card documents)
+ * use `map.get(recipeId) ?? recipe.sellingPriceCents` — the option gradually
+ * replaces the legacy column; a recipe without a priced default option keeps
+ * reading legacy, so the backfilled world is bit-identical to today.
+ */
+export async function loadDefaultPortionPrices(
+  db: TenantClient,
+  organizationId: string,
+  recipeIds: string[],
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (recipeIds.length === 0) return map;
+  const rows = await db
+    .select({
+      recipeId: recipePortionOptions.recipeId,
+      sellingPriceCents: recipePortionOptions.sellingPriceCents,
+    })
+    .from(recipePortionOptions)
+    .where(
+      and(
+        eq(recipePortionOptions.organizationId, organizationId),
+        inArray(recipePortionOptions.recipeId, [...new Set(recipeIds)]),
+        eq(recipePortionOptions.isDefault, true),
+      ),
+    );
+  for (const row of rows) {
+    if (row.sellingPriceCents != null) map.set(row.recipeId, row.sellingPriceCents);
+  }
+  return map;
 }
 
 export type SavePortionOptionInput = {
