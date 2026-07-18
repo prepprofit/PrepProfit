@@ -1,6 +1,8 @@
 # Recipes 2.0 — Fase 6: Nutrição (plano para aprovação)
 
-Estado: **APROVADO pelo owner 2026-07-18.** Decisões: D1 sim (`USDA_FDC_API_KEY`,
+Estado: **IMPLEMENTADO 2026-07-18 (slices 1–7 committed em `main`; ver
+`docs/recipes-v2-fase7-handoff.md` para o estado final e deltas).**
+Aprovação: owner 2026-07-18. Decisões: D1 sim (`USDA_FDC_API_KEY`,
 sem ela só custom; produto foca Europa no launch); D2 FDA 2016 único (schema é
 FDA-shaped; rótulo EU 1169/2011 anotado como follow-up); D3 sim (rounding FDA só na
 camada de label, estimativa); D4 sim (cache memória + snapshot, sem tabela nova);
