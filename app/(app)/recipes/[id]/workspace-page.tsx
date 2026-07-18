@@ -6,6 +6,8 @@ import { listIngredients } from '@/lib/data/ingredients';
 import { listComponentPickerRecipes } from '@/lib/data/recipe-components';
 import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
 import { loadRecipeIngredientCostDetails } from '@/lib/data/recipe-cost-details';
+import { costPerKgCents } from '@/lib/calculations/recipeCost';
+import { portionOptionCostCents } from '@/lib/calculations/foodCost';
 import { loadRecipeAllergenRollup } from '@/lib/data/allergens';
 import { loadIngredientUomByIngredient } from '@/lib/data/ingredient-uom';
 import { getOrgSettings } from '@/lib/data/org-settings';
@@ -322,7 +324,42 @@ export async function RecipeWorkspacePage({
         (a, b) =>
           (orderByLineId.get(a.key) ?? 0) - (orderByLineId.get(b.key) ?? 0),
       );
-      cost = { complete: true, cost: resolution.cost, details };
+      // Scale-invariant per-unit summary + per-portion-option costs (§6.8).
+      const perYieldUnitCents =
+        dto.recipe.yieldUnit &&
+        dto.recipe.yieldQuantity != null &&
+        dto.recipe.yieldQuantity > 0 &&
+        Number.isFinite(dto.recipe.yieldQuantity)
+          ? Math.round(resolution.cost.totalCostCents / dto.recipe.yieldQuantity)
+          : null;
+      const portionCosts = dto.portionOptions.map((o) => ({
+        key: o.id,
+        name: o.name,
+        quantityLabel: `${o.quantity} ${o.unit}`,
+        isDefault: o.isDefault,
+        costCents: portionOptionCostCents({
+          totalCostCents: resolution.cost.totalCostCents,
+          portionQuantity: o.quantity,
+          portionUnit: o.unit,
+          yieldQuantity: dto.recipe.yieldQuantity,
+          yieldUnit: dto.recipe.yieldUnit,
+          yieldPortions: dto.recipe.yieldPortions,
+        }),
+      }));
+      cost = {
+        complete: true,
+        cost: resolution.cost,
+        details,
+        costPerKgCents: costPerKgCents(
+          resolution.cost.totalCostCents,
+          dto.recipe.yieldWeightGrams,
+        ),
+        perYieldUnit:
+          perYieldUnitCents !== null && dto.recipe.yieldUnit
+            ? { unit: dto.recipe.yieldUnit, cents: perYieldUnitCents }
+            : null,
+        portionCosts,
+      };
     } else {
       cost = { complete: false };
     }

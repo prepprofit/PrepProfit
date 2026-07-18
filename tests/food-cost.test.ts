@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   foodCostBps,
   portionCostCents,
+  portionOptionCostCents,
   profitCents,
   suggestedPriceCents,
 } from '@/lib/calculations/foodCost';
@@ -127,5 +128,74 @@ describe('portionCostCents', () => {
 
   it('zero-cost batch portions at zero', () => {
     expect(portionCostCents(0, 1, 10)).toBe(0);
+  });
+});
+
+describe('portionOptionCostCents', () => {
+  const base = {
+    totalCostCents: 1200,
+    yieldQuantity: 3,
+    yieldUnit: 'qt',
+    yieldPortions: 12,
+  };
+
+  it('matches the yield unit → fraction over yieldQuantity', () => {
+    expect(
+      portionOptionCostCents({ ...base, portionQuantity: 1, portionUnit: 'qt' }),
+    ).toBe(400);
+    // Case/space-insensitive match, no conversion.
+    expect(
+      portionOptionCostCents({ ...base, portionQuantity: 1, portionUnit: ' QT ' }),
+    ).toBe(400);
+  });
+
+  it('serving unit → fraction over yieldPortions', () => {
+    expect(
+      portionOptionCostCents({
+        ...base,
+        portionQuantity: 1,
+        portionUnit: 'serving',
+      }),
+    ).toBe(100);
+    expect(
+      portionOptionCostCents({
+        ...base,
+        portionQuantity: 2,
+        portionUnit: 'servings',
+      }),
+    ).toBe(200);
+  });
+
+  it('unit mismatch is honestly incomputable — null, never a guess', () => {
+    expect(
+      portionOptionCostCents({ ...base, portionQuantity: 100, portionUnit: 'g' }),
+    ).toBeNull();
+  });
+
+  it('missing/invalid yields → null', () => {
+    expect(
+      portionOptionCostCents({
+        ...base,
+        yieldQuantity: null,
+        portionQuantity: 1,
+        portionUnit: 'qt',
+      }),
+    ).toBeNull();
+    expect(
+      portionOptionCostCents({
+        ...base,
+        yieldPortions: 0,
+        portionQuantity: 1,
+        portionUnit: 'serving',
+      }),
+    ).toBeNull();
+    expect(
+      portionOptionCostCents({
+        ...base,
+        totalCostCents: Number.NaN,
+        portionQuantity: 1,
+        portionUnit: 'qt',
+      }),
+    ).toBeNull();
   });
 });

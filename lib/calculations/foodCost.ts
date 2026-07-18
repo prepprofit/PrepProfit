@@ -80,6 +80,41 @@ export function suggestedPriceCents(
  * Quantities must share the SAME unit (the caller converts first). `null` on
  * missing/zero/negative/non-finite inputs.
  */
+/**
+ * Cost of a portion OPTION against the recipe's chef-facing yield (Fase 5,
+ * §6.8). The fraction denominator must be in the SAME unit as the portion:
+ * - option unit === recipe yield unit → fraction over `yieldQuantity`;
+ * - option unit is `serving` → fraction over `yieldPortions`;
+ * - anything else is honestly incomputable → null (no unit guessing).
+ * Unit comparison is case/space-insensitive but NOT a conversion.
+ */
+export function portionOptionCostCents(input: {
+  totalCostCents: number | null | undefined;
+  portionQuantity: number | null | undefined;
+  portionUnit: string;
+  yieldQuantity: number | null | undefined;
+  yieldUnit: string | null | undefined;
+  yieldPortions: number | null | undefined;
+}): number | null {
+  const normalize = (u: string | null | undefined) => (u ?? '').trim().toLowerCase();
+  const portionUnit = normalize(input.portionUnit);
+  if (portionUnit && portionUnit === normalize(input.yieldUnit)) {
+    return portionCostCents(
+      input.totalCostCents,
+      input.portionQuantity,
+      input.yieldQuantity,
+    );
+  }
+  if (portionUnit === 'serving' || portionUnit === 'servings') {
+    return portionCostCents(
+      input.totalCostCents,
+      input.portionQuantity,
+      input.yieldPortions,
+    );
+  }
+  return null;
+}
+
 export function portionCostCents(
   totalCostCents: number | null | undefined,
   portionQuantity: number | null | undefined,

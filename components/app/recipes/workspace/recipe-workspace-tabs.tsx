@@ -36,8 +36,27 @@ export type CostLineDetailView = {
   priceSourceDate: string | null;
 };
 
+/** Cost of one portion option as its fraction of the batch (Fase 5, §6.8). */
+export type PortionCostView = {
+  key: string;
+  name: string;
+  quantityLabel: string;
+  isDefault: boolean;
+  /** null = incomputable (unit mismatch / missing yield) — renders "—". */
+  costCents: number | null;
+};
+
 export type WorkspaceCostView =
-  | { complete: true; cost: RecipeCost; details: CostLineDetailView[] }
+  | {
+      complete: true;
+      cost: RecipeCost;
+      details: CostLineDetailView[];
+      /** Cost per kg of finished batch (scale-invariant); null when no weight. */
+      costPerKgCents: number | null;
+      /** Cost per chef-facing yield unit, e.g. per "qt" (scale-invariant). */
+      perYieldUnit: { unit: string; cents: number } | null;
+      portionCosts: PortionCostView[];
+    }
   | { complete: false }
   | null;
 
@@ -243,6 +262,17 @@ function CostPanel({
     },
     { label: t('costPerPortion'), cents: cost.cost.costPerPortionCents },
   ];
+  // Scale-invariant per-unit metrics (§16 Fase 5 slice 5): cost/kg and cost
+  // per chef-facing yield unit are the same at any batch factor.
+  if (cost.costPerKgCents !== null) {
+    rows.push({ label: t('costPerKg'), cents: cost.costPerKgCents });
+  }
+  if (cost.perYieldUnit !== null) {
+    rows.push({
+      label: t('costPerYieldUnit', { unit: cost.perYieldUnit.unit }),
+      cents: cost.perYieldUnit.cents,
+    });
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -259,6 +289,37 @@ function CostPanel({
           </div>
         ))}
       </dl>
+
+      {cost.portionCosts.length > 0 ? (
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {t('portions')}
+          </h3>
+          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+            {cost.portionCosts.map((p) => (
+              <li
+                key={p.key}
+                className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
+              >
+                <span className="min-w-0 truncate">
+                  {p.name}
+                  {p.isDefault ? (
+                    <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted-foreground">
+                      {t('defaultPortion')}
+                    </span>
+                  ) : null}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {p.quantityLabel}
+                  </span>
+                </span>
+                <span className="shrink-0 font-medium tabular-nums">
+                  {p.costCents !== null ? formatMoney(p.costCents, currency) : '—'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {cost.details.length > 0 ? (
         <section>
