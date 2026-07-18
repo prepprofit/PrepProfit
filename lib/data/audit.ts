@@ -171,6 +171,9 @@ export type AuditAction =
   // Operational scaled prep card (Recipe scaling MVP) — money-free, BOTH roles;
   // metadata is the recipe id only (no costs, no scale value beyond the id).
   | 'export.recipePrepCardPdf'
+  // Nutrition label PDF (Fase 6) — money-free, both roles; metadata = recipe id
+  // + draft flag only, never nutrient values.
+  | 'export.nutritionLabelPdf'
   | 'export.plPdf'
   | 'export.plXlsx'
   | 'export.payrollPdf'

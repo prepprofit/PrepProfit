@@ -909,6 +909,7 @@
         "disclaimer": "Estimated from ingredient data (USDA FoodData Central and custom entries). Not a substitute for laboratory analysis and not a claim of regulatory compliance.",
         "print": "Print label",
         "printDraft": "Print draft (estimated)",
+        "watermark": "ESTIMATED / INCOMPLETE",
         "allergens": {
           "contains": "Contains",
           "mayContain": "May contain",
