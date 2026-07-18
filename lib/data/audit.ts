@@ -266,6 +266,14 @@ export type AuditAction =
   // version and changed area names only — NEVER cost, price or free-text
   // content.
   | 'recipe.workspaceSave'
+  // Portion options (Fase 5, §6.8, manager-only — FINANCIAL). metadata = ids +
+  // boolean flags (isDefault/hasPrice/hasTarget) only — NEVER the price or
+  // target values.
+  | 'recipe.portionOptionCreate'
+  | 'recipe.portionOptionUpdate'
+  | 'recipe.portionOptionDelete'
+  | 'recipe.portionOptionSetDefault'
+  | 'recipe.portionOptionSetNutritionServing'
   // Recipe media lifecycle (Fase 3, plan §6.4). `recipe.mediaUpload` = an
   // uploaded object was validated and confirmed `ready`; `recipe.mediaReject` =
   // confirm validation failed; `recipe.mediaDelete` = soft delete requested.

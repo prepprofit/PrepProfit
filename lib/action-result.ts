@@ -237,6 +237,9 @@ export type ActionErrorCode =
   // Recipes 2.0 Fase 4: a prep action referenced by recipe lines cannot be
   // deleted — detach it from those lines first.
   | 'PREP_ACTION_IN_USE'
+  // Recipes 2.0 Fase 5: the recipe reached its portion-option cap — remove one
+  // before adding another.
+  | 'PORTION_OPTION_LIMIT_REACHED'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =
