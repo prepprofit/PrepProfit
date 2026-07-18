@@ -336,7 +336,12 @@ export async function RecipeWorkspacePage({
         key: o.id,
         name: o.name,
         quantityLabel: `${o.quantity} ${o.unit}`,
+        quantity: o.quantity,
+        unit: o.unit,
         isDefault: o.isDefault,
+        isNutritionServing: o.isNutritionServing,
+        sellingPriceCents: o.sellingPriceCents,
+        targetFoodCostBps: o.targetFoodCostBps,
         costCents: portionOptionCostCents({
           totalCostCents: resolution.cost.totalCostCents,
           portionQuantity: o.quantity,

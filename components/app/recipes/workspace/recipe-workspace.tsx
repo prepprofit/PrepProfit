@@ -484,6 +484,12 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
             cost={data.cost}
             factor={factor}
             currency={data.currency}
+            recipeId={data.recipe.id}
+            recipeYield={{
+              yieldQuantity: data.recipe.yieldQuantity,
+              yieldUnit: data.recipe.yieldUnit,
+              yieldPortions: data.recipe.yieldPortions,
+            }}
           />
         </div>
       </div>

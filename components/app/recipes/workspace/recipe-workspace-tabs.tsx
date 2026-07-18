@@ -5,6 +5,10 @@ import { useTranslations } from 'next-intl';
 import { formatMoney } from '@/lib/format/money';
 import { scaleMoneyCents } from '@/lib/calculations/recipeScale';
 import type { RecipeCost } from '@/lib/calculations/recipeCost';
+import {
+  PortionOptionsSection,
+  type PortionYieldContext,
+} from './recipe-portion-options';
 
 export type WorkspaceTab = 'method' | 'cost' | 'nutrition' | 'uom';
 
@@ -36,12 +40,23 @@ export type CostLineDetailView = {
   priceSourceDate: string | null;
 };
 
-/** Cost of one portion option as its fraction of the batch (Fase 5, §6.8). */
+/**
+ * Cost of one portion option as its fraction of the batch (Fase 5, §6.8),
+ * extended in Fase 5b with the editable fields the manager CRUD form needs.
+ * Lives INSIDE `cost`, so it is manager-only by construction — the kitchen
+ * payload ships `cost: null` and none of these keys ever exist in it.
+ */
 export type PortionCostView = {
   key: string;
   name: string;
   quantityLabel: string;
+  /** Raw quantity/unit the edit form starts from. */
+  quantity: number;
+  unit: string;
   isDefault: boolean;
+  isNutritionServing: boolean;
+  sellingPriceCents: number | null;
+  targetFoodCostBps: number | null;
   /** null = incomputable (unit mismatch / missing yield) — renders "—". */
   costCents: number | null;
 };
@@ -88,6 +103,8 @@ export function RecipeWorkspaceTabs({
   cost,
   factor,
   currency,
+  recipeId,
+  recipeYield,
 }: {
   tab: WorkspaceTab;
   onTabChange: (tab: WorkspaceTab) => void;
@@ -101,6 +118,9 @@ export function RecipeWorkspaceTabs({
   cost: WorkspaceCostView;
   factor: number;
   currency: string;
+  recipeId: string;
+  /** Yield context for the portion calculator (operational, non-financial). */
+  recipeYield: Omit<PortionYieldContext, 'totalCostCents'>;
 }) {
   const t = useTranslations('recipes.workspace');
   const tabs: WorkspaceTab[] = ['method', 'cost', 'nutrition', 'uom'];
@@ -137,7 +157,13 @@ export function RecipeWorkspaceTabs({
           ))
         ) : null}
         {tab === 'cost' ? (
-          <CostPanel cost={cost} factor={factor} currency={currency} />
+          <CostPanel
+            cost={cost}
+            factor={factor}
+            currency={currency}
+            recipeId={recipeId}
+            recipeYield={recipeYield}
+          />
         ) : null}
         {tab === 'uom' ? (
           (uomPanel ?? (
@@ -233,10 +259,14 @@ function CostPanel({
   cost,
   factor,
   currency,
+  recipeId,
+  recipeYield,
 }: {
   cost: WorkspaceCostView;
   factor: number;
   currency: string;
+  recipeId: string;
+  recipeYield: Omit<PortionYieldContext, 'totalCostCents'>;
 }) {
   const t = useTranslations('recipes.workspace.cost');
 
@@ -290,36 +320,17 @@ function CostPanel({
         ))}
       </dl>
 
-      {cost.portionCosts.length > 0 ? (
-        <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {t('portions')}
-          </h3>
-          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-            {cost.portionCosts.map((p) => (
-              <li
-                key={p.key}
-                className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
-              >
-                <span className="min-w-0 truncate">
-                  {p.name}
-                  {p.isDefault ? (
-                    <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted-foreground">
-                      {t('defaultPortion')}
-                    </span>
-                  ) : null}
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {p.quantityLabel}
-                  </span>
-                </span>
-                <span className="shrink-0 font-medium tabular-nums">
-                  {p.costCents !== null ? formatMoney(p.costCents, currency) : '—'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      {/* Fase 5b: manager CRUD + bidirectional calculator. Safe here — this
+          branch only renders when the server shipped cost data (manager). */}
+      <PortionOptionsSection
+        recipeId={recipeId}
+        portions={cost.portionCosts}
+        yieldContext={{
+          totalCostCents: cost.cost.totalCostCents,
+          ...recipeYield,
+        }}
+        currency={currency}
+      />
 
       {cost.details.length > 0 ? (
         <section>

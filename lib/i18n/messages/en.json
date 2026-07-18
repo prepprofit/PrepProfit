@@ -856,6 +856,32 @@
           "order": "Purchase order",
           "quote": "Supplier quote",
           "import": "Import"
+        },
+        "portionEditor": {
+          "add": "Add portion",
+          "edit": "Edit",
+          "delete": "Delete",
+          "confirmDelete": "Confirm delete",
+          "makeDefault": "Make default",
+          "makeNutritionServing": "Use for nutrition",
+          "nutritionServing": "Nutrition serving",
+          "name": "Name",
+          "namePlaceholder": "e.g. Slice",
+          "quantity": "Quantity",
+          "unit": "Unit",
+          "unitPlaceholder": "e.g. serving",
+          "sellingPrice": "Selling price",
+          "targetFoodCost": "Target food cost %",
+          "portionCost": "Portion cost",
+          "foodCost": "Food cost",
+          "profit": "Profit",
+          "suggestedPrice": "Suggested price",
+          "applySuggested": "Use suggested",
+          "save": "Save",
+          "saving": "Saving…",
+          "cancel": "Cancel",
+          "invalidForm": "Enter a name, a positive quantity and a unit.",
+          "empty": "No portion options yet. Add one to price this recipe."
         }
       },
       "comingSoon": "Coming soon in Recipes 2.0."
