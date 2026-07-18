@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   NUTRIENT_KEYS,
   nutrientForLine,
+  nutritionServingFraction,
   recipeNutrition,
   type NutrientKey,
   type NutritionProfile,
@@ -258,5 +259,51 @@ describe('recipeNutrition — sub-recipe components', () => {
       refId: 'sub-1',
       refName: 'Sauce',
     });
+  });
+});
+
+describe('nutritionServingFraction', () => {
+  const base = {
+    yieldQuantity: 3,
+    yieldUnit: 'qt',
+    yieldPortions: 4,
+    yieldWeightGrams: 2000,
+  };
+
+  it('weight unit → grams over batch weight', () => {
+    expect(nutritionServingFraction({ ...base, quantity: 100, unit: 'g' })).toEqual({
+      fraction: 0.05,
+      servingGrams: 100,
+    });
+    expect(nutritionServingFraction({ ...base, quantity: 1, unit: 'kg' })).toEqual({
+      fraction: 0.5,
+      servingGrams: 1000,
+    });
+  });
+
+  it('weight unit without a batch weight → null', () => {
+    expect(
+      nutritionServingFraction({ ...base, yieldWeightGrams: null, quantity: 100, unit: 'g' }),
+    ).toBeNull();
+  });
+
+  it('yield-unit match → fraction of yieldQuantity, with derived grams', () => {
+    expect(nutritionServingFraction({ ...base, quantity: 1.5, unit: 'qt' })).toEqual({
+      fraction: 0.5,
+      servingGrams: 1000,
+    });
+  });
+
+  it('serving keyword → fraction of yieldPortions', () => {
+    const r = nutritionServingFraction({ ...base, quantity: 1, unit: 'serving' });
+    expect(r).toEqual({ fraction: 0.25, servingGrams: 500 });
+  });
+
+  it('unknown unit, missing/invalid quantity → null (never guesses)', () => {
+    expect(nutritionServingFraction({ ...base, quantity: 1, unit: 'slice' })).toBeNull();
+    expect(nutritionServingFraction({ ...base, quantity: 0, unit: 'g' })).toBeNull();
+    expect(nutritionServingFraction({ ...base, quantity: null, unit: 'g' })).toBeNull();
+    expect(nutritionServingFraction({ ...base, quantity: Number.NaN, unit: 'g' })).toBeNull();
+    expect(nutritionServingFraction({ ...base, quantity: 1, unit: '' })).toBeNull();
   });
 });

@@ -254,3 +254,69 @@ export function recipeNutrition(input: {
     issues,
   };
 }
+
+/** Weight units accepted for a nutrition serving, → grams factor. */
+const SERVING_WEIGHT_UNITS: Record<string, number> = {
+  g: 1,
+  kg: 1000,
+  oz: 28.349523125,
+  lb: 453.59237,
+};
+
+const SERVING_KEYWORDS = new Set(['serving', 'servings', 'portion', 'portions']);
+
+/**
+ * Fraction of the whole batch one nutrition serving represents, mirroring the
+ * unit semantics of `portionOptionCostCents` (§7.3) plus the weight path §7.4
+ * needs for labels:
+ * 1. a WEIGHT unit → servingGrams / yieldWeightGrams (needs the batch weight);
+ * 2. unit equal to the recipe's yield unit → quantity / yieldQuantity;
+ * 3. `serving(s)` / `portion(s)` → quantity / yieldPortions;
+ * 4. anything else → null (no unit guessing — the label stays blocked).
+ * Also returns the serving weight in grams when derivable (label header).
+ */
+export function nutritionServingFraction(input: {
+  quantity: number | null | undefined;
+  unit: string | null | undefined;
+  yieldQuantity: number | null | undefined;
+  yieldUnit: string | null | undefined;
+  yieldPortions: number | null | undefined;
+  yieldWeightGrams: number | null | undefined;
+}): { fraction: number; servingGrams: number | null } | null {
+  const quantity = input.quantity;
+  if (quantity == null || !Number.isFinite(quantity) || quantity <= 0) return null;
+  const unit = (input.unit ?? '').trim().toLowerCase();
+  if (!unit) return null;
+
+  const weightFactor = SERVING_WEIGHT_UNITS[unit];
+  if (weightFactor !== undefined) {
+    if (!isPositiveFinite(input.yieldWeightGrams)) return null;
+    const servingGrams = quantity * weightFactor;
+    return { fraction: servingGrams / input.yieldWeightGrams, servingGrams };
+  }
+
+  const yieldUnit = (input.yieldUnit ?? '').trim().toLowerCase();
+  if (yieldUnit && unit === yieldUnit) {
+    if (!isPositiveFinite(input.yieldQuantity)) return null;
+    const fraction = quantity / input.yieldQuantity;
+    return {
+      fraction,
+      servingGrams: isPositiveFinite(input.yieldWeightGrams)
+        ? fraction * input.yieldWeightGrams
+        : null,
+    };
+  }
+
+  if (SERVING_KEYWORDS.has(unit)) {
+    if (!isPositiveFinite(input.yieldPortions)) return null;
+    const fraction = quantity / input.yieldPortions;
+    return {
+      fraction,
+      servingGrams: isPositiveFinite(input.yieldWeightGrams)
+        ? fraction * input.yieldWeightGrams
+        : null,
+    };
+  }
+
+  return null;
+}
