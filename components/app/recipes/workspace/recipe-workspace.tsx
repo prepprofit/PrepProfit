@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { saveWorkspaceAction } from '@/app/(app)/recipes/[id]/workspace-actions';
-import type { RecipeCost } from '@/lib/calculations/recipeCost';
 import { BatchScaleControl } from './batch-scale-control';
 import {
   RecipeInputListEdit,
@@ -27,6 +26,7 @@ import {
 import {
   RecipeWorkspaceTabs,
   type MethodSectionView,
+  type WorkspaceCostView,
   type WorkspaceTab,
 } from './recipe-workspace-tabs';
 import { RecipeUomTab, type UomTabItem } from './recipe-uom-tab';
@@ -61,7 +61,7 @@ export type WorkspaceClientData = {
   books: { bookId: string; bookName: string }[];
   ingredientOptions: PickerOption[];
   componentOptions: PickerOption[];
-  cost: { complete: true; cost: RecipeCost } | { complete: false } | null;
+  cost: WorkspaceCostView;
   currency: string;
   /** UoM tab data (Fase 4) — operational, both roles. */
   uom: UomTabItem[];

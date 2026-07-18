@@ -5,6 +5,7 @@ import { getRecipeWorkspace } from '@/lib/data/recipe-workspace';
 import { listIngredients } from '@/lib/data/ingredients';
 import { listComponentPickerRecipes } from '@/lib/data/recipe-components';
 import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
+import { loadRecipeIngredientCostDetails } from '@/lib/data/recipe-cost-details';
 import { loadRecipeAllergenRollup } from '@/lib/data/allergens';
 import { loadIngredientUomByIngredient } from '@/lib/data/ingredient-uom';
 import { getOrgSettings } from '@/lib/data/org-settings';
@@ -259,14 +260,72 @@ export async function RecipeWorkspacePage({
   // Manager-only cost summary from the shared resolver (kitchen: null).
   let cost: WorkspaceClientData['cost'] = null;
   if (dto.role === 'manager') {
-    const resolution = (
-      await withOrg(organizationId, (tx) =>
-        resolveRecipeCostTree(tx, organizationId, [recipeId]),
-      )
-    ).get(recipeId);
-    cost = resolution?.complete
-      ? { complete: true, cost: resolution.cost }
-      : { complete: false };
+    const [resolutionMap, lineDetails] = await withOrg(
+      organizationId,
+      async (tx) =>
+        Promise.all([
+          resolveRecipeCostTree(tx, organizationId, [recipeId]),
+          loadRecipeIngredientCostDetails(tx, organizationId, recipeId),
+        ]),
+    );
+    const resolution = resolutionMap.get(recipeId);
+    if (resolution?.complete) {
+      // Per-line expandable details (§7.3): ingredient lines with supplier/
+      // price-origin info + component lines priced by the shared resolver, in
+      // the merged display order the ingredient area uses.
+      const PRICE_UNIT_LABEL: Record<'weight' | 'volume' | 'count', string> = {
+        weight: 'kg',
+        volume: 'l',
+        count: 'pc',
+      };
+      const ingredientDetails = lineDetails.map((d) => ({
+        key: d.lineId,
+        kind: 'ingredient' as const,
+        name: d.name,
+        prepName: d.prepName,
+        quantityLabel: `${d.quantity} ${UNIT_LABEL[d.dimension]}`,
+        needsPricing: d.needsPricing,
+        lineCostCents: d.lineCostCents,
+        priceCents: d.needsPricing ? null : d.priceCents,
+        unitLabel: PRICE_UNIT_LABEL[d.dimension],
+        supplierName: d.supplierName,
+        packSize: d.packSize,
+        packUnit: d.packUnit,
+        packPriceCents: d.packPriceCents,
+        priceSource: d.priceSource,
+        priceSourceDate: d.priceSourceDate,
+      }));
+      const componentDetails = dto.componentLines.map((l) => ({
+        key: l.id,
+        kind: 'component' as const,
+        name: l.componentRecipeName,
+        prepName: null,
+        quantityLabel: `${l.quantityGrams} g`,
+        needsPricing: false,
+        lineCostCents: resolution.componentLineCostsCents.get(l.id) ?? null,
+        priceCents: null,
+        unitLabel: null,
+        supplierName: null,
+        packSize: null,
+        packUnit: null,
+        packPriceCents: null,
+        priceSource: null,
+        priceSourceDate: null,
+      }));
+      const orderByLineId = new Map(
+        [...ingredientLines, ...componentLines].map((l) => [
+          l.id,
+          l.displaySortOrder,
+        ]),
+      );
+      const details = [...ingredientDetails, ...componentDetails].sort(
+        (a, b) =>
+          (orderByLineId.get(a.key) ?? 0) - (orderByLineId.get(b.key) ?? 0),
+      );
+      cost = { complete: true, cost: resolution.cost, details };
+    } else {
+      cost = { complete: false };
+    }
   }
 
   const data: WorkspaceClientData = {

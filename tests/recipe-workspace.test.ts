@@ -211,6 +211,11 @@ describe('getRecipeWorkspace', () => {
       'sellingPriceCents',
       'targetFoodCostBps',
       'supplier',
+      // Fase 5 cost-panel detail keys — manager-only, must never leak.
+      'lineCostCents',
+      'packPriceCents',
+      'priceSource',
+      'supplierName',
     ]) {
       expect(keys.has(forbidden), `kitchen DTO leaked "${forbidden}"`).toBe(
         false,

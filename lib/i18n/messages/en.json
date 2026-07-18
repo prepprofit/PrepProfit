@@ -841,7 +841,18 @@
         "costPerPortion": "Cost per portion",
         "incomplete": "Cost is incomplete — a sub-recipe or price is missing.",
         "managersOnly": "Cost is visible to managers only.",
-        "needsPricing": "Needs pricing"
+        "needsPricing": "Needs pricing",
+        "lines": "Line costs",
+        "approvedPrice": "Approved price",
+        "supplier": "Supplier",
+        "purchaseItem": "Purchase item",
+        "priceOrigin": "Price origin",
+        "priceSources": {
+          "manual": "Manual entry",
+          "order": "Purchase order",
+          "quote": "Supplier quote",
+          "import": "Import"
+        }
       },
       "comingSoon": "Coming soon in Recipes 2.0."
     },

@@ -8,6 +8,39 @@ import type { RecipeCost } from '@/lib/calculations/recipeCost';
 
 export type WorkspaceTab = 'method' | 'cost' | 'nutrition' | 'uom';
 
+/**
+ * One expandable row of the cost panel (Fase 5, §7.3) — MANAGER-ONLY data
+ * assembled server-side; the kitchen payload ships `cost: null` and none of
+ * these keys ever exist in it.
+ */
+export type CostLineDetailView = {
+  key: string;
+  kind: 'ingredient' | 'component';
+  name: string;
+  prepName: string | null;
+  /** Pre-formatted canonical amount, e.g. "500 g" (server formats). */
+  quantityLabel: string;
+  needsPricing: boolean;
+  /** Line cost at 1x batch (client scales by factor); null = unpriced. */
+  lineCostCents: number | null;
+  /** Approved price per purchase unit (ingredient lines only). */
+  priceCents: number | null;
+  /** Purchase-unit label for the price, e.g. "kg" / "l" / "pc". */
+  unitLabel: string | null;
+  supplierName: string | null;
+  packSize: number | null;
+  packUnit: string | null;
+  packPriceCents: number | null;
+  priceSource: 'manual' | 'order' | 'quote' | 'import' | null;
+  /** ISO date of the accepted price observation. */
+  priceSourceDate: string | null;
+};
+
+export type WorkspaceCostView =
+  | { complete: true; cost: RecipeCost; details: CostLineDetailView[] }
+  | { complete: false }
+  | null;
+
 export type MethodSectionView = {
   id: string;
   title: string;
@@ -46,7 +79,7 @@ export function RecipeWorkspaceTabs({
   uomPanel?: React.ReactNode;
   legacyNotes: string | null;
   /** null = kitchen (never shipped); `incomplete` = tree unresolvable. */
-  cost: { complete: true; cost: RecipeCost } | { complete: false } | null;
+  cost: WorkspaceCostView;
   factor: number;
   currency: string;
 }) {
@@ -182,7 +215,7 @@ function CostPanel({
   factor,
   currency,
 }: {
-  cost: { complete: true; cost: RecipeCost } | { complete: false } | null;
+  cost: WorkspaceCostView;
   factor: number;
   currency: string;
 }) {
@@ -212,18 +245,100 @@ function CostPanel({
   ];
 
   return (
-    <dl className="grid grid-cols-2 gap-3">
-      {rows.map((row) => (
-        <div
-          key={row.label}
-          className="rounded-lg border border-border bg-surface px-4 py-3"
-        >
-          <dt className="text-xs text-muted-foreground">{row.label}</dt>
-          <dd className="text-lg font-semibold tabular-nums">
-            {formatMoney(row.cents, currency)}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <div className="flex flex-col gap-4">
+      <dl className="grid grid-cols-2 gap-3">
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="rounded-lg border border-border bg-surface px-4 py-3"
+          >
+            <dt className="text-xs text-muted-foreground">{row.label}</dt>
+            <dd className="text-lg font-semibold tabular-nums">
+              {formatMoney(row.cents, currency)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {cost.details.length > 0 ? (
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {t('lines')}
+          </h3>
+          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+            {cost.details.map((line) => (
+              <li key={line.key}>
+                <details className="group">
+                  <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-2.5 text-sm [&::-webkit-details-marker]:hidden">
+                    <span className="min-w-0 truncate">
+                      {line.name}
+                      {line.prepName ? (
+                        <span className="text-muted-foreground">
+                          {' '}
+                          · {line.prepName}
+                        </span>
+                      ) : null}
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {line.quantityLabel}
+                      </span>
+                    </span>
+                    {line.needsPricing || line.lineCostCents === null ? (
+                      <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                        {t('needsPricing')}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 font-medium tabular-nums">
+                        {formatMoney(
+                          scaleMoneyCents(line.lineCostCents, factor),
+                          currency,
+                        )}
+                      </span>
+                    )}
+                  </summary>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-border bg-surface-2/50 px-4 py-3 text-xs">
+                    {line.priceCents !== null && line.unitLabel ? (
+                      <>
+                        <dt className="text-muted-foreground">
+                          {t('approvedPrice')}
+                        </dt>
+                        <dd className="text-right tabular-nums">
+                          {formatMoney(line.priceCents, currency)} / {line.unitLabel}
+                        </dd>
+                      </>
+                    ) : null}
+                    <dt className="text-muted-foreground">{t('supplier')}</dt>
+                    <dd className="truncate text-right">
+                      {line.supplierName ?? '—'}
+                    </dd>
+                    {line.packSize !== null && line.packUnit ? (
+                      <>
+                        <dt className="text-muted-foreground">
+                          {t('purchaseItem')}
+                        </dt>
+                        <dd className="text-right tabular-nums">
+                          {line.packSize} {line.packUnit}
+                          {line.packPriceCents !== null
+                            ? ` — ${formatMoney(line.packPriceCents, currency)}`
+                            : ''}
+                        </dd>
+                      </>
+                    ) : null}
+                    <dt className="text-muted-foreground">{t('priceOrigin')}</dt>
+                    <dd className="text-right">
+                      {line.priceSource
+                        ? t(`priceSources.${line.priceSource}`)
+                        : '—'}
+                      {line.priceSourceDate
+                        ? ` · ${new Date(line.priceSourceDate).toLocaleDateString()}`
+                        : ''}
+                    </dd>
+                  </dl>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   );
 }
