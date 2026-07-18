@@ -9,6 +9,9 @@ import { loadRecipeIngredientCostDetails } from '@/lib/data/recipe-cost-details'
 import { costPerKgCents } from '@/lib/calculations/recipeCost';
 import { portionOptionCostCents } from '@/lib/calculations/foodCost';
 import { loadRecipeAllergenRollup } from '@/lib/data/allergens';
+import { resolveRecipeNutritionTree } from '@/lib/data/recipe-nutrition-tree';
+import { nutritionLabelRows } from '@/lib/calculations/nutritionLabel';
+import type { NutritionTabData } from '@/components/app/recipes/workspace/recipe-nutrition-tab';
 import { loadIngredientUomByIngredient } from '@/lib/data/ingredient-uom';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { getRecipeMediaStorage } from '@/lib/media/recipe-media-storage';
@@ -259,6 +262,50 @@ export async function RecipeWorkspacePage({
     }
   }
 
+  // Nutrition tab payload (Fase 6, §9.6) — OPERATIONAL, both roles see it;
+  // editing is manager-only (D5). All math is server-side: the client receives
+  // pre-rounded label rows and provenance, never re-derives nutrition.
+  const nutritionMap = await withOrg(organizationId, (tx) =>
+    resolveRecipeNutritionTree(tx, organizationId, [recipeId]),
+  );
+  const nutritionRes = nutritionMap.get(recipeId);
+  const nutrition: NutritionTabData = {
+    status: nutritionRes?.result.status ?? 'incomplete',
+    issues: nutritionRes?.result.issues ?? [],
+    rows: nutritionRes?.result.perServing
+      ? nutritionLabelRows(nutritionRes.result.perServing).map((r) => ({
+          key: r.key,
+          rounded: r.rounded,
+          lessThan: r.lessThan,
+          dvPercent: r.dvPercent,
+        }))
+      : null,
+    servingGrams: nutritionRes?.servingGrams ?? null,
+    lines: (nutritionRes?.lines ?? []).map((l) => ({
+      ingredientId: l.ingredientId,
+      ingredientName: l.ingredientName,
+      edibleWeightGrams: l.edibleWeightGrams,
+      profile: l.profile
+        ? {
+            source: l.profile.source,
+            sourceDescription: l.profile.sourceDescription,
+            brandOwner: l.profile.brandOwner,
+            fdcId: l.profile.fdcId,
+            values: l.profile.values,
+          }
+        : null,
+    })),
+    allergens: {
+      contains: allergenRollup.allergens
+        .filter((a) => a.effectivePresence === 'contains')
+        .map((a) => a.allergen),
+      mayContain: allergenRollup.allergens
+        .filter((a) => a.effectivePresence === 'may_contain')
+        .map((a) => a.allergen),
+    },
+    canEdit: workspaceRole === 'manager',
+  };
+
   // Manager-only cost summary from the shared resolver (kitchen: null).
   let cost: WorkspaceClientData['cost'] = null;
   if (dto.role === 'manager') {
@@ -422,6 +469,7 @@ export async function RecipeWorkspacePage({
     cost,
     currency: settings.currency,
     uom,
+    nutrition,
   };
 
   return (

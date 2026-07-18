@@ -67,6 +67,8 @@
     "WORKSPACE_DRAFT_INVALID": "The recipe draft is no longer valid — reload and retry.",
     "PREP_ACTION_IN_USE": "This prep action is used by recipe lines. Remove it from those lines first.",
     "PORTION_OPTION_LIMIT_REACHED": "This recipe has reached its portion option limit. Remove one before adding another.",
+    "USDA_NOT_CONFIGURED": "USDA search is not configured. Enter nutrition values manually instead.",
+    "USDA_UNAVAILABLE": "The USDA food database is unavailable right now. Try again later or enter values manually.",
     "INVALID_INPUT": "Please check the values and try again.",
     "NOT_FOUND": "That item could not be found. It may have been removed.",
     "DUPLICATE_NAME": "Something with that name already exists.",
@@ -884,7 +886,82 @@
           "empty": "No portion options yet. Add one to price this recipe."
         }
       },
-      "comingSoon": "Coming soon in Recipes 2.0."
+      "comingSoon": "Coming soon in Recipes 2.0.",
+      "nutrition": {
+        "statusComplete": "Nutrition is complete — every ingredient has a profile and a resolvable weight.",
+        "statusIncomplete": "Nutrition is incomplete (estimated). Fix these to finish the label:",
+        "issue": {
+          "NO_PROFILE": "{name} has no nutrition profile yet.",
+          "NO_WEIGHT_EQUIVALENCY": "{name} has no weight equivalency — its amount can't be converted to grams.",
+          "SUBRECIPE_INCOMPLETE": "Sub-recipe {name} has incomplete nutrition.",
+          "NO_NUTRITION_SERVING": "No nutrition serving is set for {name}."
+        },
+        "issueGeneric": {
+          "NO_PROFILE": "An ingredient has no nutrition profile yet.",
+          "NO_WEIGHT_EQUIVALENCY": "A line can't be converted to grams.",
+          "SUBRECIPE_INCOMPLETE": "A sub-recipe has incomplete nutrition.",
+          "NO_NUTRITION_SERVING": "No nutrition serving is set. Mark a portion option as \"Use for nutrition\" on the Cost tab, or set a serving on the recipe."
+        },
+        "factsTitle": "Nutrition Facts",
+        "servingSize": "Serving size ≈ {grams} g",
+        "servingUnknown": "Serving size not set",
+        "noServing": "Set a nutrition serving to preview per-serving values.",
+        "disclaimer": "Estimated from ingredient data (USDA FoodData Central and custom entries). Not a substitute for laboratory analysis and not a claim of regulatory compliance.",
+        "print": "Print label",
+        "printDraft": "Print draft (estimated)",
+        "allergens": {
+          "contains": "Contains",
+          "mayContain": "May contain",
+          "none": "None recorded."
+        },
+        "ingredientsTitle": "Ingredient nutrition",
+        "table": {
+          "ingredient": "Ingredient",
+          "weight": "Nutritional weight",
+          "source": "Source",
+          "custom": "Custom",
+          "missing": "No profile",
+          "edit": "Edit",
+          "add": "Add"
+        },
+        "nutrients": {
+          "caloriesKcal": "Calories",
+          "totalFatG": "Total fat",
+          "saturatedFatG": "Saturated fat",
+          "transFatG": "Trans fat",
+          "cholesterolMg": "Cholesterol",
+          "sodiumMg": "Sodium",
+          "totalCarbohydrateG": "Total carbohydrate",
+          "dietaryFiberG": "Dietary fiber",
+          "totalSugarsG": "Total sugars",
+          "addedSugarsG": "Added sugars",
+          "proteinG": "Protein",
+          "vitaminDMcg": "Vitamin D",
+          "calciumMg": "Calcium",
+          "ironMg": "Iron",
+          "potassiumMg": "Potassium",
+          "caffeineMg": "Caffeine"
+        },
+        "editor": {
+          "title": "Update ingredient nutrition — {name}",
+          "usdaTab": "USDA search",
+          "customTab": "Custom",
+          "refresh": "Refresh from source",
+          "usdaNotConfigured": "USDA search is not configured on this server — enter values manually.",
+          "common": "Common",
+          "branded": "Branded",
+          "searchPlaceholder": "Search foods…",
+          "search": "Search",
+          "searching": "Searching…",
+          "noResults": "No foods found. Try a different search or enter values manually.",
+          "attribution": "Food data from USDA FoodData Central (public domain, CC0).",
+          "customHint": "Values per 100 g of edible ingredient. Leave a field empty when unknown — empty means unknown, never zero.",
+          "invalidValue": "Nutrient values must be non-negative numbers.",
+          "cancel": "Cancel",
+          "save": "Save",
+          "saving": "Saving…"
+        }
+      }
     },
     "title": "Recipes",
     "subtitle": "Build a recipe, see what it really costs, and price it with confidence.",

@@ -90,8 +90,8 @@ export type MethodSectionView = {
  * Right-panel tab shell (plan §5/§9.2): the active tab is URL state managed by
  * the parent; switching tabs never unmounts the workspace. Cost is rendered
  * ONLY when the server shipped cost data (manager) — the kitchen payload
- * carries none, and the tab shows a managers-only note. Nutrition and UoM are
- * placeholders until Fases 4/6.
+ * carries none, and the tab shows a managers-only note. Nutrition (Fase 6) and
+ * UoM (Fase 4) render the panels the parent injects.
  */
 export function RecipeWorkspaceTabs({
   tab,
@@ -99,6 +99,7 @@ export function RecipeWorkspaceTabs({
   methodSections,
   methodEditor,
   uomPanel,
+  nutritionPanel,
   legacyNotes,
   cost,
   factor,
@@ -113,6 +114,8 @@ export function RecipeWorkspaceTabs({
   methodEditor?: React.ReactNode;
   /** UoM Equivalency panel (Fase 4) — rendered when the tab is active. */
   uomPanel?: React.ReactNode;
+  /** Nutrition panel (Fase 6) — rendered when the tab is active. */
+  nutritionPanel?: React.ReactNode;
   legacyNotes: string | null;
   /** null = kitchen (never shipped); `incomplete` = tree unresolvable. */
   cost: WorkspaceCostView;
@@ -171,7 +174,9 @@ export function RecipeWorkspaceTabs({
           ))
         ) : null}
         {tab === 'nutrition' ? (
-          <p className="text-sm text-muted-foreground">{t('comingSoon')}</p>
+          (nutritionPanel ?? (
+            <p className="text-sm text-muted-foreground">{t('comingSoon')}</p>
+          ))
         ) : null}
       </div>
     </div>

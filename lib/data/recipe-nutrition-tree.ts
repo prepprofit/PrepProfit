@@ -15,6 +15,7 @@ import { MAX_COMPONENT_DEPTH } from '@/lib/calculations/production';
 import {
   nutritionServingFraction,
   recipeNutrition,
+  type NutrientKey,
   type NutritionComponent,
   type NutritionLine,
   type RecipeNutritionResult,
@@ -54,6 +55,8 @@ export type NutritionLineView = {
     brandOwner: string | null;
     fdcId: number | null;
     refreshedAt: Date | null;
+    /** Per-100 g values — prefills the custom form in the edit dialog. */
+    values: Record<NutrientKey, number | null>;
   } | null;
 };
 
@@ -245,15 +248,8 @@ export async function resolveRecipeNutritionTree(
     }
 
     const profile = profiles.get(r.ingredientId) ?? null;
-    const entry = {
-      input: {
-        ingredientId: r.ingredientId,
-        ingredientName: r.ingredientName,
-        edibleWeightGrams: grams,
-        profile: profile
-          ? {
-              basisGrams: profile.basisGrams,
-              values: {
+    const profileValues: Record<NutrientKey, number | null> | null = profile
+      ? {
                 caloriesKcal: profile.caloriesKcal,
                 totalFatG: profile.totalFatG,
                 saturatedFatG: profile.saturatedFatG,
@@ -269,24 +265,34 @@ export async function resolveRecipeNutritionTree(
                 calciumMg: profile.calciumMg,
                 ironMg: profile.ironMg,
                 potassiumMg: profile.potassiumMg,
-                caffeineMg: profile.caffeineMg,
-              },
-            }
-          : null,
+          caffeineMg: profile.caffeineMg,
+        }
+      : null;
+    const entry = {
+      input: {
+        ingredientId: r.ingredientId,
+        ingredientName: r.ingredientName,
+        edibleWeightGrams: grams,
+        profile:
+          profile && profileValues
+            ? { basisGrams: profile.basisGrams, values: profileValues }
+            : null,
       } satisfies NutritionLine,
       view: {
         ingredientId: r.ingredientId,
         ingredientName: r.ingredientName,
         edibleWeightGrams: grams,
-        profile: profile
-          ? {
-              source: profile.source,
-              sourceDescription: profile.sourceDescription,
-              brandOwner: profile.brandOwner,
-              fdcId: profile.fdcId,
-              refreshedAt: profile.refreshedAt,
-            }
-          : null,
+        profile:
+          profile && profileValues
+            ? {
+                source: profile.source,
+                sourceDescription: profile.sourceDescription,
+                brandOwner: profile.brandOwner,
+                fdcId: profile.fdcId,
+                refreshedAt: profile.refreshedAt,
+                values: profileValues,
+              }
+            : null,
       } satisfies NutritionLineView,
     };
     const list = linesByRecipe.get(r.recipeId);

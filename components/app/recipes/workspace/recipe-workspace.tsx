@@ -30,6 +30,10 @@ import {
   type WorkspaceTab,
 } from './recipe-workspace-tabs';
 import { RecipeUomTab, type UomTabItem } from './recipe-uom-tab';
+import {
+  RecipeNutritionTab,
+  type NutritionTabData,
+} from './recipe-nutrition-tab';
 
 /**
  * Serializable workspace payload the Server Component ships to this client
@@ -65,6 +69,8 @@ export type WorkspaceClientData = {
   currency: string;
   /** UoM tab data (Fase 4) — operational, both roles. */
   uom: UomTabItem[];
+  /** Nutrition tab data (Fase 6) — operational, both roles; edit = manager. */
+  nutrition: NutritionTabData;
 };
 
 const TABS: WorkspaceTab[] = ['method', 'cost', 'nutrition', 'uom'];
@@ -480,6 +486,12 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
               ) : null
             }
             uomPanel={<RecipeUomTab items={data.uom} />}
+            nutritionPanel={
+              <RecipeNutritionTab
+                recipeId={data.recipe.id}
+                data={data.nutrition}
+              />
+            }
             legacyNotes={data.recipe.notes}
             cost={data.cost}
             factor={factor}
