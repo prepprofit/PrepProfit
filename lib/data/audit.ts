@@ -274,6 +274,12 @@ export type AuditAction =
   | 'recipe.portionOptionDelete'
   | 'recipe.portionOptionSetDefault'
   | 'recipe.portionOptionSetNutritionServing'
+  // Ingredient nutrition profiles (Fase 6, §6.7, manager-only). `nutritionSave`
+  // = manual save (USDA selection or custom); `nutritionRefresh` = explicit
+  // "Refresh from source". metadata = ingredientId, source, fdcId only — NEVER
+  // nutrient values.
+  | 'ingredient.nutritionSave'
+  | 'ingredient.nutritionRefresh'
   // Recipe media lifecycle (Fase 3, plan §6.4). `recipe.mediaUpload` = an
   // uploaded object was validated and confirmed `ready`; `recipe.mediaReject` =
   // confirm validation failed; `recipe.mediaDelete` = soft delete requested.

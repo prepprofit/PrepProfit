@@ -240,6 +240,12 @@ export type ActionErrorCode =
   // Recipes 2.0 Fase 5: the recipe reached its portion-option cap — remove one
   // before adding another.
   | 'PORTION_OPTION_LIMIT_REACHED'
+  // Recipes 2.0 Fase 6: USDA_FDC_API_KEY is not set — USDA search is disabled
+  // and only custom nutrition profiles can be saved (owner decision D1).
+  | 'USDA_NOT_CONFIGURED'
+  // Recipes 2.0 Fase 6: the USDA FoodData Central API errored/timed out or
+  // returned an unparseable payload. Try again later; custom entry still works.
+  | 'USDA_UNAVAILABLE'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =
