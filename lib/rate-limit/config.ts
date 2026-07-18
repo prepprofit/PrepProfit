@@ -91,6 +91,10 @@ export const RATE_LIMITS = {
   // Recipe-media cleanup cron (Fase 3). Keyed by a hash of the cron auth header
   // like the other cron buckets. Generous ceiling — only abusive retries trip it.
   mediaSweep: { limit: 5, windowMs: MINUTE },
+  // USDA FoodData Central search/detail (Recipes 2.0 Fase 6). Per org+user;
+  // each hit calls the external USDA API (free but externally rate-limited per
+  // key), so keep an interactive-but-modest budget to protect the shared key.
+  usdaSearch: { limit: 20, windowMs: MINUTE },
   // GDPR account data export (Sprint 5e). TIGHT: reads every business table and
   // serialises the whole org, so it is the heaviest read in the app — a small
   // per-org+user budget is plenty for a legitimate portability request.

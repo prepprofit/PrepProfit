@@ -203,6 +203,24 @@ export function aiEnv(): AiEnv {
 }
 
 /**
+ * USDA FoodData Central config (Recipes 2.0 Fase 6). Validated on its OWN
+ * narrow schema, read only on the nutrition-search path — deliberately NOT part
+ * of `serverEnvSchema`, so a missing key never affects unrelated pages: the
+ * nutrition modal simply reports `USDA_NOT_CONFIGURED` and only allows custom
+ * profiles (owner decision D1 — the product launches Europe-first, so the key
+ * is optional). The key is a secret: never logged, never sent to the client.
+ */
+const usdaEnvSchema = z.object({
+  USDA_FDC_API_KEY: z.string().min(1),
+});
+
+/** The USDA config, or `null` when unconfigured (caller maps to a stable code). */
+export function usdaEnv(): { apiKey: string } | null {
+  const parsed = usdaEnvSchema.safeParse(process.env);
+  return parsed.success ? { apiKey: parsed.data.USDA_FDC_API_KEY } : null;
+}
+
+/**
  * Public app base URL for absolute email links/assets (React Email migration).
  * Read only when composing an email — deliberately NOT part of `serverEnvSchema`,
  * so a missing/invalid value never crashes an unrelated page; the email templates
