@@ -73,7 +73,13 @@ export type WorkspaceClientData = {
   nutrition: NutritionTabData;
 };
 
-const TABS: WorkspaceTab[] = ['method', 'cost', 'nutrition', 'uom'];
+const TABS: WorkspaceTab[] = [
+  'method',
+  'cost',
+  'nutrition',
+  'uom',
+  'allergens',
+];
 
 /**
  * Recipes 2.0 workspace root (plan §8/§9): split view, `?tab=`/`?mode=` as URL
@@ -85,8 +91,7 @@ export function RecipeWorkspace({
   allergenPanel,
 }: {
   data: WorkspaceClientData;
-  /** Operational allergen panel (Sprint 9) — rendered in the right column,
-      inside the tabbed block so the sticky tab bar travels across it. */
+  /** Operational allergen panel (Sprint 9) — rendered as its own tab. */
   allergenPanel?: React.ReactNode;
 }) {
   const t = useTranslations('recipes.workspace');

@@ -796,7 +796,8 @@
         "method": "Prep Method",
         "cost": "Cost",
         "nutrition": "Nutrition",
-        "uom": "UoM Equivalency"
+        "uom": "UoM Equivalency",
+        "allergens": "Allergens"
       },
       "uom": {
         "empty": "No ingredients yet — add lines first, then define their unit equivalencies here.",
