@@ -66,6 +66,14 @@ mestre `docs/recipes-meez-parity-senior-plan.md`.
 - atualização de consumidores legados; cohort rollout + remoção do fallback.
 - Plan-first: fazer plano próprio antes de código.
 
+## 3b. Feature pedida pelo owner (fora da Fase 7, sessão própria)
+
+- **Catálogo seed de ingredientes comuns**: lista pesquisável (~milhares) para o
+  user criar ingredientes sem começar do zero no onboarding. NÃO confundir com a
+  busca USDA de nutrição (já entregue): isto cria o INGREDIENTE (nome, dimensão,
+  alergénios típicos; `priceCents = 0` + `needsPricing = true` — preço nunca vem
+  do catálogo). Plan-first; ver prompt no handoff da sessão que o owner guardou.
+
 ## 4. Pendências fora da Fase 7
 
 - Rótulo EU 1169/2011 (produto foca Europa) — follow-up anotado na D2.
