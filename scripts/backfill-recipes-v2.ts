@@ -1,5 +1,5 @@
-import { createClerkClient } from '@clerk/backend';
-import { withOrg } from '../lib/db';
+import { getDb, withOrg } from '../lib/db';
+import { listRecipeOrgIds } from '../lib/db/org-enumeration';
 import {
   backfillRecipesV2ForOrg,
   type RecipesV2BackfillStats,
@@ -9,12 +9,15 @@ import {
  * Recipes 2.0 backfill driver (Meez-parity plan, Release A) — folders → books,
  * folder memberships → book entries, chef-facing yield from portions, and the
  * "Default serving" portion option. Run with: `npm run backfill:recipes-v2`
- * (all orgs via Clerk) or `BACKFILL_ORG=org_xxx npm run backfill:recipes-v2`
- * (one org).
+ * (every org that has recipe data, enumerated FROM THE DATABASE) or
+ * `BACKFILL_ORG=org_xxx npm run backfill:recipes-v2` (one org).
+ *
+ * Org discovery is DB-driven (not Clerk): the Neon owner role bypasses RLS, so
+ * `listRecipeOrgIds` sees every org's data. This closes the gap where a
+ * mismatched CLERK_SECRET_KEY made the backfill cover only some prod orgs.
  *
  * The per-org transform (idempotent) lives in lib/data/recipes-v2-backfill.ts.
- * This driver is RLS-SAFE: it fans out over Clerk orgs and runs each inside
- * `withOrg` (the same pattern as scripts/backfill-suppliers.ts).
+ * This driver is RLS-SAFE: it runs each org inside `withOrg`.
  */
 
 function loadEnv() {
@@ -25,8 +28,6 @@ function loadEnv() {
   }
 }
 
-const PAGE_SIZE = 100;
-
 async function main() {
   loadEnv();
   if (!process.env.DATABASE_URL) {
@@ -34,6 +35,16 @@ async function main() {
   }
 
   const single = process.env.BACKFILL_ORG ?? process.argv[2];
+  const orgIds = single ? [single] : await listRecipeOrgIds(getDb());
+
+  if (orgIds.length === 0) {
+    console.error(
+      '✗ No orgs found with recipe data. If the DB is not empty, the role ' +
+        'cannot read across orgs (BYPASSRLS required) — aborting.',
+    );
+    process.exit(1);
+  }
+
   const totals: RecipesV2BackfillStats & { orgs: number } = {
     orgs: 0,
     booksCreated: 0,
@@ -41,44 +52,16 @@ async function main() {
     yieldsBackfilled: 0,
     portionOptionsCreated: 0,
   };
-  const accumulate = (s: RecipesV2BackfillStats) => {
+
+  console.log(`▶ Backfilling Recipes 2.0 data for ${orgIds.length} org(s)...`);
+  for (const orgId of orgIds) {
+    const s = await withOrg(orgId, (tx) => backfillRecipesV2ForOrg(tx, orgId));
     totals.orgs += 1;
     totals.booksCreated += s.booksCreated;
     totals.membershipsCreated += s.membershipsCreated;
     totals.yieldsBackfilled += s.yieldsBackfilled;
     totals.portionOptionsCreated += s.portionOptionsCreated;
-  };
-
-  if (single) {
-    console.log(`▶ Backfilling Recipes 2.0 data for ${single}...`);
-    accumulate(
-      await withOrg(single, (tx) => backfillRecipesV2ForOrg(tx, single)),
-    );
-  } else {
-    console.log('▶ Backfilling Recipes 2.0 data for every Clerk org...');
-    const secretKey = process.env.CLERK_SECRET_KEY;
-    if (!secretKey) {
-      throw new Error(
-        'CLERK_SECRET_KEY is not set — needed to enumerate orgs (or pass BACKFILL_ORG=org_xxx).',
-      );
-    }
-    const client = createClerkClient({ secretKey });
-    let offset = 0;
-    for (;;) {
-      const { data, totalCount } =
-        await client.organizations.getOrganizationList({
-          limit: PAGE_SIZE,
-          offset,
-        });
-      if (data.length === 0) break;
-      for (const org of data) {
-        accumulate(
-          await withOrg(org.id, (tx) => backfillRecipesV2ForOrg(tx, org.id)),
-        );
-      }
-      offset += data.length;
-      if (offset >= totalCount) break;
-    }
+    console.log(`  ${orgId}:`, s);
   }
 
   console.log('✓ Recipes 2.0 backfill complete:', totals);
