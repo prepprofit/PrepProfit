@@ -72,8 +72,12 @@ mestre `docs/recipes-meez-parity-senior-plan.md`.
   (0 alterações) + verify (limpo) em prod → fallback `?? selling_price_cents`
   removido de todos os consumidores. Option é a fonte única do preço; legado
   ainda escrito+espelhado, só não lido (D3: drop = migração futura).
-- ⚠️ Aberto: verify enumerou só 1 org — confirmar universo prod. Eyeball da
-  UI nova em prod (manager+kitchen) pendente (sem preview esta sessão).
+- ✅ Hardening (`166726b`): verify/backfill enumeram as orgs pela DB
+  (`lib/db/org-enumeration.ts`), não pelo Clerk — o `.env.local` tinha a chave
+  Clerk de outra instância e só via 1 das 2 orgs. Re-verify: paridade LIMPA
+  nas 2 orgs (incl. a do Gui), portanto a remoção do fallback era segura.
+- ⚠️ Aberto: eyeball da UI nova em prod (manager+kitchen) — sem preview esta
+  sessão.
 - **Fase 7 COMPLETA — Recipes 2.0 é a experiência padrão.**
 
 ## 3b. Catálogo seed de ingredientes — ✅ DONE 2026-07-19 (não refazer)

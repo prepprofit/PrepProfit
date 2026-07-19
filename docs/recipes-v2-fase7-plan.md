@@ -16,9 +16,15 @@ apenas deixou de ser LIDA. Delta vs plano: o Slice 5 já estava maioritariamente
 feito na Fase 5 (todos os LEITORES usavam o helper); o trabalho foi a ESCRITA
 (default option em todo o createRecipe + mirror de preço alterado no
 updateRecipe). Fix colateral: isForeignKey/isUniqueViolation agora percorrem a
-cause chain do DrizzleQueryError. ⚠️ verify enumerou só 1 org — confirmar com
-o owner que é mesmo o universo prod completo. Gate final: 1876 pass/35 skip +
-build OK.
+cause chain do DrizzleQueryError.
+
+**Hardening pós-6b (`166726b`):** o verify/backfill enumeravam via Clerk e só
+viam 1 das 2 orgs de prod (o `CLERK_SECRET_KEY` do `.env.local` é de outra
+instância que o `DATABASE_URL`). Passaram a enumerar direto da DB
+(`lib/db/org-enumeration.ts`, union recipes/folders/options; `neondb_owner`
+tem BYPASSRLS). Re-verify em prod: **paridade LIMPA nas 2 orgs** (incl. a do
+Gui) — a remoção do fallback era segura para ambas. Gate final: 1877 pass/35
+skip + build OK.
 
 Decisões aprovadas 2026-07-19:
 D1 = toggle tabela/cards (tabela default, cards preservados);
