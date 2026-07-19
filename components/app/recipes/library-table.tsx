@@ -59,11 +59,88 @@ export function LibraryTable({
     [books],
   );
 
-  const q = query.trim().toLowerCase();
-  const visibleRows = React.useMemo(
-    () => (q ? rows.filter((r) => r.name.toLowerCase().includes(q)) : rows),
-    [rows, q],
+  // ── Filters (Fase 7 Slice 3, parity with `Nutrition and label/6.png`) ──
+  // Allergen filter: ANY selected slug present (contains OR may-contain).
+  // Status filter: ANY selected flag set. Groups AND together with search.
+  const [allergenFilter, setAllergenFilter] = React.useState<Set<string>>(
+    new Set(),
   );
+  const [statusFilter, setStatusFilter] = React.useState<Set<string>>(
+    new Set(),
+  );
+
+  // Only allergens actually present in the current view are offered, each with
+  // its contains / may-contain recipe counts.
+  const allergenOptions = React.useMemo(() => {
+    const counts = new Map<string, { contains: number; mayContain: number }>();
+    for (const row of rows) {
+      for (const chip of row.allergens) {
+        const entry = counts.get(chip.allergen) ?? { contains: 0, mayContain: 0 };
+        if (chip.presence === 'contains') entry.contains += 1;
+        else entry.mayContain += 1;
+        counts.set(chip.allergen, entry);
+      }
+    }
+    return [...counts.entries()].map(([allergen, c]) => ({ allergen, ...c }));
+  }, [rows]);
+
+  const statusOptions = React.useMemo(() => {
+    const flagOf = (row: LibraryTableRow, key: string): boolean => {
+      if (key === 'allergensUnreviewed') return row.status.allergensUnreviewed;
+      if (key === 'nutritionIncomplete') return row.status.nutritionIncomplete;
+      if (key === 'noBook') return row.status.noBook;
+      if (key === 'needsPricing') return row.money?.needsPricing === true;
+      if (key === 'noSellingPrice') {
+        return row.money !== undefined && row.money.sellingPriceCents == null;
+      }
+      return false;
+    };
+    // Financial statuses exist only when the payload carries money (manager).
+    const keys = [
+      'allergensUnreviewed',
+      'nutritionIncomplete',
+      'noBook',
+      ...(showMoney ? ['needsPricing', 'noSellingPrice'] : []),
+    ];
+    return keys.map((key) => ({
+      key,
+      count: rows.filter((r) => flagOf(r, key)).length,
+      flagOf,
+    }));
+  }, [rows, showMoney]);
+
+  const toggleIn = (
+    set: Set<string>,
+    value: string,
+    apply: (next: Set<string>) => void,
+  ) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    apply(next);
+  };
+
+  const q = query.trim().toLowerCase();
+  const visibleRows = React.useMemo(() => {
+    const statusFlag = statusOptions[0]?.flagOf;
+    return rows.filter((r) => {
+      if (q && !r.name.toLowerCase().includes(q)) return false;
+      if (
+        allergenFilter.size > 0 &&
+        !r.allergens.some((chip) => allergenFilter.has(chip.allergen))
+      ) {
+        return false;
+      }
+      if (
+        statusFilter.size > 0 &&
+        statusFlag &&
+        ![...statusFilter].some((key) => statusFlag(r, key))
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [rows, q, allergenFilter, statusFilter, statusOptions]);
 
   const columns = React.useMemo<ColumnDef<LibraryTableRow>[]>(() => {
     const cols: ColumnDef<LibraryTableRow>[] = [
@@ -244,6 +321,70 @@ export function LibraryTable({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
+
+      {allergenOptions.length > 0 && (
+        <fieldset className="flex flex-wrap items-center gap-1.5">
+          <legend className="sr-only">{t('filters.allergens')}</legend>
+          <span aria-hidden className="text-xs font-medium text-muted-foreground">
+            {t('filters.allergens')}
+          </span>
+          {allergenOptions.map((option) => {
+            const selected = allergenFilter.has(option.allergen);
+            return (
+              <button
+                key={option.allergen}
+                type="button"
+                aria-pressed={selected}
+                title={t('filters.allergenCounts', {
+                  contains: option.contains,
+                  mayContain: option.mayContain,
+                })}
+                onClick={() =>
+                  toggleIn(allergenFilter, option.allergen, setAllergenFilter)
+                }
+                className={cn(
+                  'cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors',
+                  selected
+                    ? 'border-accent-700 bg-accent-50 font-medium text-accent-700 dark:border-accent-300 dark:bg-accent-500/15 dark:text-accent-300'
+                    : 'border-border text-muted-foreground hover:bg-surface-2 hover:text-foreground',
+                )}
+              >
+                {tAllergens(`labels.${option.allergen}`)}
+                <span className="ml-1 tabular-nums opacity-70">
+                  {option.contains + option.mayContain}
+                </span>
+              </button>
+            );
+          })}
+        </fieldset>
+      )}
+
+      <fieldset className="flex flex-wrap items-center gap-1.5">
+        <legend className="sr-only">{t('filters.status')}</legend>
+        <span aria-hidden className="text-xs font-medium text-muted-foreground">
+          {t('filters.status')}
+        </span>
+        {statusOptions.map((option) => {
+          const selected = statusFilter.has(option.key);
+          return (
+            <button
+              key={option.key}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => toggleIn(statusFilter, option.key, setStatusFilter)}
+              className={cn(
+                'cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors',
+                selected
+                  ? 'border-accent-700 bg-accent-50 font-medium text-accent-700 dark:border-accent-300 dark:bg-accent-500/15 dark:text-accent-300'
+                  : 'border-border text-muted-foreground hover:bg-surface-2 hover:text-foreground',
+              )}
+            >
+              {t(`status.${option.key}`)}
+              <span className="ml-1 tabular-nums opacity-70">{option.count}</span>
+            </button>
+          );
+        })}
+      </fieldset>
 
       <Card className="overflow-x-auto p-0">
         <table className="w-full min-w-[40rem] text-sm">

@@ -1236,6 +1236,11 @@
       "searchPlaceholder": "Search recipes...",
       "empty": "No recipes in this view.",
       "portions": "{count, plural, one {# portion} other {# portions}}",
+      "filters": {
+        "allergens": "Allergens:",
+        "status": "Status:",
+        "allergenCounts": "Contains: {contains} · May contain: {mayContain}"
+      },
       "columns": {
         "name": "Recipe",
         "books": "Books",
