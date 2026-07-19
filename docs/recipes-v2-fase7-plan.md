@@ -5,16 +5,20 @@ Fonte de âmbito: plano mestre `docs/recipes-meez-parity-senior-plan.md` §16 (F
 (biblioteca em tabela), `Recipes/2.png` (Recipe Books), `Nutrition and label/6.png`
 (filtro por alergénico com contagem e busca).
 
-Status: IMPLEMENTADO 2026-07-19 (Slices 1–6a, commits `7c6c4e8..3052943` em
-`main`; SEM migração nova). **PENDENTE (Slice 6b, gated no owner):** correr em
-prod `npm run backfill:recipes-v2` (idempotente) + `npm run verify:recipes-v2`
-até exit 0 em todas as orgs → só então remover o fallback
-`?? recipes.selling_price_cents` em `loadDefaultPortionPrices` e o
-write-through do editor legado. Delta vs plano: o Slice 5 já estava
-maioritariamente feito na Fase 5 (todos os LEITORES usam o helper); o
-trabalho foi o lado da ESCRITA (default option em todo o createRecipe +
-mirror de preço alterado no updateRecipe). Fix colateral: isForeignKey/
-isUniqueViolation agora percorrem a cause chain do DrizzleQueryError.
+Status: ✅ COMPLETO 2026-07-19 (Slices 1–6b, commits `7c6c4e8..3808c8e` em
+`main`, PUSHADO; SEM migração nova). O owner correu em prod
+`npm run backfill:recipes-v2` (idempotente, 0 alterações → já conforme) +
+`npm run verify:recipes-v2` (paridade limpa) e o Slice 6b removeu o fallback
+`?? recipes.selling_price_cents` de TODOS os consumidores — a default portion
+option é agora a fonte única do preço. `recipes.selling_price_cents` continua
+a ser escrita+espelhada (D3: drop físico = migração futura fora da Fase 7),
+apenas deixou de ser LIDA. Delta vs plano: o Slice 5 já estava maioritariamente
+feito na Fase 5 (todos os LEITORES usavam o helper); o trabalho foi a ESCRITA
+(default option em todo o createRecipe + mirror de preço alterado no
+updateRecipe). Fix colateral: isForeignKey/isUniqueViolation agora percorrem a
+cause chain do DrizzleQueryError. ⚠️ verify enumerou só 1 org — confirmar com
+o owner que é mesmo o universo prod completo. Gate final: 1876 pass/35 skip +
+build OK.
 
 Decisões aprovadas 2026-07-19:
 D1 = toggle tabela/cards (tabela default, cards preservados);
