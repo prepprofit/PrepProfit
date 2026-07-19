@@ -8,7 +8,7 @@ import { unexpected } from '@/lib/observability';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { auditActor } from '@/lib/data/audit';
 import {
-  getUsdaProfileIdentity,
+  getProfileIdentity,
   upsertNutritionProfile,
   type UpsertNutritionProfileInput,
 } from '@/lib/data/ingredient-nutrition';
@@ -63,18 +63,34 @@ export async function searchUsdaFoodsAction(
   }
 }
 
-/** Map a fetched USDA food onto the profile upsert contract. */
+/**
+ * Map a fetched USDA food onto the provider-neutral profile upsert contract.
+ * DUAL-WRITE: fills BOTH the legacy `fdc*` identity and the generic
+ * `externalId`/`externalSourceType` (plan §6.2). USDA is always per 100 g.
+ */
 function usdaFoodToProfileInput(food: UsdaFood): UpsertNutritionProfileInput {
   const published = food.publishedDate ? new Date(food.publishedDate) : null;
   return {
     source: 'usda',
-    fdcId: food.fdcId,
-    fdcDataType: food.dataType,
+    externalId: food.fdcId.toString(),
+    externalSourceType: food.dataType,
+    barcode: null,
+    sourceCountry: null,
+    sourceLanguage: null,
+    sourceRevision: null,
+    normalizationVersion: null,
+    sourcePayloadHash: null,
+    qualityStatus: null,
+    qualityWarnings: null,
     sourceDescription: food.description,
     brandOwner: food.brandOwner,
     sourceUpdatedAt:
       published && !Number.isNaN(published.getTime()) ? published : null,
+    basisGrams: 100,
+    saltG: null,
     values: food.nutrientsPer100g,
+    fdcId: food.fdcId,
+    fdcDataType: food.dataType,
   };
 }
 
@@ -110,12 +126,24 @@ export async function saveIngredientNutritionAction(
     } else {
       profileInput = {
         source: 'custom',
-        fdcId: null,
-        fdcDataType: null,
+        externalId: null,
+        externalSourceType: null,
+        barcode: null,
+        sourceCountry: null,
+        sourceLanguage: null,
+        sourceRevision: null,
+        normalizationVersion: null,
+        sourcePayloadHash: null,
+        qualityStatus: null,
+        qualityWarnings: null,
         sourceDescription: null,
         brandOwner: null,
         sourceUpdatedAt: null,
+        basisGrams: 100,
+        saltG: null,
         values: parsed.data.values,
+        fdcId: null,
+        fdcDataType: null,
       };
     }
 
@@ -143,9 +171,13 @@ export async function refreshIngredientNutritionAction(
     const ingredientId = parsed.data.ingredientId;
 
     const identity = await withOrg(organizationId, (tx) =>
-      getUsdaProfileIdentity(tx, organizationId, ingredientId),
+      getProfileIdentity(tx, organizationId, ingredientId),
     );
-    if (!identity) return { ok: false, code: 'NOT_FOUND' };
+    // Refresh dispatches by the stored provider identity (plan §14). Open Food
+    // Facts refresh is wired in a later slice; USDA is handled here.
+    if (!identity || identity.provider !== 'usda') {
+      return { ok: false, code: 'NOT_FOUND' };
+    }
 
     const userId = await getUserId();
     const limit = await enforceRateLimit(

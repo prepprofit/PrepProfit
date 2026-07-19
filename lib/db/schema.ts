@@ -372,10 +372,38 @@ export const ingredientNutritionProfiles = pgTable(
     id: id(),
     organizationId: orgId(),
     ingredientId: text('ingredient_id').notNull(),
-    source: text('source', { enum: ['usda', 'custom'] }).notNull(),
-    // USDA FoodData Central identifiers (NULL for custom profiles).
+    source: text('source', {
+      enum: ['usda', 'open_food_facts', 'custom'],
+    }).notNull(),
+    // USDA FoodData Central identifiers (NULL for custom profiles). Kept for
+    // backward compatibility during the Open Food Facts migration; the generic
+    // identity below (`external_source_id`/`external_source_type`) is the source
+    // of truth going forward and a later cleanup PR removes these two.
     fdcId: integer('fdc_id'),
     fdcDataType: text('fdc_data_type'),
+    // Provider-neutral identity (Open Food Facts integration plan §6.1). For a
+    // USDA profile this is `fdc_id::text`; for Open Food Facts it is the
+    // normalized GTIN (a STRING, so leading zeroes survive). `external_source_type`
+    // is the USDA data type or a provider-specific subtype.
+    externalSourceId: text('external_source_id'),
+    externalSourceType: text('external_source_type'),
+    // Normalized product code (barcode providers only; NULL for USDA/custom).
+    barcode: text('barcode'),
+    // Market/relevance context of the lookup — NOT manufacturing origin.
+    sourceCountry: text('source_country'),
+    sourceLanguage: text('source_language'),
+    // Provider revision string, when available (e.g. Open Food Facts `rev`).
+    sourceRevision: text('source_revision'),
+    // Version of PrepProfit's mapping/derivation logic that produced this row.
+    normalizationVersion: integer('normalization_version'),
+    // Debug/audit identity of the source body WITHOUT storing the raw payload.
+    sourcePayloadHash: text('source_payload_hash'),
+    // Snapshot quality classification (Open Food Facts plan §11).
+    qualityStatus: text('quality_status', {
+      enum: ['complete', 'partial', 'rejected'],
+    }),
+    // Stable machine warning codes (never translated sentences).
+    qualityWarnings: jsonb('quality_warnings').$type<string[]>(),
     sourceDescription: text('source_description'),
     brandOwner: text('brand_owner'),
     // Reference mass the nutrient columns describe (per-100 g contract).
@@ -402,6 +430,9 @@ export const ingredientNutritionProfiles = pgTable(
     ironMg: numeric('iron_mg', { precision: 12, scale: 4, mode: 'number' }),
     potassiumMg: numeric('potassium_mg', { precision: 12, scale: 4, mode: 'number' }),
     caffeineMg: numeric('caffeine_mg', { precision: 12, scale: 4, mode: 'number' }),
+    // European salt value per profile basis (g). Kept alongside `sodium_mg`
+    // (which drives the recipe calc) for label display; NULL = unknown.
+    saltG: numeric('salt_g', { precision: 12, scale: 4, mode: 'number' }),
     // When the SOURCE last changed its data / when we last pulled it.
     sourceUpdatedAt: timestamp('source_updated_at', { withTimezone: true }),
     refreshedAt: timestamp('refreshed_at', { withTimezone: true }),

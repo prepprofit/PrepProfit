@@ -302,6 +302,13 @@
       "when": 1784447892606,
       "tag": "0042_gifted_stark_industries",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1784488806786,
+      "tag": "0043_spotty_xorn",
+      "breakpoints": true
     }
   ]
 }

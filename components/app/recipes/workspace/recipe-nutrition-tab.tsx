@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { NUTRIENT_KEYS, type NutrientKey } from '@/lib/calculations/nutrition';
 import type { NutritionIssueReason } from '@/lib/calculations/nutrition';
+import type { NutritionSourceType } from '@/lib/external-food/types';
 import {
   refreshIngredientNutritionAction,
   saveIngredientNutritionAction,
@@ -46,7 +47,7 @@ export type NutritionLineRowView = {
    */
   suggestedFdcId: number | null;
   profile: {
-    source: 'usda' | 'custom';
+    source: NutritionSourceType;
     sourceDescription: string | null;
     brandOwner: string | null;
     fdcId: number | null;
@@ -260,9 +261,12 @@ export function RecipeNutritionTab({
                     <td className="py-1.5">
                       {line.profile ? (
                         <span className="text-xs">
-                          {line.profile.source === 'usda'
-                            ? (line.profile.sourceDescription ?? 'USDA')
-                            : t('table.custom')}
+                          {line.profile.source === 'custom'
+                            ? t('table.custom')
+                            : (line.profile.sourceDescription ??
+                              (line.profile.source === 'open_food_facts'
+                                ? 'Open Food Facts'
+                                : 'USDA'))}
                         </span>
                       ) : (
                         <span className="text-xs text-amber-700 dark:text-amber-300">

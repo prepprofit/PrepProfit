@@ -6,9 +6,10 @@ import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import { auditLog, ingredientNutritionProfiles, ingredients } from '@/lib/db/schema';
 import {
+  getProfileIdentity,
   getProfilesForIngredients,
-  getUsdaProfileIdentity,
   upsertNutritionProfile,
+  type UpsertNutritionProfileInput,
 } from '@/lib/data/ingredient-nutrition';
 import { NUTRIENT_KEYS, type NutrientKey } from '@/lib/calculations/nutrition';
 import type { AuditActor } from '@/lib/data/audit';
@@ -37,6 +38,33 @@ function values(v: number | null): Record<NutrientKey, number | null> {
   const out = {} as Record<NutrientKey, number | null>;
   for (const k of NUTRIENT_KEYS) out[k] = v;
   return out;
+}
+
+/** Build a provider-neutral upsert input with sensible nulls + overrides. */
+function profileInput(
+  overrides: Partial<UpsertNutritionProfileInput> &
+    Pick<UpsertNutritionProfileInput, 'source' | 'values'>,
+): UpsertNutritionProfileInput {
+  return {
+    externalId: null,
+    externalSourceType: null,
+    barcode: null,
+    sourceCountry: null,
+    sourceLanguage: null,
+    sourceRevision: null,
+    normalizationVersion: null,
+    sourcePayloadHash: null,
+    qualityStatus: null,
+    qualityWarnings: null,
+    sourceDescription: null,
+    brandOwner: null,
+    sourceUpdatedAt: null,
+    basisGrams: 100,
+    saltG: null,
+    fdcId: null,
+    fdcDataType: null,
+    ...overrides,
+  };
 }
 
 beforeAll(async () => {
@@ -79,15 +107,10 @@ describe('upsertNutritionProfile', () => {
         tx,
         ORG_A,
         ingredientAId,
-        {
+        profileInput({
           source: 'custom',
-          fdcId: null,
-          fdcDataType: null,
-          sourceDescription: null,
-          brandOwner: null,
-          sourceUpdatedAt: null,
           values: { ...values(null), caloriesKcal: 364, proteinG: 10.3 },
-        },
+        }),
         ACTOR,
       ),
     );
@@ -108,15 +131,16 @@ describe('upsertNutritionProfile', () => {
         tx,
         ORG_A,
         ingredientAId,
-        {
+        profileInput({
           source: 'usda',
+          externalId: '12345',
+          externalSourceType: 'Foundation',
           fdcId: 12345,
           fdcDataType: 'Foundation',
           sourceDescription: 'Wheat flour, whole-grain',
-          brandOwner: null,
           sourceUpdatedAt: new Date('2024-04-01'),
           values: { ...values(null), caloriesKcal: 340 },
-        },
+        }),
         ACTOR,
       ),
     );
@@ -137,15 +161,7 @@ describe('upsertNutritionProfile', () => {
         tx,
         ORG_A,
         trashedAId,
-        {
-          source: 'custom',
-          fdcId: null,
-          fdcDataType: null,
-          sourceDescription: null,
-          brandOwner: null,
-          sourceUpdatedAt: null,
-          values: values(1),
-        },
+        profileInput({ source: 'custom', values: values(1) }),
         ACTOR,
       ),
     );
@@ -158,15 +174,7 @@ describe('upsertNutritionProfile', () => {
         tx,
         ORG_A,
         ingredientBId,
-        {
-          source: 'custom',
-          fdcId: null,
-          fdcDataType: null,
-          sourceDescription: null,
-          brandOwner: null,
-          sourceUpdatedAt: null,
-          values: values(1),
-        },
+        profileInput({ source: 'custom', values: values(1) }),
         ACTOR,
       ),
     );
@@ -174,7 +182,7 @@ describe('upsertNutritionProfile', () => {
   });
 });
 
-describe('getProfilesForIngredients / getUsdaProfileIdentity', () => {
+describe('getProfilesForIngredients / getProfileIdentity', () => {
   it('batch read is org-scoped and keyed by ingredient', async () => {
     const map = await runInOrg(db, ORG_A, (tx) =>
       getProfilesForIngredients(tx, ORG_A, [ingredientAId, ingredientBId, 'nope']),
@@ -190,13 +198,13 @@ describe('getProfilesForIngredients / getUsdaProfileIdentity', () => {
     expect(map.size).toBe(0);
   });
 
-  it('identity resolves only for usda-sourced profiles', async () => {
+  it('identity resolves the provider for external-sourced profiles', async () => {
     const usda = await runInOrg(db, ORG_A, (tx) =>
-      getUsdaProfileIdentity(tx, ORG_A, ingredientAId),
+      getProfileIdentity(tx, ORG_A, ingredientAId),
     );
-    expect(usda).toEqual({ fdcId: 12345 });
+    expect(usda).toEqual({ provider: 'usda', externalId: '12345', fdcId: 12345 });
     const missing = await runInOrg(db, ORG_A, (tx) =>
-      getUsdaProfileIdentity(tx, ORG_A, ingredientBId),
+      getProfileIdentity(tx, ORG_A, ingredientBId),
     );
     expect(missing).toBeNull();
   });

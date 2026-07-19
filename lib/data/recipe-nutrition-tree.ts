@@ -23,6 +23,7 @@ import {
 import { convertQuantity, type UomAnchors } from '@/lib/calculations/uom';
 import { CANONICAL_UNIT } from '@/lib/calculations/uom';
 import { getProfilesForIngredients } from '@/lib/data/ingredient-nutrition';
+import type { NutritionSourceType } from '@/lib/external-food/types';
 
 /**
  * THE shared recipe-nutrition resolver (Fase 6, plan §7.4) — the nutrition twin
@@ -50,7 +51,7 @@ export type NutritionLineView = {
   edibleWeightGrams: number | null;
   /** Profile provenance for the §9.6 table; null = no profile yet. */
   profile: {
-    source: 'usda' | 'custom';
+    source: NutritionSourceType;
     sourceDescription: string | null;
     brandOwner: string | null;
     fdcId: number | null;

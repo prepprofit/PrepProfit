@@ -9,27 +9,55 @@ import { writeAuditEvent, type AuditActor } from '@/lib/data/audit';
 import { lockActiveIngredient } from '@/lib/data/ingredients';
 import { NUTRIENT_KEYS, type NutrientKey } from '@/lib/calculations/nutrition';
 import type { NutrientValuesInput } from '@/lib/validation/ingredient-nutrition';
+import type {
+  ExternalFoodQuality,
+  NutritionProviderId,
+  NutritionSourceType,
+} from '@/lib/external-food/types';
 
 /**
- * Ingredient nutrition data layer (Recipes 2.0 Fase 6, plan §6.7). ONE active
- * profile per ingredient (DB unique) — writes are UPSERTs under the active
- * ingredient's FOR UPDATE lock, so concurrent saves serialize and a trashed
- * ingredient can't gain a profile. Every mutation is audited inside the
- * caller's `withOrg` transaction; metadata carries ids/source only, never
- * nutrient values (they're not PII, but the audit contract stays descriptors-
- * only). Reads are BATCH ONLY (`getProfilesForIngredients`) — never N+1.
+ * Ingredient nutrition data layer (Recipes 2.0 Fase 6; generalized for the Open
+ * Food Facts integration, plan §6/§14). ONE active profile per ingredient (DB
+ * unique) — writes are UPSERTs under the active ingredient's FOR UPDATE lock, so
+ * concurrent saves serialize and a trashed ingredient can't gain a profile.
+ *
+ * DUAL-WRITE during the migration (plan §6.2): a USDA save writes BOTH the legacy
+ * `fdc_id`/`fdc_data_type` columns AND the provider-neutral
+ * `external_source_id`/`external_source_type` identity. A later cleanup PR drops
+ * the legacy columns once production has validated the generic identity.
+ *
+ * Every mutation is audited inside the caller's `withOrg` transaction; metadata
+ * carries provider/identity/quality descriptors only, NEVER nutrient values.
+ * Reads are BATCH ONLY (`getProfilesForIngredients`) — never N+1.
  */
 
 export type UpsertNutritionProfileInput = {
-  source: 'usda' | 'custom';
-  /** USDA source metadata; all null for custom profiles. */
-  fdcId: number | null;
-  fdcDataType: string | null;
+  source: NutritionSourceType;
+  /** Provider-neutral identity: `fdc_id::text` or the normalized GTIN; null for custom. */
+  externalId: string | null;
+  /** USDA data type or provider-specific subtype; null for custom. */
+  externalSourceType: string | null;
+  /** Normalized product code (barcode providers only). */
+  barcode: string | null;
+  sourceCountry: string | null;
+  sourceLanguage: string | null;
+  sourceRevision: string | null;
+  normalizationVersion: number | null;
+  sourcePayloadHash: string | null;
+  qualityStatus: ExternalFoodQuality | null;
+  qualityWarnings: string[] | null;
   sourceDescription: string | null;
   brandOwner: string | null;
-  /** Source publication date, when USDA provides one. */
+  /** Source publication/last-modified time, when the provider gives one. */
   sourceUpdatedAt: Date | null;
+  /** Reference mass the nutrient values describe (100 for per-100 g/ml-in-g). */
+  basisGrams: number;
+  /** European salt per basis (g); null = unknown. */
+  saltG: number | null;
   values: NutrientValuesInput;
+  /** Legacy USDA identity — dual-written for backward compatibility. */
+  fdcId: number | null;
+  fdcDataType: string | null;
 };
 
 export type NutritionProfileResult =
@@ -59,7 +87,7 @@ export async function getProfilesForIngredients(
   return map;
 }
 
-/** The 17 nutrient columns as an update/insert fragment. */
+/** The 16 nutrient columns as an update/insert fragment. */
 function nutrientColumns(
   values: NutrientValuesInput,
 ): Record<NutrientKey, number | null> {
@@ -68,8 +96,35 @@ function nutrientColumns(
   return out;
 }
 
+/** All provider/quality/identity columns written on both insert and update. */
+function metadataColumns(input: UpsertNutritionProfileInput, now: Date) {
+  return {
+    source: input.source,
+    fdcId: input.fdcId,
+    fdcDataType: input.fdcDataType,
+    externalSourceId: input.externalId,
+    externalSourceType: input.externalSourceType,
+    barcode: input.barcode,
+    sourceCountry: input.sourceCountry,
+    sourceLanguage: input.sourceLanguage,
+    sourceRevision: input.sourceRevision,
+    normalizationVersion: input.normalizationVersion,
+    sourcePayloadHash: input.sourcePayloadHash,
+    qualityStatus: input.qualityStatus,
+    qualityWarnings: input.qualityWarnings,
+    sourceDescription: input.sourceDescription,
+    brandOwner: input.brandOwner,
+    basisGrams: input.basisGrams,
+    saltG: input.saltG,
+    sourceUpdatedAt: input.sourceUpdatedAt,
+    // An external provider (usda/open_food_facts) stamps a fetch time; a manual
+    // profile never does.
+    refreshedAt: input.source === 'custom' ? null : now,
+  };
+}
+
 /**
- * Create or replace the ingredient's profile (per-100 g contract). The
+ * Create or replace the ingredient's profile (per-basis contract). The
  * ingredient must be ACTIVE — a trashed/foreign id returns `not_found` before
  * any write. `refreshed` distinguishes an explicit `Refresh from source` from
  * a plain save in the audit trail.
@@ -86,20 +141,14 @@ export async function upsertNutritionProfile(
     return { status: 'not_found' };
   }
   const now = new Date();
+  const metadata = metadataColumns(input, now);
   const [row] = await db
     .insert(ingredientNutritionProfiles)
     .values({
       organizationId,
       ingredientId,
-      source: input.source,
-      fdcId: input.fdcId,
-      fdcDataType: input.fdcDataType,
-      sourceDescription: input.sourceDescription,
-      brandOwner: input.brandOwner,
-      basisGrams: 100,
-      sourceUpdatedAt: input.sourceUpdatedAt,
-      refreshedAt: input.source === 'usda' ? now : null,
       updatedBy: actor.userId,
+      ...metadata,
       ...nutrientColumns(input.values),
     })
     .onConflictDoUpdate({
@@ -108,16 +157,9 @@ export async function upsertNutritionProfile(
         ingredientNutritionProfiles.ingredientId,
       ],
       set: {
-        source: input.source,
-        fdcId: input.fdcId,
-        fdcDataType: input.fdcDataType,
-        sourceDescription: input.sourceDescription,
-        brandOwner: input.brandOwner,
-        basisGrams: 100,
-        sourceUpdatedAt: input.sourceUpdatedAt,
-        refreshedAt: input.source === 'usda' ? now : null,
         updatedBy: actor.userId,
         updatedAt: now,
+        ...metadata,
         ...nutrientColumns(input.values),
       },
     })
@@ -129,26 +171,64 @@ export async function upsertNutritionProfile(
       : 'ingredient.nutritionSave',
     entityType: 'ingredient_nutrition_profile',
     entityId: row.id,
+    // Descriptors only — provider identity + quality, never nutrient values.
     metadata: {
       ingredientId,
       source: input.source,
-      fdcId: input.fdcId,
+      externalId: input.externalId,
+      qualityStatus: input.qualityStatus,
+      normalizationVersion: input.normalizationVersion,
     },
   });
   return { status: 'done', profile: row };
 }
 
 /**
- * The stored USDA identity of an ingredient's profile, needed by `Refresh
- * from source` — returns null for custom/missing profiles.
+ * Provider-neutral identity of an ingredient's profile, needed by `Refresh from
+ * source` to dispatch to the right provider (plan §14). Returns null for
+ * custom/missing profiles. Dual-READ: prefers the generic `external_source_id`,
+ * falling back to legacy `fdc_id` for USDA rows written before the backfill.
  */
-export async function getUsdaProfileIdentity(
+export type ProfileIdentity =
+  | { provider: 'usda'; externalId: string; fdcId: number }
+  | { provider: 'open_food_facts'; externalId: string; barcode: string };
+
+export async function getProfileIdentity(
   db: TenantClient,
   organizationId: string,
   ingredientId: string,
-): Promise<{ fdcId: number } | null> {
+): Promise<ProfileIdentity | null> {
   const map = await getProfilesForIngredients(db, organizationId, [ingredientId]);
   const profile = map.get(ingredientId);
-  if (!profile || profile.source !== 'usda' || profile.fdcId == null) return null;
-  return { fdcId: profile.fdcId };
+  if (!profile) return null;
+
+  if (profile.source === 'usda') {
+    const externalId = profile.externalSourceId ?? profile.fdcId?.toString() ?? null;
+    const fdcId = profile.fdcId ?? (externalId ? Number(externalId) : null);
+    if (externalId === null || fdcId === null || !Number.isInteger(fdcId)) {
+      return null;
+    }
+    return { provider: 'usda', externalId, fdcId };
+  }
+
+  if (profile.source === 'open_food_facts') {
+    const barcode = profile.barcode ?? profile.externalSourceId ?? null;
+    if (!barcode) return null;
+    return {
+      provider: 'open_food_facts',
+      externalId: profile.externalSourceId ?? barcode,
+      barcode,
+    };
+  }
+
+  return null;
+}
+
+/** Provider of an ingredient's active profile, or null. */
+export function providerOfProfile(
+  profile: IngredientNutritionProfile,
+): NutritionProviderId | null {
+  return profile.source === 'usda' || profile.source === 'open_food_facts'
+    ? profile.source
+    : null;
 }
