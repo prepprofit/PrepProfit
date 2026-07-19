@@ -165,6 +165,11 @@ export const ingredients = pgTable(
       .default(sql`0`),
     // Optional low-stock threshold (canonical); a low-stock alert fires at/below it.
     lowStockThreshold: numeric('low_stock_threshold', { precision: 12, scale: 2 }),
+    // Suggested USDA FDC id carried over from the seed ingredient catalogue
+    // (docs/ingredient-seed-catalog-plan.md D3). A HINT only: the Nutrition tab
+    // may offer a one-click import of this profile via the existing Fase 6 flow
+    // (which re-fetches server-side). Never used in any calculation directly.
+    suggestedFdcId: integer('suggested_fdc_id'),
     // Allergen review provenance (Sprint 9). `reviewed_at` NULL = the ingredient's
     // allergens have never been reviewed (NOT "no allergens" — correctly unreviewed);
     // a timestamp = reviewed then. `reviewed_by` is the Clerk user id who reviewed.

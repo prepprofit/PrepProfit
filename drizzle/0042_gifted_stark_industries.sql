@@ -1,0 +1,1 @@
+ALTER TABLE "ingredients" ADD COLUMN "suggested_fdc_id" integer;
