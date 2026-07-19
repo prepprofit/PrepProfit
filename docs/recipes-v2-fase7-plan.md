@@ -5,7 +5,18 @@ Fonte de âmbito: plano mestre `docs/recipes-meez-parity-senior-plan.md` §16 (F
 (biblioteca em tabela), `Recipes/2.png` (Recipe Books), `Nutrition and label/6.png`
 (filtro por alergénico com contagem e busca).
 
-Status: APROVADO 2026-07-19 com decisões do owner:
+Status: IMPLEMENTADO 2026-07-19 (Slices 1–6a, commits `7c6c4e8..3052943` em
+`main`; SEM migração nova). **PENDENTE (Slice 6b, gated no owner):** correr em
+prod `npm run backfill:recipes-v2` (idempotente) + `npm run verify:recipes-v2`
+até exit 0 em todas as orgs → só então remover o fallback
+`?? recipes.selling_price_cents` em `loadDefaultPortionPrices` e o
+write-through do editor legado. Delta vs plano: o Slice 5 já estava
+maioritariamente feito na Fase 5 (todos os LEITORES usam o helper); o
+trabalho foi o lado da ESCRITA (default option em todo o createRecipe +
+mirror de preço alterado no updateRecipe). Fix colateral: isForeignKey/
+isUniqueViolation agora percorrem a cause chain do DrizzleQueryError.
+
+Decisões aprovadas 2026-07-19:
 D1 = toggle tabela/cards (tabela default, cards preservados);
 D2 = books e folders COEXISTEM nesta fase (FolderRail mantém-se; books aditivos,
 write-through folder→book homónimo mantém paridade);

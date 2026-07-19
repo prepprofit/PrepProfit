@@ -62,9 +62,15 @@ mestre `docs/recipes-meez-parity-senior-plan.md`.
 
 ## 3. Próxima fase — Fase 7 (plano mestre §16): library parity & rollout
 
-- tabela/filtros/bulk actions/books; filtro por alergénico e status;
-- atualização de consumidores legados; cohort rollout + remoção do fallback.
-- Plan-first: fazer plano próprio antes de código.
+- ✅ IMPLEMENTADA 2026-07-19 (Slices 1–6a, `7c6c4e8..3052943`, sem migração) —
+  plano/realizado em `docs/recipes-v2-fase7-plan.md`. Books data layer + rail
+  com CRUD, biblioteca em tabela (toggle cards, `?book=`), filtros alergénio/
+  status, bulk actions (add/remove book + trash com guard e audit),
+  write-through preço legado→default option, verify script
+  `npm run verify:recipes-v2`.
+- ⏳ Slice 6b (owner): backfill+verify em prod até exit 0 → depois remover o
+  fallback `?? selling_price_cents` de `loadDefaultPortionPrices` + o mirror
+  do editor legado.
 
 ## 3b. Catálogo seed de ingredientes — ✅ DONE 2026-07-19 (não refazer)
 
