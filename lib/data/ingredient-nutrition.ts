@@ -2,9 +2,11 @@ import { and, eq, inArray } from 'drizzle-orm';
 
 import {
   ingredientNutritionProfiles,
+  ingredientUomEquivalencies,
   type IngredientNutritionProfile,
 } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
+import type { UomAnchors } from '@/lib/calculations/uom';
 import { writeAuditEvent, type AuditActor } from '@/lib/data/audit';
 import { lockActiveIngredient } from '@/lib/data/ingredients';
 import { NUTRIENT_KEYS, type NutrientKey } from '@/lib/calculations/nutrition';
@@ -222,6 +224,39 @@ export async function getProfileIdentity(
   }
 
   return null;
+}
+
+/**
+ * The ingredient's base weight/volume equivalency anchors, needed to convert a
+ * per-100 ml provider basis into grams (plan §10). Returns null when the
+ * ingredient has no equivalency — the caller then blocks the save with
+ * `NUTRITION_EQUIVALENCY_REQUIRED` (100 ml is NEVER assumed to weigh 100 g).
+ */
+export async function getIngredientEquivalencyAnchors(
+  db: TenantClient,
+  organizationId: string,
+  ingredientId: string,
+): Promise<UomAnchors | null> {
+  const [row] = await db
+    .select({
+      weightGrams: ingredientUomEquivalencies.weightGrams,
+      volumeMl: ingredientUomEquivalencies.volumeMl,
+      eachCount: ingredientUomEquivalencies.eachCount,
+    })
+    .from(ingredientUomEquivalencies)
+    .where(
+      and(
+        eq(ingredientUomEquivalencies.organizationId, organizationId),
+        eq(ingredientUomEquivalencies.ingredientId, ingredientId),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  return {
+    weightGrams: row.weightGrams,
+    volumeMl: row.volumeMl,
+    eachCount: row.eachCount,
+  };
 }
 
 /** Provider of an ingredient's active profile, or null. */

@@ -246,6 +246,30 @@ export type ActionErrorCode =
   // Recipes 2.0 Fase 6: the USDA FoodData Central API errored/timed out or
   // returned an unparseable payload. Try again later; custom entry still works.
   | 'USDA_UNAVAILABLE'
+  // ── Open Food Facts integration (plan §14) ──
+  // The entered barcode is not a valid EAN-8/UPC-A/EAN-13/GTIN-14 (bad length,
+  // non-digit, or failed check digit).
+  | 'INVALID_BARCODE'
+  // OPEN_FOOD_FACTS_ENABLED is off (or the User-Agent is unset) — the packaged-
+  // product tab is disabled; USDA search and custom entry still work.
+  | 'OPEN_FOOD_FACTS_DISABLED'
+  // The Open Food Facts API errored/timed out, the circuit breaker is open, and
+  // no eligible cache entry exists. Try again shortly.
+  | 'OPEN_FOOD_FACTS_UNAVAILABLE'
+  // No product exists for that barcode (provider 404 / not-found).
+  | 'EXTERNAL_PRODUCT_NOT_FOUND'
+  // The product is unusable as a nutrition source (missing name, non-food, or
+  // corrupt/impossible values) — it cannot be saved; custom entry stays available.
+  | 'EXTERNAL_PRODUCT_INVALID'
+  // The product is valid but missing important nutrients — saving it needs an
+  // explicit manager confirmation (partial products are honest, not blocked).
+  | 'EXTERNAL_PRODUCT_PARTIAL'
+  // The product's nutrition basis is neither per-100 g nor per-100 ml (ambiguous
+  // or unsupported) — it cannot be mapped to the profile contract.
+  | 'NUTRITION_BASIS_UNSUPPORTED'
+  // A per-100 ml product was selected for an ingredient with no weight/volume
+  // equivalency — add the density/equivalency first (100 ml is NEVER assumed 100 g).
+  | 'NUTRITION_EQUIVALENCY_REQUIRED'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

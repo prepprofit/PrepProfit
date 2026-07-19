@@ -66,6 +66,15 @@ export const saveIngredientNutritionSchema = z.discriminatedUnion('source', [
     ingredientId: z.string().min(1),
     fdcId: z.number().int().positive(),
   }),
+  // Open Food Facts save: the browser sends ONLY the provider + barcode. The
+  // server re-resolves the product and snapshots the SERVER-side nutrient values;
+  // `confirmPartial` acknowledges a partial product (plan §14 step 7).
+  z.object({
+    source: z.literal('open_food_facts'),
+    ingredientId: z.string().min(1),
+    barcode: z.string().trim().min(1).max(48),
+    confirmPartial: z.boolean().optional(),
+  }),
   z.object({
     source: z.literal('custom'),
     ingredientId: z.string().min(1),
@@ -75,4 +84,10 @@ export const saveIngredientNutritionSchema = z.discriminatedUnion('source', [
 
 export const refreshIngredientNutritionSchema = z.object({
   ingredientId: z.string().min(1),
+});
+
+/** Open Food Facts exact barcode lookup (preview before save). */
+export const lookupExternalFoodByBarcodeSchema = z.object({
+  ingredientId: z.string().min(1),
+  barcode: z.string().trim().min(1).max(48),
 });
