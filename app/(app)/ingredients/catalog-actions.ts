@@ -2,11 +2,16 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { getOrgId, getUserId } from '@/lib/auth';
+import { getOrgId, getUserId, isManager } from '@/lib/auth';
 import { getDb, withOrg } from '@/lib/db';
 import { unexpected } from '@/lib/observability';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { createIngredientFromCatalog } from '@/lib/data/ingredient-catalog';
+import {
+  toKitchenIngredient,
+  type KitchenIngredient,
+} from '@/lib/data/ingredients';
+import type { AllergenTag } from '@/lib/data/allergens';
 import {
   getCatalogEntry,
   searchIngredientCatalog,
@@ -55,7 +60,12 @@ export async function searchIngredientCatalogAction(
 
 export async function createIngredientFromCatalogAction(
   input: unknown,
-): Promise<ActionResult<{ ingredientId: string }>> {
+): Promise<
+  ActionResult<{
+    ingredient: Ingredient | KitchenIngredient;
+    allergens: AllergenTag[];
+  }>
+> {
   const parsed = createFromCatalogSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
   try {
@@ -76,7 +86,14 @@ export async function createIngredientFromCatalogAction(
     }
     revalidatePath('/ingredients');
     revalidatePath('/recipes');
-    return { ok: true, data: { ingredientId: outcome.ingredient.id } };
+    // Kitchen never receives financial keys (Sprint F4) — project them away.
+    const ingredient = (await isManager())
+      ? outcome.ingredient
+      : toKitchenIngredient(outcome.ingredient);
+    return {
+      ok: true,
+      data: { ingredient, allergens: entry.allergens as AllergenTag[] },
+    };
   } catch (error) {
     return unexpected('createIngredientFromCatalogAction', error);
   }

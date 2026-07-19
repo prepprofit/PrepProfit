@@ -733,6 +733,20 @@
     "errors": {
       "nameRequired": "Give the ingredient a name."
     },
+    "catalog": {
+      "open": "Browse catalog",
+      "title": "Add from catalog",
+      "subtitle": "Search ~1,900 common kitchen ingredients and add them in one click.",
+      "searchPlaceholder": "Search the catalog (e.g. butter, olive oil)…",
+      "hint": "Type at least 2 characters to search.",
+      "searching": "Searching…",
+      "noResults": "No catalog matches. You can still create it manually below.",
+      "add": "Add",
+      "added": "Added",
+      "typicalAllergen": "Typical allergen — not reviewed yet",
+      "disclaimer": "New ingredients start without a price and are flagged “Needs pricing”. Typical allergens are pre-filled but unreviewed — review them before relying on them.",
+      "close": "Close"
+    },
     "deleteConfirm": {
       "title": "Move ingredient to Trash?",
       "body": "{name} will move to the Trash. You can restore it within 30 days."

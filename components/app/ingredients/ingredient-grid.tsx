@@ -27,6 +27,7 @@ import {
   updateIngredientAction,
 } from '@/app/(app)/ingredients/actions';
 import { IngredientAllergenDialog } from '@/components/app/ingredients/ingredient-allergen-dialog';
+import { IngredientCatalogDialog } from '@/components/app/ingredients/ingredient-catalog-dialog';
 import { IngredientSupplierDialog } from '@/components/app/ingredients/ingredient-supplier-dialog';
 import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 import type { AllergenTag } from '@/lib/data/allergens';
@@ -185,6 +186,8 @@ export function IngredientGrid({
     Record<string, DefaultSupplierSummary | null>
   >(() => ({ ...initialSupplierLinks }));
   const [supplierEditId, setSupplierEditId] = React.useState<string | null>(null);
+  // Seed catalogue picker (docs/ingredient-seed-catalog-plan.md Slice 4).
+  const [catalogOpen, setCatalogOpen] = React.useState(false);
 
   const confirmTarget = rows.find((r) => r.id === confirmId) ?? null;
   const allergenTarget = rows.find((r) => r.id === allergenEditId) ?? null;
@@ -569,9 +572,20 @@ export function IngredientGrid({
         onChange={(e) => setQuery(e.target.value)}
       />
       <div className="rounded-xl border border-dashed border-border bg-surface p-3">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {t('addTitle')}
-        </p>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {t('addTitle')}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={pending}
+            onClick={() => setCatalogOpen(true)}
+          >
+            {t('catalog.open')}
+          </Button>
+        </div>
         <div
           className={cn(
             'grid grid-cols-1 gap-2 sm:items-center',
@@ -693,6 +707,20 @@ export function IngredientGrid({
         pending={pending}
         onConfirm={confirmDelete}
         onCancel={() => setConfirmId(null)}
+      />
+
+      <IngredientCatalogDialog
+        open={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+        onCreated={(ingredient, tags) => {
+          // Kitchen rows carry no price keys (Sprint F4) — IngredientRow allows that.
+          const row = ingredient as IngredientRow;
+          setRows((prev) => [...prev, row]);
+          setDrafts((prev) => ({ ...prev, [row.id]: draftFromRow(row) }));
+          setAllergens((prev) => ({ ...prev, [row.id]: tags }));
+          // Seeded allergens are typical + UNREVIEWED until a human reviews them.
+          setReviewed((prev) => ({ ...prev, [row.id]: false }));
+        }}
       />
 
       {allergenTarget && (
