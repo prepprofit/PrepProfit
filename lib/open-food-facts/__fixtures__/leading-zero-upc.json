@@ -1,0 +1,29 @@
+{
+  "code": "0048151623426",
+  "status": "success",
+  "result": { "id": "product_found", "name": "Product found" },
+  "product": {
+    "code": "0048151623426",
+    "product_name": "Heinz Tomato Ketchup",
+    "brands": "Heinz",
+    "quantity": "397 g",
+    "lang": "en",
+    "product_type": "food",
+    "countries_tags": ["en:united-states"],
+    "nutrition_data_per": "100g",
+    "rev": 22,
+    "last_modified_t": 1695000000,
+    "nutriments": {
+      "energy-kcal_100g": 112,
+      "fat_100g": 0.2,
+      "saturated-fat_100g": 0,
+      "carbohydrates_100g": 27,
+      "sugars_100g": 22.8,
+      "proteins_100g": 1.2,
+      "salt_100g": 1.8,
+      "sodium_100g": 0.72
+    }
+  },
+  "errors": [],
+  "warnings": []
+}

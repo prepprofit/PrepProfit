@@ -1,0 +1,36 @@
+{
+  "code": "7622210449283",
+  "status": "success",
+  "result": { "id": "product_found", "name": "Product found" },
+  "some_new_top_level_field": { "anything": [1, 2, 3] },
+  "product": {
+    "code": "7622210449283",
+    "product_name": "Oreo Original",
+    "brands": "Oreo, Mondelez",
+    "quantity": "154 g",
+    "lang": "en",
+    "product_type": "food",
+    "countries_tags": ["en:france", "en:germany"],
+    "nutrition_data_per": "100g",
+    "rev": 63,
+    "last_modified_t": 1702000000,
+    "ecoscore_grade": "d",
+    "some_future_additive_field": "ignored",
+    "nutriments": {
+      "energy-kcal_100g": 480,
+      "energy-kj_100g": 2011,
+      "fat_100g": 20,
+      "saturated-fat_100g": 6.6,
+      "carbohydrates_100g": 69,
+      "sugars_100g": 38,
+      "fiber_100g": 3.1,
+      "proteins_100g": 5,
+      "salt_100g": 0.9,
+      "sodium_100g": 0.36,
+      "nova-group_100g": 4,
+      "some-future-nutrient_100g": 123
+    }
+  },
+  "errors": [],
+  "warnings": []
+}

@@ -1,0 +1,19 @@
+{
+  "code": "3600542525732",
+  "status": "success",
+  "result": { "id": "product_found", "name": "Product found" },
+  "product": {
+    "code": "3600542525732",
+    "product_name": "Shampooing Elseve",
+    "brands": "L'Oréal",
+    "quantity": "250 ml",
+    "lang": "fr",
+    "product_type": "beauty",
+    "countries_tags": ["en:france"],
+    "rev": 12,
+    "last_modified_t": 1688000000,
+    "nutriments": {}
+  },
+  "errors": [],
+  "warnings": []
+}

@@ -1,0 +1,14 @@
+{
+  "code": "0000000000000",
+  "status": "failure",
+  "result": { "id": "product_not_found", "name": "Product not found" },
+  "product": null,
+  "errors": [
+    {
+      "message": { "id": "product_not_found" },
+      "field": { "id": "code", "value": "0000000000000" },
+      "impact": { "id": "failure" }
+    }
+  ],
+  "warnings": []
+}

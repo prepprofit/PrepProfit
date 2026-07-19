@@ -1,0 +1,30 @@
+{
+  "code": "5449000000996",
+  "status": "success",
+  "result": { "id": "product_found", "name": "Product found" },
+  "product": {
+    "code": "5449000000996",
+    "product_name": "Coca-Cola",
+    "brands": "Coca-Cola",
+    "quantity": "330 ml",
+    "lang": "en",
+    "product_type": "food",
+    "countries_tags": ["en:france", "en:belgium"],
+    "nutrition_data_per": "100ml",
+    "serving_size": "330 ml",
+    "rev": 98,
+    "last_modified_t": 1705000000,
+    "nutriments": {
+      "energy-kcal_100g": 42,
+      "energy-kj_100g": 180,
+      "fat_100g": 0,
+      "saturated-fat_100g": 0,
+      "carbohydrates_100g": 10.6,
+      "sugars_100g": 10.6,
+      "proteins_100g": 0,
+      "salt_100g": 0
+    }
+  },
+  "errors": [],
+  "warnings": []
+}

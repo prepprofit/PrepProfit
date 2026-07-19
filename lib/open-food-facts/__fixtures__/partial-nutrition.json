@@ -1,0 +1,24 @@
+{
+  "code": "5000112637922",
+  "status": "success",
+  "result": { "id": "product_found", "name": "Product found" },
+  "product": {
+    "code": "5000112637922",
+    "product_name": "Biscuits",
+    "brands": "Generic",
+    "quantity": "200 g",
+    "lang": "en",
+    "product_type": "food",
+    "countries_tags": ["en:united-kingdom"],
+    "nutrition_data_per": "100g",
+    "rev": 7,
+    "last_modified_t": 1698000000,
+    "nutriments": {
+      "energy-kcal_100g": 480,
+      "fat_100g": 20,
+      "proteins_100g": 6
+    }
+  },
+  "errors": [],
+  "warnings": []
+}
