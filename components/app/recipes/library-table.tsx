@@ -15,7 +15,16 @@ import {
 import type { LibraryRecipeRow } from '@/lib/data/recipe-library';
 import { formatMoney } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useActionError } from '@/lib/i18n/use-action-error';
+import {
+  addRecipesToBookAction,
+  bulkTrashRecipesAction,
+  removeRecipesFromBookAction,
+} from '@/app/(app)/recipes/book-actions';
 import { cn } from '@/lib/utils';
 
 /**
@@ -48,6 +57,8 @@ export function LibraryTable({
 }) {
   const t = useTranslations('recipes.library');
   const tAllergens = useTranslations('allergens');
+  const tCommon = useTranslations('common');
+  const actionError = useActionError();
   const router = useRouter();
   const [query, setQuery] = React.useState('');
   const [sorting, setSorting] = React.useState<SortingState>([
@@ -142,8 +153,105 @@ export function LibraryTable({
     });
   }, [rows, q, allergenFilter, statusFilter, statusOptions]);
 
+  // ── Bulk selection (Slice 4) ──
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [bulkBookId, setBulkBookId] = React.useState('');
+  const [bulkError, setBulkError] = React.useState<string | null>(null);
+  const [bulkNotice, setBulkNotice] = React.useState<string | null>(null);
+  const [confirmTrash, setConfirmTrash] = React.useState(false);
+  const [pending, startTransition] = React.useTransition();
+
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const runBookAction = (kind: 'add' | 'remove') => {
+    if (!bulkBookId || selected.size === 0) return;
+    setBulkError(null);
+    setBulkNotice(null);
+    startTransition(async () => {
+      const action =
+        kind === 'add' ? addRecipesToBookAction : removeRecipesFromBookAction;
+      const result = await action({
+        bookId: bulkBookId,
+        recipeIds: [...selected],
+      });
+      if (result.ok) {
+        setBulkNotice(
+          t('bulk.bookDone', {
+            affected: result.data.affected,
+            skipped: result.data.skipped,
+          }),
+        );
+        setSelected(new Set());
+        router.refresh();
+      } else {
+        setBulkError(actionError(result.code));
+      }
+    });
+  };
+
+  const runBulkTrash = () => {
+    setBulkError(null);
+    setBulkNotice(null);
+    startTransition(async () => {
+      const result = await bulkTrashRecipesAction({ recipeIds: [...selected] });
+      if (result.ok) {
+        setBulkNotice(
+          t('bulk.trashDone', {
+            trashed: result.data.trashed,
+            blocked: result.data.blocked,
+            skipped: result.data.skipped,
+          }),
+        );
+        setSelected(new Set());
+        router.refresh();
+      } else {
+        setBulkError(actionError(result.code));
+      }
+      setConfirmTrash(false);
+    });
+  };
+
+  const allVisibleSelected =
+    visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
+
   const columns = React.useMemo<ColumnDef<LibraryTableRow>[]>(() => {
     const cols: ColumnDef<LibraryTableRow>[] = [
+      {
+        id: 'select',
+        enableSorting: false,
+        header: () => (
+          <input
+            type="checkbox"
+            aria-label={t('bulk.selectAll')}
+            className="size-4 cursor-pointer accent-accent-700"
+            checked={allVisibleSelected}
+            onChange={() =>
+              setSelected(
+                allVisibleSelected
+                  ? new Set()
+                  : new Set(visibleRows.map((r) => r.id)),
+              )
+            }
+          />
+        ),
+        cell: ({ row }) => (
+          <input
+            type="checkbox"
+            aria-label={t('bulk.selectRow', { name: row.original.name })}
+            className="size-4 cursor-pointer accent-accent-700"
+            checked={selected.has(row.original.id)}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => toggleSelected(row.original.id)}
+          />
+        ),
+      },
       {
         id: 'name',
         accessorKey: 'name',
@@ -298,7 +406,16 @@ export function LibraryTable({
       );
     }
     return cols;
-  }, [bookName, currency, showMoney, t, tAllergens]);
+  }, [
+    bookName,
+    currency,
+    showMoney,
+    t,
+    tAllergens,
+    selected,
+    allVisibleSelected,
+    visibleRows,
+  ]);
 
   const table = useReactTable({
     data: visibleRows,
@@ -385,6 +502,86 @@ export function LibraryTable({
           );
         })}
       </fieldset>
+
+      {(bulkError || bulkNotice) && (
+        <div
+          role={bulkError ? 'alert' : 'status'}
+          className={cn(
+            'rounded-lg border px-3 py-1.5 text-xs',
+            bulkError
+              ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
+              : 'border-border bg-surface-2 text-muted-foreground',
+          )}
+        >
+          {bulkError ?? bulkNotice}
+        </div>
+      )}
+
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+          <span className="text-sm text-muted-foreground">
+            {t('bulk.selected', { count: selected.size })}
+          </span>
+          {books.length > 0 && (
+            <>
+              <Select
+                aria-label={t('bulk.bookSelect')}
+                className="h-8 w-44"
+                value={bulkBookId}
+                disabled={pending}
+                onChange={(e) => setBulkBookId(e.target.value)}
+              >
+                <option value="">{t('bulk.bookSelect')}</option>
+                {books.map((book) => (
+                  <option key={book.id} value={book.id}>
+                    {book.name}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending || bulkBookId === ''}
+                onClick={() => runBookAction('add')}
+              >
+                {t('bulk.addToBook')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending || bulkBookId === ''}
+                onClick={() => runBookAction('remove')}
+              >
+                {t('bulk.removeFromBook')}
+              </Button>
+            </>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-red-600 dark:text-red-400"
+            disabled={pending}
+            onClick={() => setConfirmTrash(true)}
+          >
+            {t('bulk.trash')}
+          </Button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmTrash}
+        title={t('bulk.trashConfirm.title')}
+        description={t('bulk.trashConfirm.body', { count: selected.size })}
+        confirmLabel={tCommon('delete')}
+        cancelLabel={tCommon('cancel')}
+        destructive
+        pending={pending}
+        onConfirm={runBulkTrash}
+        onCancel={() => setConfirmTrash(false)}
+      />
 
       <Card className="overflow-x-auto p-0">
         <table className="w-full min-w-[40rem] text-sm">

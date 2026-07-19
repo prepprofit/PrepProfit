@@ -1257,10 +1257,39 @@
         "noBook": "No book",
         "needsPricing": "Needs pricing",
         "noSellingPrice": "No selling price"
+      },
+      "bulk": {
+        "selectAll": "Select all visible recipes",
+        "selectRow": "Select {name}",
+        "selected": "{count, plural, one {# selected} other {# selected}}",
+        "bookSelect": "Choose a book...",
+        "addToBook": "Add to book",
+        "removeFromBook": "Remove from book",
+        "trash": "Move to Trash",
+        "bookDone": "{affected} updated · {skipped} skipped",
+        "trashDone": "{trashed} moved to Trash · {blocked} blocked (used as sub-recipe) · {skipped} skipped",
+        "trashConfirm": {
+          "title": "Move selected recipes to Trash?",
+          "body": "{count, plural, one {# recipe} other {# recipes}} will move to the Trash. Recipes used as sub-recipes by an active recipe are skipped. You can restore them within 30 days."
+        }
       }
     },
     "books": {
-      "title": "Recipe books"
+      "title": "Recipe books",
+      "create": "Create book",
+      "newPlaceholder": "New book...",
+      "rename": "Rename book",
+      "renameSave": "Save name",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "delete": "Delete book",
+      "deleteConfirm": {
+        "title": "Delete this book?",
+        "body": "{name} will be deleted. Recipes stay untouched — only the book grouping is removed."
+      },
+      "errors": {
+        "nameRequired": "Give the book a name."
+      }
     }
   },
   "inventory": {

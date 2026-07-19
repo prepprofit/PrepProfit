@@ -3,12 +3,15 @@ const PG_FOREIGN_KEY_VIOLATION = '23503';
 const PG_UNIQUE_VIOLATION = '23505';
 
 function hasCode(err: unknown, code: string): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code?: unknown }).code === code
-  );
+  // Drizzle wraps driver errors (DrizzleQueryError) with the Postgres error as
+  // `.cause`, so walk the cause chain looking for the SQLSTATE (bounded — a
+  // cause cycle must not hang the error path).
+  let current: unknown = err;
+  for (let depth = 0; depth < 5 && typeof current === 'object' && current !== null; depth += 1) {
+    if ((current as { code?: unknown }).code === code) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /**

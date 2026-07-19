@@ -291,6 +291,10 @@ export type AuditAction =
   | 'recipe.mediaUpload'
   | 'recipe.mediaReject'
   | 'recipe.mediaDelete'
+  // Library bulk trash (Fase 7, kitchen OR manager — same reach as the single
+  // trash action, audited because one call can trash up to 200 recipes).
+  // metadata = trashed/blocked/skipped COUNTS + trashed ids only — never names.
+  | 'recipe.bulkTrash'
   // Automated cron purge (system actor)
   | 'cron.purge';
 
