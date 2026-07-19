@@ -3727,6 +3727,46 @@ export const rateLimits = pgTable('rate_limits', {
   count: integer('count').notNull(),
 });
 
+/**
+ * External-food normalized-response cache (Open Food Facts integration plan §6.3).
+ * PUBLIC REFERENCE DATA — DELIBERATELY NOT a business table: it carries no
+ * `organization_id`, no user data, no search history and no pricing data, so it
+ * is absent from `businessTables` and gets NO RLS. Two different orgs looking up
+ * the same barcode share one cache row; that is correct and safe because the row
+ * is nothing but the public product's normalized nutrition (the same data every
+ * org would fetch from the provider). Like `rate_limits`, it is read/written via
+ * the untenanted `getDb()` OUTSIDE any `withOrg` — the resolver runs before the
+ * org transaction.
+ *
+ * It stores only the VALIDATED, NORMALIZED payload (an `ExternalFoodSnapshot`),
+ * never the raw provider body. `normalization_version` invalidates rows when the
+ * mapping logic changes; `payload_hash` is a debug/audit identity. Populated ONLY
+ * by user-requested lookups — never preloaded/crawled/bulk-synced (plan §13).
+ */
+export const externalFoodCache = pgTable(
+  'external_food_cache',
+  {
+    provider: text('provider', {
+      enum: ['usda', 'open_food_facts'],
+    }).notNull(),
+    externalId: text('external_id').notNull(),
+    normalizedPayload: jsonb('normalized_payload').notNull(),
+    // When the SOURCE last changed the product (for staleness display).
+    sourceUpdatedAt: timestamp('source_updated_at', { withTimezone: true }),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    normalizationVersion: integer('normalization_version').notNull(),
+    payloadHash: text('payload_hash'),
+  },
+  (t) => [
+    unique('external_food_cache_provider_external_id_key').on(
+      t.provider,
+      t.externalId,
+    ),
+  ],
+);
+export type ExternalFoodCacheRow = InferSelectModel<typeof externalFoodCache>;
+
 export type Ingredient = InferSelectModel<typeof ingredients>;
 export type NewIngredient = InferInsertModel<typeof ingredients>;
 export type InventoryMovement = InferSelectModel<typeof inventoryMovements>;

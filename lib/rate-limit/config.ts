@@ -95,6 +95,13 @@ export const RATE_LIMITS = {
   // each hit calls the external USDA API (free but externally rate-limited per
   // key), so keep an interactive-but-modest budget to protect the shared key.
   usdaSearch: { limit: 20, windowMs: MINUTE },
+  // Open Food Facts barcode lookup (OFF integration plan §13) — PER ORG+USER.
+  // Interactive-but-modest, separate from usdaSearch so it can be tuned alone.
+  openFoodFactsRead: { limit: 20, windowMs: MINUTE },
+  // Open Food Facts GLOBAL egress ceiling — keyed by a single constant scope so
+  // it caps the whole app's outbound OFF requests from the shared production IP.
+  // Start at 10/min, under OFF's documented 15 product reads/min/IP (plan §13).
+  openFoodFactsGlobal: { limit: 10, windowMs: MINUTE },
   // Seed ingredient catalogue search (in-memory, no external API, cheap) —
   // generous interactive budget; the limiter is here only to keep the shared
   // "rate limit before org work" pattern and stop scripted scraping.
