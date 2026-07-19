@@ -40,6 +40,11 @@ export type NutritionLineRowView = {
   ingredientId: string;
   ingredientName: string;
   edibleWeightGrams: number | null;
+  /**
+   * USDA FDC id suggested by the seed ingredient catalogue (D3) — a HINT for a
+   * one-click import while no profile exists; the save re-fetches server-side.
+   */
+  suggestedFdcId: number | null;
   profile: {
     source: 'usda' | 'custom';
     sourceDescription: string | null;
@@ -267,14 +272,19 @@ export function RecipeNutritionTab({
                     </td>
                     {data.canEdit ? (
                       <td className="py-1.5 text-right">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setEditing(line)}
-                        >
-                          {line.profile ? t('table.edit') : t('table.add')}
-                        </Button>
+                        <span className="inline-flex items-center gap-1">
+                          {!line.profile && line.suggestedFdcId !== null ? (
+                            <UseSuggestedProfileButton line={line} />
+                          ) : null}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditing(line)}
+                          >
+                            {line.profile ? t('table.edit') : t('table.add')}
+                          </Button>
+                        </span>
                       </td>
                     ) : null}
                   </tr>
@@ -289,6 +299,54 @@ export function RecipeNutritionTab({
         <NutritionEditDialog line={editing} onClose={() => setEditing(null)} />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * One-click import of the catalogue-suggested USDA profile (D3). Manager-only
+ * by placement (rendered under canEdit) AND server-side (the action is
+ * FORBIDDEN otherwise). The server re-fetches the food by fdcId — no nutrient
+ * values travel from the client.
+ */
+function UseSuggestedProfileButton({ line }: { line: NutritionLineRowView }) {
+  const t = useTranslations('recipes.workspace.nutrition.table');
+  const actionError = useActionError();
+  const router = useRouter();
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const onUse = async () => {
+    if (line.suggestedFdcId === null) return;
+    setBusy(true);
+    setError(null);
+    const result = await saveIngredientNutritionAction({
+      source: 'usda',
+      ingredientId: line.ingredientId,
+      fdcId: line.suggestedFdcId,
+    });
+    setBusy(false);
+    if (result.ok) router.refresh();
+    else setError(actionError(result.code));
+  };
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      {error ? (
+        <span role="alert" className="text-xs text-red-700 dark:text-red-300">
+          {error}
+        </span>
+      ) : null}
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={busy}
+        title={t('useSuggestedTitle')}
+        onClick={onUse}
+      >
+        {busy ? t('useSuggestedBusy') : t('useSuggested')}
+      </Button>
+    </span>
   );
 }
 

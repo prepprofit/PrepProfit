@@ -937,7 +937,10 @@
           "custom": "Custom",
           "missing": "No profile",
           "edit": "Edit",
-          "add": "Add"
+          "add": "Add",
+          "useSuggested": "Use suggested USDA",
+          "useSuggestedTitle": "Import the USDA profile suggested by the ingredient catalog (fetched from USDA on save)",
+          "useSuggestedBusy": "Importing…"
         },
         "nutrients": {
           "caloriesKcal": "Calories",

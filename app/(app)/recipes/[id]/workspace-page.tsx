@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { and, eq, inArray } from 'drizzle-orm';
+import { ingredients } from '@/lib/db/schema';
 import { canSeeRecipeCosts, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { getRecipeWorkspace } from '@/lib/data/recipe-workspace';
@@ -269,6 +271,31 @@ export async function RecipeWorkspacePage({
     resolveRecipeNutritionTree(tx, organizationId, [recipeId]),
   );
   const nutritionRes = nutritionMap.get(recipeId);
+  // Seed-catalogue USDA suggestion hints (plan D3): one batch lookup of
+  // suggested_fdc_id for the lines still missing a profile — a HINT only, the
+  // save path re-fetches USDA server-side as always.
+  const lineIngredientIds = [
+    ...new Set((nutritionRes?.lines ?? []).map((l) => l.ingredientId)),
+  ];
+  const suggestedRows = lineIngredientIds.length
+    ? await withOrg(organizationId, (tx) =>
+        tx
+          .select({
+            id: ingredients.id,
+            suggestedFdcId: ingredients.suggestedFdcId,
+          })
+          .from(ingredients)
+          .where(
+            and(
+              eq(ingredients.organizationId, organizationId),
+              inArray(ingredients.id, lineIngredientIds),
+            ),
+          ),
+      )
+    : [];
+  const suggestedByIngredient = new Map(
+    suggestedRows.map((r) => [r.id, r.suggestedFdcId]),
+  );
   const nutrition: NutritionTabData = {
     status: nutritionRes?.result.status ?? 'incomplete',
     issues: nutritionRes?.result.issues ?? [],
@@ -285,6 +312,7 @@ export async function RecipeWorkspacePage({
       ingredientId: l.ingredientId,
       ingredientName: l.ingredientName,
       edibleWeightGrams: l.edibleWeightGrams,
+      suggestedFdcId: suggestedByIngredient.get(l.ingredientId) ?? null,
       profile: l.profile
         ? {
             source: l.profile.source,
