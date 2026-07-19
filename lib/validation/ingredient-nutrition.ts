@@ -8,8 +8,12 @@ import { NUTRIENT_KEYS, type NutrientKey } from '@/lib/calculations/nutrition';
  * per-nutrient maximum bounds; `null` = unknown (never coerced to 0).
  */
 
-/** Plausibility ceilings per 100 g — rejects fat-fingered custom input. */
-const NUTRIENT_MAX: Record<NutrientKey, number> = {
+/**
+ * Plausibility ceilings per 100 g — rejects fat-fingered custom input and,
+ * reused by the Open Food Facts normalizer (plan §9.2), an implausibly-high
+ * provider value (dropped to `null`, never trusted).
+ */
+export const NUTRIENT_MAX: Record<NutrientKey, number> = {
   caloriesKcal: 900, // pure fat is ~884 kcal/100 g
   totalFatG: 100,
   saturatedFatG: 100,

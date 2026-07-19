@@ -221,6 +221,40 @@ export function usdaEnv(): { apiKey: string } | null {
 }
 
 /**
+ * Open Food Facts config (Open Food Facts integration plan §7). Read only on the
+ * barcode-lookup path — deliberately NOT part of `serverEnvSchema`, so a missing
+ * value never affects unrelated pages: the packaged-product tab simply reports
+ * `OPEN_FOOD_FACTS_DISABLED`. Read access needs NO API key, but a descriptive
+ * `User-Agent` (`AppName/Version (ContactEmail)`) is MANDATORY operational
+ * configuration per the OFF guidelines — it is a server value, never sent to the
+ * client. The integration is OFF by default and enabled via a feature flag so it
+ * can be disabled immediately (plan §21).
+ */
+const offEnvSchema = z.object({
+  OPEN_FOOD_FACTS_ENABLED: z
+    .string()
+    .transform((v) => v.trim().toLowerCase())
+    .pipe(z.enum(['true', '1', 'yes'])),
+  OPEN_FOOD_FACTS_BASE_URL: z.string().url().optional(),
+  OPEN_FOOD_FACTS_USER_AGENT: z.string().min(1),
+});
+
+const OFF_DEFAULT_BASE_URL = 'https://world.openfoodfacts.org';
+
+/** The OFF config, or `null` when disabled/unconfigured (caller maps to a code). */
+export function offEnv(): { baseUrl: string; userAgent: string } | null {
+  const parsed = offEnvSchema.safeParse(process.env);
+  if (!parsed.success) return null;
+  return {
+    baseUrl: (parsed.data.OPEN_FOOD_FACTS_BASE_URL ?? OFF_DEFAULT_BASE_URL).replace(
+      /\/$/,
+      '',
+    ),
+    userAgent: parsed.data.OPEN_FOOD_FACTS_USER_AGENT,
+  };
+}
+
+/**
  * Public app base URL for absolute email links/assets (React Email migration).
  * Read only when composing an email — deliberately NOT part of `serverEnvSchema`,
  * so a missing/invalid value never crashes an unrelated page; the email templates
