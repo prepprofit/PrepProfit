@@ -3,7 +3,21 @@ name: CI
 on:
   push:
     branches: [main]
+    # Docs-only commits don't need the full gate — saves ~6 min of the free
+    # 2,000 Actions minutes per push (quota was exhausted mid-July 2026).
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+# A newer push to the same branch/PR cancels the in-flight run instead of
+# letting both burn minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:

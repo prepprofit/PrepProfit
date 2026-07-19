@@ -1,5 +1,7 @@
 # Dependabot (Sprint 5b) — automated dependency maintenance.
-# Weekly PRs for npm + GitHub Actions updates. Patch/minor production updates are
+# Monthly PRs for npm + GitHub Actions updates (was weekly — each PR + its
+# rebases re-runs the full CI gate, which burned through the free 2,000 Actions
+# minutes in July 2026). Patch/minor production updates are
 # grouped into one PR to cut review noise; majors stay separate so breaking bumps
 # get individual scrutiny. Security updates are raised by Dependabot regardless.
 version: 2
@@ -7,8 +9,8 @@ updates:
   - package-ecosystem: npm
     directory: "/"
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
     # Hold these majors: Next is a pinned stack choice (CLAUDE.md — no stack change
     # without explicit approval), eslint-config-next must track Next's major, and
     # write-excel-file v4 breaks our XLSX export API. Major bumps for these are a
@@ -37,4 +39,4 @@ updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
+      interval: monthly
