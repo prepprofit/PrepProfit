@@ -7,12 +7,12 @@ mestre `docs/recipes-meez-parity-senior-plan.md`.
 
 ## 0. ⚠️ Primeiro passo da próxima sessão
 
-- `git push` continua BLOQUEADO nesta máquina ("Repository not found" — a
-  credencial ativa é `labicresci-lgtm`, sem acesso a `Napster13Nord/PrepProfit`).
-  O owner tem de trocar a conta (`gh auth switch`) e pushar TODOS os commits da
-  Fase 6 + o docs `e4cb0b2`. Verificar `git status -sb` antes de trabalho novo.
+- Push: RESOLVIDO — owner pushou tudo (Fase 6 + catálogo seed) 2026-07-19.
+  Confirmar `git status -sb` mesmo assim antes de trabalho novo.
 - Env var nova para prod/preview quando o owner quiser USDA: `USDA_FDC_API_KEY`
   (opcional — sem ela o modal USDA cai em modo custom-only, decisão D1).
+- ⚠️ Password do Neon foi colada no chat OUTRA VEZ (2026-07-19, para a
+  migração 0042) → ROTATE continua pendente do owner.
 
 ## 1. O que a Fase 6 entregou (NÃO refazer)
 
@@ -66,13 +66,17 @@ mestre `docs/recipes-meez-parity-senior-plan.md`.
 - atualização de consumidores legados; cohort rollout + remoção do fallback.
 - Plan-first: fazer plano próprio antes de código.
 
-## 3b. Feature pedida pelo owner (fora da Fase 7, sessão própria)
+## 3b. Catálogo seed de ingredientes — ✅ DONE 2026-07-19 (não refazer)
 
-- **Catálogo seed de ingredientes comuns**: lista pesquisável (~milhares) para o
-  user criar ingredientes sem começar do zero no onboarding. NÃO confundir com a
-  busca USDA de nutrição (já entregue): isto cria o INGREDIENTE (nome, dimensão,
-  alergénios típicos; `priceCents = 0` + `needsPricing = true` — preço nunca vem
-  do catálogo). Plan-first; ver prompt no handoff da sessão que o owner guardou.
+- Implementado por completo (Slices 1–6, `5fb2952..48daf97` pushed): dataset
+  1.873 entradas EN (`lib/ingredient-catalog/`), gerador offline
+  (`scripts/generate-ingredient-catalog.ts`), actions search/create
+  (preço 0 + needsPricing, alergénios não-revistos, `DUPLICATE_NAME`), dialog
+  "Browse catalog" no Add ingredient, hint "Use suggested USDA" no tab
+  Nutrition. **Migração 0042 (`suggested_fdc_id`) APLICADA em prod e
+  verificada 2026-07-19** (43 migrações). Plano/realizado:
+  `docs/ingredient-seed-catalog-plan.md`. Falta só eyeball do owner em prod.
+  PT nos nomes = PR de dados futuro (schema já aceita `namePt`).
 
 ## 4. Pendências fora da Fase 7
 
