@@ -100,6 +100,7 @@ export function RecipeWorkspaceTabs({
   methodEditor,
   uomPanel,
   nutritionPanel,
+  allergenPanel,
   legacyNotes,
   cost,
   factor,
@@ -116,6 +117,12 @@ export function RecipeWorkspaceTabs({
   uomPanel?: React.ReactNode;
   /** Nutrition panel (Fase 6) — rendered when the tab is active. */
   nutritionPanel?: React.ReactNode;
+  /**
+   * Allergen panel (Sprint 9) — OPERATIONAL, tab-independent. Rendered INSIDE
+   * this block (below the active tab's content) so it sits in the right column
+   * and the sticky tab bar stays pinned while scrolling across it.
+   */
+  allergenPanel?: React.ReactNode;
   legacyNotes: string | null;
   /** null = kitchen (never shipped); `incomplete` = tree unresolvable. */
   cost: WorkspaceCostView;
@@ -179,6 +186,11 @@ export function RecipeWorkspaceTabs({
           ))
         ) : null}
       </div>
+
+      {/* Allergens live in the right column, tab-independent (operational for
+          both roles). Kept inside this block so the sticky tab bar stays pinned
+          while the user scrolls down through it. */}
+      {allergenPanel ? <div className="mt-6">{allergenPanel}</div> : null}
     </div>
   );
 }

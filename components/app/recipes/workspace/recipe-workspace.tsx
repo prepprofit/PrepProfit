@@ -80,7 +80,15 @@ const TABS: WorkspaceTab[] = ['method', 'cost', 'nutrition', 'uom'];
  * state, client-side derived batch scaling, and an edit draft persisted
  * atomically via `saveWorkspaceAction` with optimistic concurrency.
  */
-export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
+export function RecipeWorkspace({
+  data,
+  allergenPanel,
+}: {
+  data: WorkspaceClientData;
+  /** Operational allergen panel (Sprint 9) — rendered in the right column,
+      inside the tabbed block so the sticky tab bar travels across it. */
+  allergenPanel?: React.ReactNode;
+}) {
   const t = useTranslations('recipes.workspace');
   const actionError = useActionError();
   const router = useRouter();
@@ -492,6 +500,7 @@ export function RecipeWorkspace({ data }: { data: WorkspaceClientData }) {
                 data={data.nutrition}
               />
             }
+            allergenPanel={allergenPanel}
             legacyNotes={data.recipe.notes}
             cost={data.cost}
             factor={factor}
