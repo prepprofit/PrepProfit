@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { and, eq } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
 import { createTestDb } from './helpers/db';
 import type { TenantDb } from '@/lib/db/tenant';
@@ -83,15 +84,17 @@ beforeAll(async () => {
     ingredientId: flour!.id,
     quantity: '1000', // 1 kg → 200c total → 20c/portion
   });
-  await db.insert(recipePortionOptions).values({
-    organizationId: ORG_A,
-    recipeId: priced.id,
-    name: 'Default serving',
-    quantity: 1,
-    unit: 'serving',
-    sellingPriceCents: 100,
-    isDefault: true,
-  });
+  // createRecipe auto-creates the default option (Slice 5) — price it.
+  await db
+    .update(recipePortionOptions)
+    .set({ sellingPriceCents: 100 })
+    .where(
+      and(
+        eq(recipePortionOptions.organizationId, ORG_A),
+        eq(recipePortionOptions.recipeId, priced.id),
+        eq(recipePortionOptions.isDefault, true),
+      ),
+    );
   const book = await createBook(db, ORG_A, 'Bakery');
   await addRecipesToBook(db, ORG_A, book.id, [priced.id]);
 

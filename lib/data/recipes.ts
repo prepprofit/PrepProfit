@@ -12,6 +12,7 @@ import type { Ingredient, Recipe, NewRecipe } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { nullTaskRecipeLinks } from '@/lib/data/tasks';
 import { syncBookMembershipForFolderMove } from '@/lib/data/recipe-books';
+import { syncLegacyPriceToDefaultOption } from '@/lib/data/recipe-portion-options';
 
 /**
  * Access to `recipes` is ALWAYS scoped by `organizationId`. See lib/data/ingredients.ts.
@@ -483,6 +484,14 @@ export async function createRecipe(
   if (row.folderId) {
     await mirrorFolderChangeToBooks(db, organizationId, row.id, null, row.folderId);
   }
+  // Fase 7 invariant: every NEW recipe gets a default portion option carrying
+  // the (possibly NULL) legacy price, so the dual-read fallback can retire.
+  await syncLegacyPriceToDefaultOption(
+    db,
+    organizationId,
+    row.id,
+    row.sellingPriceCents,
+  );
   return row;
 }
 
@@ -492,10 +501,14 @@ export async function updateRecipe(
   id: string,
   input: RecipeInput,
 ): Promise<Recipe | null> {
-  // The legacy editor changes `folderId` through here too — read the previous
-  // value so the homonymous-book write-through can mirror the change (D2).
+  // The legacy editor changes `folderId` and the legacy price through here —
+  // read the previous values so the book write-through (D2) and the default-
+  // portion-option price mirror (Slice 5) only fire on an actual change.
   const [before] = await db
-    .select({ folderId: recipes.folderId })
+    .select({
+      folderId: recipes.folderId,
+      sellingPriceCents: recipes.sellingPriceCents,
+    })
     .from(recipes)
     .where(
       and(
@@ -528,6 +541,21 @@ export async function updateRecipe(
       id,
       before.folderId,
       row.folderId,
+    );
+  }
+  // A CHANGED legacy price is an explicit statement → mirror it onto the
+  // default portion option. An unchanged echo (kitchen saves preserve money
+  // verbatim; manager saves that didn't touch price) never clobbers a price
+  // set in the workspace's portion options.
+  if (
+    input.sellingPriceCents !== undefined &&
+    row.sellingPriceCents !== before.sellingPriceCents
+  ) {
+    await syncLegacyPriceToDefaultOption(
+      db,
+      organizationId,
+      id,
+      row.sellingPriceCents,
     );
   }
   return row;

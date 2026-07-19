@@ -97,6 +97,53 @@ export async function loadDefaultPortionPrices(
   return map;
 }
 
+/**
+ * LEGACY-PRICE WRITE-THROUGH (Fase 7 Slice 5): mirrors a legacy
+ * `recipes.selling_price_cents` write onto the recipe's DEFAULT portion
+ * option, so the option is always at least as fresh as the legacy column and
+ * the Slice 6 fallback removal cannot lose a price. Called by the recipes data
+ * layer inside its own `withOrg` transaction:
+ * - default option exists → update its price (the legacy editor's save is an
+ *   explicit price statement, including clearing it to NULL);
+ * - none exists → create the backfill-shaped "Default serving" (1 serving,
+ *   is_default) carrying the price.
+ * NOT audited: the surrounding recipe save is the user action; this is a
+ * derived mirror, and the partial one-default unique absorbs a concurrent
+ * duplicate creation.
+ */
+export async function syncLegacyPriceToDefaultOption(
+  db: TenantClient,
+  organizationId: string,
+  recipeId: string,
+  sellingPriceCents: number | null,
+): Promise<void> {
+  const updated = await db
+    .update(recipePortionOptions)
+    .set({ sellingPriceCents })
+    .where(
+      and(
+        eq(recipePortionOptions.organizationId, organizationId),
+        eq(recipePortionOptions.recipeId, recipeId),
+        eq(recipePortionOptions.isDefault, true),
+      ),
+    )
+    .returning({ id: recipePortionOptions.id });
+  if (updated.length > 0) return;
+
+  await db
+    .insert(recipePortionOptions)
+    .values({
+      organizationId,
+      recipeId,
+      name: 'Default serving',
+      quantity: 1,
+      unit: 'serving',
+      sellingPriceCents,
+      isDefault: true,
+    })
+    .onConflictDoNothing();
+}
+
 export type SavePortionOptionInput = {
   name: string;
   quantity: number;
