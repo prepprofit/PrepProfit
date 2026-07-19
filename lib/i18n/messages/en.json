@@ -69,6 +69,14 @@
     "PORTION_OPTION_LIMIT_REACHED": "This recipe has reached its portion option limit. Remove one before adding another.",
     "USDA_NOT_CONFIGURED": "USDA search is not configured. Enter nutrition values manually instead.",
     "USDA_UNAVAILABLE": "The USDA food database is unavailable right now. Try again later or enter values manually.",
+    "INVALID_BARCODE": "That barcode isn't valid. Check the digits and try again.",
+    "OPEN_FOOD_FACTS_DISABLED": "Barcode lookup isn't enabled on this server. Use USDA search or enter values manually.",
+    "OPEN_FOOD_FACTS_UNAVAILABLE": "Open Food Facts is unavailable right now. Try again later or enter values manually.",
+    "EXTERNAL_PRODUCT_NOT_FOUND": "No product was found for that barcode.",
+    "EXTERNAL_PRODUCT_INVALID": "That product can't be used as a nutrition source. Enter values manually instead.",
+    "EXTERNAL_PRODUCT_PARTIAL": "This product is missing some values — confirm to save it as-is.",
+    "NUTRITION_BASIS_UNSUPPORTED": "This product's nutrition basis isn't supported (not per 100 g or 100 ml).",
+    "NUTRITION_EQUIVALENCY_REQUIRED": "This product is measured per 100 ml. Add a weight equivalency (density) for this ingredient first.",
     "INVALID_INPUT": "Please check the values and try again.",
     "NOT_FOUND": "That item could not be found. It may have been removed.",
     "DUPLICATE_NAME": "Something with that name already exists.",
@@ -963,6 +971,9 @@
         },
         "editor": {
           "title": "Update ingredient nutrition — {name}",
+          "modeGeneric": "Generic",
+          "modePackaged": "Packaged",
+          "modeManual": "Manual",
           "usdaTab": "USDA search",
           "customTab": "Custom",
           "refresh": "Refresh from source",
@@ -978,7 +989,43 @@
           "invalidValue": "Nutrient values must be non-negative numbers.",
           "cancel": "Cancel",
           "save": "Save",
-          "saving": "Saving…"
+          "saving": "Saving…",
+          "packagedHint": "Enter a product barcode (EAN / GTIN), then review the product before saving.",
+          "offDisabled": "Barcode lookup isn't enabled on this server. Use USDA search or manual entry.",
+          "barcodeLabel": "Barcode (EAN / GTIN)",
+          "barcodePlaceholder": "e.g. 3017620422003",
+          "barcodeSearch": "Look up",
+          "barcodeSearching": "Looking up…",
+          "preview": {
+            "brand": "Brand",
+            "packageQuantity": "Package size",
+            "barcode": "Barcode",
+            "language": "Product language",
+            "countries": "Sold in",
+            "basis": "Values per",
+            "basisG": "100 g",
+            "basisMl": "100 ml",
+            "missing": "Missing values",
+            "warnings": "Notes",
+            "updated": "Source updated {date}",
+            "stale": "Showing cached data — the provider was unavailable.",
+            "none": "None",
+            "confirm": "Save this product",
+            "confirmPartial": "Save anyway (missing values stay unknown)",
+            "equivalencyRequired": "This product is measured per 100 ml. Add a weight equivalency (density) for this ingredient before saving — 100 ml is never assumed to weigh 100 g."
+          },
+          "attributionOff": "Data from Open Food Facts",
+          "attributionOffLicense": "Open Database License (ODbL)",
+          "viewOnOff": "View on Open Food Facts",
+          "warning": {
+            "ENERGY_DERIVED_FROM_KJ": "Calories were converted from kJ.",
+            "SODIUM_DERIVED_FROM_SALT": "Sodium was estimated from salt.",
+            "MISSING_ENERGY": "No energy value on the label.",
+            "MISSING_CORE_NUTRIENT": "Some core nutrients are missing.",
+            "VALUE_OUT_OF_RANGE": "An implausible value was dropped.",
+            "SALT_SODIUM_MISMATCH": "Salt and sodium don't match exactly.",
+            "BASIS_VOLUME": "Measured per 100 ml (a liquid)."
+          }
         }
       }
     },
@@ -3020,7 +3067,16 @@
           ]
         },
         {
-          "heading": "10. Changes to this policy",
+          "heading": "10. External data sources",
+          "body": [
+            "PrepProfit's nutrition estimates draw on public food databases. No personal data is sent to these sources — only the generic food term or product barcode you look up.",
+            "- USDA FoodData Central — U.S. Department of Agriculture, released into the public domain (CC0).",
+            "- Open Food Facts — a collaborative product database, made available under the Open Database License (ODbL, https://opendatacommons.org/licenses/odbl/). Individual product data from Open Food Facts is shown with attribution and a link to the source product; product images are not used.",
+            "Nutrition figures from these sources are estimates for planning, not a substitute for laboratory analysis or a claim of regulatory compliance."
+          ]
+        },
+        {
+          "heading": "11. Changes to this policy",
           "body": [
             "We may update this policy as the Service evolves. Material changes will be announced by email or in-app notice. The date at the top shows the latest revision."
           ]

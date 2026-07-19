@@ -175,6 +175,9 @@ export default async function NutritionLabelPrintPage({
 
           <div className="mt-4 max-w-sm text-[10px] leading-snug text-neutral-500">
             <p>{t('editor.attribution')}</p>
+            <p>
+              {t('editor.attributionOff')} — {t('editor.attributionOffLicense')}
+            </p>
             <p>{t('disclaimer')}</p>
           </div>
         </div>
