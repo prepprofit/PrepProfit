@@ -95,6 +95,10 @@ export const RATE_LIMITS = {
   // each hit calls the external USDA API (free but externally rate-limited per
   // key), so keep an interactive-but-modest budget to protect the shared key.
   usdaSearch: { limit: 20, windowMs: MINUTE },
+  // Seed ingredient catalogue search (in-memory, no external API, cheap) —
+  // generous interactive budget; the limiter is here only to keep the shared
+  // "rate limit before org work" pattern and stop scripted scraping.
+  catalogSearch: { limit: 60, windowMs: MINUTE },
   // GDPR account data export (Sprint 5e). TIGHT: reads every business table and
   // serialises the whole org, so it is the heaviest read in the app — a small
   // per-org+user budget is plenty for a legitimate portability request.
