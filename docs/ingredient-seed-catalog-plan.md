@@ -1,6 +1,15 @@
 # Catálogo seed de ingredientes comuns — plano para aprovação
 
-Estado: **APROVADO pelo owner 2026-07-19.** Decisões: D1 = geração
+Estado: **IMPLEMENTADO 2026-07-19 (Slices 1–5 em `main`).** Realizado vs
+plano: dataset final = **1.873 entradas** (geração SR Legacy + brand filter
+Title-case + segment-stripping de descritores de prep/grade; overrides curados
+com 2 adds de levedura + 2 patches de mustard-greens); Slices 1+2 = commits
+separados (dataset+módulo / script); a migração 0042 (`suggested_fdc_id`) saiu
+ANTES do Slice 3 (a action de create grava o hint); Slice 5 = botão "Use
+suggested USDA" no tab Nutrition (manager-only, reutiliza
+`saveIngredientNutritionAction` que re-fetcha server-side). Ainda por aplicar
+em PROD: migração 0042. Gate: 1854 pass / 35 skip + build OK.
+Aprovação: owner 2026-07-19. Decisões: D1 = geração
 USDA + curadoria (~1.500–2.500); D2 = EN-only (sem PT no v1); D3 = sim
 (coluna `suggested_fdc_id`, migração 0042); D4 = bloquear `DUPLICATE_NAME`;
 D5 = sem audit (paridade com criação manual).
