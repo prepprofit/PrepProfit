@@ -237,9 +237,10 @@ export async function loadActiveCatalogue(
     return result;
   };
 
-  // Dual-read (Fase 5, §6.8): a priced default portion option overrides the
-  // legacy column for every catalogue consumer (CFO, daily-close, menu
-  // engineering, profit leaks).
+  // The DEFAULT portion option is the authoritative price for every catalogue
+  // consumer (CFO, daily-close, menu engineering, profit leaks). The legacy
+  // fallback was retired in Fase 7 Slice 6b — an unpriced default option is
+  // honestly unpriced (null), never a fall back to `recipes.selling_price_cents`.
   const defaultPortionPrices = await loadDefaultPortionPrices(
     db,
     organizationId,
@@ -261,8 +262,7 @@ export async function loadActiveCatalogue(
     return {
       id: recipe.id,
       name: recipe.name,
-      sellingPriceCents:
-        defaultPortionPrices.get(recipe.id) ?? recipe.sellingPriceCents,
+      sellingPriceCents: defaultPortionPrices.get(recipe.id) ?? null,
       yieldPortions: recipe.yieldPortions,
       yieldPercentage: recipe.yieldPercentage,
       laborCostCents: recipe.laborCostCents,

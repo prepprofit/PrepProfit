@@ -52,14 +52,13 @@ export default async function RecipeCardPrintPage({
     withOrg(organizationId, async (tx) => {
       const recipe = await getRecipeWithIngredients(tx, organizationId, id);
       if (!recipe) return null;
-      // Dual-read (Recipes 2.0 Fase 5): a priced default portion option
-      // overrides the legacy selling price on the cost sheet.
+      // The default portion option is the authoritative selling price on the
+      // cost sheet (Fase 7 Slice 6b retired the legacy fallback); an unpriced
+      // option is honestly unpriced, never a fall back to the legacy column.
       const priceOverride = (
         await loadDefaultPortionPrices(tx, organizationId, [id])
       ).get(id);
-      if (priceOverride !== undefined) {
-        recipe.recipe = { ...recipe.recipe, sellingPriceCents: priceOverride };
-      }
+      recipe.recipe = { ...recipe.recipe, sellingPriceCents: priceOverride ?? null };
       const settings = await getOrgSettingsRow(tx, organizationId);
       // Sub-recipe component lines with their resolved raw material cost.
       const componentLines = await listRecipeComponents(tx, organizationId, [id]);

@@ -217,8 +217,8 @@ describe('exclusive flags', () => {
   });
 });
 
-describe('loadDefaultPortionPrices (dual-read)', () => {
-  it('returns only PRICED default options; others fall back to legacy', async () => {
+describe('loadDefaultPortionPrices (authoritative price)', () => {
+  it('returns only PRICED default options; an unpriced one is absent (unpriced)', async () => {
     const map = await runInOrg(db, ORG, (tx) =>
       loadDefaultPortionPrices(tx, ORG, [recipeId, trashedRecipeId, 'nope']),
     );
@@ -229,7 +229,8 @@ describe('loadDefaultPortionPrices (dual-read)', () => {
     expect(map.get(recipeId)).toBe(current.sellingPriceCents);
     expect(map.has('nope')).toBe(false);
 
-    // A default option WITHOUT a price is absent from the map (legacy wins).
+    // A default option WITHOUT a price is absent from the map — consumers read
+    // that as unpriced (null), never a fall back to the legacy column.
     await runInOrg(db, ORG, (tx) =>
       updatePortionOption(
         tx,

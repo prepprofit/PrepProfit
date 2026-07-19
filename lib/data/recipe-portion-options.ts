@@ -65,11 +65,15 @@ export async function listPortionOptions(
 }
 
 /**
- * DUAL-READ price resolution (Fase 5, §6.8): the priced DEFAULT portion option
- * per recipe. Consumers (catalogue reports, dashboard, recipe-card documents)
- * use `map.get(recipeId) ?? recipe.sellingPriceCents` — the option gradually
- * replaces the legacy column; a recipe without a priced default option keeps
- * reading legacy, so the backfilled world is bit-identical to today.
+ * AUTHORITATIVE per-recipe selling price: the DEFAULT portion option's price
+ * (Fase 5, §6.8). The dual-read fallback to the legacy `recipes.
+ * selling_price_cents` column was RETIRED in Fase 7 Slice 6b, after the prod
+ * parity verify (`npm run verify:recipes-v2`) confirmed every recipe has a
+ * priced/priceable default option and none was left behind the legacy column.
+ * Consumers now use `map.get(recipeId) ?? null` — an ABSENT entry means
+ * "unpriced", NEVER a fall back to the legacy column. A price of 0 (free) is a
+ * real price and is included; only a NULL option price is omitted. Every write
+ * path keeps the option in sync via `syncLegacyPriceToDefaultOption`.
  */
 export async function loadDefaultPortionPrices(
   db: TenantClient,

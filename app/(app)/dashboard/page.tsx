@@ -233,8 +233,9 @@ export default async function DashboardPage({
     return {
       id: recipe.id,
       name: recipe.name,
-      sellingPriceCents:
-        defaultPortionPrices.get(recipe.id) ?? recipe.sellingPriceCents,
+      // Authoritative price = the default portion option (legacy fallback
+      // retired in Fase 7 Slice 6b); an unpriced option is honestly unpriced.
+      sellingPriceCents: defaultPortionPrices.get(recipe.id) ?? null,
       cost: {
         yieldPortions: recipe.yieldPortions,
         yieldPercentage: recipe.yieldPercentage,

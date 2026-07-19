@@ -78,14 +78,16 @@ export async function renderDocumentForEmail(
       const loaded = await withOrg(organizationId, async (tx) => {
         const recipe = await getRecipeWithIngredients(tx, organizationId, input.recipeId);
         if (!recipe) return null;
-        // Dual-read (Recipes 2.0 Fase 5): a priced default portion option
-        // overrides the legacy selling price on the emailed card.
+        // The default portion option is the authoritative selling price on the
+        // emailed card (Fase 7 Slice 6b retired the legacy fallback); an
+        // unpriced option is honestly unpriced, never a legacy fall back.
         const priceOverride = (
           await loadDefaultPortionPrices(tx, organizationId, [input.recipeId])
         ).get(input.recipeId);
-        if (priceOverride !== undefined) {
-          recipe.recipe = { ...recipe.recipe, sellingPriceCents: priceOverride };
-        }
+        recipe.recipe = {
+          ...recipe.recipe,
+          sellingPriceCents: priceOverride ?? null,
+        };
         const settings = await getOrgSettingsRow(tx, organizationId);
         return { recipe, settings };
       });
