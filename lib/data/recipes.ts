@@ -1,7 +1,8 @@
-import { and, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import {
   ingredientPrepActions,
   ingredients,
+  recipeFolders,
   recipeIngredients,
   recipePresets,
   recipes,
@@ -10,6 +11,7 @@ import {
 import type { Ingredient, Recipe, NewRecipe } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { nullTaskRecipeLinks } from '@/lib/data/tasks';
+import { syncBookMembershipForFolderMove } from '@/lib/data/recipe-books';
 
 /**
  * Access to `recipes` is ALWAYS scoped by `organizationId`. See lib/data/ingredients.ts.
@@ -207,6 +209,10 @@ export async function listRecipes(
  * The composite (organization_id, folder_id) FK guarantees the folder is in this
  * org — a non-existent or cross-tenant folder raises a foreign-key violation the
  * action surfaces. Trashed recipes must be restored before they can be moved.
+ *
+ * Fase 7 coexistence (D2): the move is mirrored onto the homonymous recipe
+ * BOOKS via `syncBookMembershipForFolderMove`, so folders and books keep
+ * telling the same story while both organizers are live.
  */
 export async function moveRecipeToFolder(
   db: TenantClient,
@@ -214,6 +220,21 @@ export async function moveRecipeToFolder(
   id: string,
   folderId: string | null,
 ): Promise<Recipe | null> {
+  // The old folder's name drives the book write-through, so read it before the
+  // move (both queries run inside the caller's withOrg transaction).
+  const [before] = await db
+    .select({ folderId: recipes.folderId })
+    .from(recipes)
+    .where(
+      and(
+        eq(recipes.organizationId, organizationId),
+        eq(recipes.id, id),
+        isNull(recipes.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!before) return null;
+
   const [row] = await db
     .update(recipes)
     .set({ folderId })
@@ -225,7 +246,50 @@ export async function moveRecipeToFolder(
       ),
     )
     .returning();
-  return row ?? null;
+  if (!row) return null;
+
+  await mirrorFolderChangeToBooks(db, organizationId, id, before.folderId, folderId);
+  return row;
+}
+
+/**
+ * Resolves the old/new folder rows by id and hands them to the homonymous-book
+ * write-through (D2 coexistence). No-op when the folder did not change.
+ */
+async function mirrorFolderChangeToBooks(
+  db: TenantClient,
+  organizationId: string,
+  recipeId: string,
+  oldFolderId: string | null,
+  newFolderId: string | null,
+): Promise<void> {
+  if (oldFolderId === newFolderId) return;
+  const folderIds = [oldFolderId, newFolderId].filter(
+    (f): f is string => f !== null,
+  );
+  const folderRows = folderIds.length
+    ? await db
+        .select({
+          id: recipeFolders.id,
+          name: recipeFolders.name,
+          icon: recipeFolders.icon,
+        })
+        .from(recipeFolders)
+        .where(
+          and(
+            eq(recipeFolders.organizationId, organizationId),
+            inArray(recipeFolders.id, folderIds),
+          ),
+        )
+    : [];
+  const byId = new Map(folderRows.map((f) => [f.id, f]));
+  await syncBookMembershipForFolderMove(
+    db,
+    organizationId,
+    recipeId,
+    oldFolderId ? (byId.get(oldFolderId) ?? null) : null,
+    newFolderId ? (byId.get(newFolderId) ?? null) : null,
+  );
 }
 
 /**
@@ -416,6 +480,9 @@ export async function createRecipe(
     .values({ ...input, organizationId })
     .returning();
   if (!row) throw new Error('Failed to create recipe.');
+  if (row.folderId) {
+    await mirrorFolderChangeToBooks(db, organizationId, row.id, null, row.folderId);
+  }
   return row;
 }
 
@@ -425,6 +492,21 @@ export async function updateRecipe(
   id: string,
   input: RecipeInput,
 ): Promise<Recipe | null> {
+  // The legacy editor changes `folderId` through here too — read the previous
+  // value so the homonymous-book write-through can mirror the change (D2).
+  const [before] = await db
+    .select({ folderId: recipes.folderId })
+    .from(recipes)
+    .where(
+      and(
+        eq(recipes.organizationId, organizationId),
+        eq(recipes.id, id),
+        isNull(recipes.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!before) return null;
+
   const [row] = await db
     .update(recipes)
     .set(input)
@@ -437,7 +519,18 @@ export async function updateRecipe(
       ),
     )
     .returning();
-  return row ?? null;
+  if (!row) return null;
+
+  if (input.folderId !== undefined) {
+    await mirrorFolderChangeToBooks(
+      db,
+      organizationId,
+      id,
+      before.folderId,
+      row.folderId,
+    );
+  }
+  return row;
 }
 
 /**
