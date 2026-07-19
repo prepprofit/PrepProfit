@@ -1228,6 +1228,34 @@
     "deleteConfirm": {
       "title": "Move recipe to Trash?",
       "body": "{name} will move to the Trash. You can restore it within 30 days."
+    },
+    "library": {
+      "viewToggle": "View",
+      "viewTable": "Table view",
+      "viewCards": "Card view",
+      "searchPlaceholder": "Search recipes...",
+      "empty": "No recipes in this view.",
+      "portions": "{count, plural, one {# portion} other {# portions}}",
+      "columns": {
+        "name": "Recipe",
+        "books": "Books",
+        "yield": "Yield",
+        "allergens": "Allergens",
+        "status": "Status",
+        "cost": "Cost / portion",
+        "price": "Price",
+        "margin": "Margin"
+      },
+      "status": {
+        "allergensUnreviewed": "Allergens unreviewed",
+        "nutritionIncomplete": "Nutrition incomplete",
+        "noBook": "No book",
+        "needsPricing": "Needs pricing",
+        "noSellingPrice": "No selling price"
+      }
+    },
+    "books": {
+      "title": "Recipe books"
     }
   },
   "inventory": {
