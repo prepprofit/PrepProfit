@@ -175,6 +175,7 @@ export default async function RecipesPage({
             books={bookOptions}
             showMoney={showMoney}
             currency={settings.currency}
+            createFolderId={createFolderId}
           />
         )}
       </div>

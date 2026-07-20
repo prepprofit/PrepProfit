@@ -3,7 +3,8 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { startWorkflow } from '@flows/react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Plus } from 'lucide-react';
 import {
   type ColumnDef,
   type SortingState,
@@ -25,6 +26,7 @@ import {
   bulkTrashRecipesAction,
   removeRecipesFromBookAction,
 } from '@/app/(app)/recipes/book-actions';
+import { createRecipeAction } from '@/app/(app)/recipes/actions';
 import { cn } from '@/lib/utils';
 
 /**
@@ -48,19 +50,25 @@ export function LibraryTable({
   books,
   showMoney,
   currency,
+  createFolderId,
 }: {
   rows: LibraryTableRow[];
   books: { id: string; name: string }[];
   /** Manager only — kitchen rows have no money to show anyway. */
   showMoney: boolean;
   currency: string;
+  /** Folder a newly created recipe is filed into (null = "No folder"). */
+  createFolderId: string | null;
 }) {
   const t = useTranslations('recipes.library');
+  const tRecipes = useTranslations('recipes');
   const tAllergens = useTranslations('allergens');
   const tCommon = useTranslations('common');
   const actionError = useActionError();
   const router = useRouter();
   const [query, setQuery] = React.useState('');
+  const [newName, setNewName] = React.useState('');
+  const [createError, setCreateError] = React.useState<string | null>(null);
   const [sorting, setSorting] = React.useState<SortingState>([
     { id: 'name', desc: false },
   ]);
@@ -160,6 +168,33 @@ export function LibraryTable({
   const [bulkNotice, setBulkNotice] = React.useState<string | null>(null);
   const [confirmTrash, setConfirmTrash] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
+
+  const onCreate = () => {
+    const trimmed = newName.trim();
+    if (trimmed === '') {
+      setCreateError(tRecipes('errors.nameRequired'));
+      return;
+    }
+    setCreateError(null);
+    startTransition(async () => {
+      const result = await createRecipeAction({
+        name: trimmed,
+        folderId: createFolderId,
+        yieldPortions: 1,
+        yieldPercentage: 100,
+        laborCostCents: 0,
+        energyCostCents: 0,
+        packagingCostCents: 0,
+      });
+      if (result.ok) {
+        // Best-effort celebratory nudge — never block navigation on Flows.
+        void startWorkflow('first-recipe-created').catch(() => undefined);
+        router.push(`/recipes/${result.data.id}`);
+      } else {
+        setCreateError(actionError(result.code));
+      }
+    });
+  };
 
   const toggleSelected = (id: string) => {
     setSelected((prev) => {
@@ -431,13 +466,40 @@ export function LibraryTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <Input
-        aria-label={t('searchPlaceholder')}
-        placeholder={t('searchPlaceholder')}
-        className="max-w-xs"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
+      <div className="grid grid-cols-1 items-center gap-3 lg:grid-cols-2">
+        <Input
+          type="search"
+          aria-label={t('searchPlaceholder')}
+          placeholder={t('searchPlaceholder')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border bg-surface p-3 sm:flex-row sm:items-center">
+          <Input
+            aria-label={tRecipes('newName')}
+            placeholder={tRecipes('placeholders.name')}
+            value={newName}
+            disabled={pending}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onCreate();
+            }}
+          />
+          <Button type="button" onClick={onCreate} disabled={pending}>
+            <Plus className="size-4" />
+            {tRecipes('actions.create')}
+          </Button>
+        </div>
+      </div>
+
+      {createError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+        >
+          {createError}
+        </div>
+      )}
 
       {allergenOptions.length > 0 && (
         <fieldset className="flex flex-wrap items-center gap-1.5">
