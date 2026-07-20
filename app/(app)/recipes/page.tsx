@@ -19,38 +19,33 @@ import {
   toKitchenLibraryRow,
 } from '@/lib/data/recipe-library';
 import { listFoldersWithCounts } from '@/lib/data/recipe-folders';
-import { listBooksWithCounts } from '@/lib/data/recipe-books';
 import { DEFAULT_ORG_SETTINGS, getOrgSettingsRow } from '@/lib/data/org-settings';
 import { RecipeList } from '@/components/app/recipes/recipe-list';
 import { FolderRail } from '@/components/app/recipes/folder-rail';
-import { BookRail } from '@/components/app/recipes/book-rail';
 import { LibraryTable } from '@/components/app/recipes/library-table';
 import { cn } from '@/lib/utils';
 
 export default async function RecipesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ folder?: string; book?: string; view?: string }>;
+  searchParams: Promise<{ folder?: string; view?: string }>;
 }) {
   const t = await getTranslations('recipes');
   const organizationId = await getOrgId();
-  const { folder, book, view } = await searchParams;
+  const { folder, view } = await searchParams;
 
-  const { listing, books, libraryRows, settings } = await withOrg(
+  const { listing, libraryRows, settings } = await withOrg(
     organizationId,
     async (tx) => ({
       listing: await listFoldersWithCounts(tx, organizationId),
-      books: await listBooksWithCounts(tx, organizationId),
       libraryRows: await listRecipesForLibrary(tx, organizationId),
       settings:
         (await getOrgSettingsRow(tx, organizationId)) ?? DEFAULT_ORG_SETTINGS,
     }),
   );
 
-  // Resolve the active view. A known `?book=` wins over `?folder=`; `none` =
-  // uncategorized; a known folder id = that folder; anything else = all.
-  const activeBookId =
-    book !== undefined && books.some((b) => b.id === book) ? book : null;
+  // Resolve the active view. `none` = uncategorized; a known folder id = that
+  // folder; anything else = all.
   const folderExists =
     folder !== undefined &&
     folder !== 'none' &&
@@ -59,10 +54,7 @@ export default async function RecipesPage({
   let activeKey: string;
   let createFolderId: string | null = null;
   let visibleRows = libraryRows;
-  if (activeBookId) {
-    activeKey = `book:${activeBookId}`;
-    visibleRows = libraryRows.filter((r) => r.bookIds.includes(activeBookId));
-  } else if (folder === 'none') {
+  if (folder === 'none') {
     activeKey = 'none';
     visibleRows = libraryRows.filter((r) => r.folderId === null);
   } else if (folderExists && folder) {
@@ -80,16 +72,14 @@ export default async function RecipesPage({
   const rows = showMoney ? visibleRows : visibleRows.map(toKitchenLibraryRow);
 
   const folderOptions = listing.folders.map((f) => ({ id: f.id, name: f.name }));
-  const bookOptions = books.map((b) => ({ id: b.id, name: b.name }));
   const canImportPhoto = canAccessFinancials(role);
 
   // D1: table is the default; `?view=cards` keeps the legacy grid. The toggle
-  // links preserve the active folder/book filter.
+  // links preserve the active folder filter.
   const isCards = view === 'cards';
   const viewHref = (nextView: 'table' | 'cards') => {
     const params = new URLSearchParams();
-    if (activeBookId) params.set('book', activeBookId);
-    else if (folder) params.set('folder', folder);
+    if (folder) params.set('folder', folder);
     if (nextView === 'cards') params.set('view', 'cards');
     const qs = params.toString();
     return qs ? `/recipes?${qs}` : '/recipes';
@@ -147,13 +137,7 @@ export default async function RecipesPage({
         </div>
       </div>
       <div className="grid items-start gap-5 lg:grid-cols-[20rem_1fr]">
-        <div className="flex flex-col gap-5">
-          <FolderRail
-            listing={listing}
-            activeKey={activeBookId ? 'book' : activeKey}
-          />
-          <BookRail books={books} activeBookId={activeBookId} />
-        </div>
+        <FolderRail listing={listing} activeKey={activeKey} />
         {isCards ? (
           <RecipeList
             // Re-mount per view so the grid resets to the freshly filtered list.
@@ -166,13 +150,12 @@ export default async function RecipesPage({
             }))}
             folders={folderOptions}
             createFolderId={createFolderId}
-            activeKey={activeBookId ? 'all' : activeKey}
+            activeKey={activeKey}
           />
         ) : (
           <LibraryTable
             key={activeKey}
             rows={rows}
-            books={bookOptions}
             showMoney={showMoney}
             currency={settings.currency}
             createFolderId={createFolderId}

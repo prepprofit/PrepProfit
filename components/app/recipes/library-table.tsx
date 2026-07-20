@@ -17,15 +17,10 @@ import type { LibraryRecipeRow } from '@/lib/data/recipe-library';
 import { formatMoney } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useActionError } from '@/lib/i18n/use-action-error';
-import {
-  addRecipesToBookAction,
-  bulkTrashRecipesAction,
-  removeRecipesFromBookAction,
-} from '@/app/(app)/recipes/book-actions';
+import { bulkTrashRecipesAction } from '@/app/(app)/recipes/book-actions';
 import { createRecipeAction } from '@/app/(app)/recipes/actions';
 import { cn } from '@/lib/utils';
 
@@ -47,13 +42,11 @@ type TableMeta = {
 
 export function LibraryTable({
   rows,
-  books,
   showMoney,
   currency,
   createFolderId,
 }: {
   rows: LibraryTableRow[];
-  books: { id: string; name: string }[];
   /** Manager only — kitchen rows have no money to show anyway. */
   showMoney: boolean;
   currency: string;
@@ -72,11 +65,6 @@ export function LibraryTable({
   const [sorting, setSorting] = React.useState<SortingState>([
     { id: 'name', desc: false },
   ]);
-
-  const bookName = React.useMemo(
-    () => new Map(books.map((b) => [b.id, b.name])),
-    [books],
-  );
 
   // ── Filters (Fase 7 Slice 3, parity with `Nutrition and label/6.png`) ──
   // Allergen filter: ANY selected slug present (contains OR may-contain).
@@ -107,7 +95,6 @@ export function LibraryTable({
     const flagOf = (row: LibraryTableRow, key: string): boolean => {
       if (key === 'allergensUnreviewed') return row.status.allergensUnreviewed;
       if (key === 'nutritionIncomplete') return row.status.nutritionIncomplete;
-      if (key === 'noBook') return row.status.noBook;
       if (key === 'needsPricing') return row.money?.needsPricing === true;
       if (key === 'noSellingPrice') {
         return row.money !== undefined && row.money.sellingPriceCents == null;
@@ -118,7 +105,6 @@ export function LibraryTable({
     const keys = [
       'allergensUnreviewed',
       'nutritionIncomplete',
-      'noBook',
       ...(showMoney ? ['needsPricing', 'noSellingPrice'] : []),
     ];
     return keys.map((key) => ({
@@ -163,7 +149,6 @@ export function LibraryTable({
 
   // ── Bulk selection (Slice 4) ──
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
-  const [bulkBookId, setBulkBookId] = React.useState('');
   const [bulkError, setBulkError] = React.useState<string | null>(null);
   const [bulkNotice, setBulkNotice] = React.useState<string | null>(null);
   const [confirmTrash, setConfirmTrash] = React.useState(false);
@@ -202,32 +187,6 @@ export function LibraryTable({
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
-    });
-  };
-
-  const runBookAction = (kind: 'add' | 'remove') => {
-    if (!bulkBookId || selected.size === 0) return;
-    setBulkError(null);
-    setBulkNotice(null);
-    startTransition(async () => {
-      const action =
-        kind === 'add' ? addRecipesToBookAction : removeRecipesFromBookAction;
-      const result = await action({
-        bookId: bulkBookId,
-        recipeIds: [...selected],
-      });
-      if (result.ok) {
-        setBulkNotice(
-          t('bulk.bookDone', {
-            affected: result.data.affected,
-            skipped: result.data.skipped,
-          }),
-        );
-        setSelected(new Set());
-        router.refresh();
-      } else {
-        setBulkError(actionError(result.code));
-      }
     });
   };
 
@@ -298,31 +257,6 @@ export function LibraryTable({
         ),
       },
       {
-        id: 'books',
-        header: t('columns.books'),
-        enableSorting: false,
-        cell: ({ row }) => {
-          const names = row.original.bookIds
-            .map((id) => bookName.get(id))
-            .filter((n): n is string => n !== undefined);
-          if (names.length === 0) {
-            return <span className="text-muted-foreground">—</span>;
-          }
-          return (
-            <span className="flex flex-wrap gap-1">
-              {names.map((name) => (
-                <span
-                  key={name}
-                  className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-foreground"
-                >
-                  {name}
-                </span>
-              ))}
-            </span>
-          );
-        },
-      },
-      {
         id: 'yield',
         header: t('columns.yield'),
         enableSorting: false,
@@ -372,7 +306,6 @@ export function LibraryTable({
           const badges: string[] = [];
           if (r.status.allergensUnreviewed) badges.push(t('status.allergensUnreviewed'));
           if (r.status.nutritionIncomplete) badges.push(t('status.nutritionIncomplete'));
-          if (r.status.noBook) badges.push(t('status.noBook'));
           if (showMoney && r.money?.needsPricing) badges.push(t('status.needsPricing'));
           if (showMoney && r.money && r.money.sellingPriceCents == null) {
             badges.push(t('status.noSellingPrice'));
@@ -442,7 +375,6 @@ export function LibraryTable({
     }
     return cols;
   }, [
-    bookName,
     currency,
     showMoney,
     t,
@@ -584,42 +516,6 @@ export function LibraryTable({
           <span className="text-sm text-muted-foreground">
             {t('bulk.selected', { count: selected.size })}
           </span>
-          {books.length > 0 && (
-            <>
-              <Select
-                aria-label={t('bulk.bookSelect')}
-                className="h-8 w-44"
-                value={bulkBookId}
-                disabled={pending}
-                onChange={(e) => setBulkBookId(e.target.value)}
-              >
-                <option value="">{t('bulk.bookSelect')}</option>
-                {books.map((book) => (
-                  <option key={book.id} value={book.id}>
-                    {book.name}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={pending || bulkBookId === ''}
-                onClick={() => runBookAction('add')}
-              >
-                {t('bulk.addToBook')}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={pending || bulkBookId === ''}
-                onClick={() => runBookAction('remove')}
-              >
-                {t('bulk.removeFromBook')}
-              </Button>
-            </>
-          )}
           <Button
             type="button"
             variant="outline"
