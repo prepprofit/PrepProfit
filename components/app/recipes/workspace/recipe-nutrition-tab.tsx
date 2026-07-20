@@ -532,8 +532,10 @@ function NutritionEditDialog({
 
   return (
     <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogTitle>{t('title', { name: line.ingredientName })}</DialogTitle>
+      <DialogContent className="flex max-h-[85vh] flex-col gap-4 overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-lg sm:max-w-lg">
+        <DialogTitle className="text-base font-semibold leading-tight">
+          {t('title', { name: line.ingredientName })}
+        </DialogTitle>
 
         {error ? (
           <p role="alert" className="text-sm text-red-700 dark:text-red-300">
