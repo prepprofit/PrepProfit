@@ -12,7 +12,10 @@ import {
   type DefaultSupplierSummary,
 } from '@/lib/data/ingredient-suppliers';
 import { getOrgSettings } from '@/lib/data/org-settings';
-import { IngredientGrid } from '@/components/app/ingredients/ingredient-grid';
+import {
+  IngredientGrid,
+  type SupplierPricePrefs,
+} from '@/components/app/ingredients/ingredient-grid';
 
 export default async function IngredientsPage({
   searchParams,
@@ -58,6 +61,9 @@ export default async function IngredientsPage({
   // ingredient row's `supplier` column), but no packs/prices and no editor.
   let supplierNames: string[] = [];
   const initialSupplierLinks: Record<string, DefaultSupplierSummary> = {};
+  // How each supplier quotes prices, remembered from the last time one of their packs
+  // was saved, so the dialog's two selects prefill instead of being re-picked.
+  const supplierPricePrefs: Record<string, SupplierPricePrefs> = {};
   if (canSeeCosts) {
     const [suppliers, links] = await withOrg(organizationId, async (tx) => [
       await listSuppliersWithCounts(tx, organizationId),
@@ -68,6 +74,12 @@ export default async function IngredientsPage({
       ),
     ]);
     supplierNames = suppliers.map((s) => s.name);
+    for (const s of suppliers) {
+      supplierPricePrefs[s.name] = {
+        basis: s.defaultPriceBasis,
+        includesVat: s.defaultPriceIncludesVat,
+      };
+    }
     for (const [id, link] of links) initialSupplierLinks[id] = link;
   }
 
@@ -83,6 +95,8 @@ export default async function IngredientsPage({
         initialReviewed={initialReviewed}
         supplierNames={supplierNames}
         initialSupplierLinks={initialSupplierLinks}
+        supplierPricePrefs={supplierPricePrefs}
+        taxRateBps={canSeeCosts ? settings.defaultTaxRateBps : null}
       />
     </div>
   );

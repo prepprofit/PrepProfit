@@ -2,7 +2,16 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
-import { Check, Plus, ShieldAlert, Trash2, Truck } from 'lucide-react';
+import {
+  Droplet,
+  Hash,
+  Pencil,
+  Plus,
+  Scale,
+  ShieldAlert,
+  Trash2,
+  Truck,
+} from 'lucide-react';
 import {
   type ColumnDef,
   flexRender,
@@ -12,7 +21,7 @@ import {
 import type { Ingredient } from '@/lib/db/schema';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
 import { isLowStock } from '@/lib/calculations/inventory';
-import { centsToAmountInput, parseMoneyToCents } from '@/lib/format/money';
+import { centsToAmountInput, formatMoney, parseMoneyToCents } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -31,6 +40,7 @@ import { IngredientCatalogDialog } from '@/components/app/ingredients/ingredient
 import { IngredientSupplierDialog } from '@/components/app/ingredients/ingredient-supplier-dialog';
 import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 import type { AllergenTag } from '@/lib/data/allergens';
+import type { SupplierPriceBasis } from '@/lib/calculations/purchasePrice';
 import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
 
 type Dimension = Ingredient['dimension'];
@@ -44,6 +54,17 @@ export type IngredientRow = Omit<Ingredient, 'priceCents' | 'pendingPriceCents'>
   pendingPriceCents?: number | null;
 };
 
+/**
+ * How one supplier quotes prices, remembered from the last pack saved against them,
+ * so the supplier dialog's two selects prefill instead of being re-picked per
+ * ingredient. NULL on either field = never set → the dialog falls back to whole-pack
+ * / excl. VAT.
+ */
+export type SupplierPricePrefs = {
+  basis: SupplierPriceBasis | null;
+  includesVat: boolean | null;
+};
+
 type Draft = {
   name: string;
   dimension: Dimension;
@@ -55,6 +76,30 @@ const PER_UNIT_SUFFIX: Record<Dimension, string> = {
   weight: '/kg',
   volume: '/l',
   count: '/pc',
+};
+
+/**
+ * The READ-state type pill. Colour encodes the UNIT SYSTEM — the one place on this
+ * row where colour earns its keep, so a manager scanning the list sees at a glance
+ * which ingredients are weighed, poured, or counted. Deliberately NOT accent orange:
+ * the brand orange stays reserved for the single primary action (Add) and active nav.
+ */
+const DIMENSION_PILL: Record<
+  Dimension,
+  { icon: React.ComponentType<{ className?: string }>; className: string }
+> = {
+  weight: {
+    icon: Scale,
+    className: 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300',
+  },
+  volume: {
+    icon: Droplet,
+    className: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
+  },
+  count: {
+    icon: Hash,
+    className: 'bg-surface-2 text-muted-foreground',
+  },
 };
 
 function draftFromRow(row: IngredientRow): Draft {
@@ -82,9 +127,20 @@ function draftToInput(draft: Draft) {
   return { ...operationalInput(draft), priceCents: parseMoneyToCents(draft.priceText) };
 }
 
-/** Enter commits the edited cell by blurring it (auto-save fires on blur). */
-function commitOnEnter(e: React.KeyboardEvent<HTMLInputElement>) {
-  if (e.key === 'Enter') e.currentTarget.blur();
+/**
+ * The system-set "last touched" stamp. Rendered with `suppressHydrationWarning`
+ * because the server formats in UTC and the browser in the viewer's zone, which can
+ * disagree by a day at the boundary — a cosmetic diff, never a data one.
+ */
+function formatUpdated(value: Date | string | null | undefined): string {
+  if (!value) return '—';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('en', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 type GridMeta = {
@@ -92,9 +148,12 @@ type GridMeta = {
   currency: string;
   canSeeCosts: boolean;
   pending: boolean;
-  savedId: string | null;
+  /** The one row currently in EDIT state; every other row renders as plain text. */
+  editingId: string | null;
   onField: (id: string, patch: Partial<Draft>) => void;
-  onCommit: (id: string) => void;
+  onEdit: (id: string) => void;
+  onSave: (id: string) => void;
+  onCancel: (id: string) => void;
   onDelete: (id: string) => void;
   onEditAllergens: (id: string) => void;
   /** True when the ingredient's allergens have NOT been reviewed yet. */
@@ -106,8 +165,11 @@ type GridMeta = {
    */
   canReorder: (id: string) => boolean;
   dimensionLabel: (d: Dimension) => string;
+  dimensionPillLabel: (d: Dimension) => string;
+  editLabel: string;
+  saveLabel: string;
+  cancelLabel: string;
   deleteLabel: string;
-  savedLabel: string;
   needsPricingLabel: string;
   allergensLabel: string;
   allergensUnreviewedLabel: string;
@@ -129,6 +191,8 @@ export function IngredientGrid({
   initialReviewed,
   supplierNames = [],
   initialSupplierLinks = {},
+  supplierPricePrefs = {},
+  taxRateBps = null,
 }: {
   initialIngredients: IngredientRow[];
   /** Manager only: render + edit the Price column. Kitchen rows carry no price. */
@@ -144,6 +208,10 @@ export function IngredientGrid({
   supplierNames?: string[];
   /** Default supplier link per ingredient id, to prefill the editor (manager-only). */
   initialSupplierLinks?: Record<string, DefaultSupplierSummary>;
+  /** Remembered price-entry preferences per supplier NAME (manager-only). */
+  supplierPricePrefs?: Record<string, SupplierPricePrefs>;
+  /** The org's VAT rate in basis points; null = not configured (manager-only). */
+  taxRateBps?: number | null;
 }) {
   const t = useTranslations('ingredients');
   const flashId = useRowHighlight(highlightId, 'ingredient-row-');
@@ -171,7 +239,10 @@ export function IngredientGrid({
   }, [rows, query]);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
-  const [savedId, setSavedId] = React.useState<string | null>(null);
+  // Explicit edit: exactly one row is editable at a time and NOTHING commits until
+  // Save. (Replaces the old auto-save-on-blur, which wrote silently on every focus
+  // change and forced every cell to look like an input.)
+  const [editingId, setEditingId] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   // Allergens (Sprint 9): tags + reviewed state per ingredient, plus which row's
   // allergen editor is open. Editing an allergen set marks the ingredient reviewed.
@@ -186,6 +257,11 @@ export function IngredientGrid({
     Record<string, DefaultSupplierSummary | null>
   >(() => ({ ...initialSupplierLinks }));
   const [supplierEditId, setSupplierEditId] = React.useState<string | null>(null);
+  // Price-entry preferences per supplier name, updated in place as packs are saved
+  // so a second ingredient from the same supplier prefills without a round-trip.
+  const [pricePrefs, setPricePrefs] = React.useState<
+    Record<string, SupplierPricePrefs>
+  >(() => ({ ...supplierPricePrefs }));
   // Seed catalogue picker (docs/ingredient-seed-catalog-plan.md Slice 4).
   const [catalogOpen, setCatalogOpen] = React.useState(false);
 
@@ -193,24 +269,10 @@ export function IngredientGrid({
   const allergenTarget = rows.find((r) => r.id === allergenEditId) ?? null;
   const supplierTarget = rows.find((r) => r.id === supplierEditId) ?? null;
 
-  // Briefly flag a row as "saved" after a successful auto-save, so the silent
-  // blur-commit gives the user visible feedback.
-  const savedTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flashSaved = React.useCallback((id: string) => {
-    setSavedId(id);
-    if (savedTimer.current) clearTimeout(savedTimer.current);
-    savedTimer.current = setTimeout(() => setSavedId(null), 1500);
-  }, []);
-  React.useEffect(
-    () => () => {
-      if (savedTimer.current) clearTimeout(savedTimer.current);
-    },
-    [],
-  );
-
-  const dimensionLabel = React.useCallback(
-    (d: Dimension) => tDim(d),
-    [tDim],
+  const dimensionLabel = React.useCallback((d: Dimension) => tDim(d), [tDim]);
+  const dimensionPillLabel = React.useCallback(
+    (d: Dimension) => t(`typePill.${d}`),
+    [t],
   );
 
   const onField = React.useCallback((id: string, patch: Partial<Draft>) => {
@@ -221,7 +283,40 @@ export function IngredientGrid({
     });
   }, []);
 
-  const onCommit = React.useCallback(
+  /** Reset a row's working copy back to what is actually stored. */
+  const resetDraft = React.useCallback(
+    (id: string) =>
+      setDrafts((prev) => {
+        const row = rows.find((r) => r.id === id);
+        return row ? { ...prev, [id]: draftFromRow(row) } : prev;
+      }),
+    [rows],
+  );
+
+  const onEdit = React.useCallback(
+    (id: string) => {
+      setError(null);
+      // Switching rows discards the previous row's uncommitted edits — nothing was
+      // ever sent, so the only state to clear is the local draft.
+      setEditingId((prev) => {
+        if (prev && prev !== id) resetDraft(prev);
+        return id;
+      });
+      resetDraft(id);
+    },
+    [resetDraft],
+  );
+
+  const onCancel = React.useCallback(
+    (id: string) => {
+      resetDraft(id);
+      setError(null);
+      setEditingId((prev) => (prev === id ? null : prev));
+    },
+    [resetDraft],
+  );
+
+  const onSave = React.useCallback(
     (id: string) => {
       const draft = drafts[id];
       const row = rows.find((r) => r.id === id);
@@ -231,7 +326,8 @@ export function IngredientGrid({
       const priceCents = parseMoneyToCents(draft.priceText);
       const input = canSeeCosts ? { ...op, priceCents } : op;
       if (op.name === '') {
-        setDrafts((prev) => ({ ...prev, [id]: draftFromRow(row) }));
+        // Stay in edit mode: a blank name is a mistake to fix, not a value to store.
+        setError(t('errors.nameRequired'));
         return;
       }
       // Skip the round-trip when nothing actually changed. (Supplier is edited
@@ -241,7 +337,9 @@ export function IngredientGrid({
         op.dimension === row.dimension &&
         (!canSeeCosts || priceCents === (row.priceCents ?? 0));
       if (unchanged) {
-        setDrafts((prev) => ({ ...prev, [id]: draftFromRow(row) }));
+        resetDraft(id);
+        setError(null);
+        setEditingId(null);
         return;
       }
       setError(null);
@@ -250,14 +348,14 @@ export function IngredientGrid({
         if (result.ok) {
           setRows((prev) => prev.map((r) => (r.id === id ? result.data : r)));
           setDrafts((prev) => ({ ...prev, [id]: draftFromRow(result.data) }));
-          flashSaved(id);
+          setEditingId(null);
         } else {
-          setDrafts((prev) => ({ ...prev, [id]: draftFromRow(row) }));
+          // Keep the row open with the typed values so the fix is one edit away.
           setError(actionError(result.code));
         }
       });
     },
-    [drafts, rows, flashSaved, actionError, canSeeCosts],
+    [drafts, rows, resetDraft, actionError, canSeeCosts, t],
   );
 
   const requestDelete = React.useCallback((id: string) => setConfirmId(id), []);
@@ -300,6 +398,7 @@ export function IngredientGrid({
           delete next[id];
           return next;
         });
+        setEditingId((prev) => (prev === id ? null : prev));
       } else {
         setError(actionError(result.code));
       }
@@ -336,19 +435,25 @@ export function IngredientGrid({
           const meta = table.options.meta as GridMeta;
           const draft = meta.drafts[row.original.id];
           if (!draft) return null;
+          const editing = meta.editingId === row.original.id;
           return (
-            <div className="flex min-w-40 flex-col gap-1">
-              <Input
-                aria-label={t('columns.name')}
-                value={draft.name}
-                disabled={meta.pending}
-                onChange={(e) => meta.onField(row.original.id, { name: e.target.value })}
-                onKeyDown={commitOnEnter}
-                onBlur={() => meta.onCommit(row.original.id)}
-              />
+            <div className="flex min-w-44 flex-col gap-1">
+              {editing ? (
+                <Input
+                  autoFocus
+                  aria-label={t('columns.name')}
+                  value={draft.name}
+                  disabled={meta.pending}
+                  onChange={(e) =>
+                    meta.onField(row.original.id, { name: e.target.value })
+                  }
+                />
+              ) : (
+                <span className="font-medium text-foreground">{row.original.name}</span>
+              )}
               {row.original.needsPricing && (
                 <span
-                  className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                  className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
                   title={meta.needsPricingLabel}
                 >
                   {meta.needsPricingLabel}
@@ -365,17 +470,33 @@ export function IngredientGrid({
           const meta = table.options.meta as GridMeta;
           const draft = meta.drafts[row.original.id];
           if (!draft) return null;
+          if (meta.editingId !== row.original.id) {
+            const pill = DIMENSION_PILL[row.original.dimension];
+            const Icon = pill.icon;
+            return (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                  pill.className,
+                )}
+                title={meta.dimensionLabel(row.original.dimension)}
+              >
+                <Icon className="size-3" />
+                {meta.dimensionPillLabel(row.original.dimension)}
+              </span>
+            );
+          }
           return (
             <Select
               aria-label={t('columns.dimension')}
+              className="w-32"
               value={draft.dimension}
               disabled={meta.pending}
-              onChange={(e) => {
+              onChange={(e) =>
                 meta.onField(row.original.id, {
                   dimension: e.target.value as Dimension,
-                });
-                meta.onCommit(row.original.id);
-              }}
+                })
+              }
             >
               {DIMENSIONS.map((d) => (
                 <option key={d} value={d}>
@@ -391,24 +512,34 @@ export function IngredientGrid({
         ? [
             {
               id: 'price',
-              header: `${t('columns.price')} · ${currency}`,
+              header: t('columns.price'),
               cell: ({ row, table }) => {
                 const meta = table.options.meta as GridMeta;
                 const draft = meta.drafts[row.original.id];
                 if (!draft) return null;
+                if (meta.editingId !== row.original.id) {
+                  return (
+                    <div className="flex items-baseline justify-end gap-1 tabular-nums">
+                      <span className="text-foreground">
+                        {formatMoney(row.original.priceCents ?? 0, meta.currency)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {PER_UNIT_SUFFIX[row.original.dimension]}
+                      </span>
+                    </div>
+                  );
+                }
                 return (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center justify-end gap-1.5">
                     <Input
                       aria-label={t('columns.price')}
                       inputMode="decimal"
-                      className="w-28"
+                      className="w-28 text-right tabular-nums"
                       value={draft.priceText}
                       disabled={meta.pending}
                       onChange={(e) =>
                         meta.onField(row.original.id, { priceText: e.target.value })
                       }
-                      onKeyDown={commitOnEnter}
-                      onBlur={() => meta.onCommit(row.original.id)}
                     />
                     <span className="text-xs text-muted-foreground">
                       {PER_UNIT_SUFFIX[draft.dimension]}
@@ -430,12 +561,10 @@ export function IngredientGrid({
           // Suppliers are MANAGER-ONLY (Sprint 7): a manager edits the default
           // supplier + pack via the dialog; kitchen sees the name read-only.
           if (!meta.canManageSuppliers) {
-            return (
-              <span className="text-sm text-muted-foreground">
-                {name ?? '—'}
-              </span>
-            );
+            return <span className="text-sm text-muted-foreground">{name ?? '—'}</span>;
           }
+          // Stays a TOGGLE in both row states: supplier editing is its own flow
+          // (product name, case pack, VAT), never an inline field.
           return (
             <div className="flex items-center gap-2">
               <Button
@@ -452,7 +581,7 @@ export function IngredientGrid({
               </Button>
               {hasPending && (
                 <span
-                  className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                  className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
                   title={meta.pendingCostLabel}
                 >
                   {meta.pendingCostLabel}
@@ -463,23 +592,51 @@ export function IngredientGrid({
         },
       },
       {
+        id: 'updated',
+        header: t('columns.updated'),
+        // System-set, never editable — it is the audit trail of the row, not a field.
+        cell: ({ row }) => (
+          <span
+            className="whitespace-nowrap text-xs text-muted-foreground"
+            suppressHydrationWarning
+          >
+            {formatUpdated(row.original.updatedAt)}
+          </span>
+        ),
+      },
+      {
         id: 'actions',
         header: '',
         cell: ({ row, table }) => {
           const meta = table.options.meta as GridMeta;
+          const id = row.original.id;
+          if (meta.editingId === id) {
+            return (
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={meta.pending}
+                  onClick={() => meta.onCancel(id)}
+                >
+                  {meta.cancelLabel}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={meta.pending}
+                  onClick={() => meta.onSave(id)}
+                >
+                  {meta.saveLabel}
+                </Button>
+              </div>
+            );
+          }
           return (
             <div className="flex items-center justify-end gap-1">
-              {meta.canReorder(row.original.id) && (
-                <AddToTaskListMenu kind="reorder" sourceId={row.original.id} />
-              )}
-              {meta.savedId === row.original.id && (
-                <span
-                  className="inline-flex items-center gap-1 text-xs text-brand-700 dark:text-brand-300"
-                  role="status"
-                >
-                  <Check className="size-4" />
-                  {meta.savedLabel}
-                </span>
+              {meta.canReorder(id) && (
+                <AddToTaskListMenu kind="reorder" sourceId={id} />
               )}
               <Button
                 type="button"
@@ -487,18 +644,17 @@ export function IngredientGrid({
                 size="sm"
                 aria-label={meta.allergensLabel}
                 title={
-                  meta.unreviewedAllergens(row.original.id)
+                  meta.unreviewedAllergens(id)
                     ? meta.allergensUnreviewedLabel
                     : meta.allergensLabel
                 }
                 disabled={meta.pending}
-                onClick={() => meta.onEditAllergens(row.original.id)}
+                onClick={() => meta.onEditAllergens(id)}
               >
                 <ShieldAlert
                   className={cn(
                     'size-4',
-                    meta.unreviewedAllergens(row.original.id) &&
-                      'text-amber-600 dark:text-amber-400',
+                    meta.unreviewedAllergens(id) && 'text-amber-600 dark:text-amber-400',
                   )}
                 />
               </Button>
@@ -506,9 +662,21 @@ export function IngredientGrid({
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label={meta.deleteLabel}
+                aria-label={meta.editLabel}
+                title={meta.editLabel}
                 disabled={meta.pending}
-                onClick={() => meta.onDelete(row.original.id)}
+                onClick={() => meta.onEdit(id)}
+              >
+                <Pencil className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={meta.deleteLabel}
+                title={meta.deleteLabel}
+                disabled={meta.pending}
+                onClick={() => meta.onDelete(id)}
               >
                 <Trash2 className="size-4" />
               </Button>
@@ -517,7 +685,7 @@ export function IngredientGrid({
         },
       },
     ],
-    [t, currency, canSeeCosts],
+    [t, canSeeCosts],
   );
 
   const table = useReactTable({
@@ -529,16 +697,21 @@ export function IngredientGrid({
       currency,
       canSeeCosts,
       pending,
-      savedId,
+      editingId,
       onField,
-      onCommit,
+      onEdit,
+      onSave,
+      onCancel,
       onDelete: requestDelete,
       onEditAllergens: editAllergens,
       unreviewedAllergens,
       canReorder,
       dimensionLabel,
+      dimensionPillLabel,
+      editLabel: t('actions.edit'),
+      saveLabel: t('actions.save'),
+      cancelLabel: t('actions.cancel'),
       deleteLabel: t('actions.delete'),
-      savedLabel: t('saved'),
       needsPricingLabel: t('needsPricing'),
       allergensLabel: tAllergens('editor.open'),
       allergensUnreviewedLabel: tAllergens('editor.unreviewed'),
@@ -639,6 +812,7 @@ export function IngredientGrid({
               </span>
             </div>
           )}
+          {/* The ONE primary (orange) action on this screen. */}
           <Button type="button" onClick={onCreate} disabled={pending}>
             <Plus className="size-4" />
             {t('actions.add')}
@@ -656,12 +830,12 @@ export function IngredientGrid({
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground"
-                  >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
+                    className={cn(
+                      'px-2.5 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground first:pl-4 last:pr-4',
+                      header.column.id === 'price' && 'text-right',
                     )}
+                  >
+                    {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 ))}
               </tr>
@@ -672,28 +846,58 @@ export function IngredientGrid({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-3 py-8 text-center text-sm text-muted-foreground"
+                  className="px-4 py-8 text-center text-sm text-muted-foreground"
                 >
                   {query ? t('noMatches') : t('empty')}
                 </td>
               </tr>
             )}
-            {table.getRowModel().rows.map((row) => (
-              <tr
-                key={row.id}
-                id={`ingredient-row-${row.original.id}`}
-                className={cn(
-                  'border-b border-border last:border-0 align-top transition-colors duration-700',
-                  flashId === row.original.id && 'bg-accent-500/10',
-                )}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-3 py-2">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {table.getRowModel().rows.map((row) => {
+              const editing = editingId === row.original.id;
+              return (
+                <tr
+                  key={row.id}
+                  id={`ingredient-row-${row.original.id}`}
+                  // Enter saves, Esc cancels — the keyboard mirror of the two buttons.
+                  onKeyDown={
+                    editing
+                      ? (e) => {
+                          if (e.key === 'Enter') {
+                            // A focused button (Save/Cancel/supplier) already acts on
+                            // Enter; saving again here would double-fire.
+                            if (
+                              e.target instanceof HTMLElement &&
+                              e.target.closest('button')
+                            ) {
+                              return;
+                            }
+                            e.preventDefault();
+                            onSave(row.original.id);
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            onCancel(row.original.id);
+                          }
+                        }
+                      : undefined
+                  }
+                  className={cn(
+                    // Hairline dividers only — no borders around individual cells.
+                    'border-b border-border/60 align-middle transition-colors duration-700 last:border-0',
+                    editing && 'bg-accent-500/5',
+                    flashId === row.original.id && 'bg-accent-500/10',
+                  )}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td
+                      key={cell.id}
+                      className="px-2.5 py-3.5 first:pl-4 last:pr-4"
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>
@@ -746,13 +950,16 @@ export function IngredientGrid({
           ingredientName={supplierTarget.name}
           dimension={supplierTarget.dimension}
           currency={currency}
+          taxRateBps={taxRateBps}
           supplierNames={supplierNames}
+          pricePrefs={pricePrefs}
           initialLink={supplierLinks[supplierTarget.id] ?? null}
           pendingPriceCents={supplierTarget.pendingPriceCents ?? null}
           onClose={() => setSupplierEditId(null)}
-          onSaved={(summary) => {
+          onSaved={(summary, prefs) => {
             const id = supplierTarget.id;
             setSupplierLinks((prev) => ({ ...prev, [id]: summary }));
+            setPricePrefs((prev) => ({ ...prev, [summary.supplierName]: prefs }));
             setRows((prev) =>
               prev.map((r) =>
                 r.id === id ? { ...r, supplier: summary.supplierName } : r,
@@ -770,9 +977,7 @@ export function IngredientGrid({
             const id = supplierTarget.id;
             setRows((prev) =>
               prev.map((r) =>
-                r.id === id
-                  ? { ...r, priceCents, pendingPriceCents: null }
-                  : r,
+                r.id === id ? { ...r, priceCents, pendingPriceCents: null } : r,
               ),
             );
             setDrafts((prev) => {
