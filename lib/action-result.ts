@@ -158,6 +158,9 @@ export type ActionErrorCode =
   // A pack unit's dimension does not match the ingredient's (Sprint 7), e.g. kg on a
   // volume ingredient; also covers blocking a dimension change while packs exist.
   | 'PACK_UNIT_MISMATCH'
+  // A supplier price was entered as VAT-INCLUSIVE while the org has no VAT rate
+  // configured — the net cost is unknowable, so we refuse instead of assuming 0%.
+  | 'VAT_RATE_REQUIRED'
   // A purchase order that is not a draft was edited / deleted / re-sent (Sprint 8a) —
   // a sent/cancelled PO is immutable (cancel-only). Re-sending also returns this.
   | 'PO_NOT_DRAFT'

@@ -2370,6 +2370,15 @@ export const suppliers = pgTable(
     address: text('address'),
     taxId: text('tax_id'),
     notes: text('notes'),
+    // Remembered price-entry preferences for this supplier (ingredient supplier
+    // dialog): how their quoted price is expressed and whether it includes VAT, so a
+    // manager doesn't re-pick both selects on every ingredient. NULL = never set →
+    // the dialog falls back to whole-pack / excl. VAT. Display convenience only:
+    // the stored `pack_price_cents` is ALWAYS the whole pack excl. VAT.
+    defaultPriceBasis: text('default_price_basis', {
+      enum: ['pack', 'inner', 'priced'],
+    }),
+    defaultPriceIncludesVat: boolean('default_price_includes_vat'),
     // Archive flag: false = deactivated (kept for history/links), true = active.
     active: boolean('active').notNull().default(true),
     createdAt: createdAt(),
@@ -2388,6 +2397,12 @@ export const suppliers = pgTable(
     unique('suppliers_org_id_key').on(t.organizationId, t.id),
     // pg_trgm GIN index for typo-tolerant global search (Sprint 2.7 registry).
     index('suppliers_name_trgm_idx').using('gin', t.name.op('gin_trgm_ops')),
+    // The TS enum is compile-time only — pin the same three values in the DB, as
+    // every other text-enum column here does. NULL stays legal (never set).
+    check(
+      'suppliers_default_price_basis_chk',
+      sql`${t.defaultPriceBasis} is null or ${t.defaultPriceBasis} in ('pack', 'inner', 'priced')`,
+    ),
   ],
 );
 
@@ -2411,10 +2426,22 @@ export const ingredientSuppliers = pgTable(
     ingredientId: text('ingredient_id').notNull(),
     supplierId: text('supplier_id').notNull(),
     // The purchase pack: size in `pack_unit` (e.g. 5 + 'kg'), price of the whole
-    // pack in integer cents. All nullable — a link can exist before a price is known.
+    // pack in integer cents, ALWAYS excl. VAT. All nullable — a link can exist
+    // before a price is known.
     packSize: numeric('pack_size', { precision: 12, scale: 2 }),
     packUnit: text('pack_unit'),
     packPriceCents: integer('pack_price_cents'),
+    // Case quantity: how many inner units one purchase contains (a 4 × 1.65 kg case
+    // → 4). `pack_size` is the size of ONE inner unit, so the total purchased
+    // quantity is `units_per_pack × pack_size` and `pack_price_cents` prices that
+    // total. Defaults to 1 — a single-item purchase, which is what every
+    // pre-existing row means (so `pack_size` still equals the total there).
+    unitsPerPack: integer('units_per_pack').notNull().default(1),
+    // How the supplier names the product on their invoice ("Manteli jauhe 13,5kg").
+    // PURCHASING-ONLY: never shown in recipes, menus, or ingredient lists — the
+    // ingredient's own name is the only name the kitchen ever sees.
+    supplierProductName: text('supplier_product_name'),
+    supplierSku: text('supplier_sku'),
     // Exactly one default link per ingredient (partial unique below). The default's
     // supplier name mirrors into the legacy `ingredients.supplier` column.
     isDefault: boolean('is_default').notNull().default(false),
@@ -2457,6 +2484,12 @@ export const ingredientSuppliers = pgTable(
     check(
       'ingredient_suppliers_price_requires_pack_chk',
       sql`${t.packPriceCents} is null or (${t.packSize} is not null and ${t.packUnit} is not null)`,
+    ),
+    // A case always contains at least one inner unit — 0 would divide the derived
+    // cost by zero.
+    check(
+      'ingredient_suppliers_units_per_pack_chk',
+      sql`${t.unitsPerPack} > 0`,
     ),
     // Composite FKs force same-org links. ingredient → cascade (links die with the
     // ingredient on purge); supplier → restrict (a supplier in use can't be deleted —

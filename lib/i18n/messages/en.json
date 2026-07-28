@@ -137,6 +137,7 @@
     "SUPPLIER_IN_USE": "This supplier is the default for one or more ingredients, so it can't be archived. Change or remove those ingredient suppliers first.",
     "SUPPLIER_INACTIVE": "That supplier is archived. Reactivate it before assigning it to an ingredient.",
     "PACK_UNIT_MISMATCH": "That pack unit doesn't match the ingredient's measurement type. Use a weight unit for a weight ingredient, a volume unit for a volume one, and so on.",
+    "VAT_RATE_REQUIRED": "You entered a price that includes VAT, but your organisation has no VAT rate set. Add one in Settings, or enter the price excluding VAT.",
     "UNEXPECTED": "Something went wrong on our end. Please try again.",
     "PO_NOT_DRAFT": "This purchase order has already been sent or cancelled, so it can no longer be edited. Cancel it and create a new one instead.",
     "SUPPLIER_REQUIRED": "Choose a supplier before sending this purchase order.",
@@ -592,9 +593,33 @@
       "heading": "Supplier",
       "supplierName": "Supplier",
       "supplierPlaceholder": "Type or pick a supplier",
+      "productName": "Supplier product name",
+      "productNamePlaceholder": "e.g. Manteli jauhe 13,5kg",
+      "productNameHint": "Exactly as they bill it. Only ever used for purchasing — recipes and menus keep the ingredient's own name.",
+      "sku": "Supplier code / SKU",
+      "skuPlaceholder": "Optional",
+      "buySectionTitle": "What you buy",
+      "unitsPerPack": "Units",
       "packSize": "Pack size",
       "packUnit": "Unit",
-      "packPrice": "Pack price",
+      "packTotal": "Total per purchase: {total}",
+      "chargeSectionTitle": "What the supplier charges",
+      "packPrice": "Price",
+      "priceBasis": "Priced",
+      "basis": {
+        "pack": "per pack",
+        "inner": "per unit",
+        "priced": "per {unit}"
+      },
+      "vatBasis": "VAT",
+      "vat": {
+        "excl": "excl. VAT",
+        "incl": "incl. VAT"
+      },
+      "costLabel": "Cost per {unit}",
+      "costInclVat": "{amount} incl. VAT",
+      "costUnknown": "Enter a pack and a price to see the cost.",
+      "vatRateMissing": "Set your VAT rate in Settings to enter prices that include VAT.",
       "save": "Save",
       "cancel": "Cancel",
       "clear": "Remove supplier",
@@ -728,7 +753,13 @@
       "name": "Name",
       "dimension": "Type",
       "price": "Price",
-      "supplier": "Supplier"
+      "supplier": "Supplier",
+      "updated": "Updated"
+    },
+    "typePill": {
+      "weight": "kg",
+      "volume": "L",
+      "count": "pcs"
     },
     "placeholders": {
       "name": "e.g. Wheat flour",
@@ -736,7 +767,10 @@
     },
     "actions": {
       "add": "Add",
-      "delete": "Delete ingredient"
+      "delete": "Delete ingredient",
+      "edit": "Edit ingredient",
+      "save": "Save",
+      "cancel": "Cancel"
     },
     "errors": {
       "nameRequired": "Give the ingredient a name."

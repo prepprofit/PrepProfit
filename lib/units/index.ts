@@ -84,6 +84,16 @@ const UNIT_DECIMALS: Record<Unit, number> = {
   count: 0,
 };
 
+/**
+ * The unit an ingredient's PRICE is quoted in, per dimension — `price_cents` is per
+ * kg / litre / piece (see CANONICAL_PER_PRICE_UNIT in lib/calculations/recipeCost).
+ */
+export const PRICED_UNIT_LABEL: Record<Dimension, string> = {
+  weight: 'kg',
+  volume: 'l',
+  count: 'pc',
+};
+
 export function dimensionOf(unit: Unit): Dimension {
   return UNIT_DIMENSION[unit];
 }

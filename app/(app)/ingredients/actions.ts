@@ -21,6 +21,7 @@ import {
   setDefaultSupplier,
 } from '@/lib/data/ingredient-suppliers';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
+import { getOrgSettings } from '@/lib/data/org-settings';
 import {
   ingredientSchema,
   kitchenIngredientSchema,
@@ -283,8 +284,17 @@ export async function setIngredientSupplierAction(
 
   const organizationId = await getOrgId();
   const actor = await auditActor();
+  // The org's VAT rate is server-derived — a gross quote is normalized against it
+  // (never against a client-sent rate).
+  const { defaultTaxRateBps } = await getOrgSettings();
   const outcome = await withOrg(organizationId, async (tx) => {
-    const result = await setDefaultSupplier(tx, organizationId, ingredientId, parsed.data);
+    const result = await setDefaultSupplier(
+      tx,
+      organizationId,
+      ingredientId,
+      parsed.data,
+      defaultTaxRateBps,
+    );
     if (result.status !== 'ok') return result.status;
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'ingredient.supplierSet',
@@ -294,7 +304,9 @@ export async function setIngredientSupplierAction(
         supplierId: result.supplier.id,
         packSize: parsed.data.packSize ?? null,
         packUnit: parsed.data.packUnit ?? null,
-        packPriceCents: parsed.data.packPriceCents ?? null,
+        unitsPerPack: parsed.data.unitsPerPack ?? 1,
+        // The STORED whole-pack net price, not the raw quote.
+        packPriceCents: result.link.packPriceCents,
         pendingRaised: result.pendingRaised,
       },
     });
@@ -304,6 +316,9 @@ export async function setIngredientSupplierAction(
   if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
   if (outcome === 'supplier_inactive') return { ok: false, code: 'SUPPLIER_INACTIVE' };
   if (outcome === 'invalid_name') return { ok: false, code: 'INVALID_INPUT' };
+  if (outcome === 'vat_rate_required') {
+    return { ok: false, code: 'VAT_RATE_REQUIRED' };
+  }
   if (outcome === 'pack_unit_mismatch') {
     return { ok: false, code: 'PACK_UNIT_MISMATCH' };
   }
