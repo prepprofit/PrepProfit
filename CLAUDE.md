@@ -19,7 +19,11 @@ Do not change the stack without explicit approval.
 - next-intl for all UI copy and action error messages
 - Zod for server-side validation
 - Vitest + PGlite for calculation and database tests
-- Vercel deployment
+- Self-hosted on a Hetzner VPS via Coolify (Nixpacks), domain `prepprofit.com`.
+  Migrated off Vercel on 2026-08-04 — there is no `vercel.json` and no platform cron:
+  the six `app/api/cron/*` routes run as Coolify Scheduled Tasks. Vercel Blob is the
+  one Vercel service still in use (recipe photos, `BLOB_READ_WRITE_TOKEN` required).
+  See `docs/production-operations.md`.
 
 Planned additions must land only in their sprint:
 
