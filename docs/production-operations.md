@@ -15,7 +15,9 @@ Operational reference for running PrepProfit in production (Hetzner VPS + Coolif
   Direction = *Redirect to non-www*, so both hostnames hold a Let's Encrypt certificate
   and `www` 302s to the apex. **The apex is the only canonical origin** — Clerk, `APP_URL`,
   the CSP and the webhook all point at it.
-- **Database**: Neon Postgres (`neondb`). Use the **pooled** connection string for the app.
+- **Database**: Neon Postgres (`neondb`), project in **`eu-central-1`** (same region as the
+  VPS). Use the **pooled** connection string for the app, and the **`app_runtime`** role —
+  see [Database roles](#database-roles).
 - **Auth/billing**: Clerk (live instance) + Clerk Billing backed by live Stripe.
 - **Email**: Resend (`prepprofit.com` verified, send-only key).
 
@@ -36,7 +38,7 @@ Set in Coolify → application → **Environment Variables**.
 
 | Var | Purpose | Notes |
 |---|---|---|
-| `DATABASE_URL` | Neon pooled connection | Required. Validated lazily; bad value 500s data pages. |
+| `DATABASE_URL` | Neon pooled connection, role `app_runtime` | Required. Validated lazily; bad value 500s data pages. **Never the owner string** — see [Database roles](#database-roles). |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | Clerk auth | Live keys. |
 | `CLERK_WEBHOOK_SIGNING_SECRET` | Verify `/api/webhooks/clerk` | From Clerk → Webhooks. |
 | `CRON_SECRET` | Authorize the purge cron | `openssl rand -hex 32`. |
@@ -55,17 +57,59 @@ Set in Coolify → application → **Environment Variables**.
 All feature vars are **lazy + fail-open** except `DATABASE_URL` and the Clerk keys — never
 add a feature var to `serverEnvSchema`. Secrets are never logged.
 
+## Database roles
+
+Two roles, on purpose — this is what makes RLS real in production (2026-08-04):
+
+| Role | Used by | BYPASSRLS | Connection string |
+|---|---|---|---|
+| `app_runtime` | the app at runtime (`DATABASE_URL` in Coolify) | **no** | pooled host |
+| `neondb_owner` | migrations, admin/backfill scripts, `psql` surgery | yes | direct host (no `-pooler`) |
+
+`neondb_owner` has `rolbypassrls = true`, which **overrides `ENABLE`/`FORCE ROW LEVEL
+SECURITY`**: while the app ran as the owner, the policies in `lib/db/rls.ts` filtered
+nothing, and `select count(*) from recipes` without the `app.current_org_id` GUC returned
+every org's rows. Rule 1 (an explicit `organization_id` filter on every query) was the only
+thing holding tenancy up. `app_runtime` is `NOBYPASSRLS`, so the policies actually apply and
+the second layer of defense exists.
+
+- The runtime role owns nothing and has only `SELECT, INSERT, UPDATE, DELETE` on
+  `public`. `ALTER DEFAULT PRIVILEGES` (set as the owner, who creates tables in
+  migrations) grants the same on tables created later — a new sprint's table needs no
+  manual GRANT.
+- **Migrations must run as the owner**: `DATABASE_URL=<owner-direct> npm run db:migrate`.
+  `app_runtime` cannot create or alter anything, by design. Same for
+  `scripts/backfill-recipes-v2.ts` and `scripts/verify-recipes-v2-parity.ts`, whose
+  `lib/db/org-enumeration.ts` deliberately reads across orgs and therefore *needs* bypass.
+- Consequences to expect, all intended: a write tagged with the wrong org now **errors**
+  (`42501`, `WITH CHECK`) instead of being stored, and `audit_log` / `inventory_movements`
+  are append-only for real — UPDATE and DELETE match zero rows. Purging an ingredient still
+  removes its movements, because an FK cascade is a referential action, not an RLS-checked
+  DELETE.
+- Rollback is a credential swap: point `DATABASE_URL` back at the owner string and restart.
+  No data diverges.
+- `app_runtime` was created with SQL, so it does **not** appear under Neon → Roles and has
+  no console password reset. Rotate it as the owner:
+  `ALTER ROLE app_runtime PASSWORD '<new>'`, then update Coolify and restart.
+- Known gap: the RLS test suite runs on PGlite with an ordinary role, where the policies
+  work regardless — it cannot catch a regression to a bypassing role. Proving isolation
+  against real Postgres with a `NOBYPASSRLS` role is still to do.
+
 ## Migrations
 
+- Run as **`neondb_owner`** (the runtime role has no DDL rights).
 - Generate with `npm run db:generate`, **verify journal ordering** (a new migration's
   `when` must be greater than the previous max, or `scripts/migrate.ts`'s guard silently
   skips it — the recurring "journal-when" gotcha).
-- Apply to prod: `DATABASE_URL=<prod-pooled> npm run db:migrate` (idempotently re-applies RLS).
+- Apply to prod: `DATABASE_URL=<owner-direct> npm run db:migrate` (idempotently re-applies RLS).
+  Pass it inline — it is **not** the string in Coolify.
 - **Verify after deploy**: confirm `drizzle.__drizzle_migrations` max `created_at` matches the
   newest migration, and spot-check the new columns/tables + that RLS is `enabled + forced`.
 - Current head: **0045**. RLS is `enabled + forced` on every business table at this head.
-- The database did **not** move during the Vercel→Coolify migration: it is the same Neon
-  project, reached with the same pooled connection string.
+- The database did **not** move during the Vercel→Coolify migration. It moved afterwards, on
+  2026-08-04, to a Neon project in `eu-central-1`: the old `us-east-1` project cost ~107 ms
+  per round-trip from the VPS, so a `withOrg` transaction (4 round-trips) spent ~430 ms on
+  network alone.
 
 ## Scheduled jobs (Coolify Scheduled Tasks)
 
