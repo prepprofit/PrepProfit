@@ -7,9 +7,25 @@ import { del, issueSignedToken, presignUrl } from '@vercel/blob';
  * `org/{orgId}/recipes/{recipeId}/{mediaId}`; a client filename never forms a
  * key, so cross-tenant access would require forging a signature, not a path.
  *
- * Auth: on Vercel the SDK uses OIDC automatically once the private store is
- * connected to the project; locally set `BLOB_READ_WRITE_TOKEN` (SETUP.md).
+ * Auth: every control-plane call passes `BLOB_READ_WRITE_TOKEN` EXPLICITLY (see
+ * {@link blobToken}). The app is self-hosted (Hetzner + Coolify), so the OIDC path
+ * the SDK prefers by default is not available.
  */
+
+/**
+ * Read-write token for control-plane calls (`issueSignedToken`, `del`, `list`).
+ *
+ * The SDK picks OIDC over the token whenever it can infer a store from the
+ * environment — notably when `BLOB_STORE_ID` is set — and OIDC exists ONLY inside
+ * Vercel. Off-Vercel that path fails with `OIDC is enabled for this project, but not
+ * for the "…" environment`, even though a perfectly valid `BLOB_READ_WRITE_TOKEN` is
+ * present. Passing the token explicitly pins auth to the token, independent of which
+ * Blob env vars happen to be set. Returns `undefined` when unset so the SDK falls
+ * back to its own resolution (tests / a future Vercel-hosted deploy).
+ */
+function blobToken(): string | undefined {
+  return process.env.BLOB_READ_WRITE_TOKEN;
+}
 
 export type SignedUploadUrl = {
   url: string;
@@ -57,6 +73,7 @@ class VercelBlobRecipeMediaStorage implements RecipeMediaStorage {
       allowedContentTypes: [opts.contentType],
       maximumSizeInBytes: opts.maxBytes,
       validUntil,
+      token: blobToken(),
     });
     const { presignedUrl } = await presignUrl(token, {
       operation: 'put',
@@ -80,6 +97,7 @@ class VercelBlobRecipeMediaStorage implements RecipeMediaStorage {
       pathname: key,
       operations: ['get'],
       validUntil,
+      token: blobToken(),
     });
     const { presignedUrl } = await presignUrl(token, {
       operation: 'get',
@@ -98,6 +116,7 @@ class VercelBlobRecipeMediaStorage implements RecipeMediaStorage {
       pathname: key,
       operations: ['get'],
       validUntil: Date.now() + 60_000,
+      token: blobToken(),
     });
     const { presignedUrl } = await presignUrl(token, {
       operation: 'get',
@@ -124,7 +143,7 @@ class VercelBlobRecipeMediaStorage implements RecipeMediaStorage {
 
   async remove(key: string): Promise<void> {
     // `del` accepts pathnames and does not throw on missing blobs.
-    await del(key);
+    await del(key, { token: blobToken() });
   }
 }
 

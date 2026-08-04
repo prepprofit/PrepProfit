@@ -32,6 +32,13 @@ const CRISP_CONNECT =
 // browser's direct signed PUT upload. ONLY the configured media host (plan
 // invariant: CSP restricted to the media host, nothing wider).
 const BLOB_MEDIA = 'https://*.private.blob.vercel-storage.com';
+// The signed UPLOAD does not go to the bucket host: @vercel/blob presigns a PUT
+// against the Blob CONTROL PLANE (`https://vercel.com/api/blob/`), while reads are
+// presigned against the bucket above. So `connect-src` — and ONLY `connect-src` —
+// must also allow the control-plane origin, or the browser blocks every upload.
+// `img-src`/`media-src` stay narrowed to the media host: rendering never touches
+// this origin, so widening them would buy nothing and cost the invariant.
+const BLOB_UPLOAD_API = 'https://vercel.com';
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -43,7 +50,7 @@ const contentSecurityPolicy = [
   `style-src 'self' 'unsafe-inline' ${CRISP}`,
   `img-src 'self' data: blob: https://img.clerk.com ${CLERK} https://*.crisp.chat ${BLOB_MEDIA}`,
   `font-src 'self' data: ${CRISP}`,
-  `connect-src 'self' ${CLERK} ${SENTRY} ${POSTHOG} ${FLOWS} ${CRISP_CONNECT} ${BLOB_MEDIA}`,
+  `connect-src 'self' ${CLERK} ${SENTRY} ${POSTHOG} ${FLOWS} ${CRISP_CONNECT} ${BLOB_MEDIA} ${BLOB_UPLOAD_API}`,
   `media-src 'self' ${CRISP} https://storage.crisp.chat ${BLOB_MEDIA}`,
   "worker-src 'self' blob:",
   `frame-src 'self' ${CLERK} https://game.crisp.chat https://challenges.cloudflare.com https://js.stripe.com https://checkout.stripe.com`,
