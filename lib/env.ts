@@ -19,7 +19,8 @@ import { z } from 'zod';
  */
 const serverEnvSchema = z.object({
   DATABASE_URL: z.string().url('DATABASE_URL must be a valid connection URL'),
-  // Authenticates the Vercel Cron → /api/cron/purge-trash call (lib/cron-auth.ts).
+  // Authenticates the scheduler → /api/cron/* calls (lib/cron-auth.ts). Read from the
+  // container env by each Coolify Scheduled Task, which sets the Bearer header itself.
   CRON_SECRET: z
     .string()
     .min(16, 'CRON_SECRET must be at least 16 characters')

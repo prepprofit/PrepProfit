@@ -2,9 +2,11 @@ import { timingSafeEqual } from 'node:crypto';
 
 /**
  * Whether a request carries the expected cron secret in its Authorization
- * header (`Bearer <CRON_SECRET>`). Vercel Cron sends this automatically when the
- * `CRON_SECRET` env var is set. Constant-time comparison; returns false if no
- * secret is configured or the header is missing/mismatched — secure by default.
+ * header (`Bearer <CRON_SECRET>`). The scheduler sends it explicitly — each Coolify
+ * Scheduled Task reads `CRON_SECRET` from the container env and sets the header
+ * itself (see `docs/production-operations.md`). Constant-time comparison; returns
+ * false if no secret is configured or the header is missing/mismatched — secure by
+ * default.
  */
 export function isCronAuthorized(
   authHeader: string | null,

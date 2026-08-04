@@ -51,7 +51,7 @@ const BATCH_PER_ORG = 20;
  * CFO report digest (deterministic, no attachment). AT-LEAST-ONCE + provider-dedup
  * semantics; a row with a `provider_message_id` is never resent.
  *
- * Authenticated by CRON_SECRET (Vercel Cron), NOT a user session — excluded from
+ * Authenticated by CRON_SECRET (scheduled task), NOT a user session — excluded from
  * Clerk in middleware.ts. Per-organization (RULE #1): claims rows inside `withOrg`
  * (RLS active, `FOR UPDATE SKIP LOCKED`), sends OUTSIDE the claim tx, then records
  * the result in a fresh tx. The CFO path re-checks opt-in/email at send time and

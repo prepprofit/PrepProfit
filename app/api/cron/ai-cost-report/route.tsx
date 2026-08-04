@@ -26,7 +26,7 @@ const REPORT_WINDOW_MS = 7 * 24 * 60 * 60_000;
  * cost over the last 7 days and emails the operator a single digest, so the owner can
  * see Gemini provider spend and project it.
  *
- * Authenticated by CRON_SECRET (Vercel Cron), NOT a user session — excluded from Clerk
+ * Authenticated by CRON_SECRET (scheduled task), NOT a user session — excluded from Clerk
  * in middleware.ts. RULE #1 is preserved: the cross-org TOTAL is built by summing each
  * org's own `withOrg` (RLS-active) query — there is NO cross-tenant query. The email
  * carries only aggregate counts/tokens/cost and org names — never recipe or PII data.

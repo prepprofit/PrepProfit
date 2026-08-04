@@ -24,7 +24,7 @@ const PAGE_SIZE = 100;
  * (process-email-outbox) then renders + delivers it with the same retry/dedupe
  * semantics as purchase-order mail — so this route never sends, it only enqueues.
  *
- * Authenticated by CRON_SECRET (Vercel Cron), NOT a user session — excluded from
+ * Authenticated by CRON_SECRET (scheduled task), NOT a user session — excluded from
  * Clerk in middleware.ts. RULE #1 preserved: all per-org work (settings read, tier
  * resolution, report load, enqueue) runs inside that org's own `withOrg` (RLS
  * active); there is NO cross-tenant query.

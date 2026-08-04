@@ -24,7 +24,7 @@ const PAGE_SIZE = 100;
 
 /**
  * Daily auto-purge of trash past the retention window. Authenticated by
- * CRON_SECRET (Vercel Cron sends it automatically), NOT a user session — this is
+ * CRON_SECRET (the scheduled task sets the Bearer header), NOT a user session — this is
  * the one route excluded from Clerk in middleware.ts.
  *
  * Purge is per-organization (RULE #1): we page through every org via Clerk and

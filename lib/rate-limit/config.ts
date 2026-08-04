@@ -66,20 +66,20 @@ export const RATE_LIMITS = {
   aiCfoReport: { limit: 10, windowMs: MINUTE },
   // Email-outbox cron worker (Sprint 8a). Like `cronPurge`, keyed by a hash of the
   // cron auth header (the worker is org-less at entry). Generous ceiling — only
-  // abusive retries should trip it; legitimate Vercel Cron fires on a schedule.
+  // abusive retries should trip it; the legitimate scheduled task fires once a day.
   outboxWorker: { limit: 5, windowMs: MINUTE },
   // Weekly AI-spend report cron. Keyed by a hash of the cron auth header (org-less at
-  // entry). Generous ceiling — only abusive retries should trip it; legitimate Vercel
-  // Cron fires once a week.
+  // entry). Generous ceiling — only abusive retries should trip it; the legitimate
+  // scheduled task fires once a week.
   aiCostReport: { limit: 5, windowMs: MINUTE },
   // Weekly CFO report enqueue cron (React Email migration). Org-less at entry, keyed by
   // a hash of the cron auth header like the other cron buckets. Generous ceiling — only
-  // abusive retries should trip it; legitimate Vercel Cron fires once a week.
+  // abusive retries should trip it; the legitimate scheduled task fires once a week.
   cfoReportEnqueue: { limit: 5, windowMs: MINUTE },
   // Reverse-trial ending reminder cron (pricing 4-tier plan, Slice 6). Org-less at
   // entry, keyed by a hash of the cron auth header like the other cron buckets.
-  // Generous ceiling — only abusive retries should trip it; legitimate Vercel Cron
-  // fires once a day.
+  // Generous ceiling — only abusive retries should trip it; the legitimate scheduled
+  // task fires once a day.
   trialReminder: { limit: 5, windowMs: MINUTE },
   // Inventory depth mutations (Sprint 12c) — area CRUD, transfers, count commits. Per
   // org+user; interactive operational writes, so a brisk cadence is fine.

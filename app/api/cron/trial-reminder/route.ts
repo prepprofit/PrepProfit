@@ -27,7 +27,7 @@ const PAGE_SIZE = 100;
  * exactly TRIAL_REMINDER_DAYS_BEFORE days from expiry AND that has NOT subscribed,
  * sends one "your trial ends soon" email pointing at the pricing page.
  *
- * Authenticated by CRON_SECRET (Vercel Cron), NOT a user session — excluded from
+ * Authenticated by CRON_SECRET (scheduled task), NOT a user session — excluded from
  * Clerk in middleware.ts. RULE #1 preserved: the tier resolution + settings read run
  * inside that org's own `withOrg` (RLS active); there is NO cross-tenant query.
  *

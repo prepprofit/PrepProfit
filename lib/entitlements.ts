@@ -213,8 +213,8 @@ export const TRIAL_REMINDER_DAYS_BEFORE = 3;
 
 /**
  * Whole UTC-calendar days from `now` until the trial ends (negative once past). Uses
- * UTC midnights so the result is a stable day count independent of clock time —
- * Vercel Cron runs in UTC, so the reminder lands on exactly one calendar day.
+ * UTC midnights so the result is a stable day count independent of clock time — the
+ * reminder cron is scheduled in UTC, so it lands on exactly one calendar day.
  */
 export function trialReminderDaysLeft(end: Date, now: Date): number {
   const dayMs = 24 * 60 * 60 * 1000;
