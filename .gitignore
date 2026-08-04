@@ -24,6 +24,7 @@ next-env.d.ts
 .env
 .env.local
 .env.*.local
+.env.vercel-*
 
 # drizzle
 /drizzle/meta/_journal.json.bak

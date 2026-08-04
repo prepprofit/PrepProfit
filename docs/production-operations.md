@@ -1,18 +1,38 @@
 # Production operations runbook (Sprint 5g)
 
-Operational reference for running PrepProfit in production (Vercel + Neon + Clerk).
-Pair this with `SETUP.md` (local/dev) and `docs/data-retention.md` (GDPR).
+Operational reference for running PrepProfit in production (Hetzner VPS + Coolify + Neon
++ Clerk). Pair this with `SETUP.md` (local/dev) and `docs/data-retention.md` (GDPR).
+
+> **Migrated off Vercel on 2026-08-04.** The app now self-hosts. Anything that used to be
+> a platform feature — cron scheduling, TLS certificates, env var injection — is now
+> explicit configuration in Coolify. `vercel.json` was deleted; it is no longer read by
+> anything. Vercel Blob is the ONE Vercel service still in use (recipe photos).
 
 ## Environments
 
-- **Hosting**: Vercel project `prep-profit`. Production branch deploys `main`.
+- **Hosting**: Hetzner VPS (4 GB), deployed with **Coolify** (Nixpacks build pack) from
+  `main`. Domain `prepprofit.com` (apex). `www` is registered as a second domain with
+  Direction = *Redirect to non-www*, so both hostnames hold a Let's Encrypt certificate
+  and `www` 302s to the apex. **The apex is the only canonical origin** — Clerk, `APP_URL`,
+  the CSP and the webhook all point at it.
 - **Database**: Neon Postgres (`neondb`). Use the **pooled** connection string for the app.
 - **Auth/billing**: Clerk (live instance) + Clerk Billing backed by live Stripe.
 - **Email**: Resend (`prepprofit.com` verified, send-only key).
 
 ## Required environment variables (Production)
 
-Set in Vercel → Project → Settings → Environment Variables (Production scope).
+Set in Coolify → application → **Environment Variables**.
+
+> **Build-time vs runtime — the trap that caused a production outage.** Next.js inlines
+> every `NEXT_PUBLIC_*` into the bundle at **build** time. In Coolify a variable is
+> runtime-only unless its **Build Variable** checkbox is ticked, so a `NEXT_PUBLIC_*` set
+> as runtime-only is silently ignored and the previously baked value keeps shipping.
+> Worse, Coolify **skips the build entirely when the commit SHA has not changed**
+> (`Build step skipped`, image reused) — so changing a `NEXT_PUBLIC_*` and redeploying
+> does nothing. To change one: tick Build Variable **and** force a rebuild without cache.
+> Runtime-only vars (`DATABASE_URL`, `CLERK_SECRET_KEY`, `CRON_SECRET`, …) apply on a
+> plain restart. Values are stored literally: a stray quote or space breaks them —
+> `Publishable key not valid` in `middleware.js` means malformed, not missing.
 
 | Var | Purpose | Notes |
 |---|---|---|
@@ -28,6 +48,9 @@ Set in Vercel → Project → Settings → Environment Variables (Production sco
 | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Source-map upload (5a) | Build-time only. |
 | `POSTHOG_KEY`, `POSTHOG_HOST` | Product analytics (5c) | Optional, fail-open. |
 | `COMPED_ORG_IDS` | Operator full-access allowlist | Optional, comma-separated org ids. |
+| `BLOB_READ_WRITE_TOKEN` | Recipe photos (private Vercel Blob) | **Now required.** On Vercel the SDK authenticated via OIDC automatically; self-hosted there is no OIDC, so the token must be set explicitly or every media operation fails. |
+| `USDA_FDC_API_KEY` | USDA nutrition search | Optional; unset → `USDA_NOT_CONFIGURED`, custom profiles only. |
+| `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN`, `NEXT_PUBLIC_FLOWS_ORGANIZATION_ID`, `NEXT_PUBLIC_CRISP_WEBSITE_ID` | Browser SDKs | Optional, fail-open — but **build-time**: they must be ticked as Build Variables. |
 
 All feature vars are **lazy + fail-open** except `DATABASE_URL` and the Clerk keys — never
 add a feature var to `serverEnvSchema`. Secrets are never logged.
@@ -40,27 +63,79 @@ add a feature var to `serverEnvSchema`. Secrets are never logged.
 - Apply to prod: `DATABASE_URL=<prod-pooled> npm run db:migrate` (idempotently re-applies RLS).
 - **Verify after deploy**: confirm `drizzle.__drizzle_migrations` max `created_at` matches the
   newest migration, and spot-check the new columns/tables + that RLS is `enabled + forced`.
-- Current head: **0038** (adds `organization_settings.weekly_cfo_report_email_enabled` and
-  extends the `email_outbox` `document_type` CHECK to include `cfo_report`; apply with
-  `npm run db:migrate`). RLS is `enabled + forced` on every business table at this head.
+- Current head: **0045**. RLS is `enabled + forced` on every business table at this head.
+- The database did **not** move during the Vercel→Coolify migration: it is the same Neon
+  project, reached with the same pooled connection string.
 
-## Scheduled jobs
+## Scheduled jobs (Coolify Scheduled Tasks)
 
-- **Daily purge cron** → `GET /api/cron/purge-trash`, authorized by `CRON_SECRET` (Vercel Cron
-  sends it as a Bearer token). Also emits the Sprint 5d low-stock digest when email is
-  configured. Verify the Vercel Cron schedule exists and a manual hit returns `200` `{ ok: true }`.
-- **Weekly CFO report enqueue** → `GET /api/cron/cfo-report` (Vercel Cron, Mon `04:00 UTC`).
-  Queues one deterministic `cfo_report` row in `email_outbox` per opted-in, paid, business-email
-  org that has data. Deterministic only — it NEVER calls an AI provider. Idempotent per week via
-  the outbox unique `(organization_id, dedup_key)`. Opt-in is the manager-only Notifications
-  toggle in `/settings` (default OFF); the digest is sent to the org's `businessEmail`.
-- **Email-outbox worker** → `GET /api/cron/process-email-outbox` (daily `04:30 UTC`, after the
-  CFO enqueue). Delivers queued purchase-order and `cfo_report` rows with at-least-once +
-  provider-dedup semantics; a row with a `provider_message_id` is never resent. Requires
-  `RESEND_*`; skips quietly when email is unconfigured.
-- **Weekly AI-spend report** → `GET /api/cron/ai-cost-report` (Mon `06:00 UTC`). Emails
-  `AI_COST_REPORT_EMAIL` a per-org Gemini spend digest; skips quietly if the recipient or email
-  is unconfigured.
+There are **six** cron routes. All are `GET`, all live under `app/api/cron/*`, all are
+public in `middleware.ts` (no Clerk session) and all authenticate with `CRON_SECRET` as
+`Authorization: Bearer <secret>`, compared in constant time by `lib/cron-auth.ts`.
+Unauthorized → `401`. Each also passes a rate-limit bucket (`lib/rate-limit/config.ts`,
+5/minute) keyed by a SHA-256 hash of the auth header — so manual retries in quick
+succession legitimately return `429`.
+
+They run as **Coolify → application → Scheduled Tasks**, one task per route:
+
+| Task name | Schedule (UTC) | Route |
+|---|---|---|
+| `purge-trash` | `0 4 * * *` | `/api/cron/purge-trash` |
+| `cfo-report` | `0 4 * * 1` | `/api/cron/cfo-report` |
+| `email-outbox` | `30 4 * * *` | `/api/cron/process-email-outbox` |
+| `ai-cost-report` | `0 6 * * 1` | `/api/cron/ai-cost-report` |
+| `trial-reminder` | `0 8 * * *` | `/api/cron/trial-reminder` |
+| `sweep-recipe-media` | `45 4 * * *` | `/api/cron/sweep-recipe-media` |
+
+The **Command** field of each task (the *Name* field is only a label — putting the route
+name there instead yields `sh: 1: <name>: not found`):
+
+```
+node -e 'fetch("https://prepprofit.com/api/cron/<route>",{headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(async r=>{console.log(r.status,await r.text());if(!r.ok)process.exit(1)})'
+```
+
+Notes on that command: `node` is used rather than `curl` because Node is guaranteed in the
+container (it is the app runtime) and `curl` is not. Single quotes outside / double inside
+so the shell passes the script through untouched. The secret is **never** pasted into the
+task — it is read from the container's own env, so rotating the variable re-syncs all six.
+`process.exit(1)` makes Coolify mark a failed run as failed instead of silently succeeding.
+
+**Differences from Vercel Cron** (which used to send the Bearer token automatically):
+tasks only fire while the container is running, and **there is no automatic retry** for a
+missed window. `purge-trash` and `process-email-outbox` are idempotent, so a skipped day
+self-heals the next run. Schedules are interpreted by the Coolify scheduler on the host
+(it schedules, then `docker exec`s), so the authority for timezone is Coolify →
+Settings → instance timezone, not the container's `date` (both are UTC today).
+
+What each one does:
+
+- **`purge-trash`** — hard-deletes trash past the retention window, per org, inside
+  `withOrg` (RLS active), auditing each purge. Also emits the Sprint 5d low-stock digest
+  when email is configured. Pages orgs **via the Clerk Backend API**, so it is also a good
+  end-to-end signal that the live Clerk keys work. **Destructive and irreversible** — do
+  not fire it manually to "test".
+- **`cfo-report`** — queues one deterministic `cfo_report` row in `email_outbox` per
+  opted-in, paid, business-email org that has data. Deterministic only; it NEVER calls an
+  AI provider. Idempotent per week via the outbox unique `(organization_id, dedup_key)`.
+  Opt-in is the manager-only Notifications toggle in `/settings` (default OFF).
+- **`process-email-outbox`** — delivers queued purchase-order and `cfo_report` rows with
+  at-least-once + provider-dedup semantics; a row with a `provider_message_id` is never
+  resent. Requires `RESEND_*`; skips quietly when email is unconfigured.
+- **`ai-cost-report`** — emails `AI_COST_REPORT_EMAIL` a per-org Gemini spend digest.
+  **The only cron with no side effect when unconfigured**: with the recipient unset it
+  returns `{"ok":true,"skipped":"report-not-configured"}` without sending, which makes it
+  the safe route for verifying `CRON_SECRET`. With the recipient set it does send.
+- **`trial-reminder`** — reminds orgs whose 14-day reverse trial is about to end. Sends to
+  real customers; the single-calendar-day window assumes UTC.
+- **`sweep-recipe-media`** — removes bucket objects for `pending`/`rejected` uploads and
+  soft-deleted media past the cutoff, then hard-deletes exactly the rows whose objects were
+  removed. Note `swept: 0` proves **nothing** about Blob connectivity: `storage.remove()` is
+  only called when there are candidate rows.
+
+**Verifying the setup**: use the `ai-cost-report` task's manual *Run* and expect
+`200 {"ok":true,...}` in its log. Since signature/auth handling is identical across all
+six, one green run validates the mechanism for all of them — do not "test" the other five,
+as every one of them purges data or sends real email.
 
 ## Backups & recovery (Neon)
 
@@ -71,30 +146,52 @@ add a feature var to `serverEnvSchema`. Secrets are never logged.
 
 ## Webhooks
 
-- Clerk → `https://www.prepprofit.com/api/webhooks/clerk` (Svix). Signature-verified; a bad
-  signature → 400. The `subscriptions` mirror is read-only observability and never gates access.
+- Clerk → `https://prepprofit.com/api/webhooks/clerk` (Svix). Signature-verified with
+  `CLERK_WEBHOOK_SIGNING_SECRET`; a bad signature → 400, no DB touch. The `subscriptions`
+  mirror is read-only observability and never gates access.
+- **Use the apex, never `www`.** Svix validates TLS. The endpoint sat on
+  `https://www.prepprofit.com/...` for a month after the migration and would have failed
+  every delivery with a self-signed-certificate error, because Coolify had only issued a
+  certificate for the apex. It went unnoticed purely because no event fired in that window.
+  `www` now has its own certificate, but the endpoint stays on the apex.
+- The signing secret is **per endpoint**: recreating an endpoint instead of editing it
+  changes `whsec_…` and every delivery starts returning 400 until Coolify is updated.
+- Subscribed events (10, must match the handler in `app/api/webhooks/clerk/route.ts`):
+  `organization.created` / `.updated` / `.deleted`, `organizationMembership.created` /
+  `.updated` / `.deleted`, `subscription.created` / `.updated` / `.active` / `.pastDue`.
+  Note it listens to `subscription.*`, **not** the finer-grained `subscriptionItem.*`.
+- **Never use `organization.created` as a test event.** That branch is deliberately not
+  best-effort: it writes real rows for the payload's fake org id, then throws on
+  `updateOrganizationMetadata` for an org that does not exist, returns 500 and makes Svix
+  retry. Test with an unhandled type such as `user.created` — verification happens before
+  any branching, so any event type proves the secret while writing nothing.
 
 ## Secret rotation
 
 1. Generate the new secret at the provider (Clerk/Resend/Neon/Sentry/PostHog/Gemini).
-2. Update the Vercel env var (Production) and redeploy.
+2. Update the variable in Coolify and restart (runtime vars need no rebuild; a
+   `NEXT_PUBLIC_*` needs Build Variable + a forced rebuild — see the env var section).
 3. Revoke the old secret at the provider. Rotate `CRON_SECRET` + the Clerk webhook secret on a
    schedule. Never commit secrets; `.env.local` is gitignored.
 
 ## Observability & incident response
 
 - Errors flow through `logError` (`lib/observability.ts`) → structured `console.error` with an
-  `eventId` **and** Sentry (5a), tagged with that id. Search Vercel logs by `eventId` and
-  cross-link to the Sentry issue. No PII in logs/audit metadata.
+  `eventId` **and** Sentry (5a), tagged with that id. Read container logs in Coolify
+  (application → Logs) and cross-link to the Sentry issue by `eventId`. Scheduled-task
+  output has its own per-run log under Scheduled Tasks. No PII in logs/audit metadata.
 - High-risk mutations append to `audit_log` (append-only). Use it to reconstruct what happened
   per org. Rate limiting (`rate_limits`) protects abuse-prone routes.
 
 ## Pre-launch checklist
 
-- [ ] All Production env vars set; a fresh deploy is green.
-- [ ] Migrations applied + verified (head 0033); RLS enabled + forced on every business table.
-- [ ] Cron schedule live; manual hit returns 200.
-- [ ] Clerk webhook endpoint live + secret set; a test event is accepted.
+- [ ] All env vars set in Coolify, `NEXT_PUBLIC_*` ticked as Build Variables; a fresh
+      deploy is green and `curl -s https://prepprofit.com/sign-in | grep -o 'pk_[a-z]*_'`
+      returns `pk_live_`.
+- [ ] Migrations applied + verified (head 0045); RLS enabled + forced on every business table.
+- [ ] All six Scheduled Tasks exist with the full `node -e …` command; `ai-cost-report`
+      returns 200 on a manual run.
+- [ ] Clerk webhook endpoint on the **apex** + secret set; a `user.created` test event is accepted.
 - [ ] Sentry receiving events (trigger a throw in a non-prod env to confirm).
 - [ ] Resend domain verified; a test document email delivers.
 - [ ] Billing: a test org can subscribe to Pro and unlock features; comped org has access.
