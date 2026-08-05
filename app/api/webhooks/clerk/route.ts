@@ -18,6 +18,7 @@ import {
 } from '@/lib/data/org-settings';
 import { ensureDefaultArea } from '@/lib/data/storage-areas';
 import { ensureCategoriesSeeded } from '@/lib/data/transaction-categories';
+import { ensureVatCategories } from '@/lib/data/vat-categories';
 import {
   classifyPlanChange,
   getMirroredPlan,
@@ -253,6 +254,9 @@ export async function POST(req: NextRequest): Promise<Response> {
         // Seed the immutable "Main" default storage area (Sprint 12c) so the org always
         // has a concrete default to show + transfer into.
         await ensureDefaultArea(tx, orgId);
+        // Seed the purchase VAT bands (food / alcohol / non-food) so an incl.-VAT
+        // supplier quote is convertible from day one. Editable in Settings.
+        await ensureVatCategories(tx, orgId);
         await writeAuditEvent(tx, orgId, actor, {
           action: 'organization.create',
           entityType: 'organization',

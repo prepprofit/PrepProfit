@@ -161,6 +161,10 @@ export type ActionErrorCode =
   // A supplier price was entered as VAT-INCLUSIVE while the org has no VAT rate
   // configured — the net cost is unknowable, so we refuse instead of assuming 0%.
   | 'VAT_RATE_REQUIRED'
+  // A purchase VAT band was deleted while an ingredient still points at it, or
+  // while it is the org's default (an org must always keep a fallback rate).
+  | 'VAT_CATEGORY_IN_USE'
+  | 'VAT_CATEGORY_IS_DEFAULT'
   // A purchase order that is not a draft was edited / deleted / re-sent (Sprint 8a) —
   // a sent/cancelled PO is immutable (cancel-only). Re-sending also returns this.
   | 'PO_NOT_DRAFT'

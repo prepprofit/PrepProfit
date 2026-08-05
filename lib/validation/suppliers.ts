@@ -77,6 +77,11 @@ export const ingredientSupplierSchema = z
     packPriceCents: z.number().int().min(0).max(100_000_000).optional(),
     priceBasis: z.enum(PRICE_BASES).optional(),
     priceIncludesVat: z.boolean().optional(),
+    // The ingredient's PURCHASE VAT band, edited from the same dialog because it is
+    // the other half of "what do they charge". A property of the INGREDIENT, not of
+    // the link: '' clears it back to the org default; omitted leaves it untouched.
+    // Only the id travels — the rate is always resolved server-side.
+    vatCategoryId: z.union([z.literal(''), z.string().uuid()]).optional(),
   })
   .refine(
     // A price is only meaningful with a size + unit (mirrors the DB CHECK).

@@ -134,6 +134,53 @@ export const organizationSettings = pgTable('organization_settings', {
   updatedAt: updatedAt(),
 });
 
+/**
+ * PURCHASE VAT categories (per org). VAT on what you BUY depends on the goods, not
+ * on the business: in Finland food is 14% and alcohol/non-food 25.5%; Portugal has
+ * different bands again. One rate per org mis-prices everything outside its band.
+ *
+ * The rate is used at EXACTLY ONE moment: converting an incl.-VAT price a manager
+ * typed into the excl.-VAT cost we store (lib/calculations/purchasePrice.ts). After
+ * that VAT never enters recipe/margin maths — it is reclaimed, not a cost. So this
+ * is a small lookup, not a tax engine: no effective dates, no jurisdictions. A user
+ * in another country edits the list (and can add regional bands by hand).
+ *
+ * Distinct from `organization_settings.default_tax_rate_bps`, which is the SALES
+ * (output) VAT on what you sell — a different tax on a different side of the ledger.
+ */
+export const vatCategories = pgTable(
+  'vat_categories',
+  {
+    id: id(),
+    organizationId: orgId(),
+    name: text('name').notNull(),
+    // The purchase VAT rate in integer BASIS POINTS (1400 = 14%, 2550 = 25.5%),
+    // 0..10000. Basis points because 25.5% is not expressible in whole percent.
+    rateBps: integer('rate_bps').notNull(),
+    // Exactly one default per org (partial unique below) — the category an
+    // ingredient falls back to when it has none of its own.
+    isDefault: boolean('is_default').notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('vat_categories_org_idx').on(t.organizationId),
+    // FK target for the composite (organization_id, vat_category_id) reference.
+    unique('vat_categories_org_id_key').on(t.organizationId, t.id),
+    // One category name per org (case-insensitive).
+    uniqueIndex('vat_categories_org_name_key').on(
+      t.organizationId,
+      sql`lower(${t.name})`,
+    ),
+    uniqueIndex('vat_categories_org_default_key')
+      .on(t.organizationId)
+      .where(sql`${t.isDefault}`),
+    check('vat_categories_name_chk', sql`char_length(btrim(name)) between 1 and 60`),
+    check('vat_categories_rate_chk', sql`rate_bps between 0 and 10000`),
+  ],
+);
+
 export const ingredients = pgTable(
   'ingredients',
   {
@@ -170,6 +217,10 @@ export const ingredients = pgTable(
     // may offer a one-click import of this profile via the existing Fase 6 flow
     // (which re-fetches server-side). Never used in any calculation directly.
     suggestedFdcId: integer('suggested_fdc_id'),
+    // PURCHASE VAT band for this ingredient (food vs alcohol vs non-food). NULL =
+    // use the org's default category. Only ever read to convert an incl.-VAT
+    // supplier quote into the stored net price; never part of recipe/margin maths.
+    vatCategoryId: text('vat_category_id'),
     // Allergen review provenance (Sprint 9). `reviewed_at` NULL = the ingredient's
     // allergens have never been reviewed (NOT "no allergens" — correctly unreviewed);
     // a timestamp = reviewed then. `reviewed_by` is the Clerk user id who reviewed.
@@ -197,6 +248,15 @@ export const ingredients = pgTable(
       'gin',
       t.supplier.op('gin_trgm_ops'),
     ),
+    // Cross-tenant safety: the VAT band must belong to the SAME org (Rule 1).
+    // No ON DELETE action — a category still in use cannot be deleted, and the
+    // delete action turns that into a stable VAT_CATEGORY_IN_USE code rather than
+    // silently re-banding every ingredient that pointed at it.
+    foreignKey({
+      columns: [t.organizationId, t.vatCategoryId],
+      foreignColumns: [vatCategories.organizationId, vatCategories.id],
+      name: 'ingredients_vat_category_fk',
+    }),
   ],
 );
 
@@ -3800,6 +3860,8 @@ export const externalFoodCache = pgTable(
 );
 export type ExternalFoodCacheRow = InferSelectModel<typeof externalFoodCache>;
 
+export type VatCategory = InferSelectModel<typeof vatCategories>;
+export type NewVatCategory = InferInsertModel<typeof vatCategories>;
 export type Ingredient = InferSelectModel<typeof ingredients>;
 export type NewIngredient = InferInsertModel<typeof ingredients>;
 export type InventoryMovement = InferSelectModel<typeof inventoryMovements>;
@@ -3943,6 +4005,8 @@ export type TaskSourceKind = Task['sourceKind'];
 /** All business tables, for applying RLS in bulk. */
 export const businessTables = [
   'organization_settings',
+  // Per-org purchase VAT bands — standard org_isolation RLS.
+  'vat_categories',
   'ingredients',
   'recipe_folders',
   'recipes',

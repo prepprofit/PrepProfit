@@ -125,6 +125,7 @@ describe('kitchen DTO projections omit the financial keys', () => {
       stockQuantity: '0',
       lowStockThreshold: null,
       suggestedFdcId: null,
+      vatCategoryId: null,
       allergensReviewedAt: null,
       allergensReviewedBy: null,
       createdAt: new Date(),

@@ -164,6 +164,11 @@ export type AuditAction =
   | 'recipePreset.reorder'
   // Org settings
   | 'settings.update'
+  // Purchase VAT bands (per-org lookup). metadata = the band's name + rate in bps,
+  // which is org configuration, never PII.
+  | 'settings.vatCategoryCreate'
+  | 'settings.vatCategoryUpdate'
+  | 'settings.vatCategoryDelete'
   // Sensitive exports / generated documents
   | 'export.transactionsCsv'
   | 'export.invoicePdf'

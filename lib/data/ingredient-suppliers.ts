@@ -6,6 +6,7 @@ import { lockActiveIngredientRow } from '@/lib/data/ingredients';
 import { recordPriceObservation } from '@/lib/data/ingredient-pricing';
 import { packPriceExclVatCents } from '@/lib/calculations/purchasePrice';
 import { findOrCreateSupplierByName } from '@/lib/data/suppliers';
+import { resolveVatRateBps } from '@/lib/data/vat-categories';
 import { isPackUnitCompatible } from '@/lib/suppliers/display-name';
 import { normalizeIngredientName } from '@/lib/import/resolveIngredient';
 import type { SupplierPackCandidate } from '@/lib/ai/supplier-pack-resolve';
@@ -290,19 +291,31 @@ function numOrNull(value: string | null): number | null {
  *     pack changed (§12.6) — an unchanged pack is a no-op (no new history, no
  *     re-opened pending).
  *
- * `taxRateBps` is the org's VAT rate (server-derived, never client input). It is only
- * needed when the quote `priceIncludesVat` — the net price is otherwise unknowable and
- * we refuse rather than guess 0% (`vat_rate_required`).
+ * The VAT rate is resolved HERE from the ingredient's purchase VAT category (falling
+ * back to the org's default band) — never from client input, and no longer from the
+ * org's single sales rate: VAT on what you BUY depends on the goods (food 14% vs
+ * alcohol 25.5% in Finland), not on the business. It is only needed when the quote
+ * `priceIncludesVat` — the net price is otherwise unknowable and we refuse rather
+ * than guess 0% (`vat_rate_required`).
  */
 export async function setDefaultSupplier(
   db: TenantClient,
   organizationId: string,
   ingredientId: string,
   input: IngredientSupplierInput,
-  taxRateBps: number | null = null,
 ): Promise<SetDefaultSupplierResult> {
   const ingredient = await lockActiveIngredientRow(db, organizationId, ingredientId);
   if (!ingredient) return { status: 'not_found' };
+
+  // The band this save applies: the one just picked ('' = back to the org default),
+  // else whatever the ingredient already carried.
+  const vatCategoryId =
+    input.vatCategoryId === undefined
+      ? ingredient.vatCategoryId
+      : input.vatCategoryId === ''
+        ? null
+        : input.vatCategoryId;
+  const taxRateBps = await resolveVatRateBps(db, organizationId, vatCategoryId);
 
   const found = await findOrCreateSupplierByName(db, organizationId, input.supplierName);
   if (found.status === 'invalid_name') return { status: 'invalid_name' };
@@ -418,10 +431,11 @@ export async function setDefaultSupplier(
       );
   }
 
-  // Mirror the supplier name into the legacy column (transition contract §6).
+  // Mirror the supplier name into the legacy column (transition contract §6), and
+  // persist the VAT band picked in the same dialog (it belongs to the ingredient).
   await db
     .update(ingredients)
-    .set({ supplier: supplier.name })
+    .set({ supplier: supplier.name, vatCategoryId })
     .where(
       and(
         eq(ingredients.organizationId, organizationId),

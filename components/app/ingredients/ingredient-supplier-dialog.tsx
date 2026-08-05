@@ -28,7 +28,10 @@ import {
   setIngredientSupplierAction,
 } from '@/app/(app)/ingredients/actions';
 import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
-import type { SupplierPricePrefs } from '@/components/app/ingredients/ingredient-grid';
+import type {
+  SupplierPricePrefs,
+  VatCategoryOption,
+} from '@/components/app/ingredients/ingredient-grid';
 
 /**
  * Set the DEFAULT supplier + purchase pack on one ingredient (Sprint 7),
@@ -59,7 +62,8 @@ export function IngredientSupplierDialog({
   ingredientName,
   dimension,
   currency,
-  taxRateBps,
+  vatCategories,
+  vatCategoryId: initialVatCategoryId,
   supplierNames,
   pricePrefs,
   initialLink,
@@ -74,8 +78,10 @@ export function IngredientSupplierDialog({
   ingredientName: string;
   dimension: Dimension;
   currency: string;
-  /** The org's VAT rate in basis points; null = not configured (no gross entry). */
-  taxRateBps: number | null;
+  /** The org's purchase VAT bands; empty = none configured (no gross entry). */
+  vatCategories: VatCategoryOption[];
+  /** The ingredient's own band; null = fall back to the org's default band. */
+  vatCategoryId: string | null;
   /** Existing supplier names for the datalist (manager's active suppliers). */
   supplierNames: string[];
   /** Remembered price-entry mode per supplier NAME, so the selects prefill. */
@@ -83,7 +89,11 @@ export function IngredientSupplierDialog({
   initialLink: DefaultSupplierSummary | null;
   pendingPriceCents: number | null;
   onClose: () => void;
-  onSaved: (summary: DefaultSupplierSummary, prefs: SupplierPricePrefs) => void;
+  onSaved: (
+    summary: DefaultSupplierSummary,
+    prefs: SupplierPricePrefs,
+    vatCategoryId: string | null,
+  ) => void;
   onCleared: () => void;
   onAccepted: (priceCents: number) => void;
 }) {
@@ -102,6 +112,8 @@ export function IngredientSupplierDialog({
   const [packPriceText, setPackPriceText] = React.useState('');
   const [basis, setBasis] = React.useState<SupplierPriceBasis>('pack');
   const [includesVat, setIncludesVat] = React.useState(false);
+  // The ingredient's purchase VAT band. '' = no band of its own → the org default.
+  const [vatCategoryId, setVatCategoryId] = React.useState('');
   // The stored price is the whole pack EXCL. VAT; what we show is that value
   // converted into the supplier's quoting mode, which can differ by a cent on the
   // round trip. So while the manager hasn't touched any pricing control we send the
@@ -121,14 +133,30 @@ export function IngredientSupplierDialog({
   );
   const pricedUnit = PRICED_UNIT_LABEL[dimension];
 
+  /**
+   * The band whose rate converts this quote: the one picked, else the org's
+   * default. Its rate is display-only — the server re-resolves it from the
+   * ingredient's stored band, so a tampered client can't price its own VAT.
+   */
+  const defaultCategory = vatCategories.find((c) => c.isDefault) ?? null;
+  const activeCategory =
+    vatCategories.find((c) => c.id === vatCategoryId) ?? defaultCategory;
+  const taxRateBps = activeCategory?.rateBps ?? null;
+
   // Re-seed from the current link whenever the dialog opens.
   React.useEffect(() => {
     if (!open) return;
     const name = initialLink?.supplierName ?? '';
     const prefs = pricePrefs[name];
     const seedBasis = prefs?.basis ?? 'pack';
+    // Seed the rate from the ingredient's stored band, NOT from the derived
+    // `taxRateBps` — that changes as the manager picks a band, and depending on it
+    // here would re-seed (and wipe) the whole form on every VAT change.
+    const seedRateBps =
+      (vatCategories.find((c) => c.id === initialVatCategoryId) ??
+        vatCategories.find((c) => c.isDefault))?.rateBps ?? null;
     // A gross-quoting supplier is only honoured while a rate exists to strip.
-    const seedInclVat = (prefs?.includesVat ?? false) && taxRateBps != null;
+    const seedInclVat = (prefs?.includesVat ?? false) && seedRateBps != null;
     const units = initialLink?.unitsPerPack ?? 1;
     const size = initialLink?.packSize ?? null;
     const unit = (initialLink?.packUnit as Unit | null) ?? null;
@@ -141,6 +169,7 @@ export function IngredientSupplierDialog({
     setPackUnit(unit ?? DEFAULT_PACK_UNIT[dimension]);
     setBasis(seedBasis);
     setIncludesVat(seedInclVat);
+    setVatCategoryId(initialVatCategoryId ?? '');
     // Show the stored net pack price back in the supplier's quoting mode.
     const stored = initialLink?.packPriceCents ?? null;
     const shown =
@@ -149,7 +178,7 @@ export function IngredientSupplierDialog({
             packPriceExclVatCents: stored,
             basis: seedBasis,
             includesVat: seedInclVat,
-            taxRateBps,
+            taxRateBps: seedRateBps,
             unitsPerPack: units,
             packSize: size,
             packUnit: unit,
@@ -162,7 +191,7 @@ export function IngredientSupplierDialog({
     // treat the initial name as a change and mark the price touched.
     seededFor.current = name;
     setError(null);
-  }, [open, initialLink, pricePrefs, dimension, taxRateBps]);
+  }, [open, initialLink, pricePrefs, dimension, vatCategories, initialVatCategoryId]);
 
   React.useEffect(() => {
     const el = ref.current;
@@ -262,6 +291,9 @@ export function IngredientSupplierDialog({
       ...(hasSize ? { packSize: sizeNum } : {}),
       ...(unit ? { packUnit: unit } : {}),
       ...(hasUnits ? { unitsPerPack: unitsNum } : {}),
+      // Always sent (including '' = back to the org default) so clearing a band is
+      // a real edit, not an omission the server would read as "leave it alone".
+      vatCategoryId,
       ...pricePart,
     };
 
@@ -283,6 +315,7 @@ export function IngredientSupplierDialog({
             supplierSku: sku.trim() || null,
           },
           { basis, includesVat },
+          vatCategoryId === '' ? null : vatCategoryId,
         );
         onClose();
       } else {
@@ -506,26 +539,63 @@ export function IngredientSupplierDialog({
               </Select>
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${titleId}-vat`}>{t('vatBasis')}</Label>
-            <Select
-              id={`${titleId}-vat`}
-              value={includesVat ? 'incl' : 'excl'}
-              // Without a configured rate there is no way to strip VAT back out, so
-              // gross entry stays closed rather than silently assuming 0%.
-              disabled={pending || taxRateBps == null}
-              onChange={(e) => {
-                setIncludesVat(e.target.value === 'incl');
-                touchPrice();
-              }}
-            >
-              <option value="excl">{t('vat.excl')}</option>
-              <option value="incl">{t('vat.incl')}</option>
-            </Select>
-            {taxRateBps == null && (
-              <p className="text-xs text-muted-foreground">{t('vatRateMissing')}</p>
-            )}
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`${titleId}-vat`}>{t('vatBasis')}</Label>
+              <Select
+                id={`${titleId}-vat`}
+                value={includesVat ? 'incl' : 'excl'}
+                // Without a resolvable rate there is no way to strip VAT back out,
+                // so gross entry stays closed rather than silently assuming 0%.
+                disabled={pending || taxRateBps == null}
+                onChange={(e) => {
+                  setIncludesVat(e.target.value === 'incl');
+                  touchPrice();
+                }}
+              >
+                <option value="excl">{t('vat.excl')}</option>
+                <option value="incl">{t('vat.incl')}</option>
+              </Select>
+            </div>
+            {/*
+              VAT on a PURCHASE depends on the goods, not the business: food 14%,
+              alcohol 25.5% in Finland; other countries band differently. So the rate
+              comes from the ingredient's band, edited right here, not from one
+              org-wide number that would mis-price everything outside its band.
+            */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`${titleId}-vatcat`}>{t('vatCategory')}</Label>
+              <Select
+                id={`${titleId}-vatcat`}
+                className="w-44"
+                value={vatCategoryId}
+                disabled={pending || vatCategories.length === 0}
+                onChange={(e) => {
+                  setVatCategoryId(e.target.value);
+                  touchPrice();
+                }}
+              >
+                <option value="">
+                  {defaultCategory
+                    ? t('vatCategoryDefault', { name: defaultCategory.name })
+                    : t('vatCategoryNone')}
+                </option>
+                {vatCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {t('vatCategoryOption', {
+                      name: c.name,
+                      rate: String(c.rateBps / 100),
+                    })}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
+          {taxRateBps == null ? (
+            <p className="text-xs text-muted-foreground">{t('vatRateMissing')}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t('vatCategoryHint')}</p>
+          )}
         </fieldset>
 
         {/* ── The answer ─────────────────────────────────────────────────── */}
@@ -538,10 +608,14 @@ export function IngredientSupplierDialog({
               <p className="font-display text-2xl font-semibold tabular-nums">
                 {formatMoney(readout.perPricedUnitExclVatCents, currency)}
               </p>
-              {readout.perPricedUnitInclVatCents != null && (
+              {readout.perPricedUnitInclVatCents != null && activeCategory && (
+                // Naming the band makes a mis-categorization visible — the same
+                // safety-net principle as showing the cost per kg.
                 <p className="text-xs text-muted-foreground tabular-nums">
-                  {t('costInclVat', {
+                  {t('costInclVatCategory', {
                     amount: formatMoney(readout.perPricedUnitInclVatCents, currency),
+                    name: activeCategory.name,
+                    rate: String(activeCategory.rateBps / 100),
                   })}
                 </p>
               )}

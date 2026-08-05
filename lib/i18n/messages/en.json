@@ -137,7 +137,9 @@
     "SUPPLIER_IN_USE": "This supplier is the default for one or more ingredients, so it can't be archived. Change or remove those ingredient suppliers first.",
     "SUPPLIER_INACTIVE": "That supplier is archived. Reactivate it before assigning it to an ingredient.",
     "PACK_UNIT_MISMATCH": "That pack unit doesn't match the ingredient's measurement type. Use a weight unit for a weight ingredient, a volume unit for a volume one, and so on.",
-    "VAT_RATE_REQUIRED": "You entered a price that includes VAT, but your organisation has no VAT rate set. Add one in Settings, or enter the price excluding VAT.",
+    "VAT_RATE_REQUIRED": "You entered a price that includes VAT, but no VAT band applies to this ingredient. Add a band in Settings, or enter the price excluding VAT.",
+    "VAT_CATEGORY_IN_USE": "This VAT band is still used by one or more ingredients. Move them to another band first.",
+    "VAT_CATEGORY_IS_DEFAULT": "This is your default VAT band. Make another band the default before deleting this one.",
     "UNEXPECTED": "Something went wrong on our end. Please try again.",
     "PO_NOT_DRAFT": "This purchase order has already been sent or cancelled, so it can no longer be edited. Cancel it and create a new one instead.",
     "SUPPLIER_REQUIRED": "Choose a supplier before sending this purchase order.",
@@ -619,14 +621,20 @@
       "costLabel": "Cost per {unit}",
       "costInclVat": "{amount} incl. VAT",
       "costUnknown": "Enter a pack and a price to see the cost.",
-      "vatRateMissing": "Set your VAT rate in Settings to enter prices that include VAT.",
+      "vatRateMissing": "Add a VAT band in Settings to enter prices that include VAT.",
       "save": "Save",
       "cancel": "Cancel",
       "clear": "Remove supplier",
       "none": "Set supplier",
       "pendingBadge": "Pending cost",
       "pendingHint": "A new cost of {amount} was derived from this pack. Accept it to update the ingredient's price.",
-      "accept": "Accept cost"
+      "accept": "Accept cost",
+      "vatCategory": "VAT band",
+      "vatCategoryOption": "{name} · {rate}%",
+      "vatCategoryDefault": "Default ({name})",
+      "vatCategoryNone": "No bands set up",
+      "vatCategoryHint": "VAT on a purchase depends on the goods, not on your business. Bands are editable in Settings.",
+      "costInclVatCategory": "{amount} incl. VAT ({name} · {rate}%)"
     },
     "invoices": {
       "cardTitle": "Read a supplier invoice",
@@ -778,7 +786,8 @@
         "nameAsc": "Name (A–Z)",
         "nameDesc": "Name (Z–A)",
         "supplier": "Supplier",
-        "updated": "Last updated"
+        "updated": "Last updated",
+        "needsPricing": "Needs pricing first"
       }
     },
     "addDialog": {
@@ -1548,6 +1557,21 @@
     "noAccess": {
       "title": "Managers only",
       "body": "Workspace settings — currency and measurement system — can only be changed by a manager. Ask an organization manager if you need a change."
+    },
+    "vatCategories": {
+      "title": "Purchase VAT bands",
+      "description": "VAT on what you BUY depends on the goods, not on your business — in Finland food is 14% and alcohol and non-food 25.5%. Each ingredient picks a band in its supplier dialog; the rate is only used to convert a price that includes VAT into the net cost.",
+      "empty": "No bands yet. Add one so prices that include VAT can be converted.",
+      "name": "Band",
+      "namePlaceholder": "e.g. Food",
+      "rate": "Rate %",
+      "percent": "{rate}%",
+      "default": "Default",
+      "add": "Add band",
+      "save": "Save band",
+      "cancel": "Cancel",
+      "edit": "Edit band",
+      "delete": "Delete band"
     }
   },
   "import": {
@@ -1960,10 +1984,22 @@
     "cell": "{units} sold · {margin}% · {contribution}/unit",
     "quadrantEmpty": "None in this period.",
     "quadrant": {
-      "star": { "title": "Stars", "action": "Popular and profitable — keep and promote." },
-      "puzzle": { "title": "Puzzles", "action": "Profitable but overlooked — boost their visibility." },
-      "workhorse": { "title": "Workhorses", "action": "Popular but thin — reprice or cut cost." },
-      "dog": { "title": "Dogs", "action": "Unpopular and thin — remove or reformulate." }
+      "star": {
+        "title": "Stars",
+        "action": "Popular and profitable — keep and promote."
+      },
+      "puzzle": {
+        "title": "Puzzles",
+        "action": "Profitable but overlooked — boost their visibility."
+      },
+      "workhorse": {
+        "title": "Workhorses",
+        "action": "Popular but thin — reprice or cut cost."
+      },
+      "dog": {
+        "title": "Dogs",
+        "action": "Unpopular and thin — remove or reformulate."
+      }
     },
     "kind": {
       "recipe": "Recipe",

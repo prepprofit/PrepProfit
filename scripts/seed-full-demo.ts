@@ -38,6 +38,7 @@ import {
 } from '../lib/db';
 import { recordMovement } from '../lib/data/inventory';
 import { ensureDefaultArea, createArea } from '../lib/data/storage-areas';
+import { ensureVatCategories } from '../lib/data/vat-categories';
 import {
   ensureCategoriesSeeded,
   listCategories,
@@ -292,7 +293,8 @@ async function main() {
     await tx.delete(recipeFolders).where(eq(recipeFolders.organizationId, ORG));
     console.log('  ✓ wiped existing org data');
 
-    // ── 2. Storage areas ──────────────────────────────────────────────────────
+    // ── 2. Storage areas + purchase VAT bands ─────────────────────────────────
+    await ensureVatCategories(tx, ORG);
     await ensureDefaultArea(tx, ORG);
     for (const name of ['Walk-in fridge', 'Freezer', 'Dry store']) {
       await createArea(tx, ORG, name);

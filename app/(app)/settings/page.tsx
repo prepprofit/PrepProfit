@@ -9,7 +9,9 @@ import { withOrg } from '@/lib/db';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
 import { bpsToPercent } from '@/lib/calculations/tax';
 import { NoAccess } from '@/components/app/no-access';
+import { listVatCategories } from '@/lib/data/vat-categories';
 import { SettingsForm } from './settings-form';
+import { VatCategoriesSection } from './vat-categories-section';
 import { AccountPrivacy } from './account-privacy';
 
 export default async function SettingsPage() {
@@ -21,11 +23,12 @@ export default async function SettingsPage() {
     return <NoAccess title={t('noAccess.title')} body={t('noAccess.body')} />;
   }
 
-  // One read for both the form values and the pending-deletion state.
+  // One read for the form values, the pending-deletion state and the VAT bands.
   const organizationId = await getOrgId();
-  const row = await withOrg(organizationId, (tx) =>
-    getOrgSettingsRow(tx, organizationId),
-  );
+  const [row, vatCategories] = await withOrg(organizationId, async (tx) => [
+    await getOrgSettingsRow(tx, organizationId),
+    await listVatCategories(tx, organizationId),
+  ]);
   const settings = row ?? DEFAULT_ORG_SETTINGS;
   const deletion = readAccountDeletionState(row);
 
@@ -49,6 +52,15 @@ export default async function SettingsPage() {
           stockControlStartDate: settings.stockControlStartDate,
           weeklyCfoReportEmailEnabled: settings.weeklyCfoReportEmailEnabled,
         }}
+      />
+
+      <VatCategoriesSection
+        categories={vatCategories.map((c) => ({
+          id: c.id,
+          name: c.name,
+          rateBps: c.rateBps,
+          isDefault: c.isDefault,
+        }))}
       />
 
       <AccountPrivacy

@@ -65,6 +65,18 @@ export type SupplierPricePrefs = {
   includesVat: boolean | null;
 };
 
+/**
+ * One purchase VAT band the supplier dialog can apply. Purchase VAT depends on the
+ * GOODS (food vs alcohol vs non-food), not on the business, so the rate rides on
+ * the ingredient's band rather than on a single org-wide setting.
+ */
+export type VatCategoryOption = {
+  id: string;
+  name: string;
+  rateBps: number;
+  isDefault: boolean;
+};
+
 type Draft = {
   name: string;
   dimension: Dimension;
@@ -122,7 +134,13 @@ function operationalInput(draft: Draft) {
  * List orderings offered by the Sort select. Adding a key = one entry here plus one
  * `sortOptions.<key>` string; the select and the comparator both read this map.
  */
-const SORT_KEYS = ['nameAsc', 'nameDesc', 'supplier', 'updated'] as const;
+const SORT_KEYS = [
+  'nameAsc',
+  'nameDesc',
+  'supplier',
+  'updated',
+  'needsPricing',
+] as const;
 type SortKey = (typeof SORT_KEYS)[number];
 
 const SORT_COMPARATORS: Record<
@@ -137,6 +155,10 @@ const SORT_COMPARATORS: Record<
     (a.supplier ?? '').localeCompare(b.supplier ?? '') ||
     a.name.localeCompare(b.name),
   updated: (a, b) => timeOf(b.updatedAt) - timeOf(a.updatedAt),
+  // The old implicit default, now an explicit choice: unpriced rows first, so a
+  // "what still needs a price?" pass is one select away.
+  needsPricing: (a, b) =>
+    Number(b.needsPricing) - Number(a.needsPricing) || a.name.localeCompare(b.name),
 };
 
 function timeOf(value: Date | string | null | undefined): number {
@@ -210,7 +232,7 @@ export function IngredientGrid({
   supplierNames = [],
   initialSupplierLinks = {},
   supplierPricePrefs = {},
-  taxRateBps = null,
+  vatCategories = [],
 }: {
   initialIngredients: IngredientRow[];
   /** Manager only: render + edit the Price column. Kitchen rows carry no price. */
@@ -228,8 +250,8 @@ export function IngredientGrid({
   initialSupplierLinks?: Record<string, DefaultSupplierSummary>;
   /** Remembered price-entry preferences per supplier NAME (manager-only). */
   supplierPricePrefs?: Record<string, SupplierPricePrefs>;
-  /** The org's VAT rate in basis points; null = not configured (manager-only). */
-  taxRateBps?: number | null;
+  /** The org's purchase VAT bands for the supplier dialog (manager-only). */
+  vatCategories?: VatCategoryOption[];
 }) {
   const t = useTranslations('ingredients');
   const flashId = useRowHighlight(highlightId, 'ingredient-row-');
@@ -936,19 +958,22 @@ export function IngredientGrid({
           ingredientName={supplierTarget.name}
           dimension={supplierTarget.dimension}
           currency={currency}
-          taxRateBps={taxRateBps}
+          vatCategories={vatCategories}
+          vatCategoryId={supplierTarget.vatCategoryId ?? null}
           supplierNames={supplierNames}
           pricePrefs={pricePrefs}
           initialLink={supplierLinks[supplierTarget.id] ?? null}
           pendingPriceCents={supplierTarget.pendingPriceCents ?? null}
           onClose={() => setSupplierEditId(null)}
-          onSaved={(summary, prefs) => {
+          onSaved={(summary, prefs, vatCategoryId) => {
             const id = supplierTarget.id;
             setSupplierLinks((prev) => ({ ...prev, [id]: summary }));
             setPricePrefs((prev) => ({ ...prev, [summary.supplierName]: prefs }));
             setRows((prev) =>
               prev.map((r) =>
-                r.id === id ? { ...r, supplier: summary.supplierName } : r,
+                r.id === id
+                  ? { ...r, supplier: summary.supplierName, vatCategoryId }
+                  : r,
               ),
             );
           }}

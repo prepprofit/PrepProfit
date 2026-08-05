@@ -12,9 +12,11 @@ import {
   type DefaultSupplierSummary,
 } from '@/lib/data/ingredient-suppliers';
 import { getOrgSettings } from '@/lib/data/org-settings';
+import { listVatCategories } from '@/lib/data/vat-categories';
 import {
   IngredientGrid,
   type SupplierPricePrefs,
+  type VatCategoryOption,
 } from '@/components/app/ingredients/ingredient-grid';
 
 export default async function IngredientsPage({
@@ -60,20 +62,31 @@ export default async function IngredientsPage({
   // prefill the editor. Kitchen sees the supplier NAME read-only (it rides on the
   // ingredient row's `supplier` column), but no packs/prices and no editor.
   let supplierNames: string[] = [];
+  // Purchase VAT bands (food 14% vs alcohol 25.5% …). Manager-only, like every
+  // other price input: only the incl.↔excl. conversion in the supplier dialog uses
+  // them, and kitchen never sees a price at all.
+  let vatCategories: VatCategoryOption[] = [];
   const initialSupplierLinks: Record<string, DefaultSupplierSummary> = {};
   // How each supplier quotes prices, remembered from the last time one of their packs
   // was saved, so the dialog's two selects prefill instead of being re-picked.
   const supplierPricePrefs: Record<string, SupplierPricePrefs> = {};
   if (canSeeCosts) {
-    const [suppliers, links] = await withOrg(organizationId, async (tx) => [
+    const [suppliers, links, bands] = await withOrg(organizationId, async (tx) => [
       await listSuppliersWithCounts(tx, organizationId),
       await loadDefaultLinksByIngredient(
         tx,
         organizationId,
         ingredientRows.map((r) => r.id),
       ),
+      await listVatCategories(tx, organizationId),
     ]);
     supplierNames = suppliers.map((s) => s.name);
+    vatCategories = bands.map((c) => ({
+      id: c.id,
+      name: c.name,
+      rateBps: c.rateBps,
+      isDefault: c.isDefault,
+    }));
     for (const s of suppliers) {
       supplierPricePrefs[s.name] = {
         basis: s.defaultPriceBasis,
@@ -96,7 +109,7 @@ export default async function IngredientsPage({
         supplierNames={supplierNames}
         initialSupplierLinks={initialSupplierLinks}
         supplierPricePrefs={supplierPricePrefs}
-        taxRateBps={canSeeCosts ? settings.defaultTaxRateBps : null}
+        vatCategories={vatCategories}
       />
     </div>
   );

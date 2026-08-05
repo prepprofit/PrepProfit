@@ -21,7 +21,6 @@ import {
   setDefaultSupplier,
 } from '@/lib/data/ingredient-suppliers';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
-import { getOrgSettings } from '@/lib/data/org-settings';
 import {
   ingredientSchema,
   kitchenIngredientSchema,
@@ -284,16 +283,14 @@ export async function setIngredientSupplierAction(
 
   const organizationId = await getOrgId();
   const actor = await auditActor();
-  // The org's VAT rate is server-derived — a gross quote is normalized against it
-  // (never against a client-sent rate).
-  const { defaultTaxRateBps } = await getOrgSettings();
+  // The VAT rate is server-derived from the ingredient's purchase VAT category
+  // inside the transaction — never a client-sent rate.
   const outcome = await withOrg(organizationId, async (tx) => {
     const result = await setDefaultSupplier(
       tx,
       organizationId,
       ingredientId,
       parsed.data,
-      defaultTaxRateBps,
     );
     if (result.status !== 'ok') return result.status;
     await writeAuditEvent(tx, organizationId, actor, {
