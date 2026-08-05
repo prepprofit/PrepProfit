@@ -21,9 +21,9 @@ Primary files:
 | 6 | No `autoComplete` anywhere → password managers guess | **Confirmed.** `grep autoComplete` over `components/` + `app/` returns nothing; `components/ui/input.tsx` sets no default. |
 | 7 | "Units" vs "Unit" labels confusing | **Confirmed.** `ingredients.…` / `suppliers.ingredientEditor` keys `unitsPerPack: "Units"`, `packSize: "Pack size"`, `packUnit: "Unit"`. |
 
-## Two decisions needed before coding
+## Two decisions — DECIDED (André delegated both, 2026-08-05)
 
-### D1 — Disabling Save would remove a working capability
+### D1 — Save stays enabled for a name-only supplier; the pack fields are conditional
 
 Brief 1 Fix B says: keep Save disabled until pack size + price + unit are present.
 
@@ -34,30 +34,55 @@ supplies this, I do not know the pack yet" record.
 
 Disabling Save until pack + price exist deletes that flow.
 
-**Recommendation:** make the requirement CONDITIONAL, not absolute —
+**DECISION:** the requirement is CONDITIONAL, not absolute.
 
-- supplier name alone → Save stays enabled (records the supplier, no pricing);
-- the moment ANY of price / pack size / unit is filled, the other two become required, with
-  inline errors on the empty ones, because a partial pack cannot produce a cost per kg.
+- Supplier name alone → Save stays ENABLED. It records "this is who supplies it", which is a
+  legitimate half-finished state and the flow the tests already protect.
+- The moment ANY of price / pack size / unit is non-empty, the other two become REQUIRED, with
+  inline errors on whichever is empty. A partial pack cannot produce a cost per unit, so the
+  three travel together or not at all.
+- Save is therefore only ever disabled while the pack trio is half-filled — a state the user
+  created and can see marked, never a dead end on an untouched form.
 
-This satisfies the brief's real goal (no dead-end generic banner) without removing a flow.
-**Needs Guilherme's yes.**
+Why this over a blanket disable: the brief's real complaint is the dead-end generic banner, not
+that name-only saves exist. A blanket disable would fix the message by deleting a capability,
+and the user would have no way at all to record a supplier before knowing its pack — which is
+the normal order in which a kitchen learns these two facts.
 
-### D2 — What counts as "incomplete"
+### D2 — "Incomplete" means the COST is untrustworthy; a missing supplier does not qualify
 
-The brief says "no supplier, no price, needsPricing true, etc." Careful: kitchen rows carry
-**no `priceCents` key at all** (Sprint F4 strips it server-side), so a predicate that reads
-price silently treats every kitchen row as incomplete.
+The brief says "no supplier, no price, needsPricing true, etc.". Two traps:
 
-**Recommendation:**
+1. Kitchen rows carry **no `priceCents` key at all** (Sprint F4 strips it server-side), so any
+   predicate that reads price marks the entire kitchen list incomplete.
+2. Pinning on "no supplier" lights up most of the list on day one, and a pin that matches
+   almost every row stops being a signal.
+
+**DECISION:**
 
 ```ts
+/**
+ * Incomplete = this row's COST cannot be trusted right now. That is the only thing
+ * worth stealing the top of the list for: a wrong price silently corrupts every
+ * recipe that uses the ingredient. Price only participates when the viewer can see
+ * prices — kitchen payloads carry no price key at all (Sprint F4).
+ */
 const isIncomplete = (r: IngredientRow, canSeeCosts: boolean) =>
-  r.needsPricing || !r.supplier || (canSeeCosts && (r.priceCents ?? 0) === 0);
+  r.needsPricing || (canSeeCosts && (r.priceCents ?? 0) === 0);
 ```
 
-Price only participates when the viewer can see prices. **Needs Guilherme's yes** on whether
-"no supplier" alone should really flag a row — it will light up a lot of rows on day one.
+`needsPricing` alone is not enough on its own: a manager can create an ingredient with no price
+typed and the flag stays false, so `priceCents === 0` catches that hole. Both conditions mean
+the same thing to the user — "this ingredient is costing your recipes at zero".
+
+**A missing supplier is deliberately NOT pinned.** It is a real gap, but a different and
+lesser one: it makes purchasing incomplete, not costing wrong. It already has its own
+affordances — the `Set supplier` button on the row and the `Supplier` sort key, which groups
+unsupplied rows together on demand. Pinning it would drown the rows that are actively lying
+about money.
+
+If Guilherme later wants supplier gaps surfaced too, the right shape is a separate filter
+("show only unsupplied"), not a second pinning tier.
 
 ## Work items, in order
 
@@ -82,19 +107,23 @@ Price only participates when the viewer can see prices. **Needs Guilherme's yes*
 
 ### 3. Incomplete-first ordering (Option A)
 
-- Wrap, do not replace: keep `SORT_COMPARATORS` and add one tier on top.
+- Wrap, do not replace: keep `SORT_COMPARATORS` and add one tier on top, using the D2
+  predicate (`canSeeCosts` is already a prop of the grid).
 
   ```ts
   const compare = (a, b) =>
-    Number(isIncomplete(b)) - Number(isIncomplete(a)) || SORT_COMPARATORS[sortKey](a, b);
+    Number(isIncomplete(b, canSeeCosts)) - Number(isIncomplete(a, canSeeCosts)) ||
+    SORT_COMPARATORS[sortKey](a, b);
   ```
 
 - **Remove the `needsPricing` sort key** added in `b043ee3`. With Option A the pinning is
   unconditional, so a sort option that says the same thing is a second, contradictory way to
   express it. Drop the key + its `sort.options.needsPricing` string.
 - Keep the amber badge exactly as is.
-- Tests: a pure comparator test (incomplete first under every key; sort still applies within
-  each group; a row that becomes complete drops into place).
+- Export `isIncomplete` so it is unit-testable without rendering the grid.
+- Tests: incomplete first under EVERY sort key; sort still applies within each group; a row
+  that becomes complete drops into its normal position; and a kitchen row (no `priceCents`
+  key) with `needsPricing: false` is NOT flagged — the regression D2 exists to prevent.
 
 ### 4. Supplier picker: datalist → searchable combobox
 
@@ -108,14 +137,17 @@ Price only participates when the viewer can see prices. **Needs Guilherme's yes*
   supplier's remembered price basis / VAT mode. Whatever replaces the input must keep firing
   that on selection, or the prefill silently stops working.
 
-### 5. Field-level validation + conditional Save (after D1 is answered)
+### 5. Field-level validation + conditional Save (per D1)
 
 - Replace the single `error` string with a small `Record<field, messageKey>` and render each
   message under its field, plus an error ring on that input.
 - Keep the top banner ONLY for server-returned `ActionResult` codes (`VAT_RATE_REQUIRED`,
   `SUPPLIER_INACTIVE`, …) — those are not field-scoped.
-- Save enablement per D1.
+- Save enablement per D1: disabled ONLY while the pack trio (price / size / unit) is
+  half-filled. An untouched form with just a supplier name saves.
 - New i18n keys under `suppliers.ingredientEditor.fieldErrors.*`.
+- Test the predicate that decides "half-filled" as a pure function — it is the rule most
+  likely to drift, and it is what stands between a manager and a dead-end Save button.
 
 ### 6. "What you buy" as a sentence
 
@@ -141,6 +173,8 @@ redesign, and multiple suppliers per ingredient.
   still saves; the remembered price basis still prefills on selection.
 - Missing pack fields produce inline messages on those fields, not only a top banner.
 - "Total per purchase" shows one unit.
-- Incomplete ingredients pinned on top under every sort key, badge intact.
+- Incomplete ingredients (untrustworthy cost — D2) pinned on top under every sort key, badge
+  intact; unsupplied-but-priced rows are NOT pinned.
+- A name-only supplier still saves; Save is disabled only on a half-filled pack.
 - No password-manager prompt when opening either dialog.
 - "What you buy" reads `Packs × Size of each [unit]`; no two fields called some form of "unit".
