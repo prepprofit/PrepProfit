@@ -91,9 +91,23 @@ the second layer of defense exists.
 - `app_runtime` was created with SQL, so it does **not** appear under Neon → Roles and has
   no console password reset. Rotate it as the owner:
   `ALTER ROLE app_runtime PASSWORD '<new>'`, then update Coolify and restart.
-- Known gap: the RLS test suite runs on PGlite with an ordinary role, where the policies
-  work regardless — it cannot catch a regression to a bypassing role. Proving isolation
-  against real Postgres with a `NOBYPASSRLS` role is still to do.
+- **Two guards keep this from regressing silently** (`docs/rls-regression-guard-plan.md`):
+  - **At boot**, `instrumentation.ts` asks the database whether the connected role has
+    `BYPASSRLS` and, if it does, logs an error to the container log and Sentry under
+    `runtimeRoleBypassesRls`. It is fail-open: it reports, it never blocks startup.
+  - **At migrate time**, `npm run db:migrate` verifies that `app_runtime` exists, is
+    `NOBYPASSRLS`, holds SELECT/INSERT/UPDATE/DELETE on every business + infra table, and
+    that RLS is enabled *and* forced with at least one policy on every business table. A
+    gap fails the command with the exact `GRANT` to run. This is what catches a new
+    sprint's table that never got a grant — before a user meets `permission denied`.
+    On a database without the role (dev, CI, a fresh branch) it warns and skips; set
+    `EXPECT_APP_RUNTIME_ROLE=1` to make the absence an error instead.
+- Isolation against real Postgres with a `NOBYPASSRLS` login role is covered by an opt-in
+  test, `tests/concurrency/rls-real-role.pg.test.ts`, gated on `TEST_DATABASE_URL_APP`
+  (that file's header has the branch + role setup). Note this is *not* what the in-suite
+  RLS tests lack — those already run under `SET ROLE tenant_app` and exercise the policies
+  properly; what the real-Postgres run adds is a login role and the GRANTs, which PGlite
+  does not model.
 
 ## Migrations
 

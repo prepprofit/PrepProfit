@@ -1,5 +1,14 @@
 # Plano: impedir a regressão silenciosa do RLS (follow-up da etapa 2)
 
+> **ESTADO: EXECUTADO em 2026-08-05.** As decisões D1–D4 ficaram todas na opção
+> recomendada, e as três peças estão implementadas:
+> **A** → `lib/db/runtime-role.ts` + `instrumentation.ts` (fail-open, provado contra a base
+> real nos dois sentidos: alarme com o owner, silêncio com `app_runtime`);
+> **B** → `lib/db/runtime-grants.ts` + passo final em `scripts/migrate.ts` (dry-run
+> read-only contra produção: 61 tabelas com DML, RLS *enabled+forced* nas 59 de negócio);
+> **C** → `tests/concurrency/rls-real-role.pg.test.ts`, opt-in por `TEST_DATABASE_URL_APP`.
+> O documento fica como registo do raciocínio e das decisões.
+
 Escrito em 2026-08-05, para executar numa sessão dedicada. Auto-contido: dá para começar
 do zero a partir daqui, sem contexto da sessão que o gerou.
 
