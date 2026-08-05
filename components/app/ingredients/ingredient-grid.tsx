@@ -31,10 +31,10 @@ import { cn } from '@/lib/utils';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { useRowHighlight } from '@/lib/hooks/use-row-highlight';
 import {
-  createIngredientAction,
   deleteIngredientAction,
   updateIngredientAction,
 } from '@/app/(app)/ingredients/actions';
+import { IngredientAddDialog } from '@/components/app/ingredients/ingredient-add-dialog';
 import { IngredientAllergenDialog } from '@/components/app/ingredients/ingredient-allergen-dialog';
 import { IngredientCatalogDialog } from '@/components/app/ingredients/ingredient-catalog-dialog';
 import { IngredientSupplierDialog } from '@/components/app/ingredients/ingredient-supplier-dialog';
@@ -110,10 +110,6 @@ function draftFromRow(row: IngredientRow): Draft {
   };
 }
 
-function emptyDraft(): Draft {
-  return { name: '', dimension: 'weight', priceText: '' };
-}
-
 /** Operational fields only — what a kitchen edit sends (no price, no supplier). */
 function operationalInput(draft: Draft) {
   return {
@@ -122,9 +118,31 @@ function operationalInput(draft: Draft) {
   };
 }
 
-/** Full input including price — only built/sent for managers. */
-function draftToInput(draft: Draft) {
-  return { ...operationalInput(draft), priceCents: parseMoneyToCents(draft.priceText) };
+/**
+ * List orderings offered by the Sort select. Adding a key = one entry here plus one
+ * `sortOptions.<key>` string; the select and the comparator both read this map.
+ */
+const SORT_KEYS = ['nameAsc', 'nameDesc', 'supplier', 'updated'] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+
+const SORT_COMPARATORS: Record<
+  SortKey,
+  (a: IngredientRow, b: IngredientRow) => number
+> = {
+  nameAsc: (a, b) => a.name.localeCompare(b.name),
+  nameDesc: (a, b) => b.name.localeCompare(a.name),
+  // Unsupplied ingredients sink to the bottom — an empty supplier is not a name.
+  supplier: (a, b) =>
+    Number(!a.supplier) - Number(!b.supplier) ||
+    (a.supplier ?? '').localeCompare(b.supplier ?? '') ||
+    a.name.localeCompare(b.name),
+  updated: (a, b) => timeOf(b.updatedAt) - timeOf(a.updatedAt),
+};
+
+function timeOf(value: Date | string | null | undefined): number {
+  if (!value) return 0;
+  const time = (value instanceof Date ? value : new Date(value)).getTime();
+  return Number.isNaN(time) ? 0 : time;
 }
 
 /**
@@ -224,19 +242,17 @@ export function IngredientGrid({
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>(() =>
     Object.fromEntries(initialIngredients.map((r) => [r.id, draftFromRow(r)])),
   );
-  const [newDraft, setNewDraft] = React.useState<Draft>(emptyDraft);
   const [query, setQuery] = React.useState('');
-  // Needs-pricing rows float to the top; the rest stay alphabetical.
+  const sortId = React.useId();
+  const [sortKey, setSortKey] = React.useState<SortKey>('nameAsc');
+  // Client-side sort over the loaded list — the order is the viewer's choice, so
+  // "needs pricing" no longer overrides it (the amber pill still marks those rows).
   const visibleRows = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows
       .filter((r) => !q || r.name.toLowerCase().includes(q))
-      .sort(
-        (a, b) =>
-          Number(b.needsPricing) - Number(a.needsPricing) ||
-          a.name.localeCompare(b.name),
-      );
-  }, [rows, query]);
+      .sort(SORT_COMPARATORS[sortKey]);
+  }, [rows, query, sortKey]);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   // Explicit edit: exactly one row is editable at a time and NOTHING commits until
@@ -264,6 +280,9 @@ export function IngredientGrid({
   >(() => ({ ...supplierPricePrefs }));
   // Seed catalogue picker (docs/ingredient-seed-catalog-plan.md Slice 4).
   const [catalogOpen, setCatalogOpen] = React.useState(false);
+  // Manual add popup — occasional work, so it stays one click away instead of
+  // sitting on the page as an always-on form.
+  const [addOpen, setAddOpen] = React.useState(false);
 
   const confirmTarget = rows.find((r) => r.id === confirmId) ?? null;
   const allergenTarget = rows.find((r) => r.id === allergenEditId) ?? null;
@@ -406,25 +425,11 @@ export function IngredientGrid({
     });
   }, [confirmId, actionError]);
 
-  const onCreate = React.useCallback(() => {
-    // Kitchen creates operationally (no price); manager may set an opening price.
-    const input = canSeeCosts ? draftToInput(newDraft) : operationalInput(newDraft);
-    if (input.name === '') {
-      setError(t('errors.nameRequired'));
-      return;
-    }
-    setError(null);
-    startTransition(async () => {
-      const result = await createIngredientAction(input);
-      if (result.ok) {
-        setRows((prev) => [...prev, result.data]);
-        setDrafts((prev) => ({ ...prev, [result.data.id]: draftFromRow(result.data) }));
-        setNewDraft(emptyDraft());
-      } else {
-        setError(actionError(result.code));
-      }
-    });
-  }, [newDraft, t, actionError, canSeeCosts]);
+  /** Adopt a row created elsewhere (add popup, catalogue) into the loaded list. */
+  const adoptRow = React.useCallback((row: IngredientRow) => {
+    setRows((prev) => [...prev, row]);
+    setDrafts((prev) => ({ ...prev, [row.id]: draftFromRow(row) }));
+  }, []);
 
   const columns = React.useMemo<ColumnDef<IngredientRow>[]>(
     () => [
@@ -735,91 +740,56 @@ export function IngredientGrid({
         </div>
       )}
 
-      {/* Search + add side by side: search left, new-ingredient field right. */}
-      <div className="grid grid-cols-1 items-center gap-3 lg:grid-cols-2">
-      <Input
-        type="search"
-        aria-label={t('searchPlaceholder')}
-        placeholder={t('searchPlaceholder')}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      <div className="rounded-xl border border-dashed border-border bg-surface p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {t('addTitle')}
-          </p>
+      {/*
+        Search-first: the page's frequent tasks are search / browse / select, so the
+        search field owns the row and the two add paths sit to the right. Adding is
+        occasional — one click away, never cluttering the everyday workspace.
+      */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Input
+          type="search"
+          aria-label={t('searchPlaceholder')}
+          placeholder={t('searchPlaceholder')}
+          className="sm:flex-1"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <div className="flex items-center gap-2 sm:justify-end">
           <Button
             type="button"
             variant="outline"
-            size="sm"
             disabled={pending}
             onClick={() => setCatalogOpen(true)}
           >
             {t('catalog.open')}
           </Button>
-        </div>
-        <div
-          className={cn(
-            'grid grid-cols-1 gap-2 sm:items-center',
-            canSeeCosts
-              ? 'sm:grid-cols-[1fr_auto_auto_auto]'
-              : 'sm:grid-cols-[1fr_auto_auto]',
-          )}
-        >
-          <Input
-            aria-label={t('columns.name')}
-            placeholder={t('placeholders.name')}
-            value={newDraft.name}
-            disabled={pending}
-            onChange={(e) => setNewDraft((d) => ({ ...d, name: e.target.value }))}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onCreate();
-            }}
-          />
-          <Select
-            aria-label={t('columns.dimension')}
-            value={newDraft.dimension}
-            disabled={pending}
-            onChange={(e) =>
-              setNewDraft((d) => ({ ...d, dimension: e.target.value as Dimension }))
-            }
-          >
-            {DIMENSIONS.map((d) => (
-              <option key={d} value={d}>
-                {tDim(d)}
-              </option>
-            ))}
-          </Select>
-          {canSeeCosts && (
-            <div className="flex items-center gap-1.5">
-              <Input
-                aria-label={t('columns.price')}
-                inputMode="decimal"
-                placeholder="0.00"
-                className="w-24"
-                value={newDraft.priceText}
-                disabled={pending}
-                onChange={(e) =>
-                  setNewDraft((d) => ({ ...d, priceText: e.target.value }))
-                }
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onCreate();
-                }}
-              />
-              <span className="text-xs text-muted-foreground">
-                {PER_UNIT_SUFFIX[newDraft.dimension]}
-              </span>
-            </div>
-          )}
           {/* The ONE primary (orange) action on this screen. */}
-          <Button type="button" onClick={onCreate} disabled={pending}>
+          <Button type="button" disabled={pending} onClick={() => setAddOpen(true)}>
             <Plus className="size-4" />
-            {t('actions.add')}
+            {t('actions.addIngredient')}
           </Button>
         </div>
       </div>
 
+      <div className="flex items-center justify-end gap-2">
+        <label
+          htmlFor={sortId}
+          className="text-xs font-medium text-muted-foreground"
+        >
+          {t('sort.label')}
+        </label>
+        <Select
+          id={sortId}
+          className="w-48"
+          value={sortKey}
+          onChange={(e) => setSortKey(e.target.value as SortKey)}
+        >
+          {SORT_KEYS.map((key) => (
+            <option key={key} value={key}>
+              {t(`sort.options.${key}`)}
+            </option>
+          ))}
+        </Select>
       </div>
 
       <Card className="overflow-x-auto">
@@ -913,14 +883,30 @@ export function IngredientGrid({
         onCancel={() => setConfirmId(null)}
       />
 
+      <IngredientAddDialog
+        open={addOpen}
+        canSeeCosts={canSeeCosts}
+        onClose={() => setAddOpen(false)}
+        onCreated={(ingredient) => {
+          // Kitchen rows carry no price keys (Sprint F4) — IngredientRow allows that.
+          const row = ingredient as IngredientRow;
+          adoptRow(row);
+          setAllergens((prev) => ({ ...prev, [row.id]: [] }));
+          setReviewed((prev) => ({ ...prev, [row.id]: false }));
+        }}
+        onBrowseCatalog={() => {
+          setAddOpen(false);
+          setCatalogOpen(true);
+        }}
+      />
+
       <IngredientCatalogDialog
         open={catalogOpen}
         onClose={() => setCatalogOpen(false)}
         onCreated={(ingredient, tags) => {
           // Kitchen rows carry no price keys (Sprint F4) — IngredientRow allows that.
           const row = ingredient as IngredientRow;
-          setRows((prev) => [...prev, row]);
-          setDrafts((prev) => ({ ...prev, [row.id]: draftFromRow(row) }));
+          adoptRow(row);
           setAllergens((prev) => ({ ...prev, [row.id]: tags }));
           // Seeded allergens are typical + UNREVIEWED until a human reviews them.
           setReviewed((prev) => ({ ...prev, [row.id]: false }));
