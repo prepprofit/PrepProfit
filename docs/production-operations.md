@@ -246,7 +246,7 @@ as every one of them purges data or sends real email.
 - [ ] All env vars set in Coolify, `NEXT_PUBLIC_*` ticked as Build Variables; a fresh
       deploy is green and `curl -s https://prepprofit.com/sign-in | grep -o 'pk_[a-z]*_'`
       returns `pk_live_`.
-- [ ] Migrations applied + verified (head 0045); RLS enabled + forced on every business table.
+- [ ] Migrations applied + verified (head 0046); RLS enabled + forced on every business table.
 - [ ] All six Scheduled Tasks exist with the full `node -e …` command; `ai-cost-report`
       returns 200 on a manual run.
 - [ ] Clerk webhook endpoint on the **apex** + secret set; a `user.created` test event is accepted.
