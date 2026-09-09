@@ -594,7 +594,7 @@
     "ingredientEditor": {
       "heading": "Supplier",
       "supplierName": "Supplier",
-      "supplierPlaceholder": "Type or pick a supplier",
+      "supplierPlaceholder": "Pick or add a supplier",
       "productName": "Supplier product name",
       "productNamePlaceholder": "e.g. Manteli jauhe 13,5kg",
       "productNameHint": "Exactly as they bill it. Only ever used for purchasing — recipes and menus keep the ingredient's own name.",
@@ -634,7 +634,19 @@
       "vatCategoryDefault": "Default ({name})",
       "vatCategoryNone": "No bands set up",
       "vatCategoryHint": "VAT on a purchase depends on the goods, not on your business. Bands are editable in Settings.",
-      "costInclVatCategory": "{amount} incl. VAT ({name} · {rate}%)"
+      "costInclVatCategory": "{amount} incl. VAT ({name} · {rate}%)",
+      "supplierSearchPlaceholder": "Search suppliers…",
+      "supplierCreate": "Add “{name}” as a new supplier",
+      "supplierEmpty": "No suppliers yet — type a name to add the first one.",
+      "fieldErrors": {
+        "supplierRequired": "Pick or type a supplier name.",
+        "unitsInvalid": "Enter a whole number of packs (1 or more).",
+        "packSizeRequired": "Pack size is required to work out the cost.",
+        "packSizeInvalid": "Enter a pack size greater than zero, using a dot for decimals.",
+        "packUnitRequired": "Pick the unit this pack is measured in.",
+        "priceRequired": "Enter the price for this pack.",
+        "priceInvalid": "Enter a price greater than zero."
+      }
     },
     "invoices": {
       "cardTitle": "Read a supplier invoice",

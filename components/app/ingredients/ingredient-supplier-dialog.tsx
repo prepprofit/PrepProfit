@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SupplierPicker } from '@/components/app/ingredients/supplier-picker';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useActionError } from '@/lib/i18n/use-action-error';
@@ -22,6 +23,11 @@ import {
   type SupplierPriceBasis,
 } from '@/lib/calculations/purchasePrice';
 import { PACK_UNITS, PRICE_BASES } from '@/lib/validation/suppliers';
+import {
+  isPackBlockingSave,
+  validateSupplierPackForm,
+  type SupplierPackFormErrors,
+} from '@/lib/validation/supplier-pack-form';
 import {
   acceptPendingCostAction,
   clearIngredientSupplierAction,
@@ -48,6 +54,24 @@ import type {
  * The supplier's PRODUCT NAME lives here and only here — purchasing sees it,
  * recipes and menus never do. Native `<dialog>`, mirroring the allergen editor.
  */
+
+/**
+ * One inline message, under the field it belongs to. Rendering nothing when there
+ * is nothing to say keeps the form's height stable on the happy path.
+ */
+function FieldError({ id, message }: { id?: string; message: string | null }) {
+  if (!message) return null;
+  return (
+    <p id={id} className="text-xs text-red-600 dark:text-red-400">
+      {message}
+    </p>
+  );
+}
+
+/** Red hairline on the offending control, so the message has something to point at. */
+function errorRing(message: string | null): string | undefined {
+  return message ? 'border-red-400 dark:border-red-500/60' : undefined;
+}
 
 /** Pack unit pre-filled from the ingredient's own dimension (the common case). */
 const DEFAULT_PACK_UNIT: Record<Dimension, Unit> = {
@@ -82,7 +106,7 @@ export function IngredientSupplierDialog({
   vatCategories: VatCategoryOption[];
   /** The ingredient's own band; null = fall back to the org's default band. */
   vatCategoryId: string | null;
-  /** Existing supplier names for the datalist (manager's active suppliers). */
+  /** Existing supplier names for the picker (manager's active suppliers). */
   supplierNames: string[];
   /** Remembered price-entry mode per supplier NAME, so the selects prefill. */
   pricePrefs: Record<string, SupplierPricePrefs>;
@@ -101,7 +125,6 @@ export function IngredientSupplierDialog({
   const actionError = useActionError();
   const ref = React.useRef<HTMLDialogElement>(null);
   const titleId = React.useId();
-  const listId = React.useId();
 
   const [supplierName, setSupplierName] = React.useState('');
   const [productName, setProductName] = React.useState('');
@@ -119,7 +142,13 @@ export function IngredientSupplierDialog({
   // round trip. So while the manager hasn't touched any pricing control we send the
   // STORED cents straight back — opening and saving a link never moves the price.
   const [priceTouched, setPriceTouched] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  // The top banner now carries ONLY server-returned codes (VAT_RATE_REQUIRED,
+  // SUPPLIER_INACTIVE, …). Anything the form can see for itself is reported
+  // inline, next to the field that is wrong.
+  const [bannerError, setBannerError] = React.useState<string | null>(null);
+  // A supplier name is missing on every fresh form, so its inline error waits for
+  // the first Save rather than greeting the manager in red.
+  const [saveAttempted, setSaveAttempted] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
   // The supplier whose quoting mode is currently loaded, so switching supplier
@@ -190,7 +219,8 @@ export function IngredientSupplierDialog({
     // This supplier's mode is already loaded — don't let the switch effect below
     // treat the initial name as a change and mark the price touched.
     seededFor.current = name;
-    setError(null);
+    setBannerError(null);
+    setSaveAttempted(false);
   }, [open, initialLink, pricePrefs, dimension, vatCategories, initialVatCategoryId]);
 
   React.useEffect(() => {
@@ -224,11 +254,11 @@ export function IngredientSupplierDialog({
   const hasUnits = Number.isInteger(unitsNum) && unitsNum > 0;
   const unit = packUnit === '' ? null : packUnit;
 
-  /** "6.6 kg" — the quantity one purchase actually brings in. */
-  const totalLabel =
-    hasSize && hasUnits && unit
-      ? `${formatInUnit(unitsNum * sizeNum, unit)} ${unitLabel(unit)}`.trim()
-      : null;
+  /**
+   * "6.6 kg" — the quantity one purchase actually brings in. `formatInUnit`
+   * already appends the unit label; appending it again is what produced "25 kg kg".
+   */
+  const totalLabel = hasSize && hasUnits && unit ? formatInUnit(unitsNum * sizeNum, unit) : null;
 
   /** The one number that matters: cost per kg / litre / piece. */
   const readout = React.useMemo(() => {
@@ -261,12 +291,44 @@ export function IngredientSupplierDialog({
     dimension,
   ]);
 
+  /**
+   * Field-level validation, live. Pure and unit-tested in
+   * `tests/supplier-pack-form.test.ts` — it is the rule most likely to drift, and
+   * it decides whether Save is clickable at all.
+   */
+  const fieldErrors: SupplierPackFormErrors = React.useMemo(
+    () =>
+      validateSupplierPackForm({
+        supplierName,
+        unitsPerPack,
+        packSize,
+        packUnit,
+        packPrice: packPriceText,
+      }),
+    [supplierName, unitsPerPack, packSize, packUnit, packPriceText],
+  );
+
+  /**
+   * Save is dead ONLY on a half-described pack — a state the manager created and
+   * can see marked. A name-only link still saves (decision D1).
+   */
+  const saveBlocked = isPackBlockingSave(fieldErrors);
+
+  /** Inline message for a field, or null when it has nothing to say yet. */
+  const fieldError = (field: keyof SupplierPackFormErrors): string | null => {
+    const code = fieldErrors[field];
+    if (!code) return null;
+    // Pack errors only exist once the manager typed a size or a price, so they
+    // are always self-inflicted and safe to show immediately. The name error is
+    // the one that would fire on an untouched form.
+    if (field === 'supplierName' && !saveAttempted) return null;
+    return t(`fieldErrors.${code}`);
+  };
+
   const onSave = () => {
+    setSaveAttempted(true);
     const name = supplierName.trim();
-    if (name === '') {
-      setError(actionError('INVALID_INPUT'));
-      return;
-    }
+    if (name === '' || saveBlocked) return;
     const priceCents =
       packPriceText.trim() === '' ? undefined : parseMoneyToCents(packPriceText);
 
@@ -297,7 +359,7 @@ export function IngredientSupplierDialog({
       ...pricePart,
     };
 
-    setError(null);
+    setBannerError(null);
     startTransition(async () => {
       const result = await setIngredientSupplierAction(ingredientId, input);
       if (result.ok) {
@@ -319,33 +381,33 @@ export function IngredientSupplierDialog({
         );
         onClose();
       } else {
-        setError(actionError(result.code));
+        setBannerError(actionError(result.code));
       }
     });
   };
 
   const onClear = () => {
-    setError(null);
+    setBannerError(null);
     startTransition(async () => {
       const result = await clearIngredientSupplierAction(ingredientId);
       if (result.ok) {
         onCleared();
         onClose();
       } else {
-        setError(actionError(result.code));
+        setBannerError(actionError(result.code));
       }
     });
   };
 
   const onAccept = () => {
-    setError(null);
+    setBannerError(null);
     startTransition(async () => {
       const result = await acceptPendingCostAction(ingredientId);
       if (result.ok) {
         onAccepted(result.data.priceCents);
         onClose();
       } else {
-        setError(actionError(result.code));
+        setBannerError(actionError(result.code));
       }
     });
   };
@@ -388,30 +450,29 @@ export function IngredientSupplierDialog({
           </div>
         )}
 
-        {error && (
+        {bannerError && (
           <div
             role="alert"
             className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
           >
-            {error}
+            {bannerError}
           </div>
         )}
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${titleId}-name`}>{t('supplierName')}</Label>
-          <Input
+          <SupplierPicker
             id={`${titleId}-name`}
-            list={listId}
-            placeholder={t('supplierPlaceholder')}
             value={supplierName}
+            options={supplierNames}
             disabled={pending}
-            onChange={(e) => setSupplierName(e.target.value)}
+            invalid={fieldError('supplierName') != null}
+            describedBy={
+              fieldError('supplierName') != null ? `${titleId}-name-error` : undefined
+            }
+            onChange={setSupplierName}
           />
-          <datalist id={listId}>
-            {supplierNames.map((n) => (
-              <option key={n} value={n} />
-            ))}
-          </datalist>
+          <FieldError id={`${titleId}-name-error`} message={fieldError('supplierName')} />
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -450,6 +511,11 @@ export function IngredientSupplierDialog({
                 inputMode="numeric"
                 value={unitsPerPack}
                 disabled={pending}
+                aria-invalid={fieldError('unitsPerPack') != null}
+                aria-describedby={
+                  fieldError('unitsPerPack') != null ? `${titleId}-units-error` : undefined
+                }
+                className={errorRing(fieldError('unitsPerPack'))}
                 onChange={(e) => {
                   setUnitsPerPack(e.target.value);
                   touchPrice();
@@ -464,6 +530,11 @@ export function IngredientSupplierDialog({
                 placeholder="0"
                 value={packSize}
                 disabled={pending}
+                aria-invalid={fieldError('packSize') != null}
+                aria-describedby={
+                  fieldError('packSize') != null ? `${titleId}-size-error` : undefined
+                }
+                className={errorRing(fieldError('packSize'))}
                 onChange={(e) => {
                   setPackSize(e.target.value);
                   touchPrice();
@@ -476,6 +547,11 @@ export function IngredientSupplierDialog({
                 id={`${titleId}-unit`}
                 value={packUnit}
                 disabled={pending}
+                aria-invalid={fieldError('packUnit') != null}
+                aria-describedby={
+                  fieldError('packUnit') != null ? `${titleId}-unit-error` : undefined
+                }
+                className={errorRing(fieldError('packUnit'))}
                 onChange={(e) => {
                   setPackUnit(e.target.value as Unit | '');
                   touchPrice();
@@ -490,6 +566,9 @@ export function IngredientSupplierDialog({
               </Select>
             </div>
           </div>
+          <FieldError id={`${titleId}-units-error`} message={fieldError('unitsPerPack')} />
+          <FieldError id={`${titleId}-size-error`} message={fieldError('packSize')} />
+          <FieldError id={`${titleId}-unit-error`} message={fieldError('packUnit')} />
           {totalLabel && (
             <p className="text-xs text-muted-foreground">
               {t('packTotal', { total: totalLabel })}
@@ -513,11 +592,17 @@ export function IngredientSupplierDialog({
                 placeholder="0.00"
                 value={packPriceText}
                 disabled={pending}
+                aria-invalid={fieldError('packPrice') != null}
+                aria-describedby={
+                  fieldError('packPrice') != null ? `${titleId}-price-error` : undefined
+                }
+                className={errorRing(fieldError('packPrice'))}
                 onChange={(e) => {
                   setPackPriceText(e.target.value);
                   touchPrice();
                 }}
               />
+              <FieldError id={`${titleId}-price-error`} message={fieldError('packPrice')} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`${titleId}-basis`}>{t('priceBasis')}</Label>
@@ -637,7 +722,7 @@ export function IngredientSupplierDialog({
             <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
               {t('cancel')}
             </Button>
-            <Button type="button" onClick={onSave} disabled={pending}>
+            <Button type="button" onClick={onSave} disabled={pending || saveBlocked}>
               {t('save')}
             </Button>
           </div>
