@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { IGNORE_PASSWORD_MANAGERS, Input } from '@/components/ui/input';
 import { SupplierPicker } from '@/components/app/ingredients/supplier-picker';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -478,6 +478,7 @@ export function IngredientSupplierDialog({
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${titleId}-product`}>{t('productName')}</Label>
           <Input
+            {...IGNORE_PASSWORD_MANAGERS}
             id={`${titleId}-product`}
             placeholder={t('productNamePlaceholder')}
             value={productName}
@@ -490,6 +491,7 @@ export function IngredientSupplierDialog({
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${titleId}-sku`}>{t('sku')}</Label>
           <Input
+            {...IGNORE_PASSWORD_MANAGERS}
             id={`${titleId}-sku`}
             placeholder={t('skuPlaceholder')}
             value={sku}
@@ -507,6 +509,7 @@ export function IngredientSupplierDialog({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`${titleId}-units`}>{t('unitsPerPack')}</Label>
               <Input
+                {...IGNORE_PASSWORD_MANAGERS}
                 id={`${titleId}-units`}
                 inputMode="numeric"
                 value={unitsPerPack}
@@ -525,6 +528,7 @@ export function IngredientSupplierDialog({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`${titleId}-size`}>{t('packSize')}</Label>
               <Input
+                {...IGNORE_PASSWORD_MANAGERS}
                 id={`${titleId}-size`}
                 inputMode="decimal"
                 placeholder="0"
@@ -587,6 +591,7 @@ export function IngredientSupplierDialog({
                 {t('packPrice')} · {currency}
               </Label>
               <Input
+                {...IGNORE_PASSWORD_MANAGERS}
                 id={`${titleId}-price`}
                 inputMode="decimal"
                 placeholder="0.00"

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { IGNORE_PASSWORD_MANAGERS, Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
 import { parseMoneyToCents } from '@/lib/format/money';
@@ -138,6 +138,7 @@ export function IngredientAddDialog({
             {t('columns.name')}
           </span>
           <Input
+            {...IGNORE_PASSWORD_MANAGERS}
             autoFocus
             placeholder={t('placeholders.name')}
             value={name}
@@ -170,6 +171,7 @@ export function IngredientAddDialog({
             </span>
             <div className="flex items-center gap-1.5">
               <Input
+                {...IGNORE_PASSWORD_MANAGERS}
                 inputMode="decimal"
                 placeholder="0.00"
                 className="w-32 text-right tabular-nums"
