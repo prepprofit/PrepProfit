@@ -420,6 +420,21 @@ Acceptance criteria:
   optional `?portions=`; scaled cost-sheet emails carry the same `portions`. Unit
   economics (cost/portion, price, margin) stay invariant; kitchen payload stays
   money-free by type. Pure math in `lib/calculations/recipeScale.ts`.
+- **Profit section — Hour Engine.** Manager-only `/profit` (top-level nav under Dashboard)
+  judges every product by €/hour of hands-on production instead of margin %. Part A: True
+  Hourly Rate at `/profit/rate` from itemised monthly fixed costs (depreciation helper),
+  productive hours and owner target income/hour, with an optional sublet mode (rent out,
+  ingredient multiplier in); stored as inputs in `profit_settings`, the rate is derived on
+  read. Part B: per-product calculator at `/profit/[id]` — products are recipes, extended
+  with `batch_time_minutes`, `sale_unit`, `waste_bps`, `delivery_per_unit_cents` and an
+  extra-step time/price (batch yield, packaging and energy reuse existing recipe columns;
+  the price is the default portion option). Part C: catalogue ranked by €/hour with Hero /
+  Solid / Reprice / Losing verdicts, top heroes, below-floor list and the biggest lever.
+  Verdict bands: Hero ≥ 1.25× rate; Solid ≥ rate; Reprice = below the floor but covering
+  fixed cost/hour; Losing = below fixed cost/hour. Migration 0047; pure maths in
+  `lib/calculations/profit-hour.ts`; audited (`profit.settingsUpdate`, `recipe.profitUpdate`);
+  kitchen DTOs strip the new fields. The Menus module is unchanged (it is a working combos
+  module, not the empty calculator the brief assumed).
 
 ## Backlog - not scheduled until prioritized
 
