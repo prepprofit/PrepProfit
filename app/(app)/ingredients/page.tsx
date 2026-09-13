@@ -1,4 +1,3 @@
-import { getTranslations } from 'next-intl/server';
 import { canSeeRecipeCosts, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listIngredients, toKitchenIngredient } from '@/lib/data/ingredients';
@@ -24,7 +23,6 @@ export default async function IngredientsPage({
 }: {
   searchParams: Promise<{ highlight?: string }>;
 }) {
-  const t = await getTranslations('ingredients');
   const organizationId = await getOrgId();
   const { highlight } = await searchParams;
   const [ingredientRows, settings, role] = await Promise.all([
@@ -98,7 +96,6 @@ export default async function IngredientsPage({
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
       <IngredientGrid
         initialIngredients={ingredients}
         canSeeCosts={canSeeCosts}

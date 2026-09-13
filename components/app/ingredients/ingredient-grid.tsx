@@ -21,6 +21,7 @@ import {
 import type { Ingredient } from '@/lib/db/schema';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
 import { isLowStock } from '@/lib/calculations/inventory';
+import { isIncomplete } from '@/lib/ingredients/incomplete';
 import { centsToAmountInput, formatMoney, parseMoneyToCents } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -134,13 +135,7 @@ function operationalInput(draft: Draft) {
  * List orderings offered by the Sort select. Adding a key = one entry here plus one
  * `sortOptions.<key>` string; the select and the comparator both read this map.
  */
-const SORT_KEYS = [
-  'nameAsc',
-  'nameDesc',
-  'supplier',
-  'updated',
-  'needsPricing',
-] as const;
+const SORT_KEYS = ['nameAsc', 'nameDesc', 'supplier', 'updated'] as const;
 type SortKey = (typeof SORT_KEYS)[number];
 
 const SORT_COMPARATORS: Record<
@@ -155,10 +150,6 @@ const SORT_COMPARATORS: Record<
     (a.supplier ?? '').localeCompare(b.supplier ?? '') ||
     a.name.localeCompare(b.name),
   updated: (a, b) => timeOf(b.updatedAt) - timeOf(a.updatedAt),
-  // The old implicit default, now an explicit choice: unpriced rows first, so a
-  // "what still needs a price?" pass is one select away.
-  needsPricing: (a, b) =>
-    Number(b.needsPricing) - Number(a.needsPricing) || a.name.localeCompare(b.name),
 };
 
 function timeOf(value: Date | string | null | undefined): number {
@@ -267,14 +258,28 @@ export function IngredientGrid({
   const [query, setQuery] = React.useState('');
   const sortId = React.useId();
   const [sortKey, setSortKey] = React.useState<SortKey>('nameAsc');
-  // Client-side sort over the loaded list — the order is the viewer's choice, so
-  // "needs pricing" no longer overrides it (the amber pill still marks those rows).
+  /**
+   * Client-side sort over the loaded list, in TWO TIERS. The viewer's chosen key
+   * orders the list, but rows whose COST cannot be trusted are pinned above it
+   * (decision D2) — a wrong price corrupts every recipe that uses the ingredient,
+   * so it outranks any ordering preference. Within each tier the chosen key still
+   * applies, and a row that gets a price drops straight into its normal position.
+   *
+   * This is a WRAPPER, not a replacement: `SORT_COMPARATORS` is untouched, which
+   * is why there is no longer a "Needs pricing first" sort option — the pinning is
+   * unconditional, so an option saying the same thing would contradict it.
+   */
   const visibleRows = React.useMemo(() => {
     const q = query.trim().toLowerCase();
+    const bySortKey = SORT_COMPARATORS[sortKey];
     return rows
       .filter((r) => !q || r.name.toLowerCase().includes(q))
-      .sort(SORT_COMPARATORS[sortKey]);
-  }, [rows, query, sortKey]);
+      .sort(
+        (a, b) =>
+          Number(isIncomplete(b, canSeeCosts)) - Number(isIncomplete(a, canSeeCosts)) ||
+          bySortKey(a, b),
+      );
+  }, [rows, query, sortKey, canSeeCosts]);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   // Explicit edit: exactly one row is editable at a time and NOTHING commits until

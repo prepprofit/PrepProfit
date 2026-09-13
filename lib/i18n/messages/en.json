@@ -763,7 +763,6 @@
   },
   "ingredients": {
     "title": "Ingredients",
-    "subtitle": "Your pantry. Prices feed straight into recipe costs.",
     "empty": "No ingredients yet. Browse the catalog or add your first one.",
     "searchPlaceholder": "Search ingredients…",
     "noMatches": "No ingredients match your search.",
@@ -799,8 +798,7 @@
         "nameAsc": "Name (A–Z)",
         "nameDesc": "Name (Z–A)",
         "supplier": "Supplier",
-        "updated": "Last updated",
-        "needsPricing": "Needs pricing first"
+        "updated": "Last updated"
       }
     },
     "addDialog": {
