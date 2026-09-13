@@ -59,7 +59,17 @@ export type RecipeWithIngredients = {
  */
 export type KitchenRecipe = Omit<
   Recipe,
-  'laborCostCents' | 'energyCostCents' | 'packagingCostCents' | 'sellingPriceCents'
+  | 'laborCostCents'
+  | 'energyCostCents'
+  | 'packagingCostCents'
+  | 'sellingPriceCents'
+  // Profit section (Hour Engine) inputs — manager-only financial data.
+  | 'batchTimeMinutes'
+  | 'saleUnit'
+  | 'wasteBps'
+  | 'deliveryPerUnitCents'
+  | 'extraStepMinutes'
+  | 'extraStepPriceCents'
 >;
 
 export type KitchenRecipeLine = {
@@ -82,6 +92,12 @@ export function toKitchenRecipe(row: Recipe): KitchenRecipe {
     energyCostCents: _energy,
     packagingCostCents: _packaging,
     sellingPriceCents: _selling,
+    batchTimeMinutes: _batchTime,
+    saleUnit: _saleUnit,
+    wasteBps: _waste,
+    deliveryPerUnitCents: _delivery,
+    extraStepMinutes: _extraMinutes,
+    extraStepPriceCents: _extraPrice,
     ...rest
   } = row;
   return rest;

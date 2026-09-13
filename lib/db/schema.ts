@@ -135,6 +135,58 @@ export const organizationSettings = pgTable('organization_settings', {
 });
 
 /**
+ * True Hourly Rate inputs for the Profit section (Hour Engine): exactly one row
+ * per org, keyed by the Clerk org id like `organization_settings`. FINANCIAL →
+ * manager-only at the app layer; standard org_isolation RLS. Monthly fixed costs
+ * are itemised integer cents; the rate itself is NEVER stored — it is derived live
+ * by `trueHourlyRate()` (lib/calculations/profit-hour.ts) so editing a cost
+ * recalculates the whole catalogue on the next read.
+ *
+ * `productive_hours_per_month` is hands-on production hours (not calendar hours);
+ * NULL = the rate is not configured yet. Sublet mode drops rent from fixed costs
+ * and multiplies ingredient cost by `sublet_ingredient_multiplier_bps` (14000 = 1.4×).
+ */
+export const profitSettings = pgTable(
+  'profit_settings',
+  {
+    organizationId: text('organization_id').primaryKey(),
+    rentCents: integer('rent_cents').notNull().default(0),
+    equipmentLeasesCents: integer('equipment_leases_cents').notNull().default(0),
+    equipmentDepreciationCents: integer('equipment_depreciation_cents')
+      .notNull()
+      .default(0),
+    insuranceLicensesCents: integer('insurance_licenses_cents').notNull().default(0),
+    utilitiesCents: integer('utilities_cents').notNull().default(0),
+    salariedStaffCents: integer('salaried_staff_cents').notNull().default(0),
+    softwareCents: integer('software_cents').notNull().default(0),
+    productiveHoursPerMonth: integer('productive_hours_per_month'),
+    ownerTargetIncomePerHourCents: integer('owner_target_income_per_hour_cents')
+      .notNull()
+      .default(0),
+    subletEnabled: boolean('sublet_enabled').notNull().default(false),
+    subletIngredientMultiplierBps: integer('sublet_ingredient_multiplier_bps')
+      .notNull()
+      .default(14000),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check(
+      'profit_settings_costs_chk',
+      sql`${t.rentCents} >= 0 AND ${t.equipmentLeasesCents} >= 0 AND ${t.equipmentDepreciationCents} >= 0 AND ${t.insuranceLicensesCents} >= 0 AND ${t.utilitiesCents} >= 0 AND ${t.salariedStaffCents} >= 0 AND ${t.softwareCents} >= 0 AND ${t.ownerTargetIncomePerHourCents} >= 0`,
+    ),
+    check(
+      'profit_settings_hours_chk',
+      sql`${t.productiveHoursPerMonth} IS NULL OR (${t.productiveHoursPerMonth} >= 1 AND ${t.productiveHoursPerMonth} <= 744)`,
+    ),
+    check(
+      'profit_settings_multiplier_chk',
+      sql`${t.subletIngredientMultiplierBps} >= 10000 AND ${t.subletIngredientMultiplierBps} <= 30000`,
+    ),
+  ],
+);
+
+/**
  * PURCHASE VAT categories (per org). VAT on what you BUY depends on the goods, not
  * on the business: in Finland food is 14% and alcohol/non-food 25.5%; Portugal has
  * different bands again. One rate per org mis-prices everything outside its band.
@@ -620,12 +672,29 @@ export const recipes = pgTable(
     // organization — enforced by the workspace save (media-ownership validation),
     // not a DB FK: recipes ↔ recipe_media would be circular table definitions.
     coverMediaId: text('cover_media_id'),
+    // ---- Profit section (Hour Engine) — per-product time/batch inputs ----
+    // Manager-only financial inputs. The batch yield is `yield_portions` and the
+    // per-batch packaging/energy are the hidden-cost columns above (not duplicated).
+    // Hands-on minutes for one batch; NULL = not set → the product can't be ranked.
+    batchTimeMinutes: integer('batch_time_minutes'),
+    // What one yield portion is sold as.
+    saleUnit: text('sale_unit', { enum: ['piece', 'kg', 'frame', 'plate'] }),
+    // Product waste in basis points; NULL = the 5% default (DEFAULT_WASTE_BPS).
+    wasteBps: integer('waste_bps'),
+    deliveryPerUnitCents: integer('delivery_per_unit_cents').notNull().default(0),
+    // Optional upgrade step (e.g. decoration): extra minutes per unit + extra price.
+    extraStepMinutes: integer('extra_step_minutes'),
+    extraStepPriceCents: integer('extra_step_price_cents'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL`.
     deletedAt: deletedAt(),
   },
   (t) => [
+    check(
+      'recipes_profit_inputs_chk',
+      sql`(${t.batchTimeMinutes} IS NULL OR ${t.batchTimeMinutes} > 0) AND (${t.wasteBps} IS NULL OR (${t.wasteBps} >= 0 AND ${t.wasteBps} <= 9000)) AND ${t.deliveryPerUnitCents} >= 0 AND (${t.extraStepMinutes} IS NULL OR ${t.extraStepMinutes} > 0) AND (${t.extraStepPriceCents} IS NULL OR ${t.extraStepPriceCents} >= 0)`,
+    ),
     index('recipes_org_idx').on(t.organizationId),
     index('recipes_org_name_idx').on(t.organizationId, t.name),
     // Serves the /trash listing and keeps active-row filtering index-friendly.
@@ -3936,6 +4005,7 @@ export type NewProductionConsumption = InferInsertModel<
 >;
 export type OrganizationSettings = InferSelectModel<typeof organizationSettings>;
 export type NewOrganizationSettings = InferInsertModel<typeof organizationSettings>;
+export type ProfitSettings = InferSelectModel<typeof profitSettings>;
 export type MeasurementSystem = OrganizationSettings['measurementSystem'];
 export type TransactionCategory = InferSelectModel<typeof transactionCategories>;
 export type NewTransactionCategory = InferInsertModel<typeof transactionCategories>;
@@ -4005,6 +4075,8 @@ export type TaskSourceKind = Task['sourceKind'];
 /** All business tables, for applying RLS in bulk. */
 export const businessTables = [
   'organization_settings',
+  // True Hourly Rate inputs (Profit section) — standard org_isolation RLS.
+  'profit_settings',
   // Per-org purchase VAT bands — standard org_isolation RLS.
   'vat_categories',
   'ingredients',

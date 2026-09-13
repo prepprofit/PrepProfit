@@ -160,6 +160,12 @@ describe('kitchen DTO projections omit the financial keys', () => {
       nutritionServingUnit: null,
       servingsPerContainer: null,
       coverMediaId: null,
+      batchTimeMinutes: 45,
+      saleUnit: 'piece',
+      wasteBps: 500,
+      deliveryPerUnitCents: 30,
+      extraStepMinutes: 5,
+      extraStepPriceCents: 200,
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,
@@ -168,6 +174,16 @@ describe('kitchen DTO projections omit the financial keys', () => {
     expect('energyCostCents' in view).toBe(false);
     expect('packagingCostCents' in view).toBe(false);
     expect('sellingPriceCents' in view).toBe(false);
+    for (const key of [
+      'batchTimeMinutes',
+      'saleUnit',
+      'wasteBps',
+      'deliveryPerUnitCents',
+      'extraStepMinutes',
+      'extraStepPriceCents',
+    ]) {
+      expect(key in view).toBe(false);
+    }
   });
 
   it('toKitchenRecipeWithIngredients drops recipe money AND per-line price', () => {
@@ -193,6 +209,12 @@ describe('kitchen DTO projections omit the financial keys', () => {
         nutritionServingUnit: null,
         servingsPerContainer: null,
         coverMediaId: null,
+        batchTimeMinutes: null,
+        saleUnit: null,
+        wasteBps: null,
+        deliveryPerUnitCents: 0,
+        extraStepMinutes: null,
+        extraStepPriceCents: null,
         createdAt: new Date(),
         updatedAt: new Date(),
         deletedAt: null,

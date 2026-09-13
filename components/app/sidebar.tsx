@@ -9,6 +9,7 @@ import { useTheme } from 'next-themes';
 import { OrganizationSwitcher } from '@clerk/nextjs';
 import {
   LayoutDashboard,
+  Gauge,
   Utensils,
   Scale,
   BookOpen,
@@ -34,7 +35,7 @@ import {
   ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
-import { navGroups, dashboardItem, type NavKey, type NavGroupKey } from '@/lib/nav';
+import { navGroups, topItems, type NavKey, type NavGroupKey } from '@/lib/nav';
 import { clerkAppearance } from '@/lib/clerk-appearance';
 import { SidebarAiMeter } from './trial/sidebar-ai-meter';
 import type { SidebarAiMeterView } from '@/lib/data/ai-usage';
@@ -42,6 +43,7 @@ import { cn } from '@/lib/utils';
 
 const icons: Record<NavKey, LucideIcon> = {
   dashboard: LayoutDashboard,
+  profit: Gauge,
   recipes: Utensils,
   kitchenScale: Scale,
   menus: BookOpen,
@@ -239,15 +241,15 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-2">
-        {/* Dashboard — standalone top-level row (no group header), manager-only. */}
+        {/* Dashboard + Profit — standalone top-level rows (no group header), manager-only. */}
         {canSeeFinance && (
           <div className="flex flex-col gap-1">
-            {(() => {
-              const { key, href } = dashboardItem;
+            {topItems.map(({ key, href }) => {
               const Icon = icons[key];
               const active = isActive(href);
               return (
                 <Link
+                  key={key}
                   href={href}
                   onClick={onNavigate}
                   aria-current={active ? 'page' : undefined}
@@ -265,7 +267,7 @@ export function Sidebar({
                   {!collapsed && t(key)}
                 </Link>
               );
-            })()}
+            })}
           </div>
         )}
         {groups.map((group) => {

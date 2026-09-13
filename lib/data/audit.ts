@@ -300,6 +300,12 @@ export type AuditAction =
   // trash action, audited because one call can trash up to 200 recipes).
   // metadata = trashed/blocked/skipped COUNTS + trashed ids only — never names.
   | 'recipe.bulkTrash'
+  // Profit section / Hour Engine (manager-only). `profit.settingsUpdate` = the True
+  // Hourly Rate inputs were saved; `recipe.profitUpdate` = a product's time/batch
+  // profit inputs were saved. metadata = ids, flags and changed field names only —
+  // never cost, income or price values.
+  | 'profit.settingsUpdate'
+  | 'recipe.profitUpdate'
   // Automated cron purge (system actor)
   | 'cron.purge';
 

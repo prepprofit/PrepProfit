@@ -10,6 +10,16 @@
  */
 export const dashboardItem = { key: 'dashboard', href: '/dashboard' } as const;
 
+/**
+ * Profit (Hour Engine) — the core of the app: judges every product by €/hour of
+ * production time. Manager-only financial data, so like the Dashboard it is a
+ * standalone top-level row shown only when finance is visible (server enforces).
+ */
+export const profitItem = { key: 'profit', href: '/profit' } as const;
+
+/** Standalone top-level rows, in order, above the grouped modules. */
+export const topItems = [dashboardItem, profitItem] as const;
+
 export const navGroups = [
   {
     key: 'operations',
@@ -66,11 +76,11 @@ export const navGroups = [
 
 export type NavGroup = (typeof navGroups)[number];
 export type NavGroupKey = NavGroup['key'];
-export type NavItem = NavGroup['items'][number] | typeof dashboardItem;
+export type NavItem = NavGroup['items'][number] | (typeof topItems)[number];
 export type NavKey = NavItem['key'];
 
 /** Flat list — for callers that need every item (icon map, active-title lookup). */
 export const navItems: readonly NavItem[] = [
-  dashboardItem,
+  ...topItems,
   ...navGroups.flatMap((group): readonly NavItem[] => group.items),
 ];

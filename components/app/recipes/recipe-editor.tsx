@@ -90,7 +90,17 @@ const LIGHT_VARIANT: Record<MarginLight, 'positive' | 'warning' | 'negative'> = 
  */
 type EditorRecipe = Omit<
   Recipe,
-  'laborCostCents' | 'energyCostCents' | 'packagingCostCents' | 'sellingPriceCents'
+  | 'laborCostCents'
+  | 'energyCostCents'
+  | 'packagingCostCents'
+  | 'sellingPriceCents'
+  // Profit section inputs are edited on /profit, never here.
+  | 'batchTimeMinutes'
+  | 'saleUnit'
+  | 'wasteBps'
+  | 'deliveryPerUnitCents'
+  | 'extraStepMinutes'
+  | 'extraStepPriceCents'
 > & {
   laborCostCents?: number;
   energyCostCents?: number;

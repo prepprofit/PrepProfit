@@ -54,6 +54,10 @@ import {
   deleteMenuAction,
 } from '@/app/(app)/menus/actions';
 import { updateOrgSettingsAction } from '@/app/(app)/settings/actions';
+import {
+  saveProductProfitAction,
+  saveProfitSettingsAction,
+} from '@/app/(app)/profit/actions';
 import { completeOnboardingAction } from '@/app/(app)/onboarding/actions';
 
 const FORBIDDEN = { ok: false, code: 'FORBIDDEN' };
@@ -131,6 +135,27 @@ describe('manager-only actions reject kitchen before touching data', () => {
     // FORBIDDEN result proves kitchen was refused without touching data.
     const result = await updateOrgSettingsAction(null, new FormData());
     expect(result).toEqual(FORBIDDEN);
+  });
+
+  it('blocks Profit (Hour Engine) actions — fixed costs, income and prices are manager-only', async () => {
+    // Valid-looking payloads: FORBIDDEN must win before Zod and before getOrgId.
+    const results = await Promise.all([
+      saveProfitSettingsAction({
+        rentCents: 0,
+        equipmentLeasesCents: 0,
+        equipmentDepreciationCents: 0,
+        insuranceLicensesCents: 0,
+        utilitiesCents: 0,
+        salariedStaffCents: 0,
+        softwareCents: 0,
+        productiveHoursPerMonth: 100,
+        ownerTargetIncomePerHourCents: 0,
+        subletEnabled: false,
+        subletIngredientMultiplierBps: 14_000,
+      }),
+      saveProductProfitAction('r1', {}),
+    ]);
+    for (const result of results) expect(result).toEqual(FORBIDDEN);
   });
 
   it('blocks completing onboarding (manager-only, refused before data)', async () => {
