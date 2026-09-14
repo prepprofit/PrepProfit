@@ -54,7 +54,7 @@ import {
 } from '../lib/data/invoices';
 import { createEmployee } from '../lib/data/employees';
 import { createShift } from '../lib/data/shifts';
-import { createMenu } from '../lib/data/menus';
+import { createDish } from '../lib/data/menus';
 import { createTaskList, addTask } from '../lib/data/tasks';
 import { createSale } from '../lib/data/sales';
 import { createProduction, planProduction } from '../lib/data/productions';
@@ -579,12 +579,20 @@ async function main() {
 
     // ── 14. Menus ────────────────────────────────────────────────────────────────
     for (const m of MENUS) {
-      const res = await createMenu(
-        tx,
-        ORG,
-        { name: m.name, sellingPriceCents: m.sellingPriceCents, notes: m.notes },
-        m.items.map((it) => ({ recipeId: recipeIdByName.get(it.recipe)!, quantity: it.quantity })),
-      );
+      const res = await createDish(tx, ORG, {
+        name: m.name,
+        folderId: null,
+        portions: 1,
+        sellingPriceCents: m.sellingPriceCents,
+        vatRateBps: null,
+        notes: m.notes,
+        recipeLines: m.items.map((it) => ({
+          recipeId: recipeIdByName.get(it.recipe)!,
+          quantity: it.quantity,
+          unit: 'portion' as const,
+        })),
+        ingredientLines: [],
+      });
       if (res.status !== 'ok') throw new Error(`menu ${m.name}: ${res.status}`);
     }
 

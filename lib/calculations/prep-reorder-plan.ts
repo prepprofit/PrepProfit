@@ -75,8 +75,17 @@ export type PrepIngredientInput = {
   lowStockThresholdCanonical: number | null;
 };
 
+/** Canonical raw-ingredient demand that bypasses recipes (a dish's direct ingredients). */
+export type PrepDirectIngredientDemand = {
+  ingredientId: string;
+  /** Canonical amount required (finite, > 0; a non-positive is ignored). */
+  quantity: number;
+};
+
 export type PrepReorderPlanInput = {
   demand: PrepDemandInput[];
+  /** Direct ingredient demand (dish ingredient lines × covers). */
+  directIngredientDemand?: PrepDirectIngredientDemand[];
   recipes: PrepRecipeInput[];
   ingredients: PrepIngredientInput[];
 };
@@ -236,6 +245,17 @@ export function buildPrepReorderPlan(
       batches: scalable ? round1(expectedPortions / recipe.yieldPortions) : 0,
       hasIssues,
     });
+  }
+
+  // ── 2b. Direct ingredient demand (dish ingredient lines). A trashed ingredient
+  // simply isn't in the active set — nothing to reorder, nothing fabricated. ──
+  for (const direct of input.directIngredientDemand ?? []) {
+    if (!Number.isFinite(direct.quantity) || direct.quantity <= 0) continue;
+    if (!ingredientById.has(direct.ingredientId)) continue;
+    requiredByIngredient.set(
+      direct.ingredientId,
+      (requiredByIngredient.get(direct.ingredientId) ?? 0) + direct.quantity,
+    );
   }
 
   // ── 3. Reorder + low-stock from the aggregated demand vs the ledger. ──

@@ -3,137 +3,120 @@
 import { revalidatePath } from 'next/cache';
 import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
+import { isUniqueViolation } from '@/lib/db/errors';
+import { unexpected } from '@/lib/observability';
 import {
-  createMenu,
+  createDish,
+  createMenuFolder,
+  deleteMenuFolder,
   getMenuById,
+  markDishOpened,
+  renameMenuFolder,
+  searchDishes,
   softDeleteMenu,
-  updateMenu,
-  type MenuFields,
-  type MenuItemInput,
+  updateDish,
+  type DishSearchResult,
+  type SaveDishOutcome,
 } from '@/lib/data/menus';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
-import { menuSchema } from '@/lib/validation/menus';
-import type { ActionResult } from '@/lib/action-result';
-import type { Menu } from '@/lib/db/schema';
+import { dishSchema, dishSearchSchema, menuFolderSchema } from '@/lib/validation/menus';
+import type { ActionErrorCode, ActionResult } from '@/lib/action-result';
 
 /**
- * Server Actions for the Menus / combos module (Sprint 10). MANAGER-ONLY — every
- * mutation (including the selling price) returns FORBIDDEN before any data access.
- * Kitchen has NO menu mutation action. RULE #1: org id from Clerk, writes inside
- * `withOrg` (RLS), Zod on all input. Canonical order per action: RBAC → Zod →
- * withOrg(mutation + audit in one tx) → revalidate.
+ * Server Actions for the Menu section (folders + Dish Builder). Dish and folder
+ * MUTATIONS are manager-only (a dish carries its selling price) and return FORBIDDEN
+ * before any data access. Search and "mark opened" are money-free and open to both
+ * roles. Canonical order: RBAC → Zod → withOrg(mutation + audit) → revalidate.
+ * RULE #1: org id from Clerk, never the client.
  *
- * Audit metadata is ids + counts + a `priceChanged` boolean + changed field names
- * only — NEVER the menu price value or notes (CLAUDE.md).
+ * Audit metadata is ids, counts, flags and changed field names only — NEVER a price.
  */
 
 function revalidateMenus(id?: string): void {
-  revalidatePath('/menus');
+  revalidatePath('/menus', 'layout');
   if (id) revalidatePath(`/menus/${id}`);
   revalidatePath('/trash');
 }
 
-/** Split a validated payload into the menu fields + its line set. */
-function toFieldsAndItems(parsed: {
-  name: string;
-  sellingPriceCents?: number | null;
-  notes?: string | null;
-  items: MenuItemInput[];
-}): { fields: MenuFields; items: MenuItemInput[] } {
-  return {
-    fields: {
-      name: parsed.name,
-      sellingPriceCents: parsed.sellingPriceCents ?? null,
-      notes: parsed.notes ?? null,
-    },
-    items: parsed.items.map((i) => ({ recipeId: i.recipeId, quantity: i.quantity })),
-  };
-}
+const SAVE_ERRORS: Record<Exclude<SaveDishOutcome['status'], 'ok'>, ActionErrorCode> = {
+  not_found: 'NOT_FOUND',
+  invalid_recipe: 'MENU_RECIPE_INVALID',
+  invalid_ingredient: 'MENU_INGREDIENT_INVALID',
+  invalid_folder: 'MENU_FOLDER_INVALID',
+};
 
-export async function createMenuAction(
-  input: unknown,
-): Promise<ActionResult<Menu>> {
+export async function createDishAction(input: unknown): Promise<ActionResult<{ id: string }>> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
-
-  const parsed = menuSchema.safeParse(input);
+  const parsed = dishSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
 
   const organizationId = await getOrgId();
   const actor = await auditActor();
-  const { fields, items } = toFieldsAndItems(parsed.data);
-
   const outcome = await withOrg(organizationId, async (tx) => {
-    const result = await createMenu(tx, organizationId, fields, items);
-    if (result.status !== 'ok') return result.status;
-    await writeAuditEvent(tx, organizationId, actor, {
-      action: 'menu.create',
-      entityType: 'menu',
-      entityId: result.menu.id,
-      metadata: {
-        itemCount: items.length,
-        priceChanged: fields.sellingPriceCents !== null,
-      },
-    });
-    return result.menu;
-  });
-
-  if (outcome === 'invalid_recipe') return { ok: false, code: 'MENU_RECIPE_INVALID' };
-  revalidateMenus(outcome.id);
-  return { ok: true, data: outcome };
-}
-
-export async function updateMenuAction(
-  id: string,
-  input: unknown,
-): Promise<ActionResult<Menu>> {
-  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
-
-  const parsed = menuSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
-
-  const organizationId = await getOrgId();
-  const actor = await auditActor();
-  const { fields, items } = toFieldsAndItems(parsed.data);
-
-  const outcome = await withOrg(organizationId, async (tx) => {
-    // Snapshot the prior fields (for the non-sensitive change descriptor) before
-    // the in-tx replace. A missing/trashed menu → not_found.
-    const before = await getMenuById(tx, organizationId, id);
-    if (!before) return 'not_found' as const;
-
-    const result = await updateMenu(tx, organizationId, id, fields, items);
-    if (result.status !== 'ok') return result.status;
-
-    const changedFields: string[] = [];
-    if (before.name !== fields.name) changedFields.push('name');
-    if (before.sellingPriceCents !== fields.sellingPriceCents) {
-      changedFields.push('sellingPrice');
+    const result = await createDish(tx, organizationId, parsed.data);
+    if (result.status === 'ok') {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'menu.create',
+        entityType: 'menu',
+        entityId: result.menu.id,
+        metadata: {
+          recipeLineCount: parsed.data.recipeLines.length,
+          ingredientLineCount: parsed.data.ingredientLines.length,
+          priceSet: parsed.data.sellingPriceCents !== null,
+        },
+      });
     }
-    if ((before.notes ?? null) !== fields.notes) changedFields.push('notes');
+    return result;
+  });
+  if (outcome.status !== 'ok') return { ok: false, code: SAVE_ERRORS[outcome.status] };
+  revalidateMenus(outcome.menu.id);
+  return { ok: true, data: { id: outcome.menu.id } };
+}
+
+export async function updateDishAction(id: string, input: unknown): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const parsed = dishSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const before = await getMenuById(tx, organizationId, id);
+    if (!before) return { status: 'not_found' } as const;
+    const result = await updateDish(tx, organizationId, id, parsed.data);
+    if (result.status !== 'ok') return result;
+
+    const next = parsed.data;
+    const changedFields = [
+      before.name !== next.name && 'name',
+      before.folderId !== next.folderId && 'folder',
+      before.portions !== next.portions && 'portions',
+      before.sellingPriceCents !== next.sellingPriceCents && 'sellingPrice',
+      before.vatRateBps !== next.vatRateBps && 'vatRate',
+      (before.notes ?? null) !== (next.notes ?? null) && 'notes',
+    ].filter((f): f is string => typeof f === 'string');
 
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'menu.update',
       entityType: 'menu',
       entityId: id,
       metadata: {
-        itemCount: items.length,
-        priceChanged: before.sellingPriceCents !== fields.sellingPriceCents,
+        recipeLineCount: next.recipeLines.length,
+        ingredientLineCount: next.ingredientLines.length,
+        priceChanged: before.sellingPriceCents !== next.sellingPriceCents,
         changedFields,
       },
     });
-    return result.menu;
+    return result;
   });
-
-  if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
-  if (outcome === 'invalid_recipe') return { ok: false, code: 'MENU_RECIPE_INVALID' };
+  if (outcome.status !== 'ok') return { ok: false, code: SAVE_ERRORS[outcome.status] };
   revalidateMenus(id);
-  return { ok: true, data: outcome };
+  return { ok: true, data: undefined };
 }
 
-/** Soft-delete (trash) an active menu — manager-only. */
+/** Soft-delete (trash) an active dish — manager-only. */
 export async function deleteMenuAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
-
   const organizationId = await getOrgId();
   const actor = await auditActor();
   const row = await withOrg(organizationId, async (tx) => {
@@ -147,8 +130,79 @@ export async function deleteMenuAction(id: string): Promise<ActionResult> {
     }
     return deleted;
   });
-
   if (!row) return { ok: false, code: 'NOT_FOUND' };
   revalidateMenus(id);
+  return { ok: true, data: undefined };
+}
+
+// ── Folders (manager-only) ───────────────────────────────────────────────────
+
+export async function createMenuFolderAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const parsed = menuFolderSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  try {
+    const row = await withOrg(organizationId, (tx) =>
+      createMenuFolder(tx, organizationId, parsed.data.name),
+    );
+    revalidateMenus();
+    return { ok: true, data: { id: row.id } };
+  } catch (err) {
+    if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
+    return unexpected('createMenuFolderAction', err, organizationId);
+  }
+}
+
+export async function renameMenuFolderAction(id: string, input: unknown): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const parsed = menuFolderSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  try {
+    const row = await withOrg(organizationId, (tx) =>
+      renameMenuFolder(tx, organizationId, id, parsed.data.name),
+    );
+    if (!row) return { ok: false, code: 'NOT_FOUND' };
+    revalidateMenus();
+    return { ok: true, data: undefined };
+  } catch (err) {
+    if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
+    return unexpected('renameMenuFolderAction', err, organizationId);
+  }
+}
+
+/** Delete a folder; its dishes move to Unfiled (never deleted). */
+export async function deleteMenuFolderAction(id: string): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const organizationId = await getOrgId();
+  const result = await withOrg(organizationId, (tx) => deleteMenuFolder(tx, organizationId, id));
+  if (!result.deleted) return { ok: false, code: 'NOT_FOUND' };
+  revalidateMenus();
+  return { ok: true, data: undefined };
+}
+
+// ── Money-free (both roles) ──────────────────────────────────────────────────
+
+/** Name search across every dish, whatever folder it lives in. */
+export async function searchDishesAction(
+  input: unknown,
+): Promise<ActionResult<DishSearchResult[]>> {
+  const parsed = dishSearchSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+  const organizationId = await getOrgId();
+  const results = await withOrg(organizationId, (tx) =>
+    searchDishes(tx, organizationId, parsed.data.query),
+  );
+  return { ok: true, data: results };
+}
+
+/** Stamp "last opened" (drives the Last opened sort). No revalidation needed. */
+export async function markDishOpenedAction(id: string): Promise<ActionResult> {
+  if (typeof id !== 'string' || id.trim() === '') return { ok: false, code: 'INVALID_INPUT' };
+  const organizationId = await getOrgId();
+  await withOrg(organizationId, (tx) => markDishOpened(tx, organizationId, id));
   return { ok: true, data: undefined };
 }

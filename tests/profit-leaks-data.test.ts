@@ -5,7 +5,7 @@ import type { TenantDb } from '@/lib/db/tenant';
 import { createIngredient } from '@/lib/data/ingredients';
 import { createRecipe, softDeleteRecipe } from '@/lib/data/recipes';
 import { addRecipeIngredient } from '@/lib/data/recipe-ingredients';
-import { createMenu } from '@/lib/data/menus';
+import { createDish } from '@/lib/data/menus';
 import { loadProfitLeaks } from '@/lib/data/profit-leaks';
 
 const ORG_A = 'org_a';
@@ -150,12 +150,15 @@ describe('loadProfitLeaks data loader', () => {
       sellingPriceCents: null,
       ingredientPriceCents: 200,
     });
-    const created = await createMenu(
-      db,
-      ORG_A,
-      { name: 'Combo', sellingPriceCents: 250, notes: null },
-      [{ recipeId, quantity: 1 }],
-    );
+    const created = await createDish(db, ORG_A, {
+      name: 'Combo',
+      folderId: null,
+      portions: 1,
+      sellingPriceCents: 250,
+      vatRateBps: null,
+      recipeLines: [{ recipeId: recipeId, quantity: 1, unit: 'portion' }],
+      ingredientLines: [],
+    });
     if (created.status !== 'ok') throw new Error('create menu failed');
 
     const findings = await loadProfitLeaks(db, ORG_A);

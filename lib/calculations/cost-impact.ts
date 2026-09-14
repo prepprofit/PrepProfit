@@ -1,6 +1,6 @@
 import type { Dimension } from '@/lib/units';
 import { recipeCost } from './recipeCost';
-import { menuCost } from './menu';
+import { compositionCost, type DishComposition } from './dish';
 import { marginPercent, suggestedPriceCents, MARGIN_THRESHOLDS } from './margin';
 
 /**
@@ -42,6 +42,8 @@ export type CostImpactIngredient = {
   pendingPriceCents: number | null;
   /** True when the approved price is a placeholder (0) and must not be trusted. */
   needsPricing: boolean;
+  /** Needed to cost a dish's direct ingredient lines; absent → those lines are unknown. */
+  dimension?: Dimension;
 };
 
 /** One active recipe line, carrying the ingredient id so a cost can be substituted. */
@@ -67,13 +69,15 @@ export type CostImpactRecipe = {
   componentHiddenCostCents?: number;
   /** True when the sub-recipe tree is unresolvable → cost is untrue → null. */
   costUnresolved?: boolean;
+  /** Finished batch weight (g) — converts a dish's gram lines to portions. */
+  yieldWeightGrams?: number | null;
 };
 
-export type CostImpactMenu = {
+/** A dish: recipe lines + direct ingredient lines; price per portion. */
+export type CostImpactMenu = DishComposition & {
   id: string;
   name: string;
   sellingPriceCents: number | null;
-  lines: { recipeId: string; quantity: number }[];
 };
 
 export type ProjectPendingCostImpactInput = {
@@ -272,26 +276,39 @@ export function projectPendingCostImpact(
   }
 
   const affectedMenus: AffectedMenuImpact[] = [];
-  for (const menu of input.menus) {
-    // A menu is affected when any component recipe is affected.
-    if (!menu.lines.some((l) => affectedRecipeIds.has(l.recipeId))) continue;
+  const recipeById = new Map(input.recipes.map((r) => [r.id, r]));
+  const dishCostPerPortion = (
+    menu: CostImpactMenu,
+    recipeCosts: Map<string, number | null>,
+    priceOf: (ingredientId: string) => PriceView,
+  ) =>
+    compositionCost(menu, {
+      recipeCostPerPortion: (id) => recipeCosts.get(id) ?? null,
+      recipeYield: (id) => {
+        const recipe = recipeById.get(id);
+        return recipe
+          ? { yieldPortions: recipe.yieldPortions, yieldWeightGrams: recipe.yieldWeightGrams ?? null }
+          : null;
+      },
+      ingredient: (id) => {
+        const dimension = ingredientById.get(id)?.dimension;
+        if (!dimension) return null;
+        const view = priceOf(id);
+        return { dimension, priceCents: view.priceCents, needsPricing: view.unpriced };
+      },
+    }).costPerPortionCents;
 
-    const current = menuCost(
-      menu.lines.map((l) => ({
-        recipeId: l.recipeId,
-        quantity: l.quantity,
-        costPerPortionCents: recipeCurrent.get(l.recipeId) ?? null,
-      })),
-    );
-    const projected = menuCost(
-      menu.lines.map((l) => ({
-        recipeId: l.recipeId,
-        quantity: l.quantity,
-        costPerPortionCents: recipeProjected.get(l.recipeId) ?? null,
-      })),
-    );
-    const currentCost = current.complete ? current.costCents : null;
-    const projectedCost = projected.complete ? projected.costCents : null;
+  for (const menu of input.menus) {
+    // A dish is affected when a component recipe is, or it uses a changed ingredient directly.
+    if (
+      !menu.recipeLines.some((l) => affectedRecipeIds.has(l.recipeId)) &&
+      !menu.ingredientLines.some((l) => changeById.has(l.ingredientId))
+    ) {
+      continue;
+    }
+
+    const currentCost = dishCostPerPortion(menu, recipeCurrent, currentPrice);
+    const projectedCost = dishCostPerPortion(menu, recipeProjected, projectedPrice);
     const currentMargin = marginOrNull(currentCost, menu.sellingPriceCents);
     const projectedMargin = marginOrNull(projectedCost, menu.sellingPriceCents);
     const belowTarget = projectedMargin != null && projectedMargin < target;

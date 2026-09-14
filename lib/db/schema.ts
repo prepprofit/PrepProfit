@@ -1414,6 +1414,30 @@ export const recipeAllergenOverrides = pgTable(
 );
 
 /**
+ * Dish folders (Menu redesign). A flat, user-defined set of folders ("Bakery",
+ * "Catering"…) the Menu home shows as a grid. RULE #1: carries `organization_id`,
+ * in `businessTables` → standard org_isolation RLS. Deleting a folder moves its
+ * dishes to "Unfiled" (the app nulls `menus.folder_id` first; the FK is restrict).
+ */
+export const menuFolders = pgTable(
+  'menu_folders',
+  {
+    id: id(),
+    organizationId: orgId(),
+    name: text('name').notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('menu_folders_org_idx').on(t.organizationId),
+    // One folder name per organization (create/rename surface the violation).
+    unique('menu_folders_org_name_key').on(t.organizationId, t.name),
+    // FK target for menus' composite (organization_id, folder_id).
+    unique('menu_folders_org_id_key').on(t.organizationId, t.id),
+  ],
+);
+
+/**
  * Menus / combos (Sprint 10, module — menu engineering). A menu groups recipes
  * sold together at one `selling_price_cents`. It is a LIVE planning/catalogue
  * artifact, NOT an F3 issued document: its cost is NEVER stored — it derives on
@@ -1433,9 +1457,19 @@ export const menus = pgTable(
     id: id(),
     organizationId: orgId(),
     name: text('name').notNull(),
-    // Optional selling price per menu, integer cents. NULL/0 = no price → KPIs undefined.
+    // Selling price per PORTION, EXCLUDING VAT (sales use exclusive pricing), integer
+    // cents. NULL/0 = no price → KPIs undefined.
     sellingPriceCents: integer('selling_price_cents'),
     notes: text('notes'),
+    // ---- Dish Builder (Menu redesign) ----
+    // Folder the dish is filed under; NULL = "Unfiled".
+    folderId: text('folder_id'),
+    // Sellable portions the composition makes; price and sales are per portion.
+    portions: integer('portions').notNull().default(1),
+    // Sales VAT for this dish in basis points; NULL = the org default rate.
+    vatRateBps: integer('vat_rate_bps'),
+    // Last time someone opened the dish (the "Last opened" sort). Metadata only.
+    lastOpenedAt: timestamp('last_opened_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL` (Trash pattern).
@@ -1443,6 +1477,20 @@ export const menus = pgTable(
   },
   (t) => [
     index('menus_org_idx').on(t.organizationId),
+    // Serves the folder view (active dishes in one folder, any sort).
+    index('menus_org_folder_idx').on(t.organizationId, t.folderId),
+    check('menus_portions_chk', sql`${t.portions} between 1 and 100000`),
+    check(
+      'menus_vat_rate_chk',
+      sql`${t.vatRateBps} is null or (${t.vatRateBps} >= 0 and ${t.vatRateBps} <= 10000)`,
+    ),
+    // Composite FK: a dish can only be filed in a folder of its own organization.
+    // Restrict: the app nulls folder_id before deleting a folder.
+    foreignKey({
+      columns: [t.organizationId, t.folderId],
+      foreignColumns: [menuFolders.organizationId, menuFolders.id],
+      name: 'menus_folder_fk',
+    }).onDelete('restrict'),
     index('menus_org_name_idx').on(t.organizationId, t.name),
     // Serves the /trash listing and keeps active-row filtering index-friendly.
     index('menus_org_deleted_idx').on(t.organizationId, t.deletedAt),
@@ -1477,8 +1525,13 @@ export const menuItems = pgTable(
     organizationId: orgId(),
     menuId: text('menu_id').notNull(),
     recipeId: text('recipe_id').notNull(),
-    // Portions of this recipe in the menu (1..1000); multiples, not duplicate rows.
-    quantity: integer('quantity').notNull().default(1),
+    // Amount of the recipe in the WHOLE dish, in `unit` (Dish Builder). Portion
+    // lines are portions; g/kg lines need the recipe's finished batch weight to
+    // convert (lib/calculations/dish.ts `recipePortionEquivalent`).
+    quantity: numeric('quantity', { precision: 12, scale: 4, mode: 'number' })
+      .notNull()
+      .default(1),
+    unit: text('unit', { enum: ['portion', 'g', 'kg'] }).notNull().default('portion'),
     sortOrder: integer('sort_order').notNull().default(0),
   },
   (t) => [
@@ -1490,7 +1543,8 @@ export const menuItems = pgTable(
       t.menuId,
       t.recipeId,
     ),
-    check('menu_items_quantity_chk', sql`${t.quantity} between 1 and 1000`),
+    check('menu_items_quantity_chk', sql`${t.quantity} > 0 and ${t.quantity} <= 100000000`),
+    check('menu_items_unit_chk', sql`${t.unit} in ('portion', 'g', 'kg')`),
     check('menu_items_sort_order_chk', sql`${t.sortOrder} >= 0`),
     // Composite FK forces the line to share its menu's organization_id; deleting a
     // menu cascades its lines.
@@ -1506,6 +1560,54 @@ export const menuItems = pgTable(
       columns: [t.organizationId, t.recipeId],
       foreignColumns: [recipes.organizationId, recipes.id],
       name: 'menu_items_recipe_fk',
+    }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * Direct ingredient lines of a dish (Dish Builder) — fresh fruit, garnish, cake
+ * boxes, disposables. `quantity` is CANONICAL (g / ml / count) for the whole dish;
+ * `unit` is only how the user entered it. Cost uses the ingredient's CURRENT price
+ * on every read (never stored). RULE #1: `organization_id` + standard RLS.
+ * Ingredient FK is restrict: an ingredient used in a dish can't be purged.
+ */
+export const menuIngredientItems = pgTable(
+  'menu_ingredient_items',
+  {
+    id: id(),
+    organizationId: orgId(),
+    menuId: text('menu_id').notNull(),
+    ingredientId: text('ingredient_id').notNull(),
+    quantity: numeric('quantity', { precision: 12, scale: 4, mode: 'number' }).notNull(),
+    unit: text('unit', { enum: ['g', 'kg', 'ml', 'l', 'piece'] }).notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    index('menu_ingredient_items_org_menu_idx').on(t.organizationId, t.menuId),
+    index('menu_ingredient_items_org_ingredient_idx').on(t.organizationId, t.ingredientId),
+    unique('menu_ingredient_items_org_menu_ingredient_key').on(
+      t.organizationId,
+      t.menuId,
+      t.ingredientId,
+    ),
+    check(
+      'menu_ingredient_items_quantity_chk',
+      sql`${t.quantity} > 0 and ${t.quantity} <= 100000000`,
+    ),
+    check(
+      'menu_ingredient_items_unit_chk',
+      sql`${t.unit} in ('g', 'kg', 'ml', 'l', 'piece')`,
+    ),
+    check('menu_ingredient_items_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    foreignKey({
+      columns: [t.organizationId, t.menuId],
+      foreignColumns: [menus.organizationId, menus.id],
+      name: 'menu_ingredient_items_menu_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.organizationId, t.ingredientId],
+      foreignColumns: [ingredients.organizationId, ingredients.id],
+      name: 'menu_ingredient_items_ingredient_fk',
     }).onDelete('restrict'),
   ],
 );
@@ -3988,6 +4090,8 @@ export type Menu = InferSelectModel<typeof menus>;
 export type NewMenu = InferInsertModel<typeof menus>;
 export type MenuItem = InferSelectModel<typeof menuItems>;
 export type NewMenuItem = InferInsertModel<typeof menuItems>;
+export type MenuFolder = InferSelectModel<typeof menuFolders>;
+export type MenuIngredientItem = InferSelectModel<typeof menuIngredientItems>;
 export type Production = InferSelectModel<typeof productions>;
 export type NewProduction = InferInsertModel<typeof productions>;
 export type ProductionStatus = Production['status'];
@@ -4093,6 +4197,9 @@ export const businessTables = [
   // Menus / combos + their lines (Sprint 10) — standard org_isolation RLS.
   'menus',
   'menu_items',
+  // Dish Builder: folders + direct ingredient lines — standard org_isolation RLS.
+  'menu_folders',
+  'menu_ingredient_items',
   // Production plans + their lines (Sprint 11a) — standard org_isolation RLS.
   'productions',
   'production_items',

@@ -123,7 +123,7 @@ describe('detectProfitLeaks — unpriced ingredients (honesty)', () => {
       input({
         ingredients: [ingredient('ing-a', { needsPricing: true, priceCents: 0 })],
         recipes: [recipe('a', 2000, 0, ['ing-a'])],
-        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 3000, lines: [{ recipeId: 'a', quantity: 1 }] }],
+        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 3000, portions: 1, recipeLines: [{ recipeId: 'a', quantity: 1, unit: 'portion' }], ingredientLines: [] }],
       }),
     );
     const menuLeak = findings.find((f) => f.type === 'UNPRICED_INGREDIENT_IN_ACTIVE_MENU');
@@ -149,7 +149,7 @@ describe('detectProfitLeaks — menu margin', () => {
       input({
         ingredients: ings,
         recipes: [recipe('a', null, 1000, ['ing-a'])],
-        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 1500, lines: [{ recipeId: 'a', quantity: 1 }] }],
+        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 1500, portions: 1, recipeLines: [{ recipeId: 'a', quantity: 1, unit: 'portion' }], ingredientLines: [] }],
       }),
     );
     const menuFinding = findings.find((f) => f.type === 'MENU_BELOW_TARGET_MARGIN');
@@ -164,7 +164,7 @@ describe('detectProfitLeaks — menu margin', () => {
       id: 'm1',
       name: 'Combo',
       sellingPriceCents: 1500,
-      lines: [{ recipeId: 'ghost', quantity: 1 }],
+      portions: 1, recipeLines: [{ recipeId: 'ghost', quantity: 1, unit: 'portion' }], ingredientLines: [],
     };
     expect(detectProfitLeaks(input({ menus: [menu] }))).toEqual([]);
   });
@@ -174,7 +174,7 @@ describe('detectProfitLeaks — menu margin', () => {
       input({
         ingredients: [ingredient('ing-a', { needsPricing: true, priceCents: 0 })],
         recipes: [recipe('a', null, 0, ['ing-a'])],
-        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 1500, lines: [{ recipeId: 'a', quantity: 1 }] }],
+        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 1500, portions: 1, recipeLines: [{ recipeId: 'a', quantity: 1, unit: 'portion' }], ingredientLines: [] }],
       }),
     );
     // No menu margin finding (cost untrue), but the unpriced ingredient still surfaces.

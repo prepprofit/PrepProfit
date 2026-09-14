@@ -122,6 +122,11 @@ export type ActionErrorCode =
   // A menu line referenced a recipe that is missing/trashed/cross-org at save time
   // (Sprint 10) — fix the line (remove/replace/restore the recipe) before saving.
   | 'MENU_RECIPE_INVALID'
+  // A dish ingredient line referenced a missing/trashed/cross-org ingredient, or used a
+  // unit that doesn't match the ingredient's dimension (Dish Builder).
+  | 'MENU_INGREDIENT_INVALID'
+  // A dish was filed into a folder that no longer exists (Dish Builder).
+  | 'MENU_FOLDER_INVALID'
   // A recipe still referenced by a menu was manually purged (Sprint 10) — remove the
   // menu line (or purge the menu) first; the purge does nothing until then.
   | 'RECIPE_IN_MENU'

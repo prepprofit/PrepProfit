@@ -1,5 +1,5 @@
 import { and, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
-import { ingredients, recipeIngredients, recipes } from '@/lib/db/schema';
+import { ingredients, menuIngredientItems, menus, recipeIngredients, recipes } from '@/lib/db/schema';
 import type { Ingredient, NewIngredient } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { nullTaskIngredientLinks } from '@/lib/data/tasks';
@@ -286,7 +286,9 @@ export async function trashIngredient(
   if (!(await lockActiveIngredient(db, organizationId, id))) {
     return { status: 'not_found' };
   }
-  const inUse = await countActiveRecipesUsingIngredient(db, organizationId, id);
+  const inUse =
+    (await countActiveRecipesUsingIngredient(db, organizationId, id)) +
+    (await countActiveMenusUsingIngredient(db, organizationId, id));
   if (inUse > 0) return { status: 'in_use', inUse };
   const row = await softDeleteIngredient(db, organizationId, id);
   return row ? { status: 'done' } : { status: 'not_found' };
@@ -354,4 +356,31 @@ export async function listTrashedIngredients(
       ),
     )
     .orderBy(desc(ingredients.deletedAt));
+}
+
+/**
+ * ACTIVE dishes using an ingredient as a direct line (Dish Builder). Like an active
+ * recipe, an active dish blocks trashing the ingredient — its cost would silently
+ * become unknown.
+ */
+export async function countActiveMenusUsingIngredient(
+  db: TenantClient,
+  organizationId: string,
+  ingredientId: string,
+): Promise<number> {
+  const rows = await db
+    .select({ value: count() })
+    .from(menuIngredientItems)
+    .innerJoin(
+      menus,
+      and(eq(menus.organizationId, organizationId), eq(menus.id, menuIngredientItems.menuId)),
+    )
+    .where(
+      and(
+        eq(menuIngredientItems.organizationId, organizationId),
+        eq(menuIngredientItems.ingredientId, ingredientId),
+        isNull(menus.deletedAt),
+      ),
+    );
+  return rows[0]?.value ?? 0;
 }

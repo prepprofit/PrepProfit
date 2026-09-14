@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   ingredients,
   inventoryMovements,
+  menuIngredientItems,
   menuItems,
   menus,
   recipeComponents,
@@ -32,6 +33,7 @@ import {
 import { getOrgSettingsRow } from '@/lib/data/org-settings';
 import { postSaleTransaction, voidSaleTransaction } from '@/lib/data/transactions';
 import { movesStock } from '@/lib/finance/stock-control';
+import { recipePortionEquivalent, type DishRecipeUnit } from '@/lib/calculations/dish';
 
 /**
  * Daily-close Sales data layer (Sprint 12a). Every function is org-scoped (RULE #1)
@@ -985,46 +987,77 @@ async function buildConsumption(
 ) {
   const menuIds = distinct(lines.filter((l) => l.itemMenuId).map((l) => l.itemMenuId!));
 
-  // Menu → component recipes (only active menus expand; trashed/missing are flagged).
+  // Dish → composition (only active dishes expand; trashed/missing are flagged).
   const menuComponents = await loadMenuComponents(db, organizationId, menuIds);
   const unavailableSourceIds: string[] = [];
   for (const menuId of menuIds) {
     if (menuNames.get(menuId)?.available !== true) unavailableSourceIds.push(menuId);
   }
+  const soldDishes = lines.filter(
+    (line) =>
+      line.itemKind === 'menu' &&
+      line.itemMenuId &&
+      menuNames.get(line.itemMenuId)?.available === true,
+  );
 
-  // Fold recipe portions across recipe lines + menu expansion.
+  // Recipe explosion nodes for every referenced recipe (recipe lines + dish recipe
+  // lines) AND their sub-recipe component closure. Loaded first: converting a dish's
+  // gram line to portions needs the recipe's batch weight.
+  const referencedRecipeIds = distinct([
+    ...lines.filter((l) => l.itemKind === 'recipe' && l.itemRecipeId).map((l) => l.itemRecipeId!),
+    ...soldDishes.flatMap((l) =>
+      (menuComponents.get(l.itemMenuId!)?.recipeLines ?? []).map((c) => c.recipeId),
+    ),
+  ]);
+  const recipeNodes = await loadRecipeExplosionInfo(db, organizationId, referencedRecipeIds);
+
+  // Fold recipe portions across recipe lines + dish expansion. A sold unit of a dish
+  // is ONE portion, i.e. 1/portions of its composition.
   const portionsByRecipe = new Map<string, number>();
+  const addPortions = (recipeId: string, portions: number) =>
+    portionsByRecipe.set(recipeId, (portionsByRecipe.get(recipeId) ?? 0) + portions);
+  const dishIngredientLines: SaleIngredientLine[] = [];
   for (const line of lines) {
     if (line.itemKind === 'recipe' && line.itemRecipeId) {
-      portionsByRecipe.set(
-        line.itemRecipeId,
-        (portionsByRecipe.get(line.itemRecipeId) ?? 0) + line.quantity,
-      );
-    } else if (line.itemKind === 'menu' && line.itemMenuId) {
-      if (menuNames.get(line.itemMenuId)?.available !== true) continue; // trashed → flagged
-      const components = menuComponents.get(line.itemMenuId) ?? [];
-      for (const comp of components) {
-        portionsByRecipe.set(
-          comp.recipeId,
-          (portionsByRecipe.get(comp.recipeId) ?? 0) + line.quantity * comp.quantity,
-        );
+      addPortions(line.itemRecipeId, line.quantity);
+    }
+  }
+  for (const line of soldDishes) {
+    const menuId = line.itemMenuId!;
+    const dish = menuComponents.get(menuId);
+    if (!dish) continue;
+    const share = line.quantity / dish.portions;
+    for (const comp of dish.recipeLines) {
+      const node = recipeNodes.get(comp.recipeId);
+      const portions = node ? recipePortionEquivalent(comp.quantity, comp.unit, node) : null;
+      if (node && node.available && portions === null) {
+        // A gram line on a recipe without a batch weight can't be exploded honestly.
+        unavailableSourceIds.push(menuId);
+        continue;
       }
+      addPortions(comp.recipeId, (portions ?? comp.quantity) * share);
+    }
+    for (const ing of dish.ingredientLines) {
+      dishIngredientLines.push({
+        ingredientId: ing.ingredientId,
+        units: line.quantity,
+        qtyCanonicalPerUnit: ing.quantity / dish.portions,
+        available: true, // resolved below with the direct ingredient lines
+      });
     }
   }
 
-  // Recipe explosion nodes for every referenced recipe (recipe lines + menu
-  // components) AND their sub-recipe component closure.
   const recipeIds = [...portionsByRecipe.keys()];
-  const recipeNodes = await loadRecipeExplosionInfo(db, organizationId, recipeIds);
   const recipeInputs: SaleRecipeInput[] = recipeIds.map((recipeId) => ({
     recipeId,
     plannedQty: portionsByRecipe.get(recipeId) ?? 0,
   }));
 
-  // Direct ingredient lines.
-  const directIngredientIds = distinct(
-    lines.filter((l) => l.itemIngredientId).map((l) => l.itemIngredientId!),
-  );
+  // Direct ingredient lines (sold as-is) + dish ingredient lines.
+  const directIngredientIds = distinct([
+    ...lines.filter((l) => l.itemIngredientId).map((l) => l.itemIngredientId!),
+    ...dishIngredientLines.map((l) => l.ingredientId),
+  ]);
   const ingredientActive = await loadActiveIds(
     db,
     organizationId,
@@ -1040,6 +1073,9 @@ async function buildConsumption(
       qtyCanonicalPerUnit: line.ingredientQtyCanonical ?? 0,
       available: ingredientActive.has(line.itemIngredientId),
     });
+  }
+  for (const line of dishIngredientLines) {
+    ingredientLines.push({ ...line, available: ingredientActive.has(line.ingredientId) });
   }
 
   return explodeSaleConsumption({
@@ -1146,28 +1182,59 @@ async function loadRecipeExplosionInfo(
   return map;
 }
 
-/** Component recipes (recipeId + portion quantity) for a set of menus. */
+type DishComponents = {
+  portions: number;
+  recipeLines: { recipeId: string; quantity: number; unit: DishRecipeUnit }[];
+  /** Canonical quantity for the whole dish. */
+  ingredientLines: { ingredientId: string; quantity: number }[];
+};
+
+/** Composition (portions + recipe lines + ingredient lines) for a set of dishes. */
 async function loadMenuComponents(
   db: TenantClient,
   organizationId: string,
   menuIds: string[],
-): Promise<Map<string, { recipeId: string; quantity: number }[]>> {
-  const map = new Map<string, { recipeId: string; quantity: number }[]>();
+): Promise<Map<string, DishComponents>> {
+  const map = new Map<string, DishComponents>();
   if (menuIds.length === 0) return map;
-  const rows = await db
-    .select({
-      menuId: menuItems.menuId,
-      recipeId: menuItems.recipeId,
-      quantity: menuItems.quantity,
-    })
-    .from(menuItems)
-    .where(
-      and(eq(menuItems.organizationId, organizationId), inArray(menuItems.menuId, menuIds)),
-    );
-  for (const r of rows) {
-    const list = map.get(r.menuId);
-    if (list) list.push({ recipeId: r.recipeId, quantity: r.quantity });
-    else map.set(r.menuId, [{ recipeId: r.recipeId, quantity: r.quantity }]);
+  const [menuRows, recipeRows, ingredientRows] = await Promise.all([
+    db
+      .select({ id: menus.id, portions: menus.portions })
+      .from(menus)
+      .where(and(eq(menus.organizationId, organizationId), inArray(menus.id, menuIds))),
+    db
+      .select({
+        menuId: menuItems.menuId,
+        recipeId: menuItems.recipeId,
+        quantity: menuItems.quantity,
+        unit: menuItems.unit,
+      })
+      .from(menuItems)
+      .where(
+        and(eq(menuItems.organizationId, organizationId), inArray(menuItems.menuId, menuIds)),
+      ),
+    db
+      .select({
+        menuId: menuIngredientItems.menuId,
+        ingredientId: menuIngredientItems.ingredientId,
+        quantity: menuIngredientItems.quantity,
+      })
+      .from(menuIngredientItems)
+      .where(
+        and(
+          eq(menuIngredientItems.organizationId, organizationId),
+          inArray(menuIngredientItems.menuId, menuIds),
+        ),
+      ),
+  ]);
+  for (const m of menuRows) {
+    map.set(m.id, { portions: m.portions, recipeLines: [], ingredientLines: [] });
+  }
+  for (const r of recipeRows) {
+    map.get(r.menuId)?.recipeLines.push({ recipeId: r.recipeId, quantity: r.quantity, unit: r.unit });
+  }
+  for (const r of ingredientRows) {
+    map.get(r.menuId)?.ingredientLines.push({ ingredientId: r.ingredientId, quantity: r.quantity });
   }
   return map;
 }

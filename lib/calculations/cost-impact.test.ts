@@ -52,7 +52,14 @@ function menu(
   sellingPriceCents: number | null,
   lines: { recipeId: string; quantity: number }[],
 ): CostImpactMenu {
-  return { id, name: `Menu ${id}`, sellingPriceCents, lines };
+  return {
+    id,
+    name: `Menu ${id}`,
+    sellingPriceCents,
+    portions: 1,
+    recipeLines: lines.map((l) => ({ ...l, unit: 'portion' as const })),
+    ingredientLines: [],
+  };
 }
 
 function input(partial: Partial<ProjectPendingCostImpactInput>): ProjectPendingCostImpactInput {

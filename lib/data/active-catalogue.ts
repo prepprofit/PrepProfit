@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
-import { menuItems, recipeComponents } from '@/lib/db/schema';
+import { menuIngredientItems, menuItems, recipeComponents } from '@/lib/db/schema';
+import { compositionCost, type DishComposition } from '@/lib/calculations/dish';
 import type { Dimension } from '@/lib/units';
 import type { TenantClient } from '@/lib/db/tenant';
 import { listRecipesWithLines } from '@/lib/data/recipes';
@@ -23,6 +24,7 @@ import { MAX_COMPONENT_DEPTH } from '@/lib/calculations/production';
 export type CatalogueIngredient = {
   id: string;
   name: string;
+  dimension: Dimension;
   priceCents: number;
   pendingPriceCents: number | null;
   needsPricing: boolean;
@@ -50,6 +52,8 @@ export type CatalogueRecipe = {
   sellingPriceCents: number | null;
   yieldPortions: number;
   yieldPercentage: number;
+  /** Finished batch weight (g); needed to convert dish gram lines to portions. */
+  yieldWeightGrams: number | null;
   laborCostCents: number;
   energyCostCents: number;
   packagingCostCents: number;
@@ -77,11 +81,15 @@ export type CatalogueRecipe = {
   costUnresolved: boolean;
 };
 
-export type CatalogueMenu = {
+/**
+ * A dish (Menu redesign). Price is per PORTION excl. VAT; the composition makes
+ * `portions`. Cost it with `compositionCost` (lib/calculations/dish.ts) — never by
+ * summing `recipeLines` alone, which would ignore gram lines and direct ingredients.
+ */
+export type CatalogueMenu = DishComposition & {
   id: string;
   name: string;
   sellingPriceCents: number | null;
-  lines: { recipeId: string; quantity: number }[];
 };
 
 export type ActiveCatalogue = {
@@ -102,31 +110,44 @@ export async function loadActiveCatalogue(
 
   // Reach `menu_items` directly (one extra org-scoped query) rather than the
   // manager menu loader, because consumers recompute menu cost themselves.
-  const menuItemRows =
-    menuRows.length === 0
-      ? []
-      : await db
-          .select({
-            menuId: menuItems.menuId,
-            recipeId: menuItems.recipeId,
-            quantity: menuItems.quantity,
-            sortOrder: menuItems.sortOrder,
-          })
-          .from(menuItems)
-          .where(
-            and(
-              eq(menuItems.organizationId, organizationId),
-              inArray(
-                menuItems.menuId,
-                menuRows.map((m) => m.id),
+  const menuIds = menuRows.map((m) => m.id);
+  const [menuItemRows, menuIngredientRows] =
+    menuIds.length === 0
+      ? [[], []]
+      : await Promise.all([
+          db
+            .select({
+              menuId: menuItems.menuId,
+              recipeId: menuItems.recipeId,
+              quantity: menuItems.quantity,
+              unit: menuItems.unit,
+            })
+            .from(menuItems)
+            .where(
+              and(eq(menuItems.organizationId, organizationId), inArray(menuItems.menuId, menuIds)),
+            )
+            .orderBy(asc(menuItems.menuId), asc(menuItems.sortOrder)),
+          db
+            .select({
+              menuId: menuIngredientItems.menuId,
+              ingredientId: menuIngredientItems.ingredientId,
+              quantity: menuIngredientItems.quantity,
+              unit: menuIngredientItems.unit,
+            })
+            .from(menuIngredientItems)
+            .where(
+              and(
+                eq(menuIngredientItems.organizationId, organizationId),
+                inArray(menuIngredientItems.menuId, menuIds),
               ),
-            ),
-          )
-          .orderBy(asc(menuItems.menuId), asc(menuItems.sortOrder));
+            )
+            .orderBy(asc(menuIngredientItems.menuId), asc(menuIngredientItems.sortOrder)),
+        ]);
 
   const ingredients: CatalogueIngredient[] = ingredientRows.map((i) => ({
     id: i.id,
     name: i.name,
+    dimension: i.dimension,
     priceCents: i.priceCents,
     pendingPriceCents: i.pendingPriceCents,
     needsPricing: i.needsPricing,
@@ -265,6 +286,7 @@ export async function loadActiveCatalogue(
       sellingPriceCents: defaultPortionPrices.get(recipe.id) ?? null,
       yieldPortions: recipe.yieldPortions,
       yieldPercentage: recipe.yieldPercentage,
+      yieldWeightGrams: recipe.yieldWeightGrams,
       laborCostCents: recipe.laborCostCents,
       energyCostCents: recipe.energyCostCents,
       packagingCostCents: recipe.packagingCostCents,
@@ -274,20 +296,53 @@ export async function loadActiveCatalogue(
     };
   });
 
-  const linesByMenu = new Map<string, { recipeId: string; quantity: number }[]>();
+  const recipeLinesByMenu = new Map<string, CatalogueMenu['recipeLines']>();
   for (const row of menuItemRows) {
-    const line = { recipeId: row.recipeId, quantity: row.quantity };
-    const existing = linesByMenu.get(row.menuId);
+    const line = { recipeId: row.recipeId, quantity: row.quantity, unit: row.unit };
+    const existing = recipeLinesByMenu.get(row.menuId);
     if (existing) existing.push(line);
-    else linesByMenu.set(row.menuId, [line]);
+    else recipeLinesByMenu.set(row.menuId, [line]);
+  }
+  const ingredientLinesByMenu = new Map<string, CatalogueMenu['ingredientLines']>();
+  for (const row of menuIngredientRows) {
+    const line = { ingredientId: row.ingredientId, quantity: row.quantity, unit: row.unit };
+    const existing = ingredientLinesByMenu.get(row.menuId);
+    if (existing) existing.push(line);
+    else ingredientLinesByMenu.set(row.menuId, [line]);
   }
 
   const menus: CatalogueMenu[] = menuRows.map((m) => ({
     id: m.id,
     name: m.name,
     sellingPriceCents: m.sellingPriceCents,
-    lines: linesByMenu.get(m.id) ?? [],
+    portions: m.portions,
+    recipeLines: recipeLinesByMenu.get(m.id) ?? [],
+    ingredientLines: ingredientLinesByMenu.get(m.id) ?? [],
   }));
 
   return { ingredients, recipes, menus };
+}
+
+/**
+ * Current cost per PORTION of every dish in the catalogue, complete-or-null, from
+ * the caller's recipe cost map (each consumer already derives one with its own
+ * honesty rules). Direct ingredients use the approved price; an ingredient that
+ * still needs pricing or is trashed makes the dish cost unknown.
+ */
+export function catalogueDishCostPerPortion(
+  catalogue: Pick<ActiveCatalogue, 'ingredients' | 'recipes' | 'menus'>,
+  recipeCostPerPortion: ReadonlyMap<string, number | null>,
+): Map<string, number | null> {
+  const recipeById = new Map(catalogue.recipes.map((r) => [r.id, r]));
+  const ingredientById = new Map(catalogue.ingredients.map((i) => [i.id, i]));
+  const out = new Map<string, number | null>();
+  for (const menu of catalogue.menus) {
+    const cost = compositionCost(menu, {
+      recipeCostPerPortion: (id) => recipeCostPerPortion.get(id) ?? null,
+      recipeYield: (id) => recipeById.get(id) ?? null,
+      ingredient: (id) => ingredientById.get(id) ?? null,
+    });
+    out.set(menu.id, cost.costPerPortionCents);
+  }
+  return out;
 }

@@ -1,6 +1,7 @@
 import { recipeCost, type RecipeCostInput } from './recipeCost';
 import { marginPercent, suggestedPriceCents, MARGIN_THRESHOLDS } from './margin';
-import { menuCost } from './menu';
+import { compositionCost, type DishComposition } from './dish';
+import type { Dimension } from '@/lib/units';
 
 /**
  * Profit Leak Detector — pure detection, no I/O, no AI (Sprint 1).
@@ -55,6 +56,8 @@ export type ProfitLeakIngredient = {
   priceCents: number;
   pendingPriceCents: number | null;
   needsPricing: boolean;
+  /** Needed to cost a dish's direct ingredient lines; absent → those lines are unknown. */
+  dimension?: Dimension;
 };
 
 export type ProfitLeakRecipe = {
@@ -71,14 +74,15 @@ export type ProfitLeakRecipe = {
    * emit a margin finding.
    */
   costUnresolved?: boolean;
+  /** Finished batch weight (g) — converts a dish's gram lines to portions. */
+  yieldWeightGrams?: number | null;
 };
 
-export type ProfitLeakMenu = {
+/** A dish: recipe lines + direct ingredient lines; price per portion. */
+export type ProfitLeakMenu = DishComposition & {
   id: string;
   name: string;
   sellingPriceCents: number | null;
-  /** Component recipes at a portion quantity. Cost resolves from `recipes`. */
-  lines: { recipeId: string; quantity: number }[];
 };
 
 export type ProfitLeakInput = {
@@ -142,12 +146,14 @@ export function detectProfitLeaks(input: ProfitLeakInput): ProfitLeakFinding[] {
     }
   }
 
+  const recipeById = new Map(input.recipes.map((r) => [r.id, r]));
   for (const menu of input.menus) {
     const ingredientIds = new Set<string>();
-    for (const line of menu.lines) {
-      const recipe = input.recipes.find((r) => r.id === line.recipeId);
+    for (const line of menu.recipeLines) {
+      const recipe = recipeById.get(line.recipeId);
       if (recipe) for (const id of recipe.ingredientIds) ingredientIds.add(id);
     }
+    for (const line of menu.ingredientLines) ingredientIds.add(line.ingredientId);
     for (const id of ingredientIds) {
       const list = menusByIngredient.get(id);
       if (list) list.push(menu.id);
@@ -231,20 +237,29 @@ export function detectProfitLeaks(input: ProfitLeakInput): ProfitLeakFinding[] {
     const price = menu.sellingPriceCents;
     if (price == null || price <= 0) continue;
 
-    const cost = menuCost(
-      menu.lines.map((line) => ({
-        recipeId: line.recipeId,
-        quantity: line.quantity,
-        costPerPortionCents: recipeCostPerPortion.get(line.recipeId) ?? null,
-      })),
-    );
-    if (!cost.complete) continue; // incomplete menu stays incomplete — never a fake margin
+    const cost = compositionCost(menu, {
+      recipeCostPerPortion: (id) => recipeCostPerPortion.get(id) ?? null,
+      recipeYield: (id) => {
+        const recipe = recipeById.get(id);
+        return recipe
+          ? { yieldPortions: recipe.cost.yieldPortions, yieldWeightGrams: recipe.yieldWeightGrams ?? null }
+          : null;
+      },
+      ingredient: (id) => {
+        const ing = ingredientById.get(id);
+        return ing?.dimension
+          ? { dimension: ing.dimension, priceCents: ing.priceCents, needsPricing: ing.needsPricing }
+          : null;
+      },
+    });
+    const costPerPortion = cost.costPerPortionCents;
+    if (costPerPortion === null) continue; // incomplete dish stays incomplete — never a fake margin
 
-    const margin = marginPercent(cost.costCents, price);
+    const margin = marginPercent(costPerPortion, price);
     if (margin >= target) continue;
 
     findings.push({
-      fingerprint: fingerprint(['MENU_MARGIN', menu.id, cost.costCents, price]),
+      fingerprint: fingerprint(['MENU_MARGIN', menu.id, costPerPortion, price]),
       type: 'MENU_BELOW_TARGET_MARGIN',
       severity: marginSeverity(margin),
       entityType: 'menu',
@@ -253,9 +268,9 @@ export function detectProfitLeaks(input: ProfitLeakInput): ProfitLeakFinding[] {
       affectedEntityIds: [],
       currentMarginPercent: margin,
       targetMarginPercent: target,
-      currentCostCents: cost.costCents,
+      currentCostCents: costPerPortion,
       pendingCostCents: null,
-      suggestedPriceCents: suggestedPriceCents(cost.costCents, target),
+      suggestedPriceCents: suggestedPriceCents(costPerPortion, target),
       reasonCode: 'BELOW_TARGET_MARGIN',
     });
   }

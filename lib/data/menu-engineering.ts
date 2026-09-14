@@ -2,8 +2,7 @@ import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { saleItems, sales } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { recipeCost } from '@/lib/calculations/recipeCost';
-import { menuCost } from '@/lib/calculations/menu';
-import { loadActiveCatalogue } from '@/lib/data/active-catalogue';
+import { catalogueDishCostPerPortion, loadActiveCatalogue } from '@/lib/data/active-catalogue';
 import {
   classifyMenuItems,
   type MenuEngineeringInputItem,
@@ -66,18 +65,8 @@ export async function loadMenuEngineering(
     );
   }
 
-  // Current menu cost — complete-or-null (an incomplete menu stays incomplete).
-  const menuCostById = new Map<string, number | null>();
-  for (const menu of catalogue.menus) {
-    const cost = menuCost(
-      menu.lines.map((line) => ({
-        recipeId: line.recipeId,
-        quantity: line.quantity,
-        costPerPortionCents: recipeCostPerPortion.get(line.recipeId) ?? null,
-      })),
-    );
-    menuCostById.set(menu.id, cost.complete ? cost.costCents : null);
-  }
+  // Current dish cost per portion — complete-or-null (gram lines + direct ingredients).
+  const menuCostById = catalogueDishCostPerPortion(catalogue, recipeCostPerPortion);
 
   // Posted-sale units per recipe/menu in the window. Join sale_items → sales to filter
   // by status + date; both tables are org-scoped. Ingredient-kind lines (raw resale,

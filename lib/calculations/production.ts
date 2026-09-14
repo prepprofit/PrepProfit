@@ -200,13 +200,21 @@ export type RecipeTreeNode = {
 export function explodeRecipeTree(
   items: { recipeId: string; plannedQty: number }[],
   nodes: Map<string, RecipeTreeNode>,
+  /**
+   * Allow a fractional (finite, > 0) planned quantity. Production plans whole
+   * portions; a SALE of a dish can draw part of a portion (e.g. 400 g of a batch).
+   */
+  options: { allowFractionalQty?: boolean } = {},
 ): ProductionExplosion {
   if (items.length === 0) return invalid('invalid_math');
   const seen = new Set<string>();
   for (const item of items) {
     if (seen.has(item.recipeId)) return invalid('invalid_math');
     seen.add(item.recipeId);
-    if (!isPositiveInt(item.plannedQty)) return invalid('invalid_math');
+    const validQty = options.allowFractionalQty
+      ? Number.isFinite(item.plannedQty) && item.plannedQty > 0
+      : isPositiveInt(item.plannedQty);
+    if (!validQty) return invalid('invalid_math');
   }
 
   const totals = new Map<string, number>();

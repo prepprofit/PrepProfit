@@ -34,7 +34,10 @@ import {
   type RecipeTreeNode,
 } from '@/lib/calculations/production';
 
-/** A distinct recipe to explode: the SUMMED portions across all recipe + menu refs. */
+/**
+ * A distinct recipe to explode: the SUMMED portions across all recipe + dish refs.
+ * May be fractional (a dish uses grams of a batch / a share of its composition).
+ */
 export type SaleRecipeInput = { recipeId: string; plannedQty: number };
 
 /** One direct-ingredient consumption line: `units × qtyCanonicalPerUnit`. */
@@ -108,7 +111,11 @@ export function explodeSaleConsumption(
   // --- recipe/menu-derived requirement (delegated to the production explosion) ---
   let recipeRequirements: IngredientRequirement[] = [];
   if (input.recipes.length > 0) {
-    const explosion = explodeRecipeTree(input.recipes, input.recipeNodes);
+    // Dish lines draw fractional recipe portions (grams of a batch, 1/portions of
+    // the composition), so the sale explosion accepts non-integer quantities.
+    const explosion = explodeRecipeTree(input.recipes, input.recipeNodes, {
+      allowFractionalQty: true,
+    });
     if (!explosion.complete) {
       if (explosion.reason === 'recipe_unavailable') {
         return {

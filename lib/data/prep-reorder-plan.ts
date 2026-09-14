@@ -1,5 +1,6 @@
 import type { TenantClient } from '@/lib/db/tenant';
 import { listIngredients } from '@/lib/data/ingredients';
+import { recipePortionEquivalent } from '@/lib/calculations/dish';
 import { loadActiveCatalogue } from '@/lib/data/active-catalogue';
 import {
   buildPrepReorderPlan,
@@ -49,22 +50,30 @@ export async function loadPrepReorderPlan(
     demand.push({ recipeId: line.recipeId, expectedPortions: line.portions });
   }
 
+  // Covers are dish PORTIONS: each cover draws 1/portions of the dish composition.
+  // A gram line the recipe can't convert (no batch weight) adds no demand.
+  const directIngredientDemand: { ingredientId: string; quantity: number }[] = [];
   const menuById = new Map(catalogue.menus.map((m) => [m.id, m]));
   for (const sel of selection.menus) {
     if (!Number.isFinite(sel.covers) || sel.covers <= 0) continue;
     const menu = menuById.get(sel.menuId);
-    if (!menu) continue;
-    for (const component of menu.lines) {
-      if (!recipeById.has(component.recipeId)) continue;
-      demand.push({
-        recipeId: component.recipeId,
-        expectedPortions: component.quantity * sel.covers,
-      });
+    if (!menu || menu.portions < 1) continue;
+    const share = sel.covers / menu.portions;
+    for (const component of menu.recipeLines) {
+      const recipe = recipeById.get(component.recipeId);
+      if (!recipe) continue;
+      const portions = recipePortionEquivalent(component.quantity, component.unit, recipe);
+      if (portions === null) continue;
+      demand.push({ recipeId: component.recipeId, expectedPortions: portions * share });
+    }
+    for (const line of menu.ingredientLines) {
+      directIngredientDemand.push({ ingredientId: line.ingredientId, quantity: line.quantity * share });
     }
   }
 
   return buildPrepReorderPlan({
     demand,
+    directIngredientDemand,
     // Pass every active recipe so the pure module can look up any demanded one; it
     // only scales the recipes that actually carry demand.
     recipes: catalogue.recipes.map((r) => ({

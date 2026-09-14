@@ -1,124 +1,51 @@
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
-import { menuItems, menus, recipes } from '@/lib/db/schema';
-import type { Menu } from '@/lib/db/schema';
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import {
+  ingredients,
+  menuFolders,
+  menuIngredientItems,
+  menuItems,
+  menus,
+  recipes,
+} from '@/lib/db/schema';
+import type { Menu, MenuFolder } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
-import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
+import type { Dimension } from '@/lib/units';
+import { costPerKgCents, recipeCost } from '@/lib/calculations/recipeCost';
 import {
-  marginPercent,
-  trafficLight,
-  type MarginLight,
-} from '@/lib/calculations/margin';
+  compositionCost,
+  dishPricing,
+  ingredientCanonicalQuantity,
+  ingredientDisplayAmount,
+  isIngredientUnitFor,
+  type DishIngredientUnit,
+  type DishRecipeUnit,
+} from '@/lib/calculations/dish';
+import { mergeMenuAllergens, type MenuAllergen } from '@/lib/calculations/menu';
+import type { RecipeAllergenRollup } from '@/lib/calculations/allergens';
+import { loadActiveCatalogue, type ActiveCatalogue } from '@/lib/data/active-catalogue';
 import {
-  foodCostPercent,
-  menuCost,
-  mergeMenuAllergens,
-  type MenuAllergen,
-  type MenuCostLine,
-} from '@/lib/calculations/menu';
-import { loadRecipeAllergensByIds } from '@/lib/data/allergens';
-import { listRecipesWithLines } from '@/lib/data/recipes';
+  loadIngredientAllergensByIngredient,
+  loadRecipeAllergensByIds,
+} from '@/lib/data/allergens';
+import { MAX_DISH_AMOUNT, type DishFormInput, type DishSort } from '@/lib/validation/menus';
 
 /**
- * Menus / combos data layer (Sprint 10). Every function is org-scoped (RULE #1)
- * and runs inside the caller's `withOrg` transaction so RLS is active. Cost is
- * NEVER stored — it derives on read from the component recipes' current
- * `recipeCost` (lib/calculations).
+ * Menu data layer (Menu redesign — folders + Dish Builder). A "dish" is a `menus`
+ * row: recipe lines (`menu_items`, by portion/g/kg) + direct ingredient lines
+ * (`menu_ingredient_items`), making `portions`, priced per portion excl. VAT.
  *
- * F4 BY CONSTRUCTION: there are two loader families with EXPLICIT projections.
- * `*Kitchen*` selects identity/notes/composition/availability/allergens only — it
- * never selects `menus.selling_price_cents`, recipe money, or ingredient prices,
- * and never invokes `recipeCost`. `*Manager*` selects the financial columns and
- * computes costs/KPIs. The kitchen DTO types cannot structurally hold money.
+ * RULE #1: every function is org-scoped and runs inside the caller's `withOrg`.
+ * Cost is NEVER stored: it derives on read from current recipe + ingredient prices
+ * through `compositionCost`, the same function every insight module uses.
+ *
+ * F4 BY CONSTRUCTION: kitchen loaders (`listKitchenDishes` / `getKitchenDish`) never
+ * select prices or call a cost function, and their DTO types hold no money keys.
  */
 
-// ── Shared (money-free) line + identity ──────────────────────────────────────
+// ── Identity reads ───────────────────────────────────────────────────────────
 
-/** One menu line as both roles see it (no money). */
-export type MenuLineBase = {
-  /** menu_items row id. */
-  id: string;
-  recipeId: string;
-  recipeName: string;
-  quantity: number;
-  sortOrder: number;
-  /** False when the component recipe is trashed/missing → menu is incomplete. */
-  available: boolean;
-};
-
-/** The menu's allergen rollup + provenance, shared by both roles. */
-type MenuAllergenFields = {
-  allergens: MenuAllergen[];
-  hasUnreviewedIngredient: boolean;
-};
-
-// ── Kitchen DTOs (money keys are structurally absent) ─────────────────────────
-
-export type KitchenMenuLine = MenuLineBase;
-
-export type KitchenMenuListItem = MenuAllergenFields & {
-  id: string;
-  name: string;
-  notes: string | null;
-  itemCount: number;
-  /** True when every component recipe is available. */
-  complete: boolean;
-};
-
-export type KitchenMenuDetail = MenuAllergenFields & {
-  id: string;
-  name: string;
-  notes: string | null;
-  complete: boolean;
-  lines: KitchenMenuLine[];
-};
-
-// ── Manager DTOs (carry the financial fields) ─────────────────────────────────
-
-export type ManagerMenuLine = MenuLineBase & {
-  /** This recipe's current cost per portion (cents); null when unavailable. */
-  costPerPortionCents: number | null;
-  /** costPerPortionCents × quantity; null when unavailable. */
-  lineCostCents: number | null;
-};
-
-/** Derived monetary KPIs — every field is null when undefined (UI renders `—`). */
-export type MenuKpis = {
-  sellingPriceCents: number | null;
-  /** Component cost (cents); null when the menu is incomplete. */
-  costCents: number | null;
-  foodCostPercent: number | null;
-  marginPercent: number | null;
-  trafficLight: MarginLight | null;
-};
-
-export type ManagerMenuListItem = MenuAllergenFields &
-  MenuKpis & {
-    id: string;
-    name: string;
-    notes: string | null;
-    itemCount: number;
-    complete: boolean;
-    /** Recipe ids whose unavailability made the menu incomplete. */
-    unavailableRecipeIds: string[];
-  };
-
-export type ManagerMenuDetail = MenuAllergenFields &
-  MenuKpis & {
-    id: string;
-    name: string;
-    notes: string | null;
-    complete: boolean;
-    unavailableRecipeIds: string[];
-    lines: ManagerMenuLine[];
-  };
-
-// ── Base reads ────────────────────────────────────────────────────────────────
-
-/** Active menus (newest first), identity rows only. */
-export async function listMenus(
-  db: TenantClient,
-  organizationId: string,
-): Promise<Menu[]> {
+/** Active dishes, by name. */
+export async function listMenus(db: TenantClient, organizationId: string): Promise<Menu[]> {
   return db
     .select()
     .from(menus)
@@ -126,7 +53,6 @@ export async function listMenus(
     .orderBy(menus.name);
 }
 
-/** One active menu by id, or null. */
 export async function getMenuById(
   db: TenantClient,
   organizationId: string,
@@ -135,543 +61,730 @@ export async function getMenuById(
   const rows = await db
     .select()
     .from(menus)
-    .where(
-      and(
-        eq(menus.organizationId, organizationId),
-        eq(menus.id, id),
-        isNull(menus.deletedAt),
-      ),
-    )
+    .where(and(eq(menus.organizationId, organizationId), eq(menus.id, id), isNull(menus.deletedAt)))
     .limit(1);
   return rows[0] ?? null;
 }
 
-export async function listTrashedMenus(
-  db: TenantClient,
-  organizationId: string,
-): Promise<Menu[]> {
+export async function listTrashedMenus(db: TenantClient, organizationId: string): Promise<Menu[]> {
   return db
     .select()
     .from(menus)
-    .where(
-      and(eq(menus.organizationId, organizationId), isNotNull(menus.deletedAt)),
-    )
+    .where(and(eq(menus.organizationId, organizationId), isNotNull(menus.deletedAt)))
     .orderBy(desc(menus.deletedAt));
 }
 
-/** Raw menu_items rows for a set of menus, ordered by (menu, sortOrder). */
-type MenuItemRow = {
-  id: string;
-  menuId: string;
-  recipeId: string;
-  quantity: number;
-  sortOrder: number;
-};
+// ── Folders ──────────────────────────────────────────────────────────────────
 
-async function loadMenuItems(
+export type MenuFolderSummary = { id: string; name: string; dishCount: number };
+
+/** Every folder with its active-dish count, plus how many active dishes are unfiled. */
+export async function listMenuFolders(
   db: TenantClient,
   organizationId: string,
-  menuIds: string[],
-): Promise<MenuItemRow[]> {
-  if (menuIds.length === 0) return [];
-  return db
-    .select({
-      id: menuItems.id,
-      menuId: menuItems.menuId,
-      recipeId: menuItems.recipeId,
-      quantity: menuItems.quantity,
-      sortOrder: menuItems.sortOrder,
-    })
-    .from(menuItems)
-    .where(
-      and(
-        eq(menuItems.organizationId, organizationId),
-        inArray(menuItems.menuId, menuIds),
-      ),
-    )
-    .orderBy(asc(menuItems.menuId), asc(menuItems.sortOrder));
+): Promise<{ folders: MenuFolderSummary[]; unfiledCount: number }> {
+  const [folderRows, countRows] = await Promise.all([
+    db
+      .select({ id: menuFolders.id, name: menuFolders.name })
+      .from(menuFolders)
+      .where(eq(menuFolders.organizationId, organizationId))
+      .orderBy(asc(menuFolders.name)),
+    db
+      .select({ folderId: menus.folderId, value: count() })
+      .from(menus)
+      .where(and(eq(menus.organizationId, organizationId), isNull(menus.deletedAt)))
+      .groupBy(menus.folderId),
+  ]);
+  const counts = new Map(countRows.map((r) => [r.folderId, r.value]));
+  return {
+    folders: folderRows.map((f) => ({ id: f.id, name: f.name, dishCount: counts.get(f.id) ?? 0 })),
+    unfiledCount: counts.get(null) ?? 0,
+  };
 }
 
-// ── Recipe resolution for menus (kitchen-safe vs manager-cost) ────────────────
-
-type RecipeNameInfo = { name: string; available: boolean };
-type RecipeCostInfo = RecipeNameInfo & { costPerPortionCents: number | null };
-
-/**
- * Resolve recipe NAME + availability for a set of recipe ids, INCLUDING trashed
- * rows (so an unavailable line shows its name rather than silently disappearing).
- * Money-free — for kitchen loaders. A recipe id absent from the map is missing
- * entirely (treated as unavailable by the caller).
- */
-async function loadRecipeNamesByIds(
+export async function getMenuFolder(
   db: TenantClient,
   organizationId: string,
-  recipeIds: string[],
-): Promise<Map<string, RecipeNameInfo>> {
-  const map = new Map<string, RecipeNameInfo>();
-  if (recipeIds.length === 0) return map;
+  id: string,
+): Promise<MenuFolder | null> {
   const rows = await db
-    .select({ id: recipes.id, name: recipes.name, deletedAt: recipes.deletedAt })
-    .from(recipes)
-    .where(
-      and(eq(recipes.organizationId, organizationId), inArray(recipes.id, recipeIds)),
-    );
-  for (const r of rows) {
-    map.set(r.id, { name: r.name, available: r.deletedAt === null });
-  }
-  return map;
+    .select()
+    .from(menuFolders)
+    .where(and(eq(menuFolders.organizationId, organizationId), eq(menuFolders.id, id)))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
-/**
- * Resolve recipe name + availability + current cost per portion for a set of recipe
- * ids, INCLUDING trashed rows. A trashed/missing recipe yields
- * `costPerPortionCents = null` (and `available = false`) — it is NEVER costed as
- * zero (D5). Batched: one query for recipes, one for all their lines + ingredient
- * prices (ingredient join NOT `deleted_at`-filtered, mirroring recipeCost), then
- * `recipeCost` once per recipe. For MANAGER loaders only.
- */
-async function costRecipesByIds(
+export async function listMenuFolderOptions(
   db: TenantClient,
   organizationId: string,
-  recipeIds: string[],
-): Promise<Map<string, RecipeCostInfo>> {
-  const map = new Map<string, RecipeCostInfo>();
-  if (recipeIds.length === 0) return map;
-
-  const recipeRows = await db
-    .select({ id: recipes.id, name: recipes.name, deletedAt: recipes.deletedAt })
-    .from(recipes)
-    .where(
-      and(eq(recipes.organizationId, organizationId), inArray(recipes.id, recipeIds)),
-    );
-
-  // Costs cascade through sub-recipe components via the shared resolver; a
-  // trashed recipe or an unresolvable component tree yields null (never zero).
-  const resolutions = await resolveRecipeCostTree(db, organizationId, recipeIds);
-
-  for (const recipe of recipeRows) {
-    const available = recipe.deletedAt === null;
-    const resolution = resolutions.get(recipe.id);
-    const costPerPortionCents =
-      available && resolution?.complete
-        ? resolution.cost.costPerPortionCents
-        : null;
-    map.set(recipe.id, { name: recipe.name, available, costPerPortionCents });
-  }
-  return map;
+): Promise<{ id: string; name: string }[]> {
+  return db
+    .select({ id: menuFolders.id, name: menuFolders.name })
+    .from(menuFolders)
+    .where(eq(menuFolders.organizationId, organizationId))
+    .orderBy(asc(menuFolders.name));
 }
 
-/** Build the derived KPI bundle from a menu's cost result + selling price. */
-function buildKpis(
-  sellingPriceCents: number | null,
-  complete: boolean,
-  costCents: number | null,
-): MenuKpis {
-  const price =
-    sellingPriceCents !== null && sellingPriceCents > 0 ? sellingPriceCents : null;
-  const showMargin = complete && costCents !== null && price !== null;
-  const margin = showMargin ? marginPercent(costCents, price) : null;
-  return {
-    sellingPriceCents,
-    costCents: complete ? costCents : null,
-    foodCostPercent: foodCostPercent(complete ? costCents : null, price),
-    marginPercent: margin,
-    trafficLight: margin !== null ? trafficLight(margin) : null,
-  };
-}
-
-// ── Kitchen loaders ───────────────────────────────────────────────────────────
-
-/** Money-free menu list for the kitchen role (composition + allergens only). */
-export async function listKitchenMenus(
+/** Throws a unique violation on a duplicate name (the action maps it). */
+export async function createMenuFolder(
   db: TenantClient,
   organizationId: string,
-): Promise<KitchenMenuListItem[]> {
-  const menuRows = await listMenus(db, organizationId);
-  if (menuRows.length === 0) return [];
-
-  const items = await loadMenuItems(
-    db,
-    organizationId,
-    menuRows.map((m) => m.id),
-  );
-  const recipeIds = [...new Set(items.map((i) => i.recipeId))];
-  const [names, allergensByRecipe] = await Promise.all([
-    loadRecipeNamesByIds(db, organizationId, recipeIds),
-    loadRecipeAllergensByIds(db, organizationId, recipeIds),
-  ]);
-
-  const itemsByMenu = new Map<string, MenuItemRow[]>();
-  for (const item of items) {
-    const existing = itemsByMenu.get(item.menuId);
-    if (existing) existing.push(item);
-    else itemsByMenu.set(item.menuId, [item]);
-  }
-
-  return menuRows.map((menu) => {
-    const menuLines = itemsByMenu.get(menu.id) ?? [];
-    const complete = menuLines.every(
-      (l) => names.get(l.recipeId)?.available ?? false,
-    );
-    const rollup = mergeMenuAllergens(
-      menuLines.map((l) => allergensByRecipe.get(l.recipeId)).filter((r) => r != null),
-    );
-    return {
-      id: menu.id,
-      name: menu.name,
-      notes: menu.notes,
-      itemCount: menuLines.length,
-      complete,
-      allergens: rollup.allergens,
-      hasUnreviewedIngredient: rollup.hasUnreviewedIngredient,
-    };
-  });
+  name: string,
+): Promise<MenuFolder> {
+  const [row] = await db.insert(menuFolders).values({ organizationId, name }).returning();
+  if (!row) throw new Error('Failed to create menu folder.');
+  return row;
 }
 
-/** Money-free menu detail for the kitchen role. */
-export async function getKitchenMenu(
+export async function renameMenuFolder(
   db: TenantClient,
   organizationId: string,
   id: string,
-): Promise<KitchenMenuDetail | null> {
-  const menu = await getMenuById(db, organizationId, id);
-  if (!menu) return null;
-
-  const items = await loadMenuItems(db, organizationId, [menu.id]);
-  const recipeIds = [...new Set(items.map((i) => i.recipeId))];
-  const [names, allergensByRecipe] = await Promise.all([
-    loadRecipeNamesByIds(db, organizationId, recipeIds),
-    loadRecipeAllergensByIds(db, organizationId, recipeIds),
-  ]);
-
-  const lines: KitchenMenuLine[] = items.map((item) => {
-    const info = names.get(item.recipeId);
-    return {
-      id: item.id,
-      recipeId: item.recipeId,
-      recipeName: info?.name ?? '',
-      quantity: item.quantity,
-      sortOrder: item.sortOrder,
-      available: info?.available ?? false,
-    };
-  });
-  const complete = lines.every((l) => l.available);
-  const rollup = mergeMenuAllergens(
-    items.map((i) => allergensByRecipe.get(i.recipeId)).filter((r) => r != null),
-  );
-
-  return {
-    id: menu.id,
-    name: menu.name,
-    notes: menu.notes,
-    complete,
-    lines,
-    allergens: rollup.allergens,
-    hasUnreviewedIngredient: rollup.hasUnreviewedIngredient,
-  };
+  name: string,
+): Promise<MenuFolder | null> {
+  const [row] = await db
+    .update(menuFolders)
+    .set({ name })
+    .where(and(eq(menuFolders.organizationId, organizationId), eq(menuFolders.id, id)))
+    .returning();
+  return row ?? null;
 }
 
-// ── Manager loaders ─────────────────────────────────────────────────────────
-
-/** Full menu list for the manager role (price/cost/food-cost/margin + allergens). */
-export async function listManagerMenus(
-  db: TenantClient,
-  organizationId: string,
-): Promise<ManagerMenuListItem[]> {
-  const menuRows = await listMenus(db, organizationId);
-  if (menuRows.length === 0) return [];
-
-  const items = await loadMenuItems(
-    db,
-    organizationId,
-    menuRows.map((m) => m.id),
-  );
-  const recipeIds = [...new Set(items.map((i) => i.recipeId))];
-  const [costs, allergensByRecipe] = await Promise.all([
-    costRecipesByIds(db, organizationId, recipeIds),
-    loadRecipeAllergensByIds(db, organizationId, recipeIds),
-  ]);
-
-  const itemsByMenu = new Map<string, MenuItemRow[]>();
-  for (const item of items) {
-    const existing = itemsByMenu.get(item.menuId);
-    if (existing) existing.push(item);
-    else itemsByMenu.set(item.menuId, [item]);
-  }
-
-  return menuRows.map((menu) => {
-    const menuLines = itemsByMenu.get(menu.id) ?? [];
-    const costLines: MenuCostLine[] = menuLines.map((l) => ({
-      recipeId: l.recipeId,
-      quantity: l.quantity,
-      costPerPortionCents: costs.get(l.recipeId)?.costPerPortionCents ?? null,
-    }));
-    const cost = menuCost(costLines);
-    const rollup = mergeMenuAllergens(
-      menuLines.map((l) => allergensByRecipe.get(l.recipeId)).filter((r) => r != null),
-    );
-    return {
-      id: menu.id,
-      name: menu.name,
-      notes: menu.notes,
-      itemCount: menuLines.length,
-      complete: cost.complete,
-      unavailableRecipeIds: cost.complete ? [] : cost.unavailableRecipeIds,
-      allergens: rollup.allergens,
-      hasUnreviewedIngredient: rollup.hasUnreviewedIngredient,
-      ...buildKpis(menu.sellingPriceCents, cost.complete, cost.costCents),
-    };
-  });
-}
-
-/** Full menu detail for the manager role, including per-line costs. */
-export async function getManagerMenu(
+/**
+ * Delete a folder; its dishes (active AND trashed) move to Unfiled first, so the
+ * restrict FK never blocks and a later restore lands somewhere visible.
+ */
+export async function deleteMenuFolder(
   db: TenantClient,
   organizationId: string,
   id: string,
-): Promise<ManagerMenuDetail | null> {
-  const menu = await getMenuById(db, organizationId, id);
-  if (!menu) return null;
-
-  const items = await loadMenuItems(db, organizationId, [menu.id]);
-  const recipeIds = [...new Set(items.map((i) => i.recipeId))];
-  const [costs, allergensByRecipe] = await Promise.all([
-    costRecipesByIds(db, organizationId, recipeIds),
-    loadRecipeAllergensByIds(db, organizationId, recipeIds),
-  ]);
-
-  const lines: ManagerMenuLine[] = items.map((item) => {
-    const info = costs.get(item.recipeId);
-    const costPerPortionCents = info?.costPerPortionCents ?? null;
-    return {
-      id: item.id,
-      recipeId: item.recipeId,
-      recipeName: info?.name ?? '',
-      quantity: item.quantity,
-      sortOrder: item.sortOrder,
-      available: info?.available ?? false,
-      costPerPortionCents,
-      lineCostCents:
-        costPerPortionCents === null ? null : costPerPortionCents * item.quantity,
-    };
-  });
-
-  const cost = menuCost(
-    items.map((l) => ({
-      recipeId: l.recipeId,
-      quantity: l.quantity,
-      costPerPortionCents: costs.get(l.recipeId)?.costPerPortionCents ?? null,
-    })),
-  );
-  const rollup = mergeMenuAllergens(
-    items.map((i) => allergensByRecipe.get(i.recipeId)).filter((r) => r != null),
-  );
-
-  return {
-    id: menu.id,
-    name: menu.name,
-    notes: menu.notes,
-    complete: cost.complete,
-    unavailableRecipeIds: cost.complete ? [] : cost.unavailableRecipeIds,
-    lines,
-    allergens: rollup.allergens,
-    hasUnreviewedIngredient: rollup.hasUnreviewedIngredient,
-    ...buildKpis(menu.sellingPriceCents, cost.complete, cost.costCents),
-  };
+): Promise<{ deleted: boolean; movedDishes: number }> {
+  const moved = await db
+    .update(menus)
+    .set({ folderId: null })
+    .where(and(eq(menus.organizationId, organizationId), eq(menus.folderId, id)))
+    .returning({ id: menus.id });
+  const deleted = await db
+    .delete(menuFolders)
+    .where(and(eq(menuFolders.organizationId, organizationId), eq(menuFolders.id, id)))
+    .returning({ id: menuFolders.id });
+  return { deleted: deleted.length > 0, movedDishes: moved.length };
 }
 
-/** An active recipe the manager editor can add to a menu (name + per-portion cost). */
-export type MenuRecipeOption = {
-  id: string;
-  name: string;
-  /** Null when the recipe's component tree cannot be resolved (never zero). */
-  costPerPortionCents: number | null;
-};
+// ── Search (money-free; both roles) ──────────────────────────────────────────
 
-/**
- * Active recipes as menu-editor options, each with its current cost per portion
- * (MANAGER-only — carries money). Resolves through `resolveRecipeCostTree`, so
- * the picker's live menu cost matches the saved menu's derived cost exactly,
- * including sub-recipe component costs.
- */
-export async function listMenuRecipeOptions(
-  db: TenantClient,
-  organizationId: string,
-): Promise<MenuRecipeOption[]> {
-  const recipesWithLines = await listRecipesWithLines(db, organizationId);
-  const resolutions = await resolveRecipeCostTree(
-    db,
-    organizationId,
-    recipesWithLines.map(({ recipe }) => recipe.id),
-  );
-  return recipesWithLines.map(({ recipe }) => {
-    const resolution = resolutions.get(recipe.id);
-    return {
-      id: recipe.id,
-      name: recipe.name,
-      costPerPortionCents: resolution?.complete
-        ? resolution.cost.costPerPortionCents
-        : null,
-    };
-  });
+export type DishSearchResult = { id: string; name: string; folderName: string | null };
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
-// ── Mutations ─────────────────────────────────────────────────────────────────
-
-/** A validated menu line for create/update (recipe + portion quantity). */
-export type MenuItemInput = { recipeId: string; quantity: number };
-
-/** The menu's own fields (no items) for create/update. */
-export type MenuFields = {
-  name: string;
-  sellingPriceCents: number | null;
-  notes: string | null;
-};
-
-export type CreateMenuOutcome =
-  | { status: 'ok'; menu: Menu }
-  | { status: 'invalid_recipe' };
-
-export type UpdateMenuOutcome =
-  | { status: 'ok'; menu: Menu }
-  | { status: 'not_found' }
-  | { status: 'invalid_recipe' };
-
-/**
- * Lock the supplied recipe ids FOR UPDATE in id-ascending order (deadlock-free),
- * returning true only when EVERY id resolves to an ACTIVE, same-org recipe. The
- * lock serializes against a concurrent recipe trash (which locks the same rows), so
- * a menu can never capture a recipe that is being trashed in a racing transaction.
- */
-async function lockActiveRecipesForMenu(
+/** Every active dish in the org by name — typo tolerant, regardless of folder. */
+export async function searchDishes(
   db: TenantClient,
   organizationId: string,
-  recipeIds: string[],
-): Promise<boolean> {
-  if (recipeIds.length === 0) return false;
-  const locked = await db
-    .select({ id: recipes.id })
-    .from(recipes)
+  query: string,
+  limit = 20,
+): Promise<DishSearchResult[]> {
+  const like = `%${escapeLike(query)}%`;
+  const rows = await db
+    .select({ id: menus.id, name: menus.name, folderName: menuFolders.name })
+    .from(menus)
+    .leftJoin(
+      menuFolders,
+      and(eq(menuFolders.organizationId, organizationId), eq(menuFolders.id, menus.folderId)),
+    )
     .where(
       and(
-        eq(recipes.organizationId, organizationId),
-        inArray(recipes.id, recipeIds),
-        isNull(recipes.deletedAt),
+        eq(menus.organizationId, organizationId),
+        isNull(menus.deletedAt),
+        sql`(${menus.name} % ${query} OR ${menus.name} ILIKE ${like})`,
       ),
     )
-    .orderBy(asc(recipes.id))
-    .for('update');
-  return locked.length === recipeIds.length;
+    .orderBy(
+      sql`(${menus.name} ILIKE ${`${escapeLike(query)}%`}) DESC`,
+      sql`similarity(${menus.name}, ${query}) DESC`,
+      asc(menus.name),
+    )
+    .limit(limit);
+  return rows.map((r) => ({ id: r.id, name: r.name, folderName: r.folderName ?? null }));
 }
 
-/** Insert the menu's lines, sort_order = array index. */
-async function insertMenuItems(
-  db: TenantClient,
-  organizationId: string,
-  menuId: string,
-  items: MenuItemInput[],
-): Promise<void> {
-  await db.insert(menuItems).values(
-    items.map((item, index) => ({
-      organizationId,
-      menuId,
-      recipeId: item.recipeId,
-      quantity: item.quantity,
-      sortOrder: index,
-    })),
-  );
-}
+// ── Catalogue-derived costs (manager only) ───────────────────────────────────
+
+type RecipeCostView = {
+  costPerPortionCents: number | null;
+  costPerKgCents: number | null;
+};
 
 /**
- * Create a menu + its lines in one transaction. The caller has validated that
- * `items` is non-empty with DISTINCT recipe ids; here we lock + assert every recipe
- * is active/same-org (else `invalid_recipe`, no write), then insert.
+ * Honest per-recipe costs from the catalogue: a recipe with an unpriced ingredient or
+ * an unresolvable sub-recipe tree costs as UNKNOWN (null), never understated.
  */
-export async function createMenu(
-  db: TenantClient,
-  organizationId: string,
-  fields: MenuFields,
-  items: MenuItemInput[],
-): Promise<CreateMenuOutcome> {
-  const recipeIds = items.map((i) => i.recipeId);
-  if (!(await lockActiveRecipesForMenu(db, organizationId, recipeIds))) {
-    return { status: 'invalid_recipe' };
+function recipeCostsFromCatalogue(catalogue: ActiveCatalogue): Map<string, RecipeCostView> {
+  const needsPricing = new Set(catalogue.ingredients.filter((i) => i.needsPricing).map((i) => i.id));
+  const out = new Map<string, RecipeCostView>();
+  for (const recipe of catalogue.recipes) {
+    const unpriced =
+      recipe.costUnresolved || recipe.lines.some((l) => needsPricing.has(l.ingredientId));
+    if (unpriced) {
+      out.set(recipe.id, { costPerPortionCents: null, costPerKgCents: null });
+      continue;
+    }
+    const cost = recipeCost({
+      yieldPortions: recipe.yieldPortions,
+      yieldPercentage: recipe.yieldPercentage,
+      laborCostCents: recipe.laborCostCents,
+      energyCostCents: recipe.energyCostCents,
+      packagingCostCents: recipe.packagingCostCents,
+      lines: recipe.lines.map((l) => ({
+        dimension: l.dimension,
+        priceCents: l.priceCents,
+        quantity: l.quantity,
+        prepYieldBps: l.prepYieldBps ?? undefined,
+      })),
+      componentMaterialCostsCents: [recipe.componentHiddenCostCents],
+    });
+    out.set(recipe.id, {
+      costPerPortionCents: cost.costPerPortionCents,
+      costPerKgCents: costPerKgCents(cost.totalCostCents, recipe.yieldWeightGrams),
+    });
   }
-
-  const [menu] = await db
-    .insert(menus)
-    .values({
-      organizationId,
-      name: fields.name,
-      sellingPriceCents: fields.sellingPriceCents,
-      notes: fields.notes,
-    })
-    .returning();
-  if (!menu) throw new Error('Failed to create menu.');
-
-  await insertMenuItems(db, organizationId, menu.id, items);
-  return { status: 'ok', menu };
+  return out;
 }
 
-/**
- * Replace an active menu's fields + lines in one transaction. Locks the menu row
- * and reasserts it is active (else `not_found`), then locks/validates the recipes
- * (else `invalid_recipe`), then rewrites the fields and the full item set.
- */
-export async function updateMenu(
+// ── Folder view: dish list ───────────────────────────────────────────────────
+
+export type DishListItem = {
+  id: string;
+  name: string;
+  portions: number;
+  componentCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+  lastOpenedAt: Date | null;
+};
+
+export type ManagerDishListItem = DishListItem & {
+  sellingPriceCents: number | null;
+  costPerPortionCents: number | null;
+  marginBps: number | null;
+};
+
+export const DISH_LIST_LIMIT = 500;
+
+function dishOrder(sort: DishSort) {
+  switch (sort) {
+    case 'name':
+      return [asc(menus.name)];
+    case 'created':
+      return [desc(menus.createdAt), asc(menus.name)];
+    case 'opened':
+      return [sql`${menus.lastOpenedAt} DESC NULLS LAST`, asc(menus.name)];
+    case 'modified':
+    default:
+      return [desc(menus.updatedAt), asc(menus.name)];
+  }
+}
+
+async function listDishRows(
   db: TenantClient,
   organizationId: string,
-  id: string,
-  fields: MenuFields,
-  items: MenuItemInput[],
-): Promise<UpdateMenuOutcome> {
-  // Lock + reassert the menu is active before touching it (serializes vs trash).
-  const menuLock = await db
-    .select({ id: menus.id })
+  folderId: string | null,
+  sort: DishSort,
+) {
+  const rows = await db
+    .select()
     .from(menus)
     .where(
       and(
         eq(menus.organizationId, organizationId),
-        eq(menus.id, id),
         isNull(menus.deletedAt),
+        folderId === null ? isNull(menus.folderId) : eq(menus.folderId, folderId),
       ),
     )
-    .for('update');
-  if (menuLock.length === 0) return { status: 'not_found' };
+    .orderBy(...dishOrder(sort))
+    .limit(DISH_LIST_LIMIT);
 
-  const recipeIds = items.map((i) => i.recipeId);
-  if (!(await lockActiveRecipesForMenu(db, organizationId, recipeIds))) {
-    return { status: 'invalid_recipe' };
+  const ids = rows.map((r) => r.id);
+  const [recipeCounts, ingredientCounts] =
+    ids.length === 0
+      ? [[], []]
+      : await Promise.all([
+          db
+            .select({ menuId: menuItems.menuId, value: count() })
+            .from(menuItems)
+            .where(and(eq(menuItems.organizationId, organizationId), inArray(menuItems.menuId, ids)))
+            .groupBy(menuItems.menuId),
+          db
+            .select({ menuId: menuIngredientItems.menuId, value: count() })
+            .from(menuIngredientItems)
+            .where(
+              and(
+                eq(menuIngredientItems.organizationId, organizationId),
+                inArray(menuIngredientItems.menuId, ids),
+              ),
+            )
+            .groupBy(menuIngredientItems.menuId),
+        ]);
+  const componentCount = new Map<string, number>();
+  for (const r of [...recipeCounts, ...ingredientCounts]) {
+    componentCount.set(r.menuId, (componentCount.get(r.menuId) ?? 0) + r.value);
   }
+  return { rows, componentCount };
+}
 
+export async function listKitchenDishes(
+  db: TenantClient,
+  organizationId: string,
+  folderId: string | null,
+  sort: DishSort,
+): Promise<DishListItem[]> {
+  const { rows, componentCount } = await listDishRows(db, organizationId, folderId, sort);
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    portions: r.portions,
+    componentCount: componentCount.get(r.id) ?? 0,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    lastOpenedAt: r.lastOpenedAt,
+  }));
+}
+
+export async function listManagerDishes(
+  db: TenantClient,
+  organizationId: string,
+  folderId: string | null,
+  sort: DishSort,
+): Promise<ManagerDishListItem[]> {
+  const [{ rows, componentCount }, catalogue] = await Promise.all([
+    listDishRows(db, organizationId, folderId, sort),
+    loadActiveCatalogue(db, organizationId),
+  ]);
+  const recipeCosts = recipeCostsFromCatalogue(catalogue);
+  const recipeById = new Map(catalogue.recipes.map((r) => [r.id, r]));
+  const ingredientById = new Map(catalogue.ingredients.map((i) => [i.id, i]));
+  const menuById = new Map(catalogue.menus.map((m) => [m.id, m]));
+
+  return rows.map((r) => {
+    const composition = menuById.get(r.id);
+    const cost = composition
+      ? compositionCost(composition, {
+          recipeCostPerPortion: (id) => recipeCosts.get(id)?.costPerPortionCents ?? null,
+          recipeYield: (id) => recipeById.get(id) ?? null,
+          ingredient: (id) => ingredientById.get(id) ?? null,
+        })
+      : null;
+    const costPerPortion = cost?.costPerPortionCents ?? null;
+    return {
+      id: r.id,
+      name: r.name,
+      portions: r.portions,
+      componentCount: componentCount.get(r.id) ?? 0,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      lastOpenedAt: r.lastOpenedAt,
+      sellingPriceCents: r.sellingPriceCents,
+      costPerPortionCents: costPerPortion,
+      marginBps: dishPricing(costPerPortion, r.sellingPriceCents, 0).marginBps,
+    };
+  });
+}
+
+// ── Dish detail ──────────────────────────────────────────────────────────────
+
+type DishIdentity = {
+  id: string;
+  name: string;
+  folderId: string | null;
+  portions: number;
+  notes: string | null;
+};
+
+export type KitchenDishRecipeLine = {
+  recipeId: string;
+  recipeName: string;
+  quantity: number;
+  unit: DishRecipeUnit;
+  available: boolean;
+};
+
+export type KitchenDishIngredientLine = {
+  ingredientId: string;
+  ingredientName: string;
+  /** Amount in `unit` (converted back from canonical). */
+  quantity: number;
+  unit: DishIngredientUnit;
+  available: boolean;
+};
+
+export type KitchenDishDetail = DishIdentity & {
+  recipeLines: KitchenDishRecipeLine[];
+  ingredientLines: KitchenDishIngredientLine[];
+  allergens: MenuAllergen[];
+  hasUnreviewedIngredient: boolean;
+};
+
+export type ManagerDishDetail = DishIdentity & {
+  sellingPriceCents: number | null;
+  vatRateBps: number | null;
+  recipeLines: KitchenDishRecipeLine[];
+  ingredientLines: KitchenDishIngredientLine[];
+};
+
+async function loadDishLines(db: TenantClient, organizationId: string, menuId: string) {
+  const [recipeRows, ingredientRows] = await Promise.all([
+    db
+      .select({
+        recipeId: menuItems.recipeId,
+        quantity: menuItems.quantity,
+        unit: menuItems.unit,
+        recipeName: recipes.name,
+        recipeDeletedAt: recipes.deletedAt,
+      })
+      .from(menuItems)
+      .innerJoin(
+        recipes,
+        and(eq(recipes.organizationId, organizationId), eq(recipes.id, menuItems.recipeId)),
+      )
+      .where(and(eq(menuItems.organizationId, organizationId), eq(menuItems.menuId, menuId)))
+      .orderBy(asc(menuItems.sortOrder)),
+    db
+      .select({
+        ingredientId: menuIngredientItems.ingredientId,
+        quantity: menuIngredientItems.quantity,
+        unit: menuIngredientItems.unit,
+        ingredientName: ingredients.name,
+        ingredientDeletedAt: ingredients.deletedAt,
+      })
+      .from(menuIngredientItems)
+      .innerJoin(
+        ingredients,
+        and(
+          eq(ingredients.organizationId, organizationId),
+          eq(ingredients.id, menuIngredientItems.ingredientId),
+        ),
+      )
+      .where(
+        and(
+          eq(menuIngredientItems.organizationId, organizationId),
+          eq(menuIngredientItems.menuId, menuId),
+        ),
+      )
+      .orderBy(asc(menuIngredientItems.sortOrder)),
+  ]);
+  const recipeLines: KitchenDishRecipeLine[] = recipeRows.map((r) => ({
+    recipeId: r.recipeId,
+    recipeName: r.recipeName,
+    quantity: r.quantity,
+    unit: r.unit,
+    available: r.recipeDeletedAt === null,
+  }));
+  const ingredientLines: KitchenDishIngredientLine[] = ingredientRows.map((r) => ({
+    ingredientId: r.ingredientId,
+    ingredientName: r.ingredientName,
+    quantity: ingredientDisplayAmount(r.quantity, r.unit),
+    unit: r.unit,
+    available: r.ingredientDeletedAt === null,
+  }));
+  return { recipeLines, ingredientLines };
+}
+
+export async function getManagerDish(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<ManagerDishDetail | null> {
+  const menu = await getMenuById(db, organizationId, id);
+  if (!menu) return null;
+  const lines = await loadDishLines(db, organizationId, id);
+  return {
+    id: menu.id,
+    name: menu.name,
+    folderId: menu.folderId,
+    portions: menu.portions,
+    notes: menu.notes,
+    sellingPriceCents: menu.sellingPriceCents,
+    vatRateBps: menu.vatRateBps,
+    ...lines,
+  };
+}
+
+export async function getKitchenDish(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<KitchenDishDetail | null> {
+  const menu = await getMenuById(db, organizationId, id);
+  if (!menu) return null;
+  const lines = await loadDishLines(db, organizationId, id);
+  const [recipeAllergens, ingredientAllergens, reviewRows] = await Promise.all([
+    loadRecipeAllergensByIds(db, organizationId, lines.recipeLines.map((l) => l.recipeId)),
+    loadIngredientAllergensByIngredient(
+      db,
+      organizationId,
+      lines.ingredientLines.map((l) => l.ingredientId),
+    ),
+    lines.ingredientLines.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({ id: ingredients.id, reviewedAt: ingredients.allergensReviewedAt })
+          .from(ingredients)
+          .where(
+            and(
+              eq(ingredients.organizationId, organizationId),
+              inArray(
+                ingredients.id,
+                lines.ingredientLines.map((l) => l.ingredientId),
+              ),
+            ),
+          ),
+  ]);
+  const reviewed = new Map(reviewRows.map((r) => [r.id, r.reviewedAt !== null]));
+  const rollups: RecipeAllergenRollup[] = [
+    ...lines.recipeLines.map((l) => recipeAllergens.get(l.recipeId)).filter((r) => r != null),
+    ...lines.ingredientLines.map((l) => ({
+      allergens: (ingredientAllergens.get(l.ingredientId) ?? []).map((tag) => ({
+        allergen: tag.allergen,
+        derivedPresence: tag.presence,
+        overridePresence: null,
+        effectivePresence: tag.presence,
+      })),
+      hasUnreviewedIngredient: reviewed.get(l.ingredientId) !== true,
+    })),
+  ];
+  const rollup = mergeMenuAllergens(rollups);
+  return {
+    id: menu.id,
+    name: menu.name,
+    folderId: menu.folderId,
+    portions: menu.portions,
+    notes: menu.notes,
+    ...lines,
+    allergens: rollup.allergens,
+    hasUnreviewedIngredient: rollup.hasUnreviewedIngredient,
+  };
+}
+
+// ── Builder options (manager only — carry money) ─────────────────────────────
+
+export type DishRecipeOption = {
+  id: string;
+  name: string;
+  yieldPortions: number;
+  yieldWeightGrams: number | null;
+  /** Null when an ingredient needs pricing or the sub-recipe tree is unresolvable. */
+  costPerPortionCents: number | null;
+  costPerKgCents: number | null;
+};
+
+export type DishIngredientOption = {
+  id: string;
+  name: string;
+  dimension: Dimension;
+  /** Price per kg / litre / piece, cents. */
+  priceCents: number;
+  needsPricing: boolean;
+};
+
+export async function listDishBuilderOptions(
+  db: TenantClient,
+  organizationId: string,
+): Promise<{ recipes: DishRecipeOption[]; ingredients: DishIngredientOption[] }> {
+  const catalogue = await loadActiveCatalogue(db, organizationId);
+  const costs = recipeCostsFromCatalogue(catalogue);
+  return {
+    recipes: catalogue.recipes
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        yieldPortions: r.yieldPortions,
+        yieldWeightGrams: r.yieldWeightGrams,
+        costPerPortionCents: costs.get(r.id)?.costPerPortionCents ?? null,
+        costPerKgCents: costs.get(r.id)?.costPerKgCents ?? null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    ingredients: catalogue.ingredients
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        dimension: i.dimension,
+        priceCents: i.priceCents,
+        needsPricing: i.needsPricing,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
+// ── Mutations ────────────────────────────────────────────────────────────────
+
+export type SaveDishOutcome =
+  | { status: 'ok'; menu: Menu }
+  | { status: 'not_found' }
+  | { status: 'invalid_recipe' }
+  | { status: 'invalid_ingredient' }
+  | { status: 'invalid_folder' };
+
+/**
+ * Lock + validate every referenced row in one pass (id-ascending FOR UPDATE, so it
+ * serializes with a concurrent trash): recipes and ingredients must be ACTIVE and
+ * same-org; an ingredient's unit must match its dimension; the folder must exist.
+ */
+async function validateDishReferences(
+  db: TenantClient,
+  organizationId: string,
+  input: DishFormInput,
+): Promise<'ok' | 'invalid_recipe' | 'invalid_ingredient' | 'invalid_folder'> {
+  if (input.folderId !== null && !(await getMenuFolder(db, organizationId, input.folderId))) {
+    return 'invalid_folder';
+  }
+  const recipeIds = input.recipeLines.map((l) => l.recipeId);
+  if (recipeIds.length > 0) {
+    const locked = await db
+      .select({ id: recipes.id })
+      .from(recipes)
+      .where(
+        and(
+          eq(recipes.organizationId, organizationId),
+          inArray(recipes.id, recipeIds),
+          isNull(recipes.deletedAt),
+        ),
+      )
+      .orderBy(asc(recipes.id))
+      .for('update');
+    if (locked.length !== recipeIds.length) return 'invalid_recipe';
+  }
+  const ingredientIds = input.ingredientLines.map((l) => l.ingredientId);
+  if (ingredientIds.length > 0) {
+    const locked = await db
+      .select({ id: ingredients.id, dimension: ingredients.dimension })
+      .from(ingredients)
+      .where(
+        and(
+          eq(ingredients.organizationId, organizationId),
+          inArray(ingredients.id, ingredientIds),
+          isNull(ingredients.deletedAt),
+        ),
+      )
+      .orderBy(asc(ingredients.id))
+      .for('update');
+    if (locked.length !== ingredientIds.length) return 'invalid_ingredient';
+    const dimensionById = new Map(locked.map((r) => [r.id, r.dimension]));
+    for (const line of input.ingredientLines) {
+      const dimension = dimensionById.get(line.ingredientId);
+      if (!dimension || !isIngredientUnitFor(line.unit, dimension)) return 'invalid_ingredient';
+      const canonical = ingredientCanonicalQuantity(line.quantity, line.unit);
+      if (!Number.isFinite(canonical) || canonical <= 0 || canonical > MAX_DISH_AMOUNT) {
+        return 'invalid_ingredient';
+      }
+    }
+  }
+  return 'ok';
+}
+
+async function insertDishLines(
+  db: TenantClient,
+  organizationId: string,
+  menuId: string,
+  input: DishFormInput,
+): Promise<void> {
+  if (input.recipeLines.length > 0) {
+    await db.insert(menuItems).values(
+      input.recipeLines.map((line, index) => ({
+        organizationId,
+        menuId,
+        recipeId: line.recipeId,
+        quantity: line.quantity,
+        unit: line.unit,
+        sortOrder: index,
+      })),
+    );
+  }
+  if (input.ingredientLines.length > 0) {
+    await db.insert(menuIngredientItems).values(
+      input.ingredientLines.map((line, index) => ({
+        organizationId,
+        menuId,
+        ingredientId: line.ingredientId,
+        quantity: ingredientCanonicalQuantity(line.quantity, line.unit),
+        unit: line.unit,
+        sortOrder: index,
+      })),
+    );
+  }
+}
+
+function dishFields(input: DishFormInput) {
+  return {
+    name: input.name,
+    folderId: input.folderId,
+    portions: input.portions,
+    sellingPriceCents: input.sellingPriceCents,
+    vatRateBps: input.vatRateBps,
+    notes: input.notes ?? null,
+  };
+}
+
+export async function createDish(
+  db: TenantClient,
+  organizationId: string,
+  input: DishFormInput,
+): Promise<SaveDishOutcome> {
+  const check = await validateDishReferences(db, organizationId, input);
+  if (check !== 'ok') return { status: check };
   const [menu] = await db
-    .update(menus)
-    .set({
-      name: fields.name,
-      sellingPriceCents: fields.sellingPriceCents,
-      notes: fields.notes,
-    })
-    .where(
-      and(
-        eq(menus.organizationId, organizationId),
-        eq(menus.id, id),
-        isNull(menus.deletedAt),
-      ),
-    )
+    .insert(menus)
+    .values({ organizationId, ...dishFields(input), lastOpenedAt: new Date() })
     .returning();
+  if (!menu) throw new Error('Failed to create dish.');
+  await insertDishLines(db, organizationId, menu.id, input);
+  return { status: 'ok', menu };
+}
+
+/** Replace an active dish's fields + full composition in one transaction. */
+export async function updateDish(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+  input: DishFormInput,
+): Promise<SaveDishOutcome> {
+  const scope = and(eq(menus.organizationId, organizationId), eq(menus.id, id), isNull(menus.deletedAt));
+  const lock = await db.select({ id: menus.id }).from(menus).where(scope).for('update');
+  if (lock.length === 0) return { status: 'not_found' };
+
+  const check = await validateDishReferences(db, organizationId, input);
+  if (check !== 'ok') return { status: check };
+
+  const [menu] = await db.update(menus).set(dishFields(input)).where(scope).returning();
   if (!menu) return { status: 'not_found' };
 
   await db
     .delete(menuItems)
+    .where(and(eq(menuItems.organizationId, organizationId), eq(menuItems.menuId, id)));
+  await db
+    .delete(menuIngredientItems)
     .where(
-      and(eq(menuItems.organizationId, organizationId), eq(menuItems.menuId, id)),
+      and(eq(menuIngredientItems.organizationId, organizationId), eq(menuIngredientItems.menuId, id)),
     );
-  await insertMenuItems(db, organizationId, id, items);
-
+  await insertDishLines(db, organizationId, id, input);
   return { status: 'ok', menu };
 }
 
-/** Move an active menu to the trash. Returns null if it was not active. */
+/** Stamp "last opened" WITHOUT touching `updated_at` (opening is not a modification). */
+export async function markDishOpened(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<void> {
+  await db
+    .update(menus)
+    .set({ lastOpenedAt: new Date(), updatedAt: sql`${menus.updatedAt}` })
+    .where(and(eq(menus.organizationId, organizationId), eq(menus.id, id), isNull(menus.deletedAt)));
+}
+
+/** Move an active dish to the trash. Returns null if it was not active. */
 export async function softDeleteMenu(
   db: TenantClient,
   organizationId: string,
@@ -680,18 +793,12 @@ export async function softDeleteMenu(
   const [row] = await db
     .update(menus)
     .set({ deletedAt: new Date() })
-    .where(
-      and(
-        eq(menus.organizationId, organizationId),
-        eq(menus.id, id),
-        isNull(menus.deletedAt),
-      ),
-    )
+    .where(and(eq(menus.organizationId, organizationId), eq(menus.id, id), isNull(menus.deletedAt)))
     .returning();
   return row ?? null;
 }
 
-/** Bring a trashed menu back. Returns null if it was not in the trash. */
+/** Bring a trashed dish back. Returns null if it was not in the trash. */
 export async function restoreMenu(
   db: TenantClient,
   organizationId: string,
@@ -700,43 +807,19 @@ export async function restoreMenu(
   const [row] = await db
     .update(menus)
     .set({ deletedAt: null })
-    .where(
-      and(
-        eq(menus.organizationId, organizationId),
-        eq(menus.id, id),
-        isNotNull(menus.deletedAt),
-      ),
-    )
+    .where(and(eq(menus.organizationId, organizationId), eq(menus.id, id), isNotNull(menus.deletedAt)))
     .returning();
   return row ?? null;
 }
 
-/**
- * Permanently delete a trashed menu; its lines cascade via the composite FK (which
- * frees any recipe those lines pinned via the restrict FK). Only trashed rows are
- * eligible.
- */
-export async function purgeMenu(
-  db: TenantClient,
-  organizationId: string,
-  id: string,
-): Promise<void> {
+/** Permanently delete a trashed dish; both line tables cascade via composite FKs. */
+export async function purgeMenu(db: TenantClient, organizationId: string, id: string): Promise<void> {
   await db
     .delete(menus)
-    .where(
-      and(
-        eq(menus.organizationId, organizationId),
-        eq(menus.id, id),
-        isNotNull(menus.deletedAt),
-      ),
-    );
+    .where(and(eq(menus.organizationId, organizationId), eq(menus.id, id), isNotNull(menus.deletedAt)));
 }
 
-/**
- * How many menu_items rows reference a recipe — across ALL menus regardless of the
- * menu's own trashed state (the restrict FK blocks the recipe purge either way).
- * The recipe-purge guard reads this BEFORE any side effect.
- */
+/** menu_items rows referencing a recipe (any dish state) — the recipe-purge guard. */
 export async function countMenusUsingRecipe(
   db: TenantClient,
   organizationId: string,
@@ -745,11 +828,6 @@ export async function countMenusUsingRecipe(
   const rows = await db
     .select({ value: count() })
     .from(menuItems)
-    .where(
-      and(
-        eq(menuItems.organizationId, organizationId),
-        eq(menuItems.recipeId, recipeId),
-      ),
-    );
+    .where(and(eq(menuItems.organizationId, organizationId), eq(menuItems.recipeId, recipeId)));
   return rows[0]?.value ?? 0;
 }

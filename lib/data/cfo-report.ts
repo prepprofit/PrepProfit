@@ -3,9 +3,8 @@ import { ingredients, saleItems, sales } from '@/lib/db/schema';
 import type { Dimension } from '@/lib/units';
 import type { TenantClient } from '@/lib/db/tenant';
 import { recipeCost, lineCostCents } from '@/lib/calculations/recipeCost';
-import { menuCost } from '@/lib/calculations/menu';
 import { listIngredients } from '@/lib/data/ingredients';
-import { loadActiveCatalogue } from '@/lib/data/active-catalogue';
+import { catalogueDishCostPerPortion, loadActiveCatalogue } from '@/lib/data/active-catalogue';
 import {
   detectProfitLeaks,
   type ProfitLeakInput,
@@ -89,17 +88,8 @@ export async function loadCfoReport(
       unpriced || recipe.costUnresolved ? null : cost.costPerPortionCents,
     );
   }
-  const menuCostById = new Map<string, number | null>();
-  for (const menu of catalogue.menus) {
-    const cost = menuCost(
-      menu.lines.map((line) => ({
-        recipeId: line.recipeId,
-        quantity: line.quantity,
-        costPerPortionCents: recipeCostPerPortion.get(line.recipeId) ?? null,
-      })),
-    );
-    menuCostById.set(menu.id, cost.complete ? cost.costCents : null);
-  }
+  // Dish cost per portion — complete-or-null (gram lines + direct ingredients).
+  const menuCostById = catalogueDishCostPerPortion(catalogue, recipeCostPerPortion);
 
   // ── Deterministic catalogue findings (margin leaks + reprice candidates). ──
   const leakInput: ProfitLeakInput = {
@@ -124,6 +114,7 @@ export async function loadCfoReport(
       },
       ingredientIds: [...new Set(recipe.lines.map((l) => l.ingredientId))],
       costUnresolved: recipe.costUnresolved,
+      yieldWeightGrams: recipe.yieldWeightGrams,
     })),
     menus: catalogue.menus,
   };
@@ -140,7 +131,7 @@ export async function loadCfoReport(
       .map((f) => f.entityId),
   ).size;
   const incompleteMenuCount = catalogue.menus.filter(
-    (m) => m.lines.length > 0 && menuCostById.get(m.id) == null,
+    (m) => m.recipeLines.length + m.ingredientLines.length > 0 && menuCostById.get(m.id) == null,
   ).length;
 
   // ── Supplier price changes: a pending observation that differs from the approved price. ──

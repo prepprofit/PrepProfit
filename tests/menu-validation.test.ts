@@ -1,62 +1,78 @@
-import { describe, it, expect } from 'vitest';
-import { menuSchema } from '@/lib/validation/menus';
+import { describe, expect, it } from 'vitest';
+import { dishSchema, dishSearchSchema, menuFolderSchema } from '@/lib/validation/menus';
 
-/** Server-side menu validation (Sprint 10) — the guard before any data access. */
-describe('menuSchema', () => {
-  const base = {
-    name: 'Combo',
-    items: [{ recipeId: 'r1', quantity: 2 }],
-  };
+const base = {
+  name: 'Caesar salad',
+  folderId: null,
+  portions: 1,
+  sellingPriceCents: 1_200,
+  vatRateBps: null,
+  notes: '',
+  recipeLines: [{ recipeId: 'r1', quantity: 150, unit: 'g' }],
+  ingredientLines: [{ ingredientId: 'i1', quantity: 1, unit: 'piece' }],
+};
 
-  it('accepts a valid menu with a null/absent price', () => {
-    expect(menuSchema.safeParse(base).success).toBe(true);
+describe('dishSchema', () => {
+  it('accepts a valid dish and normalises empty notes to null', () => {
+    const parsed = dishSchema.safeParse(base);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.notes).toBeNull();
+  });
+
+  it('accepts an empty draft and an unpriced dish', () => {
+    expect(dishSchema.safeParse({ ...base, recipeLines: [], ingredientLines: [] }).success).toBe(true);
+    expect(dishSchema.safeParse({ ...base, sellingPriceCents: null }).success).toBe(true);
+  });
+
+  it('accepts fractional amounts but rejects zero, negative and non-finite', () => {
+    expect(dishSchema.safeParse({ ...base, recipeLines: [{ recipeId: 'r1', quantity: 0.25, unit: 'kg' }] }).success).toBe(true);
+    for (const quantity of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 100_000_000]) {
+      expect(dishSchema.safeParse({ ...base, recipeLines: [{ recipeId: 'r1', quantity, unit: 'g' }] }).success).toBe(false);
+    }
+  });
+
+  it('rejects unknown units, duplicates, bad portions, price and VAT', () => {
+    expect(dishSchema.safeParse({ ...base, recipeLines: [{ recipeId: 'r1', quantity: 1, unit: 'cup' }] }).success).toBe(false);
+    expect(dishSchema.safeParse({ ...base, ingredientLines: [{ ingredientId: 'i1', quantity: 1, unit: 'portion' }] }).success).toBe(false);
     expect(
-      menuSchema.safeParse({ ...base, sellingPriceCents: null }).success,
-    ).toBe(true);
-  });
-
-  it('rejects an empty item set (no draft/empty menu)', () => {
-    expect(menuSchema.safeParse({ ...base, items: [] }).success).toBe(false);
-  });
-
-  it('rejects duplicate recipe ids before data access', () => {
-    const dup = menuSchema.safeParse({
-      ...base,
-      items: [
-        { recipeId: 'r1', quantity: 1 },
-        { recipeId: 'r1', quantity: 2 },
-      ],
-    });
-    expect(dup.success).toBe(false);
-  });
-
-  it('rejects an out-of-range quantity', () => {
-    expect(
-      menuSchema.safeParse({ ...base, items: [{ recipeId: 'r1', quantity: 0 }] })
-        .success,
+      dishSchema.safeParse({
+        ...base,
+        recipeLines: [
+          { recipeId: 'r1', quantity: 1, unit: 'g' },
+          { recipeId: 'r1', quantity: 2, unit: 'g' },
+        ],
+      }).success,
     ).toBe(false);
     expect(
-      menuSchema.safeParse({ ...base, items: [{ recipeId: 'r1', quantity: 1001 }] })
-        .success,
+      dishSchema.safeParse({
+        ...base,
+        ingredientLines: [
+          { ingredientId: 'i1', quantity: 1, unit: 'piece' },
+          { ingredientId: 'i1', quantity: 1, unit: 'piece' },
+        ],
+      }).success,
     ).toBe(false);
-    expect(
-      menuSchema.safeParse({ ...base, items: [{ recipeId: 'r1', quantity: 1.5 }] })
-        .success,
-    ).toBe(false);
+    for (const portions of [0, 1.5, 100_001]) {
+      expect(dishSchema.safeParse({ ...base, portions }).success).toBe(false);
+    }
+    expect(dishSchema.safeParse({ ...base, sellingPriceCents: -1 }).success).toBe(false);
+    expect(dishSchema.safeParse({ ...base, sellingPriceCents: 1.5 }).success).toBe(false);
+    expect(dishSchema.safeParse({ ...base, vatRateBps: 10_001 }).success).toBe(false);
+    expect(dishSchema.safeParse({ ...base, name: '   ' }).success).toBe(false);
   });
 
-  it('rejects a negative selling price and a blank name', () => {
-    expect(
-      menuSchema.safeParse({ ...base, sellingPriceCents: -1 }).success,
-    ).toBe(false);
-    expect(menuSchema.safeParse({ ...base, name: '   ' }).success).toBe(false);
+  it('caps the number of lines', () => {
+    const recipeLines = Array.from({ length: 101 }, (_, i) => ({ recipeId: `r${i}`, quantity: 1, unit: 'portion' }));
+    expect(dishSchema.safeParse({ ...base, recipeLines }).success).toBe(false);
   });
+});
 
-  it('caps the item set at 100', () => {
-    const items = Array.from({ length: 101 }, (_, i) => ({
-      recipeId: `r${i}`,
-      quantity: 1,
-    }));
-    expect(menuSchema.safeParse({ ...base, items }).success).toBe(false);
+describe('folder + search schemas', () => {
+  it('trims and bounds names and queries', () => {
+    expect(menuFolderSchema.safeParse({ name: '  Bakery ' }).success).toBe(true);
+    expect(menuFolderSchema.safeParse({ name: '   ' }).success).toBe(false);
+    expect(menuFolderSchema.safeParse({ name: 'x'.repeat(81) }).success).toBe(false);
+    expect(dishSearchSchema.safeParse({ query: '' }).success).toBe(false);
+    expect(dishSearchSchema.safeParse({ query: 'x'.repeat(101) }).success).toBe(false);
   });
 });

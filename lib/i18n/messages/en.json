@@ -81,14 +81,14 @@
     "NOT_FOUND": "That item could not be found. It may have been removed.",
     "DUPLICATE_NAME": "Something with that name already exists.",
     "ALREADY_IN_RECIPE": "That ingredient is already in this recipe.",
-    "INGREDIENT_IN_USE": "This ingredient is used by an active recipe, so it can't be moved to the trash. Remove it from those recipes first.",
+    "INGREDIENT_IN_USE": "This ingredient is used by an active recipe or dish, so it can't be moved to the trash. Remove it from those first.",
     "INSUFFICIENT_STOCK": "That stock-out is larger than the quantity on hand. Recount the stock or enter a smaller amount.",
     "IDEMPOTENCY_CONFLICT": "This stock change conflicts with one already recorded. Refresh and try again.",
     "RECIPE_HAS_TRASHED_INGREDIENTS": "This recipe uses ingredients that are also in the trash. Restore those ingredients first.",
     "RECIPE_LINES_CHANGED": "The recipe ingredients changed. Reload and try again.",
     "RECIPE_PRESETS_CHANGED": "The presets changed. Reload and try again.",
     "RECIPE_PRESET_LIMIT_REACHED": "You've reached the preset limit for this recipe. Remove one before adding another.",
-    "INGREDIENT_IN_TRASHED_RECIPE": "This ingredient is still part of a trashed recipe. Delete that recipe permanently first.",
+    "INGREDIENT_IN_TRASHED_RECIPE": "This ingredient is still part of a trashed recipe or dish. Delete that permanently first.",
     "RECIPE_COMPONENT_INVALID": "That recipe can't be used as a sub-recipe. It must be active and have a finished batch weight.",
     "RECIPE_COMPONENT_ALREADY_EXISTS": "This recipe already uses that sub-recipe. Edit the existing line instead.",
     "RECIPE_CYCLE": "That would make the recipes contain each other. Pick a different sub-recipe.",
@@ -124,7 +124,9 @@
     "INVOICE_IMPORT_NOT_EDITABLE": "This invoice import has already been applied or discarded and can no longer be changed.",
     "INVOICE_IMPORT_EMPTY": "Match at least one line to an ingredient (with a pack size, unit, and price) before applying.",
     "ALLERGEN_CANNOT_DOWNGRADE": "A recipe allergen can only be added or raised, never lowered or removed. Allergens from ingredients can't be suppressed here.",
-    "MENU_RECIPE_INVALID": "One of the menu's recipes is missing or in the trash. Remove or replace that line, then save again.",
+    "MENU_RECIPE_INVALID": "One of the dish's recipes is missing or in the trash. Remove or replace that line, then save again.",
+    "MENU_INGREDIENT_INVALID": "One of the dish's ingredients is missing, in the trash, or uses a unit that doesn't fit it. Fix that line, then save again.",
+    "MENU_FOLDER_INVALID": "That folder no longer exists. Choose another folder, then save again.",
     "RECIPE_IN_MENU": "This recipe is used in a menu, so it can't be deleted forever yet. Remove it from the menu (or delete the menu) first.",
     "PRODUCTION_RECIPE_INVALID": "One of the production's recipes is missing or in the trash. Remove or replace that line, then save again.",
     "PRODUCTION_NOT_EDITABLE": "This production is planned and read-only. Reopen it to draft before editing.",
@@ -382,64 +384,141 @@
     }
   },
   "menus": {
-    "title": "Menus",
-    "subtitle": "Group recipes into menus and combos, and see their food cost and margin.",
-    "empty": "No menus yet. Create your first menu to combine recipes into a combo.",
-    "saved": "Saved",
-    "itemCount": "{count, plural, =0 {No recipes} one {# recipe} other {# recipes}}",
-    "portions": "{count, plural, one {# portion} other {# portions}}",
-    "unavailableLine": "Unavailable",
-    "actions": {
-      "new": "New menu",
+    "home": {
+      "searchPlaceholder": "Search every dish…",
+      "searching": "Searching…",
+      "noResults": "No dish matches “{query}”.",
+      "foldersLabel": "Folders",
+      "dishCount": "{count, plural, =0 {No dishes} one {# dish} other {# dishes}}",
+      "newFolder": "New folder",
+      "newFolderDescription": "Group dishes the way you think about them — Bakery, Catering, Test Kitchen…",
+      "folderName": "Folder name",
+      "folderNamePlaceholder": "e.g. Pastry",
+      "create": "Create",
+      "cancel": "Cancel",
+      "emptyManager": "No folders yet. Create your first folder to start organising dishes.",
+      "emptyKitchen": "No dishes yet."
+    },
+    "folder": {
+      "back": "Menus",
+      "unfiled": "Unfiled",
+      "rename": "Rename folder",
+      "renameDescription": "Choose a new name for this folder.",
+      "delete": "Delete folder",
+      "deleteTitle": "Delete this folder?",
+      "deleteBody": "“{name}” will be removed. Its dishes are kept and move to Unfiled.",
+      "save": "Save",
+      "cancel": "Cancel",
+      "sortLabel": "Sort dishes",
+      "sort": {
+        "modified": "Last modified",
+        "opened": "Last opened",
+        "name": "Alphabetical",
+        "created": "Date created"
+      },
+      "dateLabel": {
+        "modified": "Modified {date}",
+        "opened": "Opened {date}",
+        "created": "Created {date}"
+      },
+      "neverOpened": "Never opened",
+      "newDish": "New dish",
+      "meta": "{components, plural, =0 {No components} one {# component} other {# components}} · {portions, plural, one {# portion} other {# portions}}",
+      "costShort": "Cost",
+      "noPrice": "No price",
+      "emptyManager": "No dishes in this folder yet. Create one with New dish.",
+      "emptyKitchen": "No dishes in this folder yet.",
+      "truncated": "Showing the first 500 dishes. Use search to find the rest."
+    },
+    "units": {
+      "portion": "portion",
+      "g": "g",
+      "kg": "kg",
+      "ml": "ml",
+      "l": "l",
+      "piece": "pcs"
+    },
+    "builder": {
       "back": "Back",
-      "create": "Create menu",
-      "save": "Save changes",
-      "delete": "Delete menu"
-    },
-    "incomplete": {
-      "badge": "Incomplete",
-      "kitchenBody": "One or more recipes in this menu are unavailable. The composition and allergens may be incomplete.",
-      "managerBody": "One or more recipes are unavailable (in the trash). Food cost and margin are hidden until you remove or restore them."
-    },
-    "kpis": {
-      "price": "Price",
-      "cost": "Cost",
-      "foodCost": "Food cost",
-      "margin": "Margin"
-    },
-    "composition": {
-      "title": "Recipes",
-      "recipe": "Recipe",
-      "quantity": "Portions",
-      "lineCost": "Cost",
-      "empty": "No recipes in this menu yet. Add one below.",
-      "add": "Add",
-      "allAdded": "All recipes added",
-      "select": "Select a recipe…",
-      "remove": "Remove"
-    },
-    "allergens": {
-      "title": "Allergens"
-    },
-    "pricing": {
-      "title": "Pricing",
-      "sellingPrice": "Selling price"
-    },
-    "fields": {
-      "name": "Menu name",
-      "namePlaceholder": "e.g. Lunch combo",
-      "notes": "Notes"
-    },
-    "placeholders": {
-      "notes": "Internal notes about this menu…"
-    },
-    "deleteConfirm": {
-      "title": "Move menu to trash?",
-      "body": "{name} will be moved to the trash. You can restore it within 30 days."
-    },
-    "errors": {
-      "nameRequired": "Give the menu a name.",
-      "noItems": "Add at least one recipe to the menu."
+      "untitled": "New dish",
+      "create": "Create dish",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "unsaved": "Unsaved changes",
+      "delete": "Delete",
+      "deleteTitle": "Move dish to trash?",
+      "deleteBody": "“{name}” will be moved to the trash. You can restore it within 30 days.",
+      "cancel": "Cancel",
+      "composition": "Composition",
+      "kitchenPortions": "{count, plural, one {Makes # portion} other {Makes # portions}}",
+      "fields": {
+        "name": "Dish name",
+        "namePlaceholder": "e.g. Passion fruit chocolate cake",
+        "folder": "Folder",
+        "unfiled": "Unfiled",
+        "portions": "Portions",
+        "notes": "Notes",
+        "notesPlaceholder": "Assembly notes, plating, storage…"
+      },
+      "pricing": {
+        "title": "Pricing (per portion)",
+        "priceExcl": "Price excl. VAT",
+        "priceIncl": "Price incl. VAT",
+        "vat": "VAT rate",
+        "vatDefault": "Using your default rate",
+        "margin": "Gross margin",
+        "foodCost": "Food cost",
+        "grossProfit": "Gross profit",
+        "hint": "Type any of price, margin or food cost — the others follow.",
+        "hintNoCost": "Add components with known costs to price by margin or food cost."
+      },
+      "recipes": {
+        "title": "Recipes",
+        "empty": "No recipes yet. Add sponges, creams, sauces… from your recipe library.",
+        "add": "Add a recipe…",
+        "perKg": "{amount}/kg",
+        "perPortion": "{amount}/portion",
+        "needsWeight": "Set this recipe's batch weight to use g or kg."
+      },
+      "ingredients": {
+        "title": "Ingredients & packaging",
+        "empty": "No direct ingredients. Add fruit, garnishes, boxes or disposables.",
+        "add": "Add an ingredient or packaging…",
+        "per": {
+          "weight": "{amount}/kg",
+          "volume": "{amount}/l",
+          "count": "{amount}/pc"
+        }
+      },
+      "quantity": "Quantity",
+      "unit": "Unit",
+      "remove": "Remove",
+      "unavailable": "In trash",
+      "needsPricing": "Needs pricing",
+      "noMatches": "No matches",
+      "problems": {
+        "name": "Give the dish a name.",
+        "portions": "Portions must be a whole number of at least 1.",
+        "vat": "VAT must be between 0 and 100%.",
+        "quantity": "Every component needs a quantity above zero.",
+        "unavailable": "Remove the components that are in the trash."
+      },
+      "summary": {
+        "title": "Financial summary",
+        "margin": "Gross margin",
+        "profitPerPortion": "gross profit per portion",
+        "totalCost": "Total cost",
+        "costPerPortion": "Cost per portion",
+        "sellingPrice": "Selling price",
+        "inclVat": "{amount} incl. VAT",
+        "grossProfit": "Gross profit",
+        "grossMargin": "Gross margin",
+        "foodCost": "Food cost",
+        "breakdown": "Where the cost comes from",
+        "portionsMissing": "Enter the number of portions to see the cost per portion.",
+        "incomplete": "{count, plural, one {# component has} other {# components have}} no known cost yet, so totals are hidden until it's priced."
+      }
     }
   },
   "productions": {

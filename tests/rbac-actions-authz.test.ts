@@ -49,9 +49,12 @@ import {
   createReorderTaskFromIngredientAction,
 } from '@/app/(app)/tasks/actions';
 import {
-  createMenuAction,
-  updateMenuAction,
+  createDishAction,
+  updateDishAction,
   deleteMenuAction,
+  createMenuFolderAction,
+  renameMenuFolderAction,
+  deleteMenuFolderAction,
 } from '@/app/(app)/menus/actions';
 import { updateOrgSettingsAction } from '@/app/(app)/settings/actions';
 import {
@@ -121,11 +124,14 @@ describe('manager-only actions reject kitchen before touching data', () => {
     for (const result of results) expect(result).toEqual(FORBIDDEN);
   });
 
-  it('blocks ALL menu mutations (menus are manager-only, incl. price)', async () => {
+  it('blocks ALL dish + menu-folder mutations (manager-only, incl. price)', async () => {
     const results = await Promise.all([
-      createMenuAction({}),
-      updateMenuAction('m1', {}),
+      createDishAction({}),
+      updateDishAction('m1', {}),
       deleteMenuAction('m1'),
+      createMenuFolderAction({ name: 'Bakery' }),
+      renameMenuFolderAction('f1', { name: 'Pastry' }),
+      deleteMenuFolderAction('f1'),
     ]);
     for (const result of results) expect(result).toEqual(FORBIDDEN);
   });

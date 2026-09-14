@@ -1,29 +1,50 @@
 import { canSeeRecipeCosts, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
-import { listMenuRecipeOptions } from '@/lib/data/menus';
+import { listDishBuilderOptions, listMenuFolderOptions } from '@/lib/data/menus';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { NoAccess } from '@/components/app/no-access';
-import { MenuEditor } from '@/components/app/menus/menu-editor';
+import { DishBuilder } from '@/components/app/menus/dish-builder';
 
 /**
- * New menu (Sprint 10). MANAGER-ONLY: creating a menu sets its selling price (a
- * financial mutation). Kitchen gets NoAccess here AND is refused by the action.
+ * New dish (Dish Builder). MANAGER-ONLY: a dish carries its selling price. Kitchen
+ * gets NoAccess here AND is refused by the action. `?folder=` pre-selects a folder.
  */
-export default async function NewMenuPage() {
+export default async function NewDishPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ folder?: string }>;
+}) {
   if (!canSeeRecipeCosts(await getUserRole())) return <NoAccess />;
 
+  const { folder } = await searchParams;
   const organizationId = await getOrgId();
-  const [recipeOptions, settings] = await Promise.all([
-    withOrg(organizationId, (tx) => listMenuRecipeOptions(tx, organizationId)),
+  const [{ folders, options }, settings] = await Promise.all([
+    withOrg(organizationId, async (tx) => ({
+      folders: await listMenuFolderOptions(tx, organizationId),
+      options: await listDishBuilderOptions(tx, organizationId),
+    })),
     getOrgSettings(),
   ]);
+  const folderId = folders.some((f) => f.id === folder) ? (folder as string) : null;
 
   return (
-    <MenuEditor
-      mode="create"
-      initial={{ name: '', sellingPriceCents: null, notes: null, lines: [] }}
-      recipeOptions={recipeOptions}
+    <DishBuilder
+      initial={{
+        id: null,
+        name: '',
+        folderId,
+        portions: 1,
+        sellingPriceCents: null,
+        vatRateBps: null,
+        notes: null,
+        recipeLines: [],
+        ingredientLines: [],
+      }}
+      folders={folders}
+      recipeOptions={options.recipes}
+      ingredientOptions={options.ingredients}
       currency={settings.currency}
+      defaultVatBps={settings.defaultTaxRateBps}
     />
   );
 }

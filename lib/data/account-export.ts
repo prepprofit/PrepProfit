@@ -9,6 +9,8 @@ import {
   ingredientAllergens,
   recipeAllergenOverrides,
   menus,
+  menuFolders,
+  menuIngredientItems,
   menuItems,
   productions,
   productionItems,
@@ -79,7 +81,9 @@ import {
 // v13 (Sprint 12a): added `sales` + `saleItems` (daily-close sales).
 // v14 (Sprint 12c): added `storageAreas` + `stockCounts` + `stockCountItems`;
 // `inventoryMovements` rows now carry `storage_area_id` (flows through `select()`).
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 14;
+// v15 (Menu redesign): added `menuFolders` + `menuIngredientItems`; `menus` rows now
+// carry folder_id/portions/vat_rate_bps/last_opened_at and `menuItems` a `unit`.
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 15;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -102,8 +106,10 @@ export async function buildOrgDataExport(
     ['recipeIngredients', recipeIngredients],
     ['ingredientAllergens', ingredientAllergens],
     ['recipeAllergenOverrides', recipeAllergenOverrides],
+    ['menuFolders', menuFolders],
     ['menus', menus],
     ['menuItems', menuItems],
+    ['menuIngredientItems', menuIngredientItems],
     ['productions', productions],
     ['productionItems', productionItems],
     ['productionRecipeSnapshots', productionRecipeSnapshots],

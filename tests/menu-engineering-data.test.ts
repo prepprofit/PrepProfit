@@ -7,7 +7,7 @@ import type { SaleItemKind, SaleStatus } from '@/lib/db/schema';
 import { createIngredient } from '@/lib/data/ingredients';
 import { createRecipe } from '@/lib/data/recipes';
 import { addRecipeIngredient } from '@/lib/data/recipe-ingredients';
-import { createMenu } from '@/lib/data/menus';
+import { createDish } from '@/lib/data/menus';
 import { loadMenuEngineering } from '@/lib/data/menu-engineering';
 
 const ORG_A = 'org_a';
@@ -235,12 +235,15 @@ describe('loadMenuEngineering', () => {
 
   it('classifies a menu from its component recipe cost and posted units', async () => {
     const recipe = await pricedRecipe(db, ORG_A, 'Base', 3000);
-    const outcome = await createMenu(
-      db,
-      ORG_A,
-      { name: 'Combo', sellingPriceCents: 3000, notes: null },
-      [{ recipeId: recipe.id, quantity: 1 }],
-    );
+    const outcome = await createDish(db, ORG_A, {
+      name: 'Combo',
+      folderId: null,
+      portions: 1,
+      sellingPriceCents: 3000,
+      vatRateBps: null,
+      recipeLines: [{ recipeId: recipe.id, quantity: 1, unit: 'portion' }],
+      ingredientLines: [],
+    });
     if (outcome.status !== 'ok') throw new Error('failed to create menu');
     await insertSale(db, ORG_A, {
       date: '2026-06-09',

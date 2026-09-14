@@ -3,8 +3,7 @@ import { ingredients, saleItems, sales } from '@/lib/db/schema';
 import type { Dimension } from '@/lib/units';
 import type { TenantClient } from '@/lib/db/tenant';
 import { recipeCost, lineCostCents } from '@/lib/calculations/recipeCost';
-import { menuCost } from '@/lib/calculations/menu';
-import { loadActiveCatalogue } from '@/lib/data/active-catalogue';
+import { catalogueDishCostPerPortion, loadActiveCatalogue } from '@/lib/data/active-catalogue';
 import {
   buildDailyCloseInsights,
   type DailyCloseInsights,
@@ -96,17 +95,8 @@ export async function loadDailyCloseInsights(
     );
   }
 
-  const menuCostById = new Map<string, number | null>();
-  for (const menu of catalogue.menus) {
-    const cost = menuCost(
-      menu.lines.map((line) => ({
-        recipeId: line.recipeId,
-        quantity: line.quantity,
-        costPerPortionCents: recipeCostPerPortion.get(line.recipeId) ?? null,
-      })),
-    );
-    menuCostById.set(menu.id, cost.complete ? cost.costCents : null);
-  }
+  // Dish cost per portion — complete-or-null (gram lines + direct ingredients).
+  const menuCostById = catalogueDishCostPerPortion(catalogue, recipeCostPerPortion);
 
   // ── Direct-ingredient lines: current per-unit cost from price × canonical qty. ──
   const directIngredientIds = [

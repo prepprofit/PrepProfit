@@ -337,6 +337,13 @@
       "when": 1789287095993,
       "tag": "0047_profit_hour_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1789391080455,
+      "tag": "0048_dish_builder",
+      "breakpoints": true
     }
   ]
 }

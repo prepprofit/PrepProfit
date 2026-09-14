@@ -5,7 +5,7 @@ import type { TenantDb } from '@/lib/db/tenant';
 import { createIngredient } from '@/lib/data/ingredients';
 import { createRecipe } from '@/lib/data/recipes';
 import { addRecipeIngredient } from '@/lib/data/recipe-ingredients';
-import { createMenu } from '@/lib/data/menus';
+import { createDish } from '@/lib/data/menus';
 import {
   createTaskList,
   createPrepTaskFromRecipe,
@@ -98,12 +98,15 @@ describe('loadPrepReorderPlan', () => {
       quantity: 100, // 100 g per roll
     });
     if (!added.ok) throw new Error('failed to add line');
-    const menu = await createMenu(
-      db,
-      ORG_A,
-      { name: 'Basket', sellingPriceCents: 500, notes: null },
-      [{ recipeId: recipe.id, quantity: 2 }], // 2 rolls per cover
-    );
+    const menu = await createDish(db, ORG_A, {
+      name: 'Basket',
+      folderId: null,
+      portions: 1,
+      sellingPriceCents: 500,
+      vatRateBps: null,
+      recipeLines: [{ recipeId: recipe.id, quantity: 2, unit: 'portion' }], // 2 rolls per cover
+      ingredientLines: [],
+    });
     if (menu.status !== 'ok') throw new Error('failed to create menu');
 
     // 5 covers × 2 rolls = 10 rolls → 1000 g flour; 0 on hand → reorder 1000 g.
