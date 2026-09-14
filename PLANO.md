@@ -471,6 +471,28 @@ Acceptance criteria:
   planner) uses cost per sale unit from the shared `compositionCost`. Migration 0049;
   export schema v16. Follow-up: sales of weight products are whole kg — decimal kg needs a
   sales money-model change; drop deprecated `menus.portions`.
+- **Dish editor as a per-portion price calculator.** The Menu editor follows a fixed
+  order: dish name, folder, selling price per portion excl./incl. VAT (linked through the
+  dish's VAT rate or the org default), number of portions (whole number, default 1 — all
+  quantities and costs are entered for that many portions; changing it redistributes cost
+  and never rescales anything), then the margin calculator (price, total cost per portion,
+  amount left per portion, margin, Total cost %, total cost for all portions; a target
+  margin suggests excl./incl. prices that only apply on "Use this price"), then recipes,
+  direct ingredients/packaging, labour and extras. Shared maths: `portionPricing` +
+  `priceForMargin` over `compositionCost`. The batch output unit switch and "Make a
+  different quantity" are gone from the editor. Products saved as weight batches are
+  never reinterpreted: the editor asks for portions + a price per portion and keeps the
+  weight as `finished_weight_grams`; count units (piece/cake) and size text are preserved.
+  No migration.
+- **Recipes navigation.** `/recipes` is a home with one large search across every folder
+  (best match first, recent activity as tie-break), a compact "Add recipe" and folder
+  tiles plus "Unfiled"; folder management (new, rename + icon, reorder, delete) sits in a
+  "New folder" tile and a small menu per tile. `?folder=<id>` / `?folder=none` is a
+  full-width folder view (back to Recipes, folder name, "Add recipe" preselecting the
+  folder, table or cards with filters and bulk actions). Lists default to "Recent
+  activity" = latest of `updated_at` and the new `recipes.last_opened_at` (created when
+  neither moved); opening the recipe detail page records `last_opened_at` without touching
+  `updated_at`. Migration 0050 (additive; must be applied BEFORE the release that reads it).
 
 ## Backlog - not scheduled until prioritized
 

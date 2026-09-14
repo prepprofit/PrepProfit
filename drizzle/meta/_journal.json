@@ -351,6 +351,13 @@
       "when": 1789398646219,
       "tag": "0049_menu_batches",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789403350065,
+      "tag": "0050_recipe_last_opened",
+      "breakpoints": true
     }
   ]
 }

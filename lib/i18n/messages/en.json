@@ -454,9 +454,10 @@
     },
     "builder": {
       "back": "Back",
-      "untitled": "New dish / product",
-      "create": "Create",
-      "save": "Save",
+      "untitled": "Untitled dish",
+      "titleCreate": "Create Dish",
+      "titleEdit": "Edit Dish",
+      "save": "Save Dish",
       "saving": "Saving…",
       "saved": "Saved",
       "unsaved": "Unsaved changes",
@@ -467,40 +468,64 @@
       "dismiss": "Dismiss",
       "optional": "Optional",
       "composition": "What goes in",
-      "sections": {
-        "product": "Product and batch",
-        "components": "Recipes, ingredients and packaging",
-        "labour": "Labour and extras",
-        "price": "Selling price"
-      },
+      "coversAll": "{count, plural, one {Enter quantities for # portion.} other {Enter quantities for all # portions together.}}",
+      "coversAllUnknown": "Enter quantities for all the portions together.",
       "fields": {
-        "name": "Name",
+        "name": "Dish name",
         "namePlaceholder": "e.g. Passion fruit chocolate cake",
-        "folder": "Folder",
+        "folder": "Folder (optional)",
         "unfiled": "No folder",
         "notes": "Notes",
         "notesPlaceholder": "Assembly, plating, storage, customer details…"
       },
       "output": {
-        "makes": "This batch makes",
-        "unit": "Unit",
-        "size": "Size",
-        "sizePlaceholder": "e.g. 18 cm",
-        "yieldHint": "Changing this number corrects what the batch actually produced — ingredients stay the same. To make more or less, use “Make a different quantity”.",
-        "finishedWeight": "Total finished batch weight",
-        "finishedWeightHint": "Only if you have weighed it. Needed to show cost per kg.",
-        "batchOf": "{unit, select, g {{amount} g} kg {{amount} kg} piece {{count, plural, one {# piece} other {# pieces}}} cake {{count, plural, one {# cake} other {# cakes}}} other {{count, plural, one {# portion} other {# portions}}}}",
-        "thisBatch": "this batch"
+        "makes": "Makes"
       },
-      "per": {
-        "kg": "per kg",
-        "piece": "per piece",
-        "cake": "per cake",
-        "portion": "per portion"
+      "convert": {
+        "title": "Set this product up in portions",
+        "body": "This product was saved as a batch of {amount} {unit} priced at {price} per kg. The dish editor now works per portion, so enter how many portions this batch makes and the selling price per portion.",
+        "keeps": "Nothing is guessed: ingredients, labour and extras stay as they are, and the batch weight is kept as its finished weight. Nothing changes until you save.",
+        "action": "Use portions"
       },
-      "components": {
-        "wholeBatch": "The quantities below make {batch}.",
-        "wholeBatchUnknown": "The quantities below make the whole batch."
+      "portions": {
+        "label": "Number of portions",
+        "hint": "Enter all quantities and costs for this number of portions."
+      },
+      "price": {
+        "excl": "Selling price per portion, excl. VAT",
+        "incl": "Selling price per portion, incl. VAT",
+        "vatRate": "VAT rate",
+        "vatDefault": "Using your default rate ({rate})",
+        "vatNone": "No default VAT rate set — enter one to link the prices",
+        "vatOverride": "Using {rate} for this dish. Clear it to use your default rate."
+      },
+      "calc": {
+        "title": "Margin calculator",
+        "vatBasis": "All amounts per portion, excluding VAT.",
+        "price": "Selling price",
+        "costPerPortion": "Total cost per portion",
+        "leftPerPortion": "Amount left per portion",
+        "margin": "Margin",
+        "totalCostPct": "Total cost %",
+        "totalCost": "{count, plural, one {Total cost for # portion} other {Total cost for all # portions}}",
+        "totalCostUnknown": "Total cost for all portions",
+        "overheads": "The amount left still needs to cover overheads and profit.",
+        "target": "Target margin",
+        "suggestedExcl": "Suggested price excl. VAT",
+        "suggestedIncl": "Suggested price incl. VAT",
+        "usePrice": "Use this price",
+        "targetHint": "Type a target margin to see the price that reaches it. Your price only changes if you choose “Use this price”.",
+        "targetInvalid": "Enter a target margin from 0 to 99.99%.",
+        "suggestedNeedsCost": "A suggested price needs the total cost per portion first.",
+        "missing": {
+          "convert": "Set this product up in portions to see its margin.",
+          "portions": "Enter the number of portions (a whole number of 1 or more) to see the cost per portion.",
+          "costs": "Add recipes, ingredients, labour or extra costs to see the cost per portion.",
+          "labour": "Labour needs both working hours and cost per hour — or leave both empty.",
+          "extras": "Each extra cost needs a description and a valid amount.",
+          "unpriced": "Some items have no known cost yet, so the cost per portion can’t be worked out. Price them or remove them.",
+          "price": "Enter a selling price to see the amount left and the margin."
+        }
       },
       "recipes": {
         "title": "Recipes",
@@ -527,15 +552,19 @@
       "needsPricing": "Needs pricing",
       "noMatches": "No matches",
       "labour": {
+        "title": "Labour costs",
         "hours": "Working hours",
-        "hoursFor": "Working hours for {batch}",
-        "rate": "Cost per hour ({currency})",
+        "hoursFor": "{count, plural, one {Working hours for # portion} other {Working hours for all # portions}}",
+        "rate": "Cost per hour",
         "cost": "Labour cost",
+        "notEnteredShort": "Not entered",
         "hint": "Include preparation, assembly and packing. Two people working four hours each = 8 working hours. Don’t count baking, cooling or resting time when nobody is working on it.",
         "replacesRecipeLabour": "These hours cover all production work. Recipe labour won’t be added again.",
-        "legacy": "Labour isn’t entered for this product. Some recipe costs above may already include recipe labour."
+        "legacy": "Labour isn’t entered, so the labour already inside your recipe costs is used. Enter hours (even 0) to replace it.",
+        "notEntered": "Labour isn’t entered, so no labour is included in this dish’s cost. Enter hours (even 0) to set it."
       },
       "extras": {
+        "title": "Extra costs",
         "addWork": "Add extra work",
         "addExpense": "Add expense",
         "workLabel": "Extra work",
@@ -547,76 +576,31 @@
         "amount": "Amount",
         "reminder": "Only add work that is not already included above. Packaging belongs in the ingredient list."
       },
-      "price": {
-        "label": "Selling price, excluding VAT ({per})",
-        "hint": "This is the main price. Everything on the right updates as you type.",
-        "more": "More pricing options",
-        "incl": "Price including VAT ({per})",
-        "vat": "VAT rate",
-        "vatDefault": "Using your default rate",
-        "margin": "Share left after costs",
-        "totalCostPct": "Total cost %",
-        "moreHint": "Type a percentage and the selling price is worked out for you.",
-        "moreNoCost": "Complete the costs above to price by percentage."
-      },
-      "results": {
-        "title": "Batch cost and results",
-        "vatBasis": "All amounts exclude VAT.",
-        "components": "Recipes, ingredients and packaging",
-        "labour": "Production labour",
-        "labourNotEntered": "Not entered",
-        "extraWork": "Extra work",
-        "expenses": "Other expenses",
-        "total": "Total estimated batch cost",
-        "costPerUnit": "Cost",
-        "costPerKg": "Cost per kg",
-        "price": "Selling price",
-        "sales": "Estimated sales if all {batch} sell",
-        "left": "Left for overheads and profit",
-        "leftPct": "{pct} of sales left",
-        "totalCostPct": "Total cost {pct}",
-        "assumption": "Assumes the whole batch sells at this price. Overheads like rent aren’t included, so this isn’t net profit.",
-        "outputMissing": "Enter what this batch makes to see the cost per unit.",
-        "incomplete": "Some items have no known cost yet, so totals are hidden until they are priced."
-      },
-      "scale": {
-        "action": "Make a different quantity",
-        "title": "Make a different quantity",
-        "description": "All recipe and ingredient quantities change in proportion. Check the new amounts before applying.",
-        "makeInstead": "Make",
-        "apply": "Apply new quantities",
-        "notScaled": "Working hours, extra work and expenses are not changed. You’ll be asked to review them.",
-        "review": "You changed the batch size. Check the working hours, extra work and expenses — they were not changed automatically.",
-        "reviewed": "I’ve checked them"
-      },
-      "unitChange": {
-        "title": "Change how this batch is measured",
-        "toCount": "How many {unit} does this batch make?",
-        "toWeight": "How much does the finished batch weigh, in {unit}?",
-        "confirm": "Change",
-        "keepWeight": "Keep {kg} kg as the total finished batch weight",
-        "priceReset": "The selling price will be cleared, because it was for a different unit. Enter the new price afterwards."
-      },
       "copy": {
         "action": "Make a copy",
         "title": "Make a copy",
-        "description": "The copy gets everything: ingredients, batch size, labour, extras and price. The original stays unchanged.",
+        "description": "The copy gets everything: portions, recipes, ingredients, labour, extras and price. The original stays unchanged.",
         "confirm": "Make copy",
         "defaultName": "{name} (copy)",
         "saveFirst": "Save your changes before copying.",
         "banner": "This is a copy. Change its name and check the working hours and expenses for this version."
       },
+      "discard": {
+        "title": "Leave without saving?",
+        "body": "Your changes to this dish haven’t been saved and will be lost.",
+        "confirm": "Discard changes",
+        "keep": "Keep editing"
+      },
       "problems": {
-        "name": "Give it a name.",
-        "output": "Enter what this batch makes (a number above zero).",
-        "finishedWeight": "The finished batch weight must be a number above zero, or left empty.",
+        "convert": "Set this product up in portions before saving.",
+        "name": "Give the dish a name.",
+        "portions": "Enter the number of portions as a whole number of 1 or more.",
         "labour": "Enter both working hours and cost per hour (zero or more), or leave both empty.",
         "extras": "Each extra needs a description and valid hours, cost per hour or amount.",
         "vat": "VAT must be between 0 and 100%.",
         "price": "Enter the selling price as a number.",
         "quantity": "Every recipe and ingredient needs a quantity above zero.",
-        "unavailable": "Remove the items that are in the trash.",
-        "review": "Confirm you’ve checked the hours and expenses after changing the batch size."
+        "unavailable": "Remove the items that are in the trash."
       }
     },
     "batch": {
@@ -1281,6 +1265,29 @@
     },
     "title": "Recipes",
     "subtitle": "Build a recipe, see what it really costs, and price it with confidence.",
+    "home": {
+      "searchPlaceholder": "Search all recipes…",
+      "addRecipe": "Add recipe",
+      "addRecipeDescription": "Give it a name — you can add ingredients, method and costs next.",
+      "folderLabel": "Folder",
+      "resultsLabel": "Matching recipes",
+      "resultCount": "{count, plural, one {# recipe found} other {# recipes found}}",
+      "noResults": "No recipe matches “{query}”.",
+      "unfiled": "Unfiled",
+      "recipeCount": "{count, plural, =0 {No recipes} one {# recipe} other {# recipes}}",
+      "newFolder": "New folder",
+      "folderName": "Folder name",
+      "folderDialogDescription": "Group recipes the way you work — Bases, Pastry, Sauces…",
+      "folderActions": "Folder options for {name}",
+      "empty": "No recipes yet. Use Add recipe to create your first one.",
+      "back": "Recipes",
+      "sortLabel": "Sort",
+      "sort": {
+        "recent": "Recent activity",
+        "name": "Name (A–Z)",
+        "column": "By column"
+      }
+    },
     "allergenMatrix": {
       "pdf": "Allergen matrix (PDF)",
       "xlsx": "Allergen matrix (Excel)"
@@ -1460,7 +1467,7 @@
       "moveTo": "Move to folder",
       "icon": "Choose folder icon",
       "noIcon": "Default",
-      "emptyFolder": "No recipes in this folder yet. Create one above or move recipes here.",
+      "emptyFolder": "No recipes in this folder yet. Use Add recipe or move recipes here.",
       "deleteConfirm": {
         "title": "Delete folder?",
         "body": "“{name}” will be deleted. Its recipes move to “No folder” — they are not deleted."

@@ -168,6 +168,7 @@ describe('kitchen DTO projections omit the financial keys', () => {
       extraStepPriceCents: 200,
       createdAt: new Date(),
       updatedAt: new Date(),
+      lastOpenedAt: null,
       deletedAt: null,
     });
     expect('laborCostCents' in view).toBe(false);
@@ -217,6 +218,7 @@ describe('kitchen DTO projections omit the financial keys', () => {
         extraStepPriceCents: null,
         createdAt: new Date(),
         updatedAt: new Date(),
+        lastOpenedAt: null,
         deletedAt: null,
       },
       lines: [

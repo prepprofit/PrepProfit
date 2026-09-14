@@ -426,7 +426,7 @@ export function RecipeEditor({
     startTransition(async () => {
       const result = await deleteRecipeAction(recipe.id);
       if (result.ok) {
-        router.push('/recipes');
+        router.push(recipe.folderId ? `/recipes?folder=${recipe.folderId}` : '/recipes?folder=none');
       } else {
         setError(actionError(result.code));
         setConfirmOpen(false);
@@ -674,7 +674,8 @@ export function RecipeEditor({
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <Link
-          href="/recipes"
+          // Back to the folder the recipe lives in (Unfiled when it has none).
+          href={recipe.folderId ? `/recipes?folder=${recipe.folderId}` : '/recipes?folder=none'}
           className="inline-flex size-9 items-center justify-center rounded-full border border-border bg-surface text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
           aria-label={t('actions.back')}
         >

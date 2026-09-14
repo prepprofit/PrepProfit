@@ -13,6 +13,7 @@ import {
   priceExclVat,
   priceForMargin,
   priceForTotalCostShare,
+  portionPricing,
   priceInclVat,
   recipePortionEquivalent,
   scaleComposition,
@@ -327,5 +328,70 @@ describe('pricing', () => {
   it('rounds batch sales from the exact product, not from a rounded unit', () => {
     // 20.5 kg × 333c = 6826.5 → 6827
     expect(dishPricing({ exactTotalCents: 1, saleUnits: 20.5 }, 333, 0).estimatedSalesCents).toBe(6_827);
+  });
+});
+
+describe('portion pricing (dish editor margin calculator)', () => {
+  it('matches the brief example: 10 portions, €60 total, €15 → €9 left, 60%', () => {
+    const cost = compositionCost(
+      dish({
+        output: count(10, 'portion'),
+        labour: { hours: 1, hourlyCents: 2_000 }, // €20
+        extras: [{ kind: 'expense', amountCents: 1_000 }], // €10
+        ingredientLines: [{ ingredientId: 'fruit', quantity: 2_500, unit: 'g' }], // €30
+      }),
+      lookups,
+    );
+    expect(cost.totalCostCents).toBe(6_000);
+    const p = portionPricing(cost, 1_500, 1_300);
+    expect(p).toEqual({
+      priceExclCents: 1_500,
+      priceInclCents: 1_695,
+      costPerPortionCents: 600,
+      exactCostPerPortionCents: 600,
+      amountLeftPerPortionCents: 900,
+      marginBps: 6_000,
+      totalCostBps: 4_000,
+    });
+  });
+
+  it('uses margin, not markup, for the suggested price (€4 cost at 60% → €10)', () => {
+    expect(priceForMargin(400, 6_000)).toBe(1_000);
+  });
+
+  it('changing portions redistributes the same total, never rescales it', () => {
+    const base = dish({ output: count(1, 'portion'), ingredientLines: [{ ingredientId: 'box', quantity: 12, unit: 'piece' }] });
+    const twelve = { ...base, output: count(12, 'portion') };
+    expect(compositionCost(base, lookups).totalCostCents).toBe(960);
+    expect(compositionCost(twelve, lookups).totalCostCents).toBe(960);
+    expect(portionPricing(compositionCost(twelve, lookups), 200, 0).costPerPortionCents).toBe(80);
+  });
+
+  it('keeps exact precision: rounds per-portion figures from the exact total', () => {
+    // €10.00 over 3 portions = 333.33c; price 500 → left 166.67 → 167, margin 33.33% → 3333
+    const p = portionPricing({ exactTotalCents: 1_000, saleUnits: 3 }, 500, 0);
+    expect(p.costPerPortionCents).toBe(333);
+    expect(p.amountLeftPerPortionCents).toBe(167);
+    expect(p.marginBps).toBe(3_333);
+  });
+
+  it('shows nothing misleading when price or cost is missing, and allows a loss', () => {
+    expect(portionPricing({ exactTotalCents: null, saleUnits: 10 }, 1_500, 0)).toMatchObject({
+      priceInclCents: 1_500,
+      costPerPortionCents: null,
+      amountLeftPerPortionCents: null,
+      marginBps: null,
+    });
+    expect(portionPricing({ exactTotalCents: 6_000, saleUnits: 10 }, null, 0)).toMatchObject({
+      costPerPortionCents: 600,
+      amountLeftPerPortionCents: null,
+      marginBps: null,
+    });
+    expect(portionPricing({ exactTotalCents: 6_000, saleUnits: 10 }, 0, 0).marginBps).toBeNull();
+    expect(portionPricing({ exactTotalCents: 6_000, saleUnits: 10 }, 500, 0)).toMatchObject({
+      amountLeftPerPortionCents: -100,
+      marginBps: -2_000,
+    });
+    expect(portionPricing({ exactTotalCents: 6_000, saleUnits: null }, 500, 0).costPerPortionCents).toBeNull();
   });
 });

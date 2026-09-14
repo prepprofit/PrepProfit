@@ -3,8 +3,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { startWorkflow } from '@flows/react';
-import { ArrowDown, ArrowUp, ArrowUpDown, Plus } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Search } from 'lucide-react';
 import {
   type ColumnDef,
   type SortingState,
@@ -18,10 +17,10 @@ import { formatMoney } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Select } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { bulkTrashRecipesAction } from '@/app/(app)/recipes/book-actions';
-import { createRecipeAction } from '@/app/(app)/recipes/actions';
 import { cn } from '@/lib/utils';
 
 /**
@@ -29,7 +28,9 @@ import { cn } from '@/lib/utils';
  * Server-driven and read-only: the page ships the already-RBAC-stripped rows
  * (kitchen rows carry NO `money` key at all — the Cost/Price/Margin columns are
  * built only when `showMoney`), and a row click navigates to the recipe.
- * Search + sorting are client-side over the org's active recipes.
+ * Search + sorting are client-side over the folder's active recipes. The rows arrive
+ * in recent-activity order (latest edit or open first); with no column sort active
+ * the table keeps that order, and clicking a heading sorts by that column instead.
  */
 
 /** What the table renders: the manager row with `money` optional (kitchen). */
@@ -44,27 +45,28 @@ export function LibraryTable({
   rows,
   showMoney,
   currency,
-  createFolderId,
 }: {
+  /** Already in recent-activity order. */
   rows: LibraryTableRow[];
   /** Manager only — kitchen rows have no money to show anyway. */
   showMoney: boolean;
   currency: string;
-  /** Folder a newly created recipe is filed into (null = "No folder"). */
-  createFolderId: string | null;
 }) {
   const t = useTranslations('recipes.library');
-  const tRecipes = useTranslations('recipes');
+  const tHome = useTranslations('recipes.home');
   const tAllergens = useTranslations('allergens');
   const tCommon = useTranslations('common');
   const actionError = useActionError();
   const router = useRouter();
   const [query, setQuery] = React.useState('');
-  const [newName, setNewName] = React.useState('');
-  const [createError, setCreateError] = React.useState<string | null>(null);
-  const [sorting, setSorting] = React.useState<SortingState>([
-    { id: 'name', desc: false },
-  ]);
+  // Empty = the rows' own recent-activity order.
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const sortChoice =
+    sorting.length === 0
+      ? 'recent'
+      : sorting.length === 1 && sorting[0]?.id === 'name' && !sorting[0].desc
+        ? 'name'
+        : 'column';
 
   // ── Filters (Fase 7 Slice 3, parity with `Nutrition and label/6.png`) ──
   // Allergen filter: ANY selected slug present (contains OR may-contain).
@@ -153,33 +155,6 @@ export function LibraryTable({
   const [bulkNotice, setBulkNotice] = React.useState<string | null>(null);
   const [confirmTrash, setConfirmTrash] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
-
-  const onCreate = () => {
-    const trimmed = newName.trim();
-    if (trimmed === '') {
-      setCreateError(tRecipes('errors.nameRequired'));
-      return;
-    }
-    setCreateError(null);
-    startTransition(async () => {
-      const result = await createRecipeAction({
-        name: trimmed,
-        folderId: createFolderId,
-        yieldPortions: 1,
-        yieldPercentage: 100,
-        laborCostCents: 0,
-        energyCostCents: 0,
-        packagingCostCents: 0,
-      });
-      if (result.ok) {
-        // Best-effort celebratory nudge — never block navigation on Flows.
-        void startWorkflow('first-recipe-created').catch(() => undefined);
-        router.push(`/recipes/${result.data.id}`);
-      } else {
-        setCreateError(actionError(result.code));
-      }
-    });
-  };
 
   const toggleSelected = (id: string) => {
     setSelected((prev) => {
@@ -398,40 +373,39 @@ export function LibraryTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-1 items-center gap-3 lg:grid-cols-2">
-        <Input
-          type="search"
-          aria-label={t('searchPlaceholder')}
-          placeholder={t('searchPlaceholder')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border bg-surface p-3 sm:flex-row sm:items-center">
-          <Input
-            aria-label={tRecipes('newName')}
-            placeholder={tRecipes('placeholders.name')}
-            value={newName}
-            disabled={pending}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onCreate();
-            }}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
           />
-          <Button type="button" onClick={onCreate} disabled={pending}>
-            <Plus className="size-4" />
-            {tRecipes('actions.create')}
-          </Button>
+          <Input
+            type="search"
+            aria-label={t('searchPlaceholder')}
+            placeholder={t('searchPlaceholder')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="library-sort" className="shrink-0 text-sm text-muted-foreground">
+            {tHome('sortLabel')}
+          </label>
+          <Select
+            id="library-sort"
+            value={sortChoice}
+            onChange={(e) =>
+              setSorting(e.target.value === 'name' ? [{ id: 'name', desc: false }] : [])
+            }
+            className="h-10 w-48"
+          >
+            <option value="recent">{tHome('sort.recent')}</option>
+            <option value="name">{tHome('sort.name')}</option>
+            {sortChoice === 'column' && <option value="column">{tHome('sort.column')}</option>}
+          </Select>
         </div>
       </div>
-
-      {createError && (
-        <div
-          role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
-        >
-          {createError}
-        </div>
-      )}
 
       {allergenOptions.length > 0 && (
         <fieldset className="flex flex-wrap items-center gap-1.5">

@@ -4,8 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { startWorkflow } from '@flows/react';
-import { ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { ChevronRight, Search, Trash2 } from 'lucide-react';
 import type { Recipe } from '@/lib/db/schema';
 import { Input } from '@/components/ui/input';
 // The list never shows money — accept only the operational fields, so a recipe's
@@ -13,10 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import {
-  createRecipeAction,
-  deleteRecipeAction,
-} from '@/app/(app)/recipes/actions';
+import { deleteRecipeAction } from '@/app/(app)/recipes/actions';
 import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
 
@@ -31,21 +27,18 @@ export type RecipeListItem = Pick<
 /**
  * Recipe grid for the active folder view. Server-driven: it renders the recipes
  * the page already filtered (by org, `deleted_at IS NULL`, and the selected
- * folder), and every mutation calls a Server Action then `router.refresh()` so
+ * folder) in recent-activity order, and every mutation calls a Server Action then `router.refresh()` so
  * the grid and the folder rail's counts stay in sync. The page keys this on the
  * active view, so switching folders re-mounts it with the right list.
  */
 export function RecipeList({
   recipes,
   folders,
-  createFolderId,
   activeKey,
 }: {
   recipes: RecipeListItem[];
   folders: FolderOption[];
-  /** Folder a newly created recipe is filed into (null = "No folder"). */
-  createFolderId: string | null;
-  /** 'all' | 'none' | a folder id — drives the empty-state copy. */
+  /** 'none' | a folder id — drives the empty-state copy. */
   activeKey: string;
 }) {
   const t = useTranslations('recipes');
@@ -53,7 +46,6 @@ export function RecipeList({
   const tCommon = useTranslations('common');
   const actionError = useActionError();
   const router = useRouter();
-  const [name, setName] = React.useState('');
   const [query, setQuery] = React.useState('');
   const q = query.trim().toLowerCase();
   const visibleRecipes = q
@@ -65,35 +57,6 @@ export function RecipeList({
 
   const confirmTarget = recipes.find((r) => r.id === confirmId) ?? null;
   const inFolder = activeKey !== 'all' && activeKey !== 'none';
-
-  const onCreate = () => {
-    const trimmed = name.trim();
-    if (trimmed === '') {
-      setError(t('errors.nameRequired'));
-      return;
-    }
-    setError(null);
-    startTransition(async () => {
-      const result = await createRecipeAction({
-        name: trimmed,
-        folderId: createFolderId,
-        yieldPortions: 1,
-        yieldPercentage: 100,
-        laborCostCents: 0,
-        energyCostCents: 0,
-        packagingCostCents: 0,
-      });
-      if (result.ok) {
-        // Best-effort celebratory nudge — never block navigation on Flows, and a Flows
-        // outage must not break recipe creation. Canonical checklist completion still
-        // comes from the `recipeCount` user property, so imports aren't missed.
-        void startWorkflow('first-recipe-created').catch(() => undefined);
-        router.push(`/recipes/${result.data.id}`);
-      } else {
-        setError(actionError(result.code));
-      }
-    });
-  };
 
   const confirmDelete = () => {
     const id = confirmId;
@@ -129,31 +92,19 @@ export function RecipeList({
         </div>
       )}
 
-      {/* Search + create side by side: search left, new-recipe field right. */}
-      <div className="grid grid-cols-1 items-center gap-3 lg:grid-cols-2">
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden
+        />
         <Input
           type="search"
           aria-label={tCommon('searchPlaceholder')}
           placeholder={tCommon('searchPlaceholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          className="pl-9"
         />
-        <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border bg-surface p-3 sm:flex-row sm:items-center">
-          <Input
-            aria-label={t('newName')}
-            placeholder={t('placeholders.name')}
-            value={name}
-            disabled={pending}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onCreate();
-            }}
-          />
-          <Button type="button" onClick={onCreate} disabled={pending}>
-            <Plus className="size-4" />
-            {t('actions.create')}
-          </Button>
-        </div>
       </div>
 
       {visibleRecipes.length === 0 ? (

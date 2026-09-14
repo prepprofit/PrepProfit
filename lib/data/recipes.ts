@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
   ingredientPrepActions,
   ingredients,
@@ -22,7 +22,7 @@ import { syncLegacyPriceToDefaultOption } from '@/lib/data/recipe-portion-option
 
 export type RecipeInput = Omit<
   NewRecipe,
-  'id' | 'organizationId' | 'createdAt' | 'updatedAt' | 'deletedAt'
+  'id' | 'organizationId' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'lastOpenedAt'
 >;
 
 /** A recipe line joined with the ingredient detail needed for cost + display. */
@@ -380,6 +380,28 @@ export async function listRecipesWithLines(
     recipe,
     lines: linesByRecipe.get(recipe.id) ?? [],
   }));
+}
+
+/**
+ * Records that someone opened an active recipe. Opening is not an edit: `updated_at`
+ * is written back to itself so its on-update default never fires, and nothing else
+ * changes. A trashed or unknown id is a no-op.
+ */
+export async function markRecipeOpened(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+): Promise<void> {
+  await db
+    .update(recipes)
+    .set({ lastOpenedAt: new Date(), updatedAt: sql`${recipes.updatedAt}` })
+    .where(
+      and(
+        eq(recipes.organizationId, organizationId),
+        eq(recipes.id, id),
+        isNull(recipes.deletedAt),
+      ),
+    );
 }
 
 export async function getRecipeById(

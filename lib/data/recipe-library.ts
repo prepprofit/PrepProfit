@@ -8,6 +8,7 @@ import { listRecipes } from '@/lib/data/recipes';
 import { loadActiveCatalogue } from '@/lib/data/active-catalogue';
 import { loadRecipeAllergensByIds } from '@/lib/data/allergens';
 import { loadBookIdsByRecipe } from '@/lib/data/recipe-books';
+import { compareRecentActivity, recentActivityAt } from '@/lib/recipes/library-order';
 
 /**
  * Recipes 2.0 library listing (Fase 7 Slice 2) — one org-scoped batch read that
@@ -39,6 +40,8 @@ export type LibraryRecipeRow = {
   yieldQuantity: number | null;
   yieldUnit: string | null;
   yieldPortions: number;
+  /** Latest of last edit / last opened (created when neither): the default order. */
+  recentActivityAt: Date;
   /** Direct ingredient line count (not the flattened subtree). */
   lineCount: number;
   bookIds: string[];
@@ -116,7 +119,7 @@ export async function listRecipesForLibrary(
           );
   const profiledIngredients = new Set(profiledRows.map((r) => r.ingredientId));
 
-  return recipeRows.map((recipe) => {
+  const libraryRows = recipeRows.map((recipe): LibraryRecipeRow => {
     const cat = catalogueById.get(recipe.id);
     const rollup = allergenRollups.get(recipe.id)!;
     const bookIds = bookIdsByRecipe.get(recipe.id) ?? [];
@@ -147,6 +150,7 @@ export async function listRecipesForLibrary(
       yieldQuantity: recipe.yieldQuantity,
       yieldUnit: recipe.yieldUnit,
       yieldPortions: recipe.yieldPortions,
+      recentActivityAt: recentActivityAt(recipe),
       lineCount: cat ? new Set(cat.lines.map((l) => l.ingredientId)).size : 0,
       bookIds,
       allergens: rollup.allergens.map((a) => ({
@@ -175,4 +179,6 @@ export async function listRecipesForLibrary(
       },
     };
   });
+  // Recent activity first — the library's default order in every view.
+  return libraryRows.sort(compareRecentActivity);
 }

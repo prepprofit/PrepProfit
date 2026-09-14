@@ -195,6 +195,75 @@ describe('menu product data layer', () => {
     expect(b?.costPerSaleUnitCents).toBe(a?.costPerSaleUnitCents);
   });
 
+  it('dish editor: changing portions redistributes cost and never rescales quantities', async () => {
+    const created = await createDish(db, ORG_A, cake(ids, { labour: { hours: 1, hourlyCents: 2_000 } }));
+    if (created.status !== 'ok') throw new Error('create failed');
+    const before = await getManagerDish(db, ORG_A, created.menu.id);
+    const updated = await updateDish(
+      db,
+      ORG_A,
+      created.menu.id,
+      cake(ids, { output: { quantity: 8, unit: 'portion', sizeDescription: null, finishedWeightGrams: null }, labour: { hours: 1, hourlyCents: 2_000 } }),
+    );
+    expect(updated.status).toBe('ok');
+    const after = await getManagerDish(db, ORG_A, created.menu.id);
+    expect(after?.recipeLines).toEqual(before?.recipeLines);
+    expect(after?.ingredientLines).toEqual(before?.ingredientLines);
+    expect(after?.labour).toEqual(before?.labour);
+
+    const cost = catalogueDishCosts(await loadActiveCatalogue(db, ORG_A)).get(created.menu.id);
+    // 360c components + 2000c labour, the same total — now spread over 8 portions.
+    expect(cost?.totalCostCents).toBe(2_360);
+    expect(cost?.costPerSaleUnitCents).toBe(295);
+  });
+
+  it('dish editor: converting a weight batch to portions keeps composition and weight', async () => {
+    const weight = await createDish(
+      db,
+      ORG_A,
+      cake(ids, {
+        name: 'Gelato',
+        output: { quantity: 20, unit: 'kg', sizeDescription: null, finishedWeightGrams: null },
+        priceBasis: 'kg',
+        sellingPriceCents: 800,
+        labour: { hours: 1, hourlyCents: 2_000 },
+        extras: [{ kind: 'expense', description: 'Tubs', amountCents: 400 }],
+      }),
+    );
+    if (weight.status !== 'ok') throw new Error('create failed');
+    const before = await getManagerDish(db, ORG_A, weight.menu.id);
+
+    // What the editor sends after "Use portions": 80 portions at €2.50, weight kept.
+    const converted = await updateDish(
+      db,
+      ORG_A,
+      weight.menu.id,
+      cake(ids, {
+        name: 'Gelato',
+        output: { quantity: 80, unit: 'portion', sizeDescription: null, finishedWeightGrams: 20_000 },
+        priceBasis: 'unit',
+        sellingPriceCents: 250,
+        labour: { hours: 1, hourlyCents: 2_000 },
+        extras: [{ kind: 'expense', description: 'Tubs', amountCents: 400 }],
+      }),
+    );
+    expect(converted.status).toBe('ok');
+    const after = await getManagerDish(db, ORG_A, weight.menu.id);
+    expect(after).toMatchObject({
+      output: { quantity: 80, unit: 'portion', finishedWeightGrams: 20_000 },
+      priceBasis: 'unit',
+      sellingPriceCents: 250,
+    });
+    expect(after?.recipeLines).toEqual(before?.recipeLines);
+    expect(after?.ingredientLines).toEqual(before?.ingredientLines);
+    expect(after?.extras).toEqual(before?.extras);
+
+    const cost = catalogueDishCosts(await loadActiveCatalogue(db, ORG_A)).get(weight.menu.id);
+    expect(cost?.totalCostCents).toBe(2_760); // unchanged total: 360 + 2000 + 400
+    expect(cost?.costPerSaleUnitCents).toBe(35); // 2760 / 80 = 34.5 → 35
+    expect(cost?.costPerKgCents).toBe(138); // the kept weight still gives cost per kg
+  });
+
   it('never double-counts recipe labour (incl. nested) and keeps energy + packaging', async () => {
     // Base: sub-recipe with 300c labour; parent uses 500 g of it (half the batch) and
     // has its own 400c labour, 100c energy, 60c packaging.

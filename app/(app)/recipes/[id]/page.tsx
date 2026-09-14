@@ -19,6 +19,7 @@ import { RecipeEditor } from '@/components/app/recipes/recipe-editor';
 import { RecipeAllergenPanel } from '@/components/app/recipes/recipe-allergen-panel';
 import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 import { isRecipesWorkspaceV2Enabled } from '@/lib/data/recipe-workspace';
+import { RecipeOpenedTracker } from '@/components/app/recipes/recipe-opened-tracker';
 import { RecipeWorkspacePage } from './workspace-page';
 
 export default async function RecipeEditorPage({
@@ -38,7 +39,12 @@ export default async function RecipeEditorPage({
     isRecipesWorkspaceV2Enabled(tx, organizationId),
   );
   if (workspaceV2 && editor !== 'legacy') {
-    return <RecipeWorkspacePage recipeId={id} organizationId={organizationId} />;
+    return (
+      <>
+        <RecipeOpenedTracker recipeId={id} />
+        <RecipeWorkspacePage recipeId={id} organizationId={organizationId} />
+      </>
+    );
   }
 
   const [
@@ -145,6 +151,7 @@ export default async function RecipeEditorPage({
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
+      <RecipeOpenedTracker recipeId={id} />
       <RecipeEditor
         canSeeCosts={canSeeCosts}
         recipe={view.recipe}

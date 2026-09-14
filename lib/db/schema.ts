@@ -687,6 +687,10 @@ export const recipes = pgTable(
     extraStepPriceCents: integer('extra_step_price_cents'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
+    // When someone last opened the recipe. Tracked apart from updated_at: opening
+    // is not an edit. The library orders by "recent activity" = the latest of
+    // updated_at and last_opened_at (created_at when neither moved).
+    lastOpenedAt: timestamp('last_opened_at', { withTimezone: true }),
     // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL`.
     deletedAt: deletedAt(),
   },

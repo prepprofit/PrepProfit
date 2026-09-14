@@ -127,7 +127,9 @@ afterAll(async () => {
 describe('listRecipesForLibrary', () => {
   it('returns org-scoped rows with books, allergens, status and money', async () => {
     const rows = await listRecipesForLibrary(db, ORG_A);
-    expect(rows.map((r) => r.name)).toEqual(['Bread', 'Rough']);
+    // Recent-activity order (latest edit or open first); order-independent here.
+    expect(rows.map((r) => r.name).sort()).toEqual(['Bread', 'Rough']);
+    expect(rows.every((r) => r.recentActivityAt instanceof Date)).toBe(true);
 
     const bread = rows.find((r) => r.id === pricedRecipeId)!;
     expect(bread.bookIds).toHaveLength(1);

@@ -4,37 +4,20 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  Copy,
-  Info,
-  Plus,
-  Scaling,
-  Search,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, Copy, Info, Plus, Search, Trash2, X } from 'lucide-react';
 import {
   compositionCost,
-  DISH_OUTPUT_UNITS,
   DISH_RECIPE_UNITS,
-  dishPricing,
   ingredientCanonicalQuantity,
   ingredientLineKey,
   ingredientUnitsFor,
-  outputCanonicalQuantity,
-  outputDisplayAmount,
   outputKind,
-  priceBasisFor,
+  portionPricing,
   priceExclVat,
   priceForMargin,
-  priceForTotalCostShare,
+  priceInclVat,
   recipeLineKey,
   roundHours,
-  scaleComposition,
   type DishComposition,
   type DishCostLookups,
   type DishExtra,
@@ -68,7 +51,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { formatPercentBps, marginVariant, numberToField } from './dish-format';
+import { formatPercentBps, numberToField } from './dish-format';
 
 export type DishBuilderInitial = {
   id: string | null;
@@ -94,7 +77,9 @@ type ExtraState = {
   rate: string;
   amount: string;
 };
-type PricingField = 'incl' | 'margin' | 'totalCost';
+
+/** Portions are whole numbers; the same upper bound the batch output had. */
+const MAX_PORTIONS = 100_000;
 
 function parseNumber(text: string): number | null {
   const trimmed = text.trim().replace(',', '.');
@@ -110,6 +95,11 @@ function parseMoneyField(text: string): number | null {
   return parseMoneyToCents(text);
 }
 
+function parsePortions(text: string): number | null {
+  const value = parseNumber(text);
+  return value !== null && Number.isInteger(value) && value >= 1 && value <= MAX_PORTIONS ? value : null;
+}
+
 const blankExtra = (kind: 'work' | 'expense'): ExtraState => ({
   key: crypto.randomUUID(),
   kind,
@@ -120,14 +110,20 @@ const blankExtra = (kind: 'work' | 'expense'): ExtraState => ({
 });
 
 /**
- * Menu product builder (one batch). Flow: product + "This batch makes", recipes /
- * ingredients / packaging for the WHOLE batch, labour + extras, then selling price
- * and results. Every figure recomputes on each keystroke through the SAME
- * `compositionCost` the server and every report use; only Save talks to the server.
+ * Dish editor — a per-portion selling-price and margin calculator. The order is
+ * fixed: name, folder, selling price (excl./incl. VAT), number of portions, the
+ * margin calculator, then recipes, direct ingredients, labour and extras.
  *
- * Two distinct intentions: editing "This batch makes" CORRECTS the yield (components
- * unchanged); "Make a different quantity" SCALES every component and asks the chef
- * to review hours and expenses, which are never scaled silently.
+ * Every quantity and cost below covers ALL the portions entered. Cost per portion is
+ * total cost ÷ portions: changing the number of portions redistributes the cost and
+ * never rescales a quantity. Every figure comes from the shared `compositionCost` +
+ * `portionPricing` (the same maths the Menu list, sales and insights use). A
+ * suggested price is only applied on "Use this price" — the chef's price is never
+ * overwritten.
+ *
+ * A product saved earlier as a WEIGHT batch (priced per kg) is never reinterpreted:
+ * the editor asks for its portions and a price per portion, and keeps the weight as
+ * the finished batch weight. Until then it can't be saved.
  */
 export function DishBuilder({
   initial,
@@ -143,7 +139,7 @@ export function DishBuilder({
   recipeOptions: DishRecipeOption[];
   ingredientOptions: DishIngredientOption[];
   currency: string;
-  /** The org's sales VAT rate; used when the product has no own rate. */
+  /** The org's sales VAT rate; used when the dish has no own rate. */
   defaultVatBps: number | null;
   justCopied?: boolean;
 }) {
@@ -158,17 +154,25 @@ export function DishBuilder({
   const ingredientById = React.useMemo(() => new Map(ingredientOptions.map((i) => [i.id, i])), [ingredientOptions]);
 
   // ── State ─────────────────────────────────────────────────────────────────
+  const legacyWeight = outputKind(initial.output.unit) === 'weight';
+  /** Grams of a converted weight batch, kept as its finished weight. */
+  const [convertedGrams, setConvertedGrams] = React.useState<number | null>(null);
+  const needsConversion = legacyWeight && convertedGrams === null;
+  /** Count products keep their stored unit (piece / cake / portion); the rest become portions. */
+  const countUnit: DishOutputUnit = legacyWeight ? 'portion' : initial.output.unit;
+
   const [name, setName] = React.useState(initial.name);
   const [folderId, setFolderId] = React.useState(initial.folderId);
   const [notes, setNotes] = React.useState(initial.notes ?? '');
-  const [outputUnit, setOutputUnit] = React.useState<DishOutputUnit>(initial.output.unit);
-  const [outputText, setOutputText] = React.useState(
-    initial.output.quantity > 0 ? numberToField(initial.output.quantity) : '',
+  const [portionsText, setPortionsText] = React.useState(
+    legacyWeight ? '' : initial.output.quantity > 0 ? numberToField(initial.output.quantity) : '1',
   );
-  const [sizeText, setSizeText] = React.useState(initial.output.sizeDescription ?? '');
-  const [finishedKgText, setFinishedKgText] = React.useState(
-    initial.output.finishedWeightGrams !== null ? numberToField(initial.output.finishedWeightGrams / 1000) : '',
+  const [priceExclCents, setPriceExclCents] = React.useState(legacyWeight ? null : initial.sellingPriceCents);
+  const [priceDraft, setPriceDraft] = React.useState<{ field: 'excl' | 'incl'; text: string } | null>(null);
+  const [vatText, setVatText] = React.useState(
+    initial.vatRateBps !== null ? numberToField(initial.vatRateBps / 100) : '',
   );
+  const [targetText, setTargetText] = React.useState('');
   const [hoursText, setHoursText] = React.useState(initial.labour ? numberToField(initial.labour.hours) : '');
   const [rateText, setRateText] = React.useState(initial.labour ? centsToAmountInput(initial.labour.hourlyCents) : '');
   const [extras, setExtras] = React.useState<ExtraState[]>(() =>
@@ -181,15 +185,6 @@ export function DishBuilder({
       amount: e.kind === 'expense' ? centsToAmountInput(e.amountCents) : '',
     })),
   );
-  const [priceExclCents, setPriceExclCents] = React.useState(initial.sellingPriceCents);
-  const [priceText, setPriceText] = React.useState(
-    initial.sellingPriceCents !== null ? centsToAmountInput(initial.sellingPriceCents) : '',
-  );
-  const [vatText, setVatText] = React.useState(
-    initial.vatRateBps !== null ? numberToField(initial.vatRateBps / 100) : '',
-  );
-  const [draft, setDraft] = React.useState<{ field: PricingField; text: string } | null>(null);
-  const [morePricing, setMorePricing] = React.useState(false);
   const [recipeLines, setRecipeLines] = React.useState<RecipeLineState[]>(() =>
     initial.recipeLines.map((l) => ({ recipeId: l.recipeId, name: l.recipeName, quantity: numberToField(l.quantity), unit: l.unit })),
   );
@@ -201,29 +196,17 @@ export function DishBuilder({
       unit: l.unit,
     })),
   );
-  const [reviewAfterScale, setReviewAfterScale] = React.useState(false);
 
   React.useEffect(() => {
     if (initial.id) void markDishOpenedAction(initial.id);
   }, [initial.id]);
 
-  // ── Output ────────────────────────────────────────────────────────────────
-  const kind = outputKind(outputUnit);
-  const outputAmount = parseNumber(outputText);
-  const outputValid = outputAmount !== null && outputAmount > 0;
-  const outputCanonical = outputValid ? outputCanonicalQuantity(outputAmount, outputUnit) : 0;
-  const finishedKg = parseNumber(finishedKgText);
-  const finishedValid = finishedKgText.trim() === '' || (finishedKg !== null && finishedKg > 0);
-  const finishedWeightGrams = kind === 'count' && finishedValid && finishedKg !== null ? finishedKg * 1000 : null;
-
-  const batchLabel = outputValid
-    ? t('output.batchOf', {
-        unit: outputUnit,
-        count: outputAmount,
-        amount: numberToField(outputAmount),
-      })
-    : t('output.thisBatch');
-  const perLabel = t(`per.${priceBasisFor(outputUnit) === 'kg' ? 'kg' : outputUnit}`);
+  // ── Portions + VAT ────────────────────────────────────────────────────────
+  const portions = parsePortions(portionsText);
+  const vatValue = parseNumber(vatText);
+  const vatBlank = vatText.trim() === '';
+  const vatValid = vatBlank || (vatValue !== null && vatValue >= 0 && vatValue <= 100);
+  const vatBps = vatBlank || !vatValid || vatValue === null ? (defaultVatBps ?? 0) : Math.round(vatValue * 100);
 
   // ── Labour + extras ───────────────────────────────────────────────────────
   const hours = parseNumber(hoursText);
@@ -250,18 +233,16 @@ export function DishBuilder({
     const a = parseMoneyField(e.amount);
     return { kind: 'expense', amountCents: a === null || !Number.isFinite(a) ? Number.NaN : a };
   });
-  const extrasValid = extras.every(
-    (e, i) =>
-      e.description.trim() !== '' &&
-      (() => {
-        const v = extraValues[i];
-        return v?.kind === 'work'
-          ? Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents)
-          : v?.kind === 'expense' && Number.isFinite(v.amountCents);
-      })(),
-  );
+  const extrasValid = extras.every((e, i) => {
+    const v = extraValues[i];
+    const numbersValid =
+      v?.kind === 'work'
+        ? Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents)
+        : v?.kind === 'expense' && Number.isFinite(v.amountCents);
+    return e.description.trim() !== '' && numbersValid;
+  });
 
-  // ── Cost ──────────────────────────────────────────────────────────────────
+  // ── Cost + pricing ────────────────────────────────────────────────────────
   const lookups: DishCostLookups = React.useMemo(
     () => ({
       recipeCostPerPortion: (id, { excludeLabour }) => {
@@ -274,131 +255,61 @@ export function DishBuilder({
     [recipeById, ingredientById],
   );
 
-  const composition: DishComposition = {
-    output: { quantity: outputCanonical, unit: outputUnit, finishedWeightGrams },
-    labour,
-    extras: extraValues,
-    recipeLines: recipeLines.map((l) => ({ recipeId: l.recipeId, quantity: parseNumber(l.quantity) ?? 0, unit: l.unit })),
-    ingredientLines: ingredientLines.map((l) => ({
-      ingredientId: l.ingredientId,
-      quantity: ingredientCanonicalQuantity(parseNumber(l.quantity) ?? 0, l.unit),
-      unit: l.unit,
-    })),
-  };
-  const cost = compositionCost(composition, lookups);
+  const cost = compositionCost(
+    {
+      // Portions are the sale units; the finished weight plays no part in the price.
+      output: { quantity: portions ?? 0, unit: countUnit, finishedWeightGrams: null },
+      labour,
+      extras: extraValues,
+      recipeLines: recipeLines.map((l) => ({ recipeId: l.recipeId, quantity: parseNumber(l.quantity) ?? 0, unit: l.unit })),
+      ingredientLines: ingredientLines.map((l) => ({
+        ingredientId: l.ingredientId,
+        quantity: ingredientCanonicalQuantity(parseNumber(l.quantity) ?? 0, l.unit),
+        unit: l.unit,
+      })),
+    },
+    lookups,
+  );
   const lineCost = new Map(cost.lineCosts.map((l) => [l.key, l.costCents]));
   const excludeLabour = labour !== null;
+  const pricing = portionPricing(cost, priceExclCents, vatBps);
 
-  // ── Pricing ───────────────────────────────────────────────────────────────
-  const vatValue = parseNumber(vatText);
-  const vatValid = vatText.trim() === '' || (vatValue !== null && vatValue >= 0 && vatValue <= 100);
-  const vatBps = vatText.trim() === '' || vatValue === null ? (defaultVatBps ?? 0) : Math.round(vatValue * 100);
-  const pricing = dishPricing(cost, priceExclCents, vatBps);
-  const exactUnitCost = cost.exactTotalCents !== null && cost.saleUnits ? cost.exactTotalCents / cost.saleUnits : null;
-  const priceValid = priceText.trim() === '' || Number.isFinite(parseMoneyField(priceText) ?? 0);
+  const targetValue = parseNumber(targetText);
+  const targetBps = targetValue !== null && targetValue >= 0 && targetValue < 100 ? Math.round(targetValue * 100) : null;
+  const suggestedExcl = targetBps !== null ? priceForMargin(pricing.exactCostPerPortionCents, targetBps) : null;
+  const suggestedIncl = suggestedExcl !== null ? priceInclVat(suggestedExcl, vatBps) : null;
 
-  function setPrice(cents: number | null) {
-    setPriceExclCents(cents);
-    setPriceText(cents === null ? '' : centsToAmountInput(cents));
+  function priceText(field: 'excl' | 'incl'): string {
+    if (priceDraft?.field === field) return priceDraft.text;
+    const cents = field === 'excl' ? pricing.priceExclCents : pricing.priceInclCents;
+    return cents !== null ? centsToAmountInput(cents) : '';
   }
 
-  function pricingText(field: PricingField): string {
-    if (draft?.field === field) return draft.text;
-    if (field === 'incl') return pricing.priceInclCents !== null ? centsToAmountInput(pricing.priceInclCents) : '';
-    if (field === 'margin') return pricing.marginBps !== null ? numberToField(pricing.marginBps / 100) : '';
-    return pricing.totalCostBps !== null ? numberToField(pricing.totalCostBps / 100) : '';
+  function onPriceChange(field: 'excl' | 'incl', text: string) {
+    setPriceDraft({ field, text });
+    const cents = parseMoneyField(text);
+    if (cents === null) setPriceExclCents(null);
+    else if (Number.isFinite(cents)) setPriceExclCents(field === 'excl' ? cents : priceExclVat(cents, vatBps));
   }
+  const priceInvalid =
+    priceDraft !== null && priceDraft.text.trim() !== '' && !Number.isFinite(parseMoneyField(priceDraft.text) ?? 0);
 
-  function onPricingChange(field: PricingField, text: string) {
-    setDraft({ field, text });
-    if (field === 'incl') {
-      const gross = parseMoneyField(text);
-      if (gross === null) setPrice(null);
-      else if (Number.isFinite(gross)) {
-        const net = priceExclVat(gross, vatBps);
-        setPriceExclCents(net);
-        setPriceText(centsToAmountInput(net));
-      }
-      return;
-    }
-    const pct = parseNumber(text);
-    if (pct === null) return;
-    const next =
-      field === 'margin'
-        ? priceForMargin(exactUnitCost, Math.round(pct * 100))
-        : priceForTotalCostShare(exactUnitCost, Math.round(pct * 100));
-    if (next !== null) {
-      setPriceExclCents(next);
-      setPriceText(centsToAmountInput(next));
-    }
-  }
-
-  // ── Unit change (weight ↔ count needs new yield information) ──────────────
-  const [unitChange, setUnitChange] = React.useState<DishOutputUnit | null>(null);
-  const [unitChangeQty, setUnitChangeQty] = React.useState('');
-  const [keepWeight, setKeepWeight] = React.useState(true);
-
-  function requestUnit(next: DishOutputUnit) {
-    if (next === outputUnit) return;
-    if (outputKind(next) === kind) {
-      // Same kind: g ↔ kg converts the number; piece/cake/portion is the same count.
-      if (outputValid) setOutputText(numberToField(outputDisplayAmount(outputCanonical, next)));
-      setOutputUnit(next);
-      return;
-    }
-    setUnitChangeQty(
-      outputKind(next) === 'weight' && finishedWeightGrams !== null
-        ? numberToField(outputDisplayAmount(finishedWeightGrams, next))
-        : '',
-    );
-    setKeepWeight(true);
-    setUnitChange(next);
-  }
-
-  const unitChangeAmount = parseNumber(unitChangeQty);
-  function applyUnitChange() {
-    if (!unitChange || unitChangeAmount === null || unitChangeAmount <= 0) return;
-    if (outputKind(unitChange) === 'count') {
-      setFinishedKgText(keepWeight && outputValid ? numberToField(outputCanonical / 1000) : '');
-    } else {
-      setFinishedKgText('');
-    }
-    setOutputUnit(unitChange);
-    setOutputText(numberToField(unitChangeAmount));
-    // The price meant "per kg" or "per piece" — it can't carry over.
-    setPrice(null);
-    setUnitChange(null);
-  }
-
-  // ── Scaling ───────────────────────────────────────────────────────────────
-  const [scaling, setScaling] = React.useState(false);
-  const [scaleText, setScaleText] = React.useState('');
-  const scaleAmount = parseNumber(scaleText);
-  const scaled =
-    scaling && outputValid && scaleAmount !== null && scaleAmount > 0
-      ? scaleComposition(
-          {
-            ...composition,
-            recipeLines: recipeLines.map((l) => ({ recipeId: l.recipeId, quantity: parseNumber(l.quantity) ?? 0, unit: l.unit })),
-            ingredientLines: ingredientLines.map((l) => ({ ingredientId: l.ingredientId, quantity: parseNumber(l.quantity) ?? 0, unit: l.unit })),
-          },
-          outputCanonicalQuantity(scaleAmount, outputUnit),
-        )
-      : null;
-
-  function applyScale() {
-    if (!scaled) return;
-    setRecipeLines((prev) => prev.map((l, i) => ({ ...l, quantity: numberToField(scaled.recipeLines[i]?.quantity ?? 0) })));
-    setIngredientLines((prev) =>
-      prev.map((l, i) => ({ ...l, quantity: numberToField(scaled.ingredientLines[i]?.quantity ?? 0) })),
-    );
-    setOutputText(numberToField(outputDisplayAmount(scaled.output.quantity, outputUnit)));
-    if (scaled.output.finishedWeightGrams !== null) {
-      setFinishedKgText(numberToField(scaled.output.finishedWeightGrams / 1000));
-    }
-    setReviewAfterScale(true);
-    setScaling(false);
-  }
+  /** Why the calculator can't show every figure yet — the first missing piece wins. */
+  const missingReason = needsConversion
+    ? t('calc.missing.convert')
+    : portions === null
+      ? t('calc.missing.portions')
+      : recipeLines.length + ingredientLines.length + extras.length === 0 && labourBlank
+        ? t('calc.missing.costs')
+        : !labourBlank && !labourValid
+          ? t('calc.missing.labour')
+          : !extrasValid
+            ? t('calc.missing.extras')
+            : !cost.complete
+              ? t('calc.missing.unpriced')
+              : pricing.priceExclCents === null || pricing.priceExclCents <= 0
+                ? t('calc.missing.price')
+                : null;
 
   // ── Lines ─────────────────────────────────────────────────────────────────
   function addRecipe(option: DishRecipeOption) {
@@ -407,6 +318,7 @@ export function DishBuilder({
       {
         recipeId: option.id,
         name: option.name,
+        // Grams when the recipe has a finished weight; otherwise its own portions.
         quantity: option.yieldWeightGrams ? '100' : '1',
         unit: option.yieldWeightGrams ? 'g' : 'portion',
       },
@@ -422,6 +334,22 @@ export function DishBuilder({
   const patchExtra = (key: string, patch: Partial<ExtraState>) =>
     setExtras((prev) => prev.map((e) => (e.key === key ? { ...e, ...patch } : e)));
 
+  // ── Weight batch → portions (explicit and lossless) ───────────────────────
+  const [convertPortionsText, setConvertPortionsText] = React.useState('');
+  const [convertPriceText, setConvertPriceText] = React.useState('');
+  const convertPortions = parsePortions(convertPortionsText);
+  const convertPrice = parseMoneyField(convertPriceText);
+  const canConvert = convertPortions !== null && (convertPrice === null || Number.isFinite(convertPrice));
+
+  function applyConversion() {
+    if (!canConvert || convertPortions === null) return;
+    const grams = initial.output.unit === 'kg' ? initial.output.quantity * 1000 : initial.output.quantity;
+    setConvertedGrams(grams);
+    setPortionsText(String(convertPortions));
+    setPriceExclCents(convertPrice);
+    setPriceDraft(null);
+  }
+
   // ── Save / dirty ──────────────────────────────────────────────────────────
   const unavailable =
     recipeLines.some((l) => !recipeById.has(l.recipeId)) || ingredientLines.some((l) => !ingredientById.has(l.ingredientId));
@@ -434,14 +362,15 @@ export function DishBuilder({
     name: name.trim(),
     folderId,
     output: {
-      quantity: outputAmount ?? 0,
-      unit: outputUnit,
-      sizeDescription: sizeText.trim() === '' ? null : sizeText.trim(),
-      finishedWeightGrams,
+      quantity: portions ?? 0,
+      unit: countUnit,
+      // Kept exactly as stored. A converted weight batch keeps its weight here.
+      sizeDescription: initial.output.sizeDescription,
+      finishedWeightGrams: legacyWeight ? convertedGrams : initial.output.finishedWeightGrams,
     },
     sellingPriceCents: priceExclCents,
-    priceBasis: priceBasisFor(outputUnit),
-    vatRateBps: vatText.trim() === '' || vatValue === null ? null : Math.round(vatValue * 100),
+    priceBasis: 'unit' as const,
+    vatRateBps: vatBlank || vatValue === null ? null : Math.round(vatValue * 100),
     labour: labourValid ? labour : null,
     extras: extras.map((e, i) => {
       const v = extraValues[i] as DishExtra;
@@ -458,7 +387,7 @@ export function DishBuilder({
     })),
   };
   const payloadKey = JSON.stringify(payload);
-  const [savedKey, setSavedKey] = React.useState(() => (isNew ? '' : payloadKey));
+  const [savedKey, setSavedKey] = React.useState(payloadKey);
   const dirty = payloadKey !== savedKey;
 
   React.useEffect(() => {
@@ -469,16 +398,15 @@ export function DishBuilder({
   }, [dirty]);
 
   const problems = [
+    needsConversion && t('problems.convert'),
     payload.name === '' && t('problems.name'),
-    !outputValid && t('problems.output'),
-    !finishedValid && t('problems.finishedWeight'),
+    !needsConversion && portions === null && t('problems.portions'),
+    priceInvalid && t('problems.price'),
+    !vatValid && t('problems.vat'),
     !labourBlank && !labourValid && t('problems.labour'),
     !extrasValid && t('problems.extras'),
-    !vatValid && t('problems.vat'),
-    !priceValid && t('problems.price'),
     invalidQuantity && t('problems.quantity'),
     unavailable && t('problems.unavailable'),
-    reviewAfterScale && t('problems.review'),
   ].filter((p): p is string => typeof p === 'string');
   const canSave = problems.length === 0;
 
@@ -486,9 +414,12 @@ export function DishBuilder({
   const [error, setError] = React.useState<string | null>(null);
   const [justSaved, setJustSaved] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [leaveTo, setLeaveTo] = React.useState<string | null>(null);
   const [copying, setCopying] = React.useState(false);
   const [copyName, setCopyName] = React.useState('');
   const [copyBanner, setCopyBanner] = React.useState(justCopied);
+
+  const backHref = initial.folderId ? `/menus/folders/${initial.folderId}` : isNew ? '/menus' : '/menus/folders/unfiled';
 
   function save() {
     if (!canSave) return;
@@ -510,6 +441,12 @@ export function DishBuilder({
     });
   }
 
+  /** Leave the editor, asking first when there are unsaved changes. */
+  function leave(href: string) {
+    if (dirty) setLeaveTo(href);
+    else router.push(href);
+  }
+
   function remove() {
     if (!initial.id) return;
     startTransition(async () => {
@@ -527,22 +464,29 @@ export function DishBuilder({
     if (!initial.id || copyName.trim() === '') return;
     startTransition(async () => {
       const result = await duplicateDishAction(initial.id as string, { name: copyName.trim() });
-      if (!result.ok) {
-        setCopying(false);
-        return setError(actionError(result.code));
-      }
       setCopying(false);
+      if (!result.ok) return setError(actionError(result.code));
       router.push(`/menus/${result.data.id}?copied=1`);
     });
   }
 
-  const backHref = initial.folderId ? `/menus/folders/${initial.folderId}` : isNew ? '/menus' : '/menus/folders/unfiled';
-  const unitCostText = cost.costPerSaleUnitCents !== null ? `${money(cost.costPerSaleUnitCents)} ${perLabel}` : '—';
+  const dash = '—';
+  const priceShown = pricing.priceExclCents !== null ? money(pricing.priceExclCents) : dash;
+  const costShown = pricing.costPerPortionCents !== null ? money(pricing.costPerPortionCents) : dash;
+  const leftShown = pricing.amountLeftPerPortionCents !== null ? money(pricing.amountLeftPerPortionCents) : dash;
+  const marginShown = pricing.marginBps !== null ? formatPercentBps(pricing.marginBps) : dash;
+  const leftNegative = pricing.amountLeftPerPortionCents !== null && pricing.amountLeftPerPortionCents < 0;
+  const coversAll = portions !== null ? t('coversAll', { count: portions }) : t('coversAllUnknown');
 
-  const saveButton = (
-    <Button type="submit" size="lg" disabled={!canSave || pending || (!dirty && !isNew)} className="w-full sm:w-auto">
-      {pending ? t('saving') : isNew ? t('create') : t('save')}
-    </Button>
+  const actions = (
+    <div className="flex items-center gap-2">
+      <Button type="button" variant="outline" onClick={() => leave(backHref)} disabled={pending}>
+        {t('cancel')}
+      </Button>
+      <Button type="submit" disabled={!canSave || pending || !dirty}>
+        {pending ? t('saving') : t('save')}
+      </Button>
+    </div>
   );
 
   return (
@@ -551,17 +495,25 @@ export function DishBuilder({
         e.preventDefault();
         save();
       }}
-      className="mx-auto flex w-full max-w-6xl flex-col gap-5 pb-28 lg:pb-0"
+      className="mx-auto flex w-full max-w-3xl flex-col gap-5 pb-28 md:pb-0"
     >
       {/* Header */}
       <div className="flex flex-col gap-3">
-        <Link href={backHref} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <Link
+          href={backHref}
+          onClick={(e) => {
+            if (!dirty) return;
+            e.preventDefault();
+            setLeaveTo(backHref);
+          }}
+          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
           <ArrowLeft className="size-4" />
           {t('back')}
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="min-w-0 truncate font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            {name.trim() || t('untitled')}
+          <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            {isNew ? t('titleCreate') : t('titleEdit')}
           </h2>
           <div className="flex flex-wrap items-center gap-2">
             {justSaved && !dirty && (
@@ -569,12 +521,12 @@ export function DishBuilder({
                 <Check className="size-4" /> {t('saved')}
               </span>
             )}
-            {dirty && !isNew && <span className="text-sm text-muted-foreground">{t('unsaved')}</span>}
+            {dirty && <span className="text-sm text-muted-foreground">{t('unsaved')}</span>}
             {!isNew && (
               <>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   disabled={dirty}
                   title={dirty ? t('copy.saveFirst') : undefined}
                   onClick={() => {
@@ -583,15 +535,14 @@ export function DishBuilder({
                   }}
                 >
                   <Copy />
-                  {t('copy.action')}
+                  <span className="hidden sm:inline">{t('copy.action')}</span>
                 </Button>
-                <Button type="button" variant="ghost" onClick={() => setConfirmDelete(true)}>
+                <Button type="button" variant="ghost" onClick={() => setConfirmDelete(true)} aria-label={t('delete')}>
                   <Trash2 />
-                  <span className="hidden sm:inline">{t('delete')}</span>
                 </Button>
               </>
             )}
-            <div className="hidden lg:block">{saveButton}</div>
+            <div className="hidden md:block">{actions}</div>
           </div>
         </div>
         {copyBanner && (
@@ -606,660 +557,577 @@ export function DishBuilder({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_21rem]">
-        <div className="flex min-w-0 flex-col gap-4">
-          {/* 1. Product + batch output */}
-          <Section step={1} title={t('sections.product')}>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-              <Field id="dish-name" label={t('fields.name')}>
-                <Input
-                  id="dish-name"
-                  value={name}
-                  maxLength={200}
-                  autoFocus={isNew || justCopied}
-                  placeholder={t('fields.namePlaceholder')}
-                  onChange={(e) => setName(e.target.value)}
-                  className="h-12 text-base"
-                />
-              </Field>
-              <Field id="dish-folder" label={t('fields.folder')}>
-                <Select id="dish-folder" value={folderId ?? ''} onChange={(e) => setFolderId(e.target.value === '' ? null : e.target.value)} className="h-12 text-base">
-                  <option value="">{t('fields.unfiled')}</option>
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-
-            <div className="flex flex-col gap-2 rounded-xl bg-surface-2 p-4">
-              <Label htmlFor="output-qty" className="text-base">
-                {t('output.makes')}
-              </Label>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  id="output-qty"
-                  inputMode="decimal"
-                  value={outputText}
-                  aria-invalid={!outputValid}
-                  onChange={(e) => setOutputText(e.target.value)}
-                  className="h-12 w-36 bg-surface text-right text-lg tabular-nums"
-                />
-                <div className="w-36">
-                  <Select
-                    aria-label={t('output.unit')}
-                    value={outputUnit}
-                    onChange={(e) => requestUnit(e.target.value as DishOutputUnit)}
-                    className="h-12 bg-surface text-base"
-                  >
-                    {DISH_OUTPUT_UNITS.map((u) => (
-                      <option key={u} value={u}>
-                        {tUnits(`output.${u}`)}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                {kind === 'count' && (
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="output-size" className="text-sm text-muted-foreground">
-                      {t('output.size')}
-                    </Label>
-                    <Input
-                      id="output-size"
-                      value={sizeText}
-                      maxLength={80}
-                      placeholder={t('output.sizePlaceholder')}
-                      onChange={(e) => setSizeText(e.target.value)}
-                      className="h-12 w-32 bg-surface"
-                    />
-                  </div>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">{t('output.yieldHint')}</p>
-              {kind === 'count' && (
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <Label htmlFor="finished-weight" className="text-sm">
-                    {t('output.finishedWeight')}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="finished-weight"
-                      inputMode="decimal"
-                      value={finishedKgText}
-                      aria-invalid={!finishedValid}
-                      placeholder={t('optional')}
-                      onChange={(e) => setFinishedKgText(e.target.value)}
-                      className="h-10 w-32 bg-surface pr-9 text-right tabular-nums"
-                    />
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">kg</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{t('output.finishedWeightHint')}</span>
-                </div>
-              )}
-              <div className="pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!outputValid}
-                  onClick={() => {
-                    setScaleText(outputText);
-                    setScaling(true);
-                  }}
-                  className="bg-surface"
-                >
-                  <Scaling />
-                  {t('scale.action')}
-                </Button>
-              </div>
-            </div>
-
-            <Field id="dish-notes" label={t('fields.notes')}>
-              <Textarea id="dish-notes" value={notes} maxLength={1000} placeholder={t('fields.notesPlaceholder')} onChange={(e) => setNotes(e.target.value)} />
-            </Field>
-          </Section>
-
-          {/* 2. Components */}
-          <Section step={2} title={t('sections.components')}>
-            <p className="rounded-lg bg-accent-50 px-3 py-2 text-sm font-medium text-accent-800 dark:bg-accent-500/15 dark:text-accent-200">
-              {outputValid ? t('components.wholeBatch', { batch: batchLabel }) : t('components.wholeBatchUnknown')}
+      {needsConversion && (
+        <Card className="border-amber-300 dark:border-amber-500/40">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">{t('convert.title')}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              {t('convert.body', {
+                amount: numberToField(initial.output.quantity),
+                unit: initial.output.unit,
+                price: initial.sellingPriceCents !== null ? money(initial.sellingPriceCents) : dash,
+              })}
             </p>
-
-            <h4 className="text-sm font-semibold text-foreground">{t('recipes.title')}</h4>
-            {recipeLines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('recipes.empty')}</p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {recipeLines.map((line, index) => {
-                  const option = recipeById.get(line.recipeId);
-                  const contribution = lineCost.get(recipeLineKey(line.recipeId)) ?? null;
-                  const perKg = excludeLabour ? option?.costPerKgWithoutLabourCents : option?.costPerKgCents;
-                  const perPortion = excludeLabour ? option?.costPerPortionWithoutLabourCents : option?.costPerPortionCents;
-                  const unitCost =
-                    perKg != null
-                      ? t('recipes.perKg', { amount: money(perKg) })
-                      : perPortion != null
-                        ? t('recipes.perPortion', { amount: money(perPortion) })
-                        : null;
-                  const units = DISH_RECIPE_UNITS.filter((u) => u === 'portion' || option?.yieldWeightGrams || u === line.unit);
-                  const q = parseNumber(line.quantity);
-                  return (
-                    <ComponentRow
-                      key={line.recipeId}
-                      name={line.name}
-                      meta={
-                        !option ? (
-                          <Badge variant="negative">{t('unavailable')}</Badge>
-                        ) : unitCost ? (
-                          <span>{unitCost}</span>
-                        ) : (
-                          <Badge variant="warning">{t('needsPricing')}</Badge>
-                        )
-                      }
-                      warning={option && line.unit !== 'portion' && !option.yieldWeightGrams ? t('recipes.needsWeight') : undefined}
-                      quantity={line.quantity}
-                      quantityInvalid={q === null || q <= 0}
-                      onQuantity={(value) => setRecipeLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))}
-                      unit={line.unit}
-                      units={units.map((u) => ({ value: u, label: tUnits(u) }))}
-                      onUnit={(value) =>
-                        setRecipeLines((prev) => prev.map((l, i) => (i === index ? { ...l, unit: value as DishRecipeUnit } : l)))
-                      }
-                      contribution={contribution !== null ? money(contribution) : '—'}
-                      removeLabel={t('remove')}
-                      onRemove={() => setRecipeLines((prev) => prev.filter((_, i) => i !== index))}
-                      quantityLabel={t('quantity')}
-                      unitLabel={t('unit')}
-                    />
-                  );
-                })}
-              </ul>
-            )}
-            <ComponentPicker
-              placeholder={t('recipes.add')}
-              emptyLabel={t('noMatches')}
-              options={recipeOptions
-                .filter((r) => !recipeLines.some((l) => l.recipeId === r.id))
-                .map((r) => {
-                  const perKg = excludeLabour ? r.costPerKgWithoutLabourCents : r.costPerKgCents;
-                  const perPortion = excludeLabour ? r.costPerPortionWithoutLabourCents : r.costPerPortionCents;
-                  return {
-                    id: r.id,
-                    name: r.name,
-                    hint:
-                      perKg !== null
-                        ? t('recipes.perKg', { amount: money(perKg) })
-                        : perPortion !== null
-                          ? t('recipes.perPortion', { amount: money(perPortion) })
-                          : t('needsPricing'),
-                  };
-                })}
-              onPick={(id) => {
-                const option = recipeById.get(id);
-                if (option) addRecipe(option);
-              }}
-            />
-
-            <h4 className="pt-2 text-sm font-semibold text-foreground">{t('ingredients.title')}</h4>
-            {ingredientLines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('ingredients.empty')}</p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {ingredientLines.map((line, index) => {
-                  const option = ingredientById.get(line.ingredientId);
-                  const contribution = lineCost.get(ingredientLineKey(line.ingredientId)) ?? null;
-                  const q = parseNumber(line.quantity);
-                  return (
-                    <ComponentRow
-                      key={line.ingredientId}
-                      name={line.name}
-                      meta={
-                        !option ? (
-                          <Badge variant="negative">{t('unavailable')}</Badge>
-                        ) : option.needsPricing ? (
-                          <Badge variant="warning">{t('needsPricing')}</Badge>
-                        ) : (
-                          <span>{t(`ingredients.per.${option.dimension}`, { amount: money(option.priceCents) })}</span>
-                        )
-                      }
-                      quantity={line.quantity}
-                      quantityInvalid={q === null || q <= 0}
-                      onQuantity={(value) =>
-                        setIngredientLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))
-                      }
-                      unit={line.unit}
-                      units={(option ? ingredientUnitsFor(option.dimension) : [line.unit]).map((u) => ({ value: u, label: tUnits(u) }))}
-                      onUnit={(value) =>
-                        setIngredientLines((prev) =>
-                          prev.map((l, i) => (i === index ? { ...l, unit: value as DishIngredientUnit } : l)),
-                        )
-                      }
-                      contribution={contribution !== null ? money(contribution) : '—'}
-                      removeLabel={t('remove')}
-                      onRemove={() => setIngredientLines((prev) => prev.filter((_, i) => i !== index))}
-                      quantityLabel={t('quantity')}
-                      unitLabel={t('unit')}
-                    />
-                  );
-                })}
-              </ul>
-            )}
-            <ComponentPicker
-              placeholder={t('ingredients.add')}
-              emptyLabel={t('noMatches')}
-              options={ingredientOptions
-                .filter((i) => !ingredientLines.some((l) => l.ingredientId === i.id))
-                .map((i) => ({
-                  id: i.id,
-                  name: i.name,
-                  hint: i.needsPricing ? t('needsPricing') : t(`ingredients.per.${i.dimension}`, { amount: money(i.priceCents) }),
-                }))}
-              onPick={(id) => {
-                const option = ingredientById.get(id);
-                if (option) addIngredient(option);
-              }}
-            />
-          </Section>
-
-          {/* 3. Labour + extras */}
-          <Section step={3} title={t('sections.labour')}>
-            {reviewAfterScale && (
-              <Notice tone="warning">
-                <span className="flex flex-col gap-2">
-                  <span>{t('scale.review')}</span>
-                  <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => setReviewAfterScale(false)}>
-                    <Check />
-                    {t('scale.reviewed')}
-                  </Button>
-                </span>
-              </Notice>
-            )}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Field id="labour-hours" label={outputValid ? t('labour.hoursFor', { batch: batchLabel }) : t('labour.hours')}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="convert-portions" label={t('portions.label')}>
                 <Input
-                  id="labour-hours"
-                  inputMode="decimal"
-                  value={hoursText}
-                  placeholder={t('optional')}
-                  aria-invalid={!labourBlank && !labourValid}
-                  onChange={(e) => setHoursText(e.target.value)}
+                  id="convert-portions"
+                  inputMode="numeric"
+                  value={convertPortionsText}
+                  onChange={(e) => setConvertPortionsText(e.target.value)}
                   className="h-12 text-right text-base tabular-nums"
                 />
               </Field>
-              <Field id="labour-rate" label={t('labour.rate', { currency })}>
-                <Input
-                  id="labour-rate"
-                  inputMode="decimal"
-                  value={rateText}
-                  placeholder={t('optional')}
-                  aria-invalid={!labourBlank && !labourValid}
-                  onChange={(e) => setRateText(e.target.value)}
-                  className="h-12 text-right text-base tabular-nums"
-                />
+              <Field id="convert-price" label={t('price.excl')}>
+                <MoneyInput id="convert-price" value={convertPriceText} currency={currency} onChange={setConvertPriceText} />
               </Field>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-foreground">{t('labour.cost')}</span>
-                <span className="flex h-12 items-center justify-end rounded-lg bg-surface-2 px-3 text-base font-semibold tabular-nums">
-                  {labourBlank ? '—' : cost.productionLabourCents !== null ? money(cost.productionLabourCents) : '—'}
-                </span>
-              </div>
             </div>
-            <p className="text-xs text-muted-foreground">{t('labour.hint')}</p>
-            {!labourBlank && !labourValid && <p className="text-sm text-red-700 dark:text-red-300">{t('problems.labour')}</p>}
-            {labourValid && <Notice tone="info">{t('labour.replacesRecipeLabour')}</Notice>}
-            {labourBlank && cost.inheritsRecipeLabour && <Notice tone="info">{t('labour.legacy')}</Notice>}
+            <p className="text-xs text-muted-foreground">{t('convert.keeps')}</p>
+            <Button type="button" onClick={applyConversion} disabled={!canConvert} className="w-fit">
+              {t('convert.action')}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-            <div className="flex flex-col gap-3 border-t border-border pt-4">
-              {extras.length > 0 && (
-                <ul className="flex flex-col gap-3">
-                  {extras.map((extra, index) => {
-                    const v = extraValues[index];
-                    const amount =
-                      v?.kind === 'work'
-                        ? Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents)
-                          ? money(Math.round(v.hours * v.hourlyCents))
-                          : '—'
-                        : v && Number.isFinite(v.amountCents)
-                          ? money(v.amountCents)
-                          : '—';
-                    return (
-                      <li key={extra.key} className="flex flex-wrap items-end gap-2 rounded-xl border border-border p-3">
-                        <Field id={`extra-desc-${extra.key}`} label={extra.kind === 'work' ? t('extras.workLabel') : t('extras.expenseLabel')} className="min-w-40 flex-1">
-                          <Input
-                            id={`extra-desc-${extra.key}`}
-                            value={extra.description}
-                            maxLength={120}
-                            aria-invalid={extra.description.trim() === ''}
-                            placeholder={extra.kind === 'work' ? t('extras.workPlaceholder') : t('extras.expensePlaceholder')}
-                            onChange={(e) => patchExtra(extra.key, { description: e.target.value })}
-                          />
-                        </Field>
-                        {extra.kind === 'work' ? (
-                          <>
-                            <Field id={`extra-hours-${extra.key}`} label={t('extras.hours')} className="w-24">
-                              <Input
-                                id={`extra-hours-${extra.key}`}
-                                inputMode="decimal"
-                                value={extra.hours}
-                                onChange={(e) => patchExtra(extra.key, { hours: e.target.value })}
-                                className="text-right tabular-nums"
-                              />
-                            </Field>
-                            <Field id={`extra-rate-${extra.key}`} label={t('extras.rate')} className="w-28">
-                              <Input
-                                id={`extra-rate-${extra.key}`}
-                                inputMode="decimal"
-                                value={extra.rate}
-                                onChange={(e) => patchExtra(extra.key, { rate: e.target.value })}
-                                className="text-right tabular-nums"
-                              />
-                            </Field>
-                          </>
-                        ) : (
-                          <Field id={`extra-amount-${extra.key}`} label={t('extras.amount')} className="w-32">
-                            <Input
-                              id={`extra-amount-${extra.key}`}
-                              inputMode="decimal"
-                              value={extra.amount}
-                              onChange={(e) => patchExtra(extra.key, { amount: e.target.value })}
-                              className="text-right tabular-nums"
-                            />
-                          </Field>
-                        )}
-                        <span className="flex h-10 w-24 items-center justify-end text-sm font-semibold tabular-nums">{amount}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`${t('remove')} — ${extra.description}`}
-                          onClick={() => setExtras((prev) => prev.filter((e) => e.key !== extra.key))}
-                        >
-                          <X />
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('work')])}>
-                  <Plus />
-                  {t('extras.addWork')}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('expense')])}>
-                  <Plus />
-                  {t('extras.addExpense')}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">{t('extras.reminder')}</p>
-            </div>
-          </Section>
+      <Card>
+        <CardContent className="flex flex-col gap-5 pt-6">
+          {/* 1. Dish name */}
+          <Field id="dish-name" label={t('fields.name')}>
+            <Input
+              id="dish-name"
+              value={name}
+              maxLength={200}
+              autoFocus={isNew || justCopied}
+              placeholder={t('fields.namePlaceholder')}
+              onChange={(e) => setName(e.target.value)}
+              className="h-12 text-base"
+            />
+          </Field>
 
-          {/* 4. Selling price */}
-          <Section step={4} title={t('sections.price')}>
-            <Field id="price" label={t('price.label', { per: perLabel })}>
-              <div className="relative">
-                <Input
-                  id="price"
-                  inputMode="decimal"
-                  value={priceText}
-                  placeholder="0.00"
-                  aria-invalid={!priceValid}
-                  onChange={(e) => {
-                    setPriceText(e.target.value);
-                    const cents = parseMoneyField(e.target.value);
-                    if (cents === null) setPriceExclCents(null);
-                    else if (Number.isFinite(cents)) setPriceExclCents(cents);
-                  }}
-                  className="h-14 pr-28 text-right text-xl font-semibold tabular-nums"
-                />
-                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                  {perLabel}
-                </span>
-              </div>
-            </Field>
-            <p className="text-xs text-muted-foreground">{t('price.hint')}</p>
-
-            <button
-              type="button"
-              onClick={() => setMorePricing((open) => !open)}
-              aria-expanded={morePricing}
-              className="inline-flex w-fit cursor-pointer items-center gap-1 text-sm font-medium text-accent-700 hover:underline dark:text-accent-300"
+          {/* 2. Folder */}
+          <Field id="dish-folder" label={t('fields.folder')}>
+            <Select
+              id="dish-folder"
+              value={folderId ?? ''}
+              onChange={(e) => setFolderId(e.target.value === '' ? null : e.target.value)}
+              className="h-12 text-base"
             >
-              <ChevronDown className={cn('size-4 transition-transform', !morePricing && '-rotate-90')} />
-              {t('price.more')}
-            </button>
-            {morePricing && (
-              <div className="grid grid-cols-1 gap-4 rounded-xl bg-surface-2 p-4 sm:grid-cols-2">
-                <SmallInput
+              <option value="">{t('fields.unfiled')}</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          {/* 3. Selling price excl. / incl. VAT */}
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="price-excl" label={t('price.excl')}>
+                <MoneyInput
+                  id="price-excl"
+                  value={priceText('excl')}
+                  currency={currency}
+                  invalid={priceInvalid && priceDraft?.field === 'excl'}
+                  disabled={needsConversion}
+                  onChange={(v) => onPriceChange('excl', v)}
+                  onBlur={() => setPriceDraft(null)}
+                />
+              </Field>
+              <Field id="price-incl" label={t('price.incl')}>
+                <MoneyInput
                   id="price-incl"
-                  label={t('price.incl', { per: perLabel })}
-                  value={pricingText('incl')}
-                  onChange={(v) => onPricingChange('incl', v)}
-                  onBlur={() => setDraft(null)}
+                  value={priceText('incl')}
+                  currency={currency}
+                  invalid={priceInvalid && priceDraft?.field === 'incl'}
+                  disabled={needsConversion}
+                  onChange={(v) => onPriceChange('incl', v)}
+                  onBlur={() => setPriceDraft(null)}
                 />
-                <SmallInput
-                  id="vat"
-                  label={t('price.vat')}
+              </Field>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Label htmlFor="vat-rate" className="text-sm font-normal text-muted-foreground">
+                {t('price.vatRate')}
+              </Label>
+              <div className="relative w-24">
+                <Input
+                  id="vat-rate"
+                  inputMode="decimal"
                   value={vatText}
-                  suffix="%"
-                  invalid={!vatValid}
-                  placeholder={defaultVatBps !== null ? numberToField(defaultVatBps / 100) : '0'}
-                  hint={vatText.trim() === '' ? t('price.vatDefault') : undefined}
-                  onChange={setVatText}
+                  aria-invalid={!vatValid}
+                  placeholder={numberToField((defaultVatBps ?? 0) / 100)}
+                  onChange={(e) => {
+                    setVatText(e.target.value);
+                    setPriceDraft(null);
+                  }}
+                  className="h-9 pr-7 text-right tabular-nums"
                 />
-                <SmallInput
-                  id="margin"
-                  label={t('price.margin')}
-                  value={pricingText('margin')}
-                  suffix="%"
-                  disabled={exactUnitCost === null}
-                  onChange={(v) => onPricingChange('margin', v)}
-                  onBlur={() => setDraft(null)}
-                />
-                <SmallInput
-                  id="total-cost-pct"
-                  label={t('price.totalCostPct')}
-                  value={pricingText('totalCost')}
-                  suffix="%"
-                  disabled={exactUnitCost === null}
-                  onChange={(v) => onPricingChange('totalCost', v)}
-                  onBlur={() => setDraft(null)}
-                />
-                <p className="text-xs text-muted-foreground sm:col-span-2">
-                  {exactUnitCost === null ? t('price.moreNoCost') : t('price.moreHint')}
-                </p>
+                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
               </div>
-            )}
-          </Section>
-        </div>
+              <span className="text-xs text-muted-foreground">
+                {vatBlank
+                  ? defaultVatBps !== null
+                    ? t('price.vatDefault', { rate: formatPercentBps(defaultVatBps) })
+                    : t('price.vatNone')
+                  : vatValid
+                    ? t('price.vatOverride', { rate: formatPercentBps(vatBps) })
+                    : t('problems.vat')}
+              </span>
+            </div>
+          </div>
 
-        {/* Results */}
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-20 lg:self-start" aria-label={t('results.title')}>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle>{t('results.title')}</CardTitle>
-              <p className="text-xs text-muted-foreground">{t('results.vatBasis')}</p>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <dl className="flex flex-col gap-2 text-sm">
-                <Row label={t('results.components')} value={cost.componentsCents !== null ? money(cost.componentsCents) : '—'} />
-                <Row
-                  label={t('results.labour')}
-                  value={labourBlank ? t('results.labourNotEntered') : cost.productionLabourCents !== null ? money(cost.productionLabourCents) : '—'}
-                  muted={labourBlank}
-                />
-                <Row label={t('results.extraWork')} value={cost.extraWorkCents !== null ? money(cost.extraWorkCents) : '—'} />
-                <Row label={t('results.expenses')} value={cost.expensesCents !== null ? money(cost.expensesCents) : '—'} />
-                <Row strong label={t('results.total')} value={cost.totalCostCents !== null ? money(cost.totalCostCents) : '—'} />
-                <Row label={t('results.costPerUnit')} value={unitCostText} />
-                {kind === 'count' && cost.costPerKgCents !== null && (
-                  <Row label={t('results.costPerKg')} value={`${money(cost.costPerKgCents)} ${t('per.kg')}`} />
-                )}
-              </dl>
+          {/* 4. Number of portions */}
+          <Field id="portions" label={t('portions.label')}>
+            <Input
+              id="portions"
+              inputMode="numeric"
+              value={portionsText}
+              aria-invalid={!needsConversion && portions === null}
+              aria-describedby="portions-hint"
+              disabled={needsConversion}
+              onChange={(e) => setPortionsText(e.target.value)}
+              className="h-12 w-32 text-right text-base tabular-nums"
+            />
+            <p id="portions-hint" className="text-sm text-muted-foreground">
+              {t('portions.hint')}
+            </p>
+          </Field>
+        </CardContent>
+      </Card>
 
-              <dl className="flex flex-col gap-2 border-t border-border pt-4 text-sm">
-                <Row
-                  label={t('results.price')}
-                  value={pricing.priceExclCents !== null ? `${money(pricing.priceExclCents)} ${perLabel}` : '—'}
-                />
-                <Row
-                  label={t('results.sales', { batch: batchLabel })}
-                  value={pricing.estimatedSalesCents !== null ? money(pricing.estimatedSalesCents) : '—'}
-                />
-                <div className="flex items-baseline justify-between gap-2 pt-1">
-                  <dt className="font-medium text-foreground">{t('results.left')}</dt>
-                  <dd className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        'font-display text-2xl font-semibold tabular-nums',
-                        pricing.amountLeftCents !== null && pricing.amountLeftCents < 0 ? 'text-red-700 dark:text-red-300' : 'text-foreground',
-                      )}
-                    >
-                      {pricing.amountLeftCents !== null ? money(pricing.amountLeftCents) : '—'}
-                    </span>
-                  </dd>
+      {/* Compact live summary: stays in view while costs are edited further down. */}
+      <div
+        aria-live="polite"
+        className="sticky top-0 z-10 rounded-xl border border-accent-200 bg-accent-50/95 px-4 py-2.5 shadow-sm backdrop-blur dark:border-accent-800 dark:bg-accent-950/90"
+      >
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+          <MiniStat label={t('calc.price')} value={priceShown} />
+          <MiniStat label={t('calc.costPerPortion')} value={costShown} />
+          <MiniStat label={t('calc.leftPerPortion')} value={leftShown} negative={leftNegative} />
+          <MiniStat label={t('calc.margin')} value={marginShown} negative={leftNegative} />
+        </dl>
+      </div>
+
+      {/* 5. Margin calculator */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">{t('calc.title')}</CardTitle>
+          <p className="text-xs text-muted-foreground">{t('calc.vatBasis')}</p>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <dl className="flex flex-col gap-2 text-sm">
+            <Row label={t('calc.price')} value={priceShown} />
+            <Row label={t('calc.costPerPortion')} value={costShown} />
+            <Row label={t('calc.leftPerPortion')} value={leftShown} strong negative={leftNegative} />
+            <Row label={t('calc.margin')} value={marginShown} strong negative={leftNegative} />
+            <Row
+              label={t('calc.totalCostPct')}
+              value={pricing.totalCostBps !== null ? formatPercentBps(pricing.totalCostBps) : dash}
+            />
+            <Row
+              label={portions !== null ? t('calc.totalCost', { count: portions }) : t('calc.totalCostUnknown')}
+              value={cost.totalCostCents !== null && portions !== null ? money(cost.totalCostCents) : dash}
+              divided
+            />
+          </dl>
+
+          {missingReason ? (
+            <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              {missingReason}
+            </p>
+          ) : null}
+          <p className="text-xs text-muted-foreground">{t('calc.overheads')}</p>
+
+          <div className="flex flex-col gap-3 rounded-xl bg-surface-2 p-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field id="target-margin" label={t('calc.target')}>
+                <div className="relative">
+                  <Input
+                    id="target-margin"
+                    inputMode="decimal"
+                    value={targetText}
+                    placeholder="70"
+                    aria-invalid={targetText.trim() !== '' && targetBps === null}
+                    onChange={(e) => setTargetText(e.target.value)}
+                    className="bg-surface pr-8 text-right tabular-nums"
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
                 </div>
-                {pricing.marginBps !== null && (
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant={marginVariant(pricing.marginBps)}>
-                      {t('results.leftPct', { pct: formatPercentBps(pricing.marginBps) })}
-                    </Badge>
-                    {pricing.totalCostBps !== null && (
-                      <Badge variant="neutral">{t('results.totalCostPct', { pct: formatPercentBps(pricing.totalCostBps) })}</Badge>
-                    )}
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">{t('results.assumption')}</p>
-              </dl>
-
-              {!cost.complete && (recipeLines.length > 0 || ingredientLines.length > 0) && (
-                <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  {!outputValid
-                    ? t('results.outputMissing')
-                    : !labourBlank && !labourValid
-                      ? t('problems.labour')
-                      : !extrasValid
-                        ? t('problems.extras')
-                        : t('results.incomplete')}
-                </p>
-              )}
-
-              {!canSave && (name !== '' || recipeLines.length > 0 || !isNew) && (
-                <ul className="flex flex-col gap-1 text-xs text-red-700 dark:text-red-300">
-                  {problems.map((p) => (
-                    <li key={p}>{p}</li>
-                  ))}
-                </ul>
-              )}
-              <div className="hidden lg:block [&>button]:w-full">{saveButton}</div>
-            </CardContent>
-          </Card>
-        </aside>
-      </div>
-
-      {/* Mobile: the key numbers + Save stay in reach. */}
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 px-4 py-3 backdrop-blur lg:hidden">
-        <div className="mx-auto flex max-w-6xl items-center gap-3">
-          <div className="flex min-w-0 flex-1 flex-col text-xs">
-            <span className="truncate text-muted-foreground">
-              {t('results.total')}: <span className="tabular-nums text-foreground">{cost.totalCostCents !== null ? money(cost.totalCostCents) : '—'}</span>
-            </span>
-            <span className="truncate font-medium text-foreground">
-              {t('results.left')}: {pricing.amountLeftCents !== null ? money(pricing.amountLeftCents) : '—'}
-            </span>
+              </Field>
+              <ReadOnly label={t('calc.suggestedExcl')} value={suggestedExcl !== null ? money(suggestedExcl) : dash} />
+              <ReadOnly label={t('calc.suggestedIncl')} value={suggestedIncl !== null ? money(suggestedIncl) : dash} />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={suggestedExcl === null || needsConversion || suggestedExcl === priceExclCents}
+                onClick={() => {
+                  if (suggestedExcl === null) return;
+                  setPriceExclCents(suggestedExcl);
+                  setPriceDraft(null);
+                }}
+              >
+                {t('calc.usePrice')}
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {targetText.trim() !== '' && targetBps === null
+                  ? t('calc.targetInvalid')
+                  : targetBps !== null && suggestedExcl === null
+                    ? t('calc.suggestedNeedsCost')
+                    : t('calc.targetHint')}
+              </span>
+            </div>
           </div>
-          <div className="shrink-0">{saveButton}</div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Weight ↔ count needs new yield information */}
-      <ConfirmDialog
-        open={unitChange !== null}
-        title={t('unitChange.title')}
-        description={
-          unitChange
-            ? outputKind(unitChange) === 'count'
-              ? t('unitChange.toCount', { unit: tUnits(`output.${unitChange}`) })
-              : t('unitChange.toWeight', { unit: tUnits(`output.${unitChange}`) })
-            : ''
-        }
-        confirmLabel={t('unitChange.confirm')}
-        cancelLabel={t('cancel')}
-        onConfirm={applyUnitChange}
-        onCancel={() => setUnitChange(null)}
-      >
-        <div className="flex flex-col gap-3 pt-2">
-          <div className="flex items-center gap-2">
-            <Input
-              inputMode="decimal"
-              autoFocus
-              value={unitChangeQty}
-              aria-label={t('output.makes')}
-              onChange={(e) => setUnitChangeQty(e.target.value)}
-              className="h-12 w-36 text-right text-lg tabular-nums"
-            />
-            <span className="text-sm text-muted-foreground">{unitChange ? tUnits(`output.${unitChange}`) : ''}</span>
-          </div>
-          {unitChange && outputKind(unitChange) === 'count' && outputValid && (
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={keepWeight} onChange={(e) => setKeepWeight(e.target.checked)} />
-              {t('unitChange.keepWeight', { kg: numberToField(outputCanonical / 1000) })}
-            </label>
-          )}
-          <p className="text-xs text-muted-foreground">{t('unitChange.priceReset')}</p>
-        </div>
-      </ConfirmDialog>
-
-      {/* Make a different quantity */}
-      <ConfirmDialog
-        open={scaling}
-        title={t('scale.title')}
-        description={t('scale.description')}
-        confirmLabel={t('scale.apply')}
-        cancelLabel={t('cancel')}
-        onConfirm={applyScale}
-        onCancel={() => setScaling(false)}
-      >
-        <div className="flex flex-col gap-3 pt-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">{t('scale.makeInstead')}</span>
-            <Input
-              inputMode="decimal"
-              autoFocus
-              value={scaleText}
-              aria-label={t('scale.makeInstead')}
-              onChange={(e) => setScaleText(e.target.value)}
-              className="h-11 w-28 text-right tabular-nums"
-            />
-            <span className="text-sm text-muted-foreground">{tUnits(`output.${outputUnit}`)}</span>
-          </div>
-          {scaled && (
-            <ul className="max-h-60 divide-y divide-border overflow-y-auto rounded-lg border border-border text-sm">
-              {recipeLines.map((l, i) => (
-                <PreviewRow key={l.recipeId} name={l.name} from={l.quantity} to={numberToField(scaled.recipeLines[i]?.quantity ?? 0)} unit={tUnits(l.unit)} />
-              ))}
-              {ingredientLines.map((l, i) => (
-                <PreviewRow key={l.ingredientId} name={l.name} from={l.quantity} to={numberToField(scaled.ingredientLines[i]?.quantity ?? 0)} unit={tUnits(l.unit)} />
-              ))}
-              {finishedWeightGrams !== null && scaled.output.finishedWeightGrams !== null && (
-                <PreviewRow
-                  name={t('output.finishedWeight')}
-                  from={numberToField(finishedWeightGrams / 1000)}
-                  to={numberToField(scaled.output.finishedWeightGrams / 1000)}
-                  unit="kg"
-                />
-              )}
+      {/* 6. Recipes */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">{t('recipes.title')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{coversAll}</p>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {recipeLines.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('recipes.empty')}</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {recipeLines.map((line, index) => {
+                const option = recipeById.get(line.recipeId);
+                const contribution = lineCost.get(recipeLineKey(line.recipeId)) ?? null;
+                const perKg = excludeLabour ? option?.costPerKgWithoutLabourCents : option?.costPerKgCents;
+                const perPortion = excludeLabour ? option?.costPerPortionWithoutLabourCents : option?.costPerPortionCents;
+                const unitCost =
+                  perKg != null
+                    ? t('recipes.perKg', { amount: money(perKg) })
+                    : perPortion != null
+                      ? t('recipes.perPortion', { amount: money(perPortion) })
+                      : null;
+                // g / kg only when the recipe has a finished weight — no guessed conversions.
+                const units = DISH_RECIPE_UNITS.filter((u) => u === 'portion' || option?.yieldWeightGrams || u === line.unit);
+                const q = parseNumber(line.quantity);
+                return (
+                  <ComponentRow
+                    key={line.recipeId}
+                    name={line.name}
+                    meta={
+                      !option ? (
+                        <Badge variant="negative">{t('unavailable')}</Badge>
+                      ) : unitCost ? (
+                        <span>{unitCost}</span>
+                      ) : (
+                        <Badge variant="warning">{t('needsPricing')}</Badge>
+                      )
+                    }
+                    warning={option && line.unit !== 'portion' && !option.yieldWeightGrams ? t('recipes.needsWeight') : undefined}
+                    quantity={line.quantity}
+                    quantityInvalid={q === null || q <= 0}
+                    onQuantity={(value) => setRecipeLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))}
+                    unit={line.unit}
+                    units={units.map((u) => ({ value: u, label: tUnits(u) }))}
+                    onUnit={(value) =>
+                      setRecipeLines((prev) => prev.map((l, i) => (i === index ? { ...l, unit: value as DishRecipeUnit } : l)))
+                    }
+                    contribution={contribution !== null ? money(contribution) : dash}
+                    removeLabel={t('remove')}
+                    onRemove={() => setRecipeLines((prev) => prev.filter((_, i) => i !== index))}
+                    quantityLabel={t('quantity')}
+                    unitLabel={t('unit')}
+                  />
+                );
+              })}
             </ul>
           )}
-          <p className="flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            {t('scale.notScaled')}
-          </p>
+          <ComponentPicker
+            placeholder={t('recipes.add')}
+            emptyLabel={t('noMatches')}
+            options={recipeOptions
+              .filter((r) => !recipeLines.some((l) => l.recipeId === r.id))
+              .map((r) => {
+                const perKg = excludeLabour ? r.costPerKgWithoutLabourCents : r.costPerKgCents;
+                const perPortion = excludeLabour ? r.costPerPortionWithoutLabourCents : r.costPerPortionCents;
+                return {
+                  id: r.id,
+                  name: r.name,
+                  hint:
+                    perKg !== null
+                      ? t('recipes.perKg', { amount: money(perKg) })
+                      : perPortion !== null
+                        ? t('recipes.perPortion', { amount: money(perPortion) })
+                        : t('needsPricing'),
+                };
+              })}
+            onPick={(id) => {
+              const option = recipeById.get(id);
+              if (option) addRecipe(option);
+            }}
+          />
+        </CardContent>
+      </Card>
+
+      {/* 7. Direct ingredients and packaging */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">{t('ingredients.title')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{coversAll}</p>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {ingredientLines.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('ingredients.empty')}</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {ingredientLines.map((line, index) => {
+                const option = ingredientById.get(line.ingredientId);
+                const contribution = lineCost.get(ingredientLineKey(line.ingredientId)) ?? null;
+                const q = parseNumber(line.quantity);
+                return (
+                  <ComponentRow
+                    key={line.ingredientId}
+                    name={line.name}
+                    meta={
+                      !option ? (
+                        <Badge variant="negative">{t('unavailable')}</Badge>
+                      ) : option.needsPricing ? (
+                        <Badge variant="warning">{t('needsPricing')}</Badge>
+                      ) : (
+                        <span>{t(`ingredients.per.${option.dimension}`, { amount: money(option.priceCents) })}</span>
+                      )
+                    }
+                    quantity={line.quantity}
+                    quantityInvalid={q === null || q <= 0}
+                    onQuantity={(value) =>
+                      setIngredientLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))
+                    }
+                    unit={line.unit}
+                    units={(option ? ingredientUnitsFor(option.dimension) : [line.unit]).map((u) => ({ value: u, label: tUnits(u) }))}
+                    onUnit={(value) =>
+                      setIngredientLines((prev) =>
+                        prev.map((l, i) => (i === index ? { ...l, unit: value as DishIngredientUnit } : l)),
+                      )
+                    }
+                    contribution={contribution !== null ? money(contribution) : dash}
+                    removeLabel={t('remove')}
+                    onRemove={() => setIngredientLines((prev) => prev.filter((_, i) => i !== index))}
+                    quantityLabel={t('quantity')}
+                    unitLabel={t('unit')}
+                  />
+                );
+              })}
+            </ul>
+          )}
+          <ComponentPicker
+            placeholder={t('ingredients.add')}
+            emptyLabel={t('noMatches')}
+            options={ingredientOptions
+              .filter((i) => !ingredientLines.some((l) => l.ingredientId === i.id))
+              .map((i) => ({
+                id: i.id,
+                name: i.name,
+                hint: i.needsPricing ? t('needsPricing') : t(`ingredients.per.${i.dimension}`, { amount: money(i.priceCents) }),
+              }))}
+            onPick={(id) => {
+              const option = ingredientById.get(id);
+              if (option) addIngredient(option);
+            }}
+          />
+        </CardContent>
+      </Card>
+
+      {/* 8. Labour */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">{t('labour.title')}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field id="labour-hours" label={portions !== null ? t('labour.hoursFor', { count: portions }) : t('labour.hours')}>
+              <Input
+                id="labour-hours"
+                inputMode="decimal"
+                value={hoursText}
+                placeholder={t('optional')}
+                aria-invalid={!labourBlank && !labourValid}
+                onChange={(e) => setHoursText(e.target.value)}
+                className="h-12 text-right text-base tabular-nums"
+              />
+            </Field>
+            <Field id="labour-rate" label={t('labour.rate')}>
+              <MoneyInput
+                id="labour-rate"
+                value={rateText}
+                currency={currency}
+                placeholder={t('optional')}
+                invalid={!labourBlank && !labourValid}
+                onChange={setRateText}
+              />
+            </Field>
+            <ReadOnly
+              label={t('labour.cost')}
+              value={labourBlank ? t('labour.notEnteredShort') : cost.productionLabourCents !== null ? money(cost.productionLabourCents) : dash}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">{t('labour.hint')}</p>
+          {!labourBlank && !labourValid && <p className="text-sm text-red-700 dark:text-red-300">{t('problems.labour')}</p>}
+          {labourValid && <Notice tone="info">{t('labour.replacesRecipeLabour')}</Notice>}
+          {labourBlank && (
+            <Notice tone="info">{cost.inheritsRecipeLabour ? t('labour.legacy') : t('labour.notEntered')}</Notice>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 9. Extra costs */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">{t('extras.title')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t('extras.reminder')}</p>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {extras.length > 0 && (
+            <ul className="flex flex-col gap-3">
+              {extras.map((extra, index) => {
+                const v = extraValues[index];
+                const amount =
+                  v?.kind === 'work'
+                    ? Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents)
+                      ? money(Math.round(v.hours * v.hourlyCents))
+                      : dash
+                    : v && Number.isFinite(v.amountCents)
+                      ? money(v.amountCents)
+                      : dash;
+                return (
+                  <li key={extra.key} className="flex flex-wrap items-end gap-2 rounded-xl border border-border p-3">
+                    <Field
+                      id={`extra-desc-${extra.key}`}
+                      label={extra.kind === 'work' ? t('extras.workLabel') : t('extras.expenseLabel')}
+                      className="min-w-40 flex-1"
+                    >
+                      <Input
+                        id={`extra-desc-${extra.key}`}
+                        value={extra.description}
+                        maxLength={120}
+                        aria-invalid={extra.description.trim() === ''}
+                        placeholder={extra.kind === 'work' ? t('extras.workPlaceholder') : t('extras.expensePlaceholder')}
+                        onChange={(e) => patchExtra(extra.key, { description: e.target.value })}
+                      />
+                    </Field>
+                    {extra.kind === 'work' ? (
+                      <>
+                        <Field id={`extra-hours-${extra.key}`} label={t('extras.hours')} className="w-24">
+                          <Input
+                            id={`extra-hours-${extra.key}`}
+                            inputMode="decimal"
+                            value={extra.hours}
+                            onChange={(e) => patchExtra(extra.key, { hours: e.target.value })}
+                            className="text-right tabular-nums"
+                          />
+                        </Field>
+                        <Field id={`extra-rate-${extra.key}`} label={t('extras.rate')} className="w-28">
+                          <Input
+                            id={`extra-rate-${extra.key}`}
+                            inputMode="decimal"
+                            value={extra.rate}
+                            onChange={(e) => patchExtra(extra.key, { rate: e.target.value })}
+                            className="text-right tabular-nums"
+                          />
+                        </Field>
+                      </>
+                    ) : (
+                      <Field id={`extra-amount-${extra.key}`} label={t('extras.amount')} className="w-32">
+                        <Input
+                          id={`extra-amount-${extra.key}`}
+                          inputMode="decimal"
+                          value={extra.amount}
+                          onChange={(e) => patchExtra(extra.key, { amount: e.target.value })}
+                          className="text-right tabular-nums"
+                        />
+                      </Field>
+                    )}
+                    <span className="flex h-10 w-24 items-center justify-end text-sm font-semibold tabular-nums">{amount}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`${t('remove')} — ${extra.description}`}
+                      onClick={() => setExtras((prev) => prev.filter((e) => e.key !== extra.key))}
+                    >
+                      <X />
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('work')])}>
+              <Plus />
+              {t('extras.addWork')}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('expense')])}>
+              <Plus />
+              {t('extras.addExpense')}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Notes stay available, after the calculator flow. */}
+      <Card>
+        <CardContent className="pt-6">
+          <Field id="dish-notes" label={t('fields.notes')}>
+            <Textarea
+              id="dish-notes"
+              value={notes}
+              maxLength={1000}
+              placeholder={t('fields.notesPlaceholder')}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </Field>
+        </CardContent>
+      </Card>
+
+      {!canSave && (dirty || !isNew) && (
+        <ul className="flex flex-col gap-1 text-sm text-red-700 dark:text-red-300">
+          {problems.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      )}
+
+      <div className="hidden justify-end md:flex">{actions}</div>
+
+      {/* Mobile: margin + Save / Cancel always in reach. */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 px-4 py-3 backdrop-blur md:hidden">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+          <span className="min-w-0 truncate text-sm">
+            <span className="text-muted-foreground">{t('calc.margin')}: </span>
+            <span className={cn('font-semibold tabular-nums', leftNegative && 'text-red-700 dark:text-red-300')}>{marginShown}</span>
+          </span>
+          {actions}
         </div>
-      </ConfirmDialog>
+      </div>
+
+      <ConfirmDialog
+        open={leaveTo !== null}
+        title={t('discard.title')}
+        description={t('discard.body')}
+        confirmLabel={t('discard.confirm')}
+        cancelLabel={t('discard.keep')}
+        destructive
+        onConfirm={() => {
+          const href = leaveTo;
+          setLeaveTo(null);
+          setSavedKey(payloadKey);
+          if (href) router.push(href);
+        }}
+        onCancel={() => setLeaveTo(null)}
+      />
 
       <ConfirmDialog
         open={copying}
@@ -1271,7 +1139,14 @@ export function DishBuilder({
         onConfirm={makeCopy}
         onCancel={() => setCopying(false)}
       >
-        <Input value={copyName} maxLength={200} autoFocus aria-label={t('fields.name')} onChange={(e) => setCopyName(e.target.value)} className="mt-2 h-12" />
+        <Input
+          value={copyName}
+          maxLength={200}
+          autoFocus
+          aria-label={t('fields.name')}
+          onChange={(e) => setCopyName(e.target.value)}
+          className="mt-2 h-12"
+        />
       </ConfirmDialog>
 
       <ConfirmDialog
@@ -1291,25 +1166,101 @@ export function DishBuilder({
 
 // ── Pieces ───────────────────────────────────────────────────────────────────
 
-function Section({ step, title, children }: { step: number; title: string; children: React.ReactNode }) {
-  return (
-    <Card>
-      <CardHeader className="flex-row items-center gap-3 pb-4">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-          {step}
-        </span>
-        <CardTitle className="text-lg">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">{children}</CardContent>
-    </Card>
-  );
-}
-
 function Field({ id, label, children, className }: { id: string; label: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
       <Label htmlFor={id}>{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function MoneyInput({
+  id,
+  value,
+  currency,
+  onChange,
+  onBlur,
+  invalid,
+  disabled,
+  placeholder = '0.00',
+}: {
+  id: string;
+  value: string;
+  currency: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  invalid?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        inputMode="decimal"
+        value={value}
+        placeholder={placeholder}
+        aria-invalid={invalid}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        className="h-12 pr-14 text-right text-base tabular-nums"
+      />
+      <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+        {currency}
+      </span>
+    </div>
+  );
+}
+
+function ReadOnly({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-sm font-medium text-foreground">{label}</span>
+      <span className="flex h-12 items-center justify-end rounded-lg bg-surface px-3 text-base font-semibold tabular-nums ring-1 ring-border">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, negative }: { label: string; value: string; negative?: boolean }) {
+  return (
+    <div className="flex min-w-0 items-baseline justify-between gap-2 sm:flex-col sm:items-start sm:gap-0">
+      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dd className={cn('text-sm font-semibold tabular-nums', negative ? 'text-red-700 dark:text-red-300' : 'text-foreground')}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  strong,
+  negative,
+  divided,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  negative?: boolean;
+  divided?: boolean;
+}) {
+  return (
+    <div className={cn('flex items-baseline justify-between gap-2', divided && 'border-t border-border pt-2')}>
+      <dt className={cn(strong ? 'font-medium text-foreground' : 'text-muted-foreground')}>{label}</dt>
+      <dd
+        className={cn(
+          'text-right tabular-nums',
+          strong ? 'font-display text-xl font-semibold' : 'font-medium',
+          negative ? 'text-red-700 dark:text-red-300' : 'text-foreground',
+        )}
+      >
+        {value}
+      </dd>
     </div>
   );
 }
@@ -1329,86 +1280,22 @@ function Notice({
     <div
       className={cn(
         'flex items-start gap-2 rounded-lg p-3 text-sm',
-        tone === 'info'
-          ? 'bg-surface-2 text-foreground'
-          : 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',
+        tone === 'info' ? 'bg-surface-2 text-foreground' : 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',
       )}
     >
       {tone === 'info' ? <Info className="mt-0.5 size-4 shrink-0" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}
       <div className="flex-1">{children}</div>
       {onDismiss && (
-        <button type="button" onClick={onDismiss} aria-label={dismissLabel} className="cursor-pointer text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label={dismissLabel}
+          className="cursor-pointer text-muted-foreground hover:text-foreground"
+        >
           <X className="size-4" />
         </button>
       )}
     </div>
-  );
-}
-
-function SmallInput({
-  id,
-  label,
-  value,
-  onChange,
-  onBlur,
-  placeholder,
-  disabled,
-  invalid,
-  hint,
-  suffix,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  onBlur?: () => void;
-  placeholder?: string;
-  disabled?: boolean;
-  invalid?: boolean;
-  hint?: string;
-  suffix?: string;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="relative">
-        <Input
-          id={id}
-          inputMode="decimal"
-          value={value}
-          placeholder={placeholder}
-          disabled={disabled}
-          aria-invalid={invalid}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          className={cn('bg-surface text-right tabular-nums', suffix && 'pr-8')}
-        />
-        {suffix && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{suffix}</span>}
-      </div>
-      {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-    </div>
-  );
-}
-
-function Row({ label, value, strong, muted }: { label: string; value: string; strong?: boolean; muted?: boolean }) {
-  return (
-    <div className={cn('flex items-baseline justify-between gap-2', strong && 'border-t border-border pt-2')}>
-      <dt className={cn(strong ? 'font-semibold text-foreground' : 'text-muted-foreground')}>{label}</dt>
-      <dd className={cn('text-right tabular-nums', strong ? 'font-semibold text-foreground' : muted ? 'text-muted-foreground' : 'font-medium text-foreground')}>
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function PreviewRow({ name, from, to, unit }: { name: string; from: string; to: string; unit: string }) {
-  return (
-    <li className="flex items-center justify-between gap-2 px-3 py-2">
-      <span className="truncate">{name}</span>
-      <span className="shrink-0 tabular-nums text-muted-foreground">
-        {from} → <span className="font-semibold text-foreground">{to}</span> {unit}
-      </span>
-    </li>
   );
 }
 
@@ -1501,7 +1388,7 @@ function ComponentPicker({
 
   return (
     <div className="relative">
-      <Plus className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
       <Input
         value={query}
         placeholder={placeholder}
@@ -1525,12 +1412,13 @@ function ComponentPicker({
         className="h-11 pl-9"
       />
       {open && (
-        <ul id={listId} role="listbox" className="absolute inset-x-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-lg">
+        <ul
+          id={listId}
+          role="listbox"
+          className="absolute inset-x-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-lg"
+        >
           {matches.length === 0 ? (
-            <li className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-              <Search className="size-4" aria-hidden />
-              {emptyLabel}
-            </li>
+            <li className="px-3 py-2 text-sm text-muted-foreground">{emptyLabel}</li>
           ) : (
             matches.map((o) => (
               <li key={o.id} role="option" aria-selected={false}>

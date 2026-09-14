@@ -10,6 +10,7 @@ import {
   countActiveRecipes,
   createRecipe,
   getRecipeById,
+  markRecipeOpened,
   softDeleteRecipe,
   toKitchenRecipe,
   updateRecipe,
@@ -334,6 +335,18 @@ export async function updateRecipeAction(
 }
 
 /** Moves a recipe to the trash (soft-delete). Restorable for 30 days via /trash. */
+/**
+ * Records that the current user opened a recipe (both roles). Feeds the library's
+ * "recent activity" order; it never counts as an edit and revalidates nothing, so
+ * opening a recipe doesn't refetch the page the user is looking at.
+ */
+export async function markRecipeOpenedAction(id: string): Promise<ActionResult> {
+  if (typeof id !== 'string' || id.trim() === '') return { ok: false, code: 'INVALID_INPUT' };
+  const organizationId = await getOrgId();
+  await withOrg(organizationId, (tx) => markRecipeOpened(tx, organizationId, id));
+  return { ok: true, data: undefined };
+}
+
 export async function deleteRecipeAction(id: string): Promise<ActionResult> {
   const organizationId = await getOrgId();
   // A recipe used as a sub-recipe by an ACTIVE parent cannot be trashed — the

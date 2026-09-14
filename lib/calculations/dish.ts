@@ -406,3 +406,47 @@ export function scaleComposition<T extends DishComposition>(dish: T, newOutputQu
     ingredientLines: dish.ingredientLines.map((l) => ({ ...l, quantity: l.quantity * factor })),
   };
 }
+
+// ── Per-portion pricing (the dish editor's margin calculator) ────────────────
+
+export type PortionPricing = {
+  priceExclCents: number | null;
+  priceInclCents: number | null;
+  /** Total entered cost ÷ portions, rounded for display. */
+  costPerPortionCents: number | null;
+  /** Unrounded cost per portion — the base for margin and suggested prices. */
+  exactCostPerPortionCents: number | null;
+  /** Selling price excl. VAT − cost per portion (still has to cover overheads + profit). */
+  amountLeftPerPortionCents: number | null;
+  /** amount left ÷ selling price excl. VAT. Margin, not markup. */
+  marginBps: number | null;
+  /** Total entered cost ÷ selling price ("Total cost %", not food cost). */
+  totalCostBps: number | null;
+};
+
+/**
+ * Per-portion view of a dish whose output is a COUNT of portions. Everything derives
+ * from the exact total and is rounded once. A missing price or cost yields nulls —
+ * never a zero or a flattering margin.
+ */
+export function portionPricing(
+  cost: Pick<DishCost, 'exactTotalCents' | 'saleUnits'>,
+  priceExclCents: number | null,
+  vatBps: number,
+): PortionPricing {
+  const price = priceExclCents != null && nonNegativeFinite(priceExclCents) ? priceExclCents : null;
+  const exactCost =
+    cost.exactTotalCents !== null && positiveFinite(cost.saleUnits)
+      ? cost.exactTotalCents / cost.saleUnits
+      : null;
+  const priced = price !== null && price > 0 && exactCost !== null;
+  return {
+    priceExclCents: price,
+    priceInclCents: price === null ? null : priceInclVat(price, vatBps),
+    costPerPortionCents: exactCost === null ? null : Math.round(exactCost),
+    exactCostPerPortionCents: exactCost,
+    amountLeftPerPortionCents: priced ? Math.round(price - exactCost) : null,
+    marginBps: priced ? Math.round(((price - exactCost) / price) * BPS) : null,
+    totalCostBps: priced ? Math.round((exactCost / price) * BPS) : null,
+  };
+}
