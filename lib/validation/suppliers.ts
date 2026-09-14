@@ -82,6 +82,9 @@ export const ingredientSupplierSchema = z
     // the link: '' clears it back to the org default; omitted leaves it untouched.
     // Only the id travels — the rate is always resolved server-side.
     vatCategoryId: z.union([z.literal(''), z.string().uuid()]).optional(),
+    // The ingredient's own typed purchase VAT rate in basis points (0 = a deliberate
+    // 0% rate). null clears it back to the band / org default; omitted = untouched.
+    vatRateBps: z.number().int().min(0).max(10_000).nullable().optional(),
   })
   .refine(
     // A price is only meaningful with a size + unit (mirrors the DB CHECK).

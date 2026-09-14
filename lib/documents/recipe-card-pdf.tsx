@@ -17,7 +17,7 @@ import { formatMoney, safeText } from './format';
  * touches the DB or the i18n runtime. Brand accent matches the app/invoice doc.
  */
 
-const ACCENT = '#086f59'; // accent-700, the app's deep mint for text
+const ACCENT = '#2c7466'; // accent-700, the app's deep mint for text
 const INK = '#1f2937';
 const MUTED = '#6b7280';
 const BORDER = '#e5e7eb';

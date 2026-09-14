@@ -26,13 +26,13 @@ export const palette = {
   /** Faintest supporting text (footer, fine print). */
   faint: '#94a3b8',
   /** Brand accent TEXT (app `--color-accent-700`) — headers, bullets, links. */
-  accent: '#086f59',
+  accent: '#2c7466',
   /** CTA fill (app `--color-primary`) — light mint. */
-  accentFill: '#79dfbf',
+  accentFill: '#9cd5c8',
   /** Text on the mint fill (app `--color-primary-foreground`), 7.8:1. */
-  accentForeground: '#053b30',
+  accentForeground: '#123831',
   /** A soft accent tint for subtle highlights. */
-  accentSoft: '#effcf7',
+  accentSoft: '#f1f8f6',
   /** Positive tone (good trend) — the leaf green, distinct from the mint accent. */
   positive: '#15803d',
   /** Negative / warning tone (bad trend, partial-data note). */

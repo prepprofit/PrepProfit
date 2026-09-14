@@ -9,6 +9,7 @@ import {
   ingredientNutritionProfiles,
   recipeIngredients,
   recipePortionOptions,
+  recipes,
 } from '@/lib/db/schema';
 import {
   listRecipesForLibrary,
@@ -140,10 +141,13 @@ describe('listRecipesForLibrary', () => {
       allergensUnreviewed: false,
       nutritionIncomplete: false,
       noBook: false,
+      missingFinishedWeight: true,
     });
     // Dual-read: the default portion option price wins; cost from the line.
     expect(bread.money).toEqual({
       costPerPortionCents: 20,
+      // No finished weight on this fixture → cost per kg can't be calculated.
+      costPerKgCents: null,
       sellingPriceCents: 100,
       marginPercent: 80,
       needsPricing: false,
@@ -154,12 +158,27 @@ describe('listRecipesForLibrary', () => {
       allergensUnreviewed: true,
       nutritionIncomplete: true,
       noBook: true,
+      missingFinishedWeight: true,
     });
     expect(rough.money).toMatchObject({
+      costPerKgCents: null,
       sellingPriceCents: null,
       marginPercent: null,
       needsPricing: true,
     });
+  });
+
+  it('shows cost per kg only when the finished weight is known and every price is set', async () => {
+    await db.update(recipes).set({ yieldWeightGrams: 800 }).where(eq(recipes.id, pricedRecipeId));
+    await db.update(recipes).set({ yieldWeightGrams: 500 }).where(eq(recipes.id, roughRecipeId));
+    const rows = await listRecipesForLibrary(db, ORG_A);
+    const bread = rows.find((r) => r.id === pricedRecipeId)!;
+    const rough = rows.find((r) => r.id === roughRecipeId)!;
+    expect(bread.money?.costPerKgCents).toBe(250); // 200c for 800 g
+    expect(bread.status.missingFinishedWeight).toBe(false);
+    // An unpriced ingredient makes the cost understated → "—", never a zero.
+    expect(rough.money?.costPerKgCents).toBeNull();
+    await db.update(recipes).set({ yieldWeightGrams: null });
   });
 
   it('toKitchenLibraryRow strips the money KEY from the payload (not just the value)', async () => {

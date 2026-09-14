@@ -5,6 +5,7 @@ import {
   FileSpreadsheet,
   Folder,
   Inbox,
+  Layers,
   LayoutGrid,
   ShieldAlert,
   Table2,
@@ -34,7 +35,8 @@ import { cn } from '@/lib/utils';
  *
  * - Home (no folder): a large search across every folder, a compact "Add recipe",
  *   and the folders as tiles (plus "Unfiled").
- * - Folder (`?folder=<id>` or `?folder=none` for Unfiled): full width — back to
+ * - Folder (`?folder=<id>`, `?folder=none` for Unfiled, `?folder=all` for every
+ *   recipe): full width — back to
  *   Recipes, the folder name, a compact "Add recipe" filed into this folder, and the
  *   recipe table (or `?view=cards`) with its filters and bulk actions.
  *
@@ -69,6 +71,7 @@ export default async function RecipesPage({
       ? (listing.folders.find((f) => f.id === folder) ?? null)
       : null;
   const inUnfiled = folder === 'none';
+  const inAll = folder === 'all';
 
   // Allergen matrix is OPERATIONAL + money-free → visible to kitchen too.
   const secondaryLinks = (
@@ -88,7 +91,7 @@ export default async function RecipesPage({
   );
 
   // ── Home ──────────────────────────────────────────────────────────────────
-  if (!activeFolder && !inUnfiled) {
+  if (!activeFolder && !inUnfiled && !inAll) {
     return (
       <div className="flex flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -97,15 +100,11 @@ export default async function RecipesPage({
         </div>
         <RecipeHome
           listing={listing}
-          // Search needs names, folders and yield only — never money.
+          // Search needs names and folders only — never money.
           recipes={libraryRows.map((r) => ({
             id: r.id,
             name: r.name,
             folderId: r.folderId,
-            yieldLabel:
-              r.yieldQuantity != null && r.yieldUnit
-                ? `${r.yieldQuantity} ${r.yieldUnit}`
-                : t('library.portions', { count: r.yieldPortions }),
             recentActivityAt: r.recentActivityAt,
           }))}
         />
@@ -114,10 +113,11 @@ export default async function RecipesPage({
   }
 
   // ── Folder view ───────────────────────────────────────────────────────────
-  const activeKey = activeFolder ? activeFolder.id : 'none';
-  const visibleRows = libraryRows.filter((r) =>
-    activeFolder ? r.folderId === activeFolder.id : r.folderId === null,
-  );
+  const activeKey = activeFolder ? activeFolder.id : inAll ? 'all' : 'none';
+  // "All" = every active recipe in the business, unfiled included.
+  const visibleRows = inAll
+    ? libraryRows
+    : libraryRows.filter((r) => (activeFolder ? r.folderId === activeFolder.id : r.folderId === null));
   // Kitchen never sees recipe money — strip it from the payload itself, not
   // just the UI (the `money` key is absent from every kitchen row).
   const rows = showMoney ? visibleRows : visibleRows.map(toKitchenLibraryRow);
@@ -145,7 +145,7 @@ export default async function RecipesPage({
             <span
               className={cn(
                 'flex size-10 shrink-0 items-center justify-center rounded-xl',
-                activeFolder
+                activeFolder || inAll
                   ? 'bg-accent-50 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300'
                   : 'bg-surface-2 text-muted-foreground',
               )}
@@ -156,13 +156,15 @@ export default async function RecipesPage({
                 </span>
               ) : activeFolder ? (
                 <Folder className="size-5" aria-hidden />
+              ) : inAll ? (
+                <Layers className="size-5" aria-hidden />
               ) : (
                 <Inbox className="size-5" aria-hidden />
               )}
             </span>
             <div className="flex min-w-0 flex-col">
               <h2 className="truncate font-display text-2xl font-semibold tracking-tight text-foreground">
-                {activeFolder ? activeFolder.name : t('home.unfiled')}
+                {activeFolder ? activeFolder.name : inAll ? t('home.allTitle') : t('home.unfiled')}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {t('home.recipeCount', { count: visibleRows.length })}

@@ -34,14 +34,14 @@ active nav, selected controls, links, focus. Adopted 2026-09-14, replacing orang
 so the product feels calm and positive; it is used sparingly so it keeps meaning.
 
 ```
---color-accent-50:#effcf7 --color-accent-100:#d7f7ea --color-accent-200:#afeed7
---color-accent-300:#79dfbf --color-accent-400:#5fd6b1 --color-accent-500:#16ab86
---color-accent-600:#0b8a6d --color-accent-700:#086f59 --color-accent-800:#0a5a49
---color-accent-900:#0a4a3d --color-accent-950:#053b30
+--color-accent-50:#f1f8f6 --color-accent-100:#dcefe9 --color-accent-200:#c4e7de
+--color-accent-300:#9cd5c8 --color-accent-400:#85c9ba --color-accent-500:#4fa895
+--color-accent-600:#3a8e7d --color-accent-700:#2c7466 --color-accent-800:#245f54
+--color-accent-900:#1f4e46 --color-accent-950:#123831
 ```
 **Filled controls use the light mint with DARK text** — white on mint is 1.6:1 and
-unreadable. Tokens: `--color-primary:#79dfbf`, `--color-primary-hover:#5fd6b1`,
-`--color-primary-soft:#afeed7` (selected nav), `--color-primary-foreground:#053b30`
+unreadable. Tokens: `--color-primary:#9cd5c8`, `--color-primary-hover:#85c9ba`,
+`--color-primary-soft:#c4e7de` (selected nav), `--color-primary-foreground:#123831`
 (7.8:1 on primary, 9.6:1 on soft). Use `bg-primary text-primary-foreground`, never
 `bg-accent-* text-white`. **Accent text** (links, active labels) uses `accent-700` on
 light grounds (5.9:1) and `accent-300`/`400` on dark grounds. Switch tracks use
@@ -62,7 +62,7 @@ reads as "profitable"; results always carry a label too, never colour alone.
 
 **Chart categorical palette** (use in this order for multi-series charts & rings):
 ```
---color-chart-1:#16ab86  /* mint (accent) */
+--color-chart-1:#4fa895  /* mint (accent) */
 --color-chart-2:#3b82f6  /* blue   */
 --color-chart-3:#8b5cf6  /* violet */
 --color-chart-4:#f59e0b  /* amber  */
@@ -83,7 +83,7 @@ Semantic: red `#ef4444` (negative/loss), amber `#f59e0b` (warning/low stock).
 | `--border` | `#e2e8f0` | `#262629` | borders / dividers |
 | `--foreground` | `#0f172a` | `#fafafa` | primary text / numbers |
 | `--muted-foreground` | `#64748b` | `#a1a1aa` | secondary text |
-| `--ring` | `#0b8a6d` | `#5fd6b1` | focus ring (accent) |
+| `--ring` | `#3a8e7d` | `#85c9ba` | focus ring (accent) |
 
 ---
 

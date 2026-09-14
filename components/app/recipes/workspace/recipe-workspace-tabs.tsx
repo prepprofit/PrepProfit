@@ -1,6 +1,5 @@
 'use client';
 
-import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { formatMoney } from '@/lib/format/money';
 import { scaleMoneyCents } from '@/lib/calculations/recipeScale';
@@ -9,13 +8,6 @@ import {
   PortionOptionsSection,
   type PortionYieldContext,
 } from './recipe-portion-options';
-
-export type WorkspaceTab =
-  | 'method'
-  | 'cost'
-  | 'nutrition'
-  | 'uom'
-  | 'allergens';
 
 /**
  * One expandable row of the cost panel (Fase 5, §7.3) — MANAGER-ONLY data
@@ -91,118 +83,7 @@ export type MethodSectionView = {
   }[];
 };
 
-/**
- * Right-panel tab shell (plan §5/§9.2): the active tab is URL state managed by
- * the parent; switching tabs never unmounts the workspace. Cost is rendered
- * ONLY when the server shipped cost data (manager) — the kitchen payload
- * carries none, and the tab shows a managers-only note. Nutrition (Fase 6) and
- * UoM (Fase 4) render the panels the parent injects.
- */
-export function RecipeWorkspaceTabs({
-  tab,
-  onTabChange,
-  methodSections,
-  methodEditor,
-  uomPanel,
-  nutritionPanel,
-  allergenPanel,
-  legacyNotes,
-  cost,
-  factor,
-  currency,
-  recipeId,
-  recipeYield,
-}: {
-  tab: WorkspaceTab;
-  onTabChange: (tab: WorkspaceTab) => void;
-  methodSections: MethodSectionView[];
-  /** Edit-mode replacement for the read-only method panel (Fase 3). */
-  methodEditor?: React.ReactNode;
-  /** UoM Equivalency panel (Fase 4) — rendered when the tab is active. */
-  uomPanel?: React.ReactNode;
-  /** Nutrition panel (Fase 6) — rendered when the tab is active. */
-  nutritionPanel?: React.ReactNode;
-  /** Allergen panel (Sprint 9) — OPERATIONAL, its own tab in the right column. */
-  allergenPanel?: React.ReactNode;
-  legacyNotes: string | null;
-  /** null = kitchen (never shipped); `incomplete` = tree unresolvable. */
-  cost: WorkspaceCostView;
-  factor: number;
-  currency: string;
-  recipeId: string;
-  /** Yield context for the portion calculator (operational, non-financial). */
-  recipeYield: Omit<PortionYieldContext, 'totalCostCents'>;
-}) {
-  const t = useTranslations('recipes.workspace');
-  const tabs: WorkspaceTab[] = [
-    'method',
-    'cost',
-    'nutrition',
-    'uom',
-    'allergens',
-  ];
-
-  return (
-    <div>
-      <div
-        role="tablist"
-        aria-label={t('tabs.method')}
-        className="sticky top-0 z-10 flex gap-1 border-b border-border bg-background pb-px"
-      >
-        {tabs.map((key) => (
-          <button
-            key={key}
-            role="tab"
-            type="button"
-            aria-selected={tab === key}
-            onClick={() => onTabChange(key)}
-            className={
-              tab === key
-                ? 'rounded-t-lg border-b-2 border-accent-700 px-3 py-2 text-sm font-medium text-foreground'
-                : 'rounded-t-lg px-3 py-2 text-sm text-muted-foreground hover:text-foreground'
-            }
-          >
-            {t(`tabs.${key}`)}
-          </button>
-        ))}
-      </div>
-
-      <div className="pt-4">
-        {tab === 'method' ? (
-          (methodEditor ?? (
-            <MethodPanel sections={methodSections} legacyNotes={legacyNotes} />
-          ))
-        ) : null}
-        {tab === 'cost' ? (
-          <CostPanel
-            cost={cost}
-            factor={factor}
-            currency={currency}
-            recipeId={recipeId}
-            recipeYield={recipeYield}
-          />
-        ) : null}
-        {tab === 'uom' ? (
-          (uomPanel ?? (
-            <p className="text-sm text-muted-foreground">{t('comingSoon')}</p>
-          ))
-        ) : null}
-        {tab === 'nutrition' ? (
-          (nutritionPanel ?? (
-            <p className="text-sm text-muted-foreground">{t('comingSoon')}</p>
-          ))
-        ) : null}
-        {tab === 'allergens' ? (
-          (allergenPanel ?? (
-            <p className="text-sm text-muted-foreground">{t('comingSoon')}</p>
-          ))
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function MethodPanel({
+export function MethodPanel({
   sections,
   legacyNotes,
 }: {
@@ -279,7 +160,7 @@ function MethodPanel({
   );
 }
 
-function CostPanel({
+export function CostPanel({
   cost,
   factor,
   currency,

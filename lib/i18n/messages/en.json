@@ -169,7 +169,9 @@
     "STOCK_COUNT_STALE": "Someone else changed this count while you were editing. Reload and try again.",
     "DEFAULT_AREA_LOCKED": "The default area can be renamed but not deleted — it holds your existing stock.",
     "AREA_NOT_EMPTY": "This area still holds stock. Transfer or count it to zero before deleting the area.",
-    "AREA_HAS_DRAFT_COUNT": "This area has a draft count. Commit or discard the count before deleting the area."
+    "AREA_HAS_DRAFT_COUNT": "This area has a draft count. Commit or discard the count before deleting the area.",
+    "MENU_RECIPE_GRAMS_REQUIRED": "Enter recipe components in grams. Lines saved earlier in portions can stay as they are until you correct them.",
+    "INGREDIENT_TYPE_IN_USE": "This ingredient's type can't change while recipes, dishes or stock use its current unit — their quantities would be misread. Remove it from those first, or create a new ingredient."
   },
   "errors": {
     "boundary": {
@@ -529,11 +531,18 @@
       },
       "recipes": {
         "title": "Recipes",
-        "empty": "No recipes yet. Add sponges, creams, sauces… from your recipe library.",
-        "add": "Add a recipe…",
+        "empty": "No recipes yet. Add sponges, creams, sauces… in grams from your recipe library.",
+        "add": "Add a recipe (in grams)…",
         "perKg": "{amount}/kg",
         "perPortion": "{amount}/portion",
-        "needsWeight": "Set this recipe’s batch weight to use g or kg."
+        "needsWeight": "{name} has no finished weight yet, so its grams can't be costed. Weigh the finished batch and add it to the recipe.",
+        "grams": "Grams",
+        "noWeight": "No finished weight",
+        "openRecipe": "Open recipe",
+        "savedPortions": "{count, plural, one {Saved as # recipe portion} other {Saved as # recipe portions}}",
+        "portionLineConvertible": "Recipe components are now entered in grams. From the recipe's finished weight this is {grams} g.",
+        "portionLineNeedsWeight": "Recipe components are now entered in grams, but {name} has no finished weight. Add it to the recipe to convert this line — until then it keeps its saved portions.",
+        "convertToGrams": "Use {grams} g"
       },
       "ingredients": {
         "title": "Ingredients and packaging",
@@ -793,7 +802,7 @@
       "costLabel": "Cost per {unit}",
       "costInclVat": "{amount} incl. VAT",
       "costUnknown": "Enter a pack and a price to see the cost.",
-      "vatRateMissing": "Add a VAT band in Settings to enter prices that include VAT.",
+      "vatRateMissing": "No VAT rate set. Type one to enter prices that include VAT.",
       "save": "Save",
       "cancel": "Cancel",
       "clear": "Remove supplier",
@@ -818,7 +827,16 @@
         "packUnitRequired": "Pick the unit this pack is measured in.",
         "priceRequired": "Enter the price for this pack.",
         "priceInvalid": "Enter a price greater than zero."
-      }
+      },
+      "vatRate": "VAT rate",
+      "vatRateUnset": "Not set",
+      "vatPresets": "Shortcuts:",
+      "vatRateClear": "Clear",
+      "vatRateInvalid": "Enter a VAT rate from 0 to 100, e.g. 14 or 13,5.",
+      "vatRateZero": "0% — this purchase has no VAT.",
+      "vatRateSet": "Using {rate}% for this ingredient.",
+      "vatRateFallback": "Not set — using {name} ({rate}%). Type a rate to use a different one.",
+      "costInclVatRate": "{amount} incl. {rate}% VAT"
     },
     "invoices": {
       "cardTitle": "Read a supplier invoice",
@@ -992,6 +1010,14 @@
     "deleteConfirm": {
       "title": "Move ingredient to Trash?",
       "body": "{name} will move to the Trash. You can restore it within 30 days."
+    },
+    "typeLock": {
+      "change": "Change type",
+      "reason": "Type is fixed while it's used in {uses} — changing it would misread those quantities.",
+      "recipes": "{count, plural, one {# recipe} other {# recipes}}",
+      "menus": "{count, plural, one {# dish} other {# dishes}}",
+      "stock": "stock records",
+      "checkPrice": "The price will now mean per {unit} — check it before saving."
     }
   },
   "recipes": {
@@ -1029,13 +1055,13 @@
       "conflictTitle": "Someone else saved this recipe",
       "conflictBody": "Your changes were NOT saved. Reload to see the latest version, then re-apply your edits.",
       "reload": "Reload",
-      "emptyLines": "No ingredients yet. Switch to Edit to add some.",
+      "emptyLines": "No ingredients yet. Use Edit to add some.",
       "enteredUnit": "Unit",
       "prepAction": "Prep",
       "noPrep": "No prep",
       "legacyEditorLink": "Open classic editor",
       "tabs": {
-        "method": "Prep Method",
+        "method": "Preparation method",
         "cost": "Cost",
         "nutrition": "Nutrition",
         "uom": "UoM Equivalency",
@@ -1091,7 +1117,8 @@
         "uploadFailed": "Upload failed. Check the file type and size, then try again.",
         "removeMedia": "Remove media",
         "setCover": "Set cover photo",
-        "removeCover": "Remove cover"
+        "removeCover": "Remove cover",
+        "cover": "Cover photo"
       },
       "cost": {
         "totalCost": "Total cost",
@@ -1261,6 +1288,29 @@
             "BASIS_VOLUME": "Measured per 100 ml (a liquid)."
           }
         }
+      },
+      "saveRecipe": "Save recipe",
+      "editRecipe": "Edit recipe {name}",
+      "nameRequired": "Give the recipe a name.",
+      "quantity": "Quantity",
+      "quantityInvalid": "Enter an amount of 0 or more, e.g. 250 or 0,5.",
+      "discard": {
+        "title": "Discard your changes?",
+        "body": "Your edits to this recipe haven’t been saved.",
+        "confirm": "Discard changes",
+        "keep": "Keep editing"
+      },
+      "scaleField": {
+        "label": "Scale recipe",
+        "reset": "Reset to 1×",
+        "hintOriginal": "1 = the saved recipe. Type 0,75 for 75% or 3 for three times. Nothing is saved.",
+        "hintScaled": "Showing {percent}% of the saved recipe — a temporary calculation; the saved recipe is unchanged.",
+        "errors": {
+          "empty": "Enter a multiplier, e.g. 1, 0,75 or 3.",
+          "invalid": "Use a number like 0,75, 1.5 or 3x.",
+          "notPositive": "The multiplier must be more than 0.",
+          "tooLarge": "Use a multiplier of 1000 or less."
+        }
       }
     },
     "title": "Recipes",
@@ -1285,8 +1335,17 @@
       "sort": {
         "recent": "Recent activity",
         "name": "Name (A–Z)",
-        "column": "By column"
-      }
+        "column": "By column",
+        "nameDesc": "Name (Z–A)",
+        "costAsc": "Cost / kg (low–high)",
+        "costDesc": "Cost / kg (high–low)"
+      },
+      "all": "All",
+      "allCaption": "{count, plural, =0 {No recipes} one {# recipe} other {# recipes}} · every folder",
+      "allTitle": "All recipes",
+      "recent": "Recent recipes",
+      "recentEmpty": "Recipes you open or edit will appear here.",
+      "viewAll": "View all"
     },
     "allergenMatrix": {
       "pdf": "Allergen matrix (PDF)",
@@ -1543,8 +1602,10 @@
       "portions": "{count, plural, one {# portion} other {# portions}}",
       "filters": {
         "allergens": "Allergens:",
-        "status": "Status:",
-        "allergenCounts": "Contains: {contains} · May contain: {mayContain}"
+        "status": "Issues:",
+        "allergenCounts": "Contains: {contains} · May contain: {mayContain}",
+        "toggle": "Filters",
+        "toggleActive": "Filters ({count})"
       },
       "columns": {
         "name": "Recipe",
@@ -1554,7 +1615,8 @@
         "status": "Status",
         "cost": "Cost / portion",
         "price": "Price",
-        "margin": "Margin"
+        "margin": "Margin",
+        "costPerKg": "Cost / kg"
       },
       "status": {
         "allergensUnreviewed": "Allergens unreviewed",
@@ -1577,7 +1639,8 @@
           "title": "Move selected recipes to Trash?",
           "body": "{count, plural, one {# recipe} other {# recipes}} will move to the Trash. Recipes used as sub-recipes by an active recipe are skipped. You can restore them within 30 days."
         }
-      }
+      },
+      "costUnknown": "Cost per kg can't be calculated — see the recipe's issues."
     },
     "books": {
       "title": "Recipe books",
@@ -1594,6 +1657,26 @@
       },
       "errors": {
         "nameRequired": "Give the book a name."
+      }
+    },
+    "issues": {
+      "title": "Needs attention",
+      "open": "{count, plural, one {# issue} other {# issues}} with {name} — show details",
+      "allergensUnreviewed": {
+        "label": "Allergens not reviewed",
+        "help": "At least one ingredient's allergens haven't been checked. Review them on the Ingredients page."
+      },
+      "nutritionIncomplete": {
+        "label": "Nutrition incomplete",
+        "help": "Some ingredients have no nutrition data, so the label can't be completed."
+      },
+      "needsPricing": {
+        "label": "Missing ingredient prices",
+        "help": "An ingredient still has no price, so the recipe's cost is understated."
+      },
+      "missingFinishedWeight": {
+        "label": "Missing finished weight",
+        "help": "Weigh the finished batch and add it to the recipe to see cost per kg and use it in grams."
       }
     }
   },

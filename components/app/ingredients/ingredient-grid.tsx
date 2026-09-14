@@ -54,6 +54,7 @@ import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu'
 import type { AllergenTag } from '@/lib/data/allergens';
 import type { SupplierPriceBasis } from '@/lib/calculations/purchasePrice';
 import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
+import type { IngredientTypeLock } from '@/lib/data/ingredients';
 
 type Dimension = Ingredient['dimension'];
 
@@ -103,10 +104,10 @@ const PER_UNIT_SUFFIX: Record<Dimension, string> = {
 };
 
 /**
- * The READ-state type pill. Colour encodes the UNIT SYSTEM — the one place on this
- * row where colour earns its keep, so a manager scanning the list sees at a glance
- * which ingredients are weighed, poured, or counted. Deliberately NOT the accent:
- * the brand mint stays reserved for the single primary action (Add) and active nav.
+ * The READ-state type chip. Each unit system gets its own equally readable tint so
+ * weighed, poured and counted ingredients scan apart — none is greyed out, and none
+ * uses the accent (primary actions) or the leaf green (profit). Clicking it opens
+ * the row's editor on the Type field; sorting lives in the column heading.
  */
 const DIMENSION_PILL: Record<
   Dimension,
@@ -114,15 +115,15 @@ const DIMENSION_PILL: Record<
 > = {
   weight: {
     icon: Scale,
-    className: 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300',
+    className: 'border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-500/30 dark:bg-indigo-500/15 dark:text-indigo-200',
   },
   volume: {
     icon: Droplet,
-    className: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
+    className: 'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-200',
   },
   count: {
     icon: Hash,
-    className: 'bg-surface-2 text-muted-foreground',
+    className: 'border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/15 dark:text-violet-200',
   },
 };
 
@@ -181,6 +182,9 @@ type GridMeta = {
   canReorder: (id: string) => boolean;
   dimensionLabel: (d: Dimension) => string;
   dimensionPillLabel: (d: Dimension) => string;
+  /** Why this row's type can't change (null = it can). */
+  typeLockReason: (id: string) => string | null;
+  changeTypeLabel: string;
   editLabel: string;
   saveLabel: string;
   cancelLabel: string;
@@ -208,6 +212,7 @@ export function IngredientGrid({
   initialSupplierLinks = {},
   supplierPricePrefs = {},
   vatCategories = [],
+  typeLocks = {},
 }: {
   initialIngredients: IngredientRow[];
   /** Manager only: render + edit the Price column. Kitchen rows carry no price. */
@@ -225,8 +230,10 @@ export function IngredientGrid({
   initialSupplierLinks?: Record<string, DefaultSupplierSummary>;
   /** Remembered price-entry preferences per supplier NAME (manager-only). */
   supplierPricePrefs?: Record<string, SupplierPricePrefs>;
-  /** The org's purchase VAT bands for the supplier dialog (manager-only). */
+  /** The org's purchase VAT bands — shortcuts in the supplier dialog (manager-only). */
   vatCategories?: VatCategoryOption[];
+  /** Ingredients whose type is locked because quantities use the current unit. */
+  typeLocks?: Record<string, IngredientTypeLock>;
 }) {
   const t = useTranslations('ingredients');
   const flashId = useRowHighlight(highlightId, 'ingredient-row-');
@@ -291,6 +298,19 @@ export function IngredientGrid({
   const dimensionPillLabel = React.useCallback(
     (d: Dimension) => t(`typePill.${d}`),
     [t],
+  );
+  const typeLockReason = React.useCallback(
+    (id: string) => {
+      const lock = typeLocks[id];
+      if (!lock) return null;
+      const parts = [
+        lock.recipes > 0 ? t('typeLock.recipes', { count: lock.recipes }) : null,
+        lock.menus > 0 ? t('typeLock.menus', { count: lock.menus }) : null,
+        lock.stock ? t('typeLock.stock') : null,
+      ].filter((p): p is string => p !== null);
+      return t('typeLock.reason', { uses: parts.join(', ') });
+    },
+    [typeLocks, t],
   );
 
   const onField = React.useCallback((id: string, patch: Partial<Draft>) => {
@@ -478,36 +498,53 @@ export function IngredientGrid({
             const pill = DIMENSION_PILL[row.original.dimension];
             const Icon = pill.icon;
             return (
-              <span
+              <button
+                type="button"
+                disabled={meta.pending}
+                onClick={() => meta.onEdit(row.original.id)}
+                aria-label={`${meta.changeTypeLabel}: ${row.original.name} — ${meta.dimensionLabel(row.original.dimension)}`}
+                title={meta.changeTypeLabel}
                 className={cn(
-                  'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                  'inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default',
                   pill.className,
                 )}
-                title={meta.dimensionLabel(row.original.dimension)}
               >
-                <Icon className="size-3" />
+                <Icon className="size-3.5" aria-hidden />
                 {meta.dimensionPillLabel(row.original.dimension)}
-              </span>
+              </button>
             );
           }
+          const lockReason = meta.typeLockReason(row.original.id);
           return (
-            <Select
-              aria-label={t('columns.dimension')}
-              className="w-32"
-              value={draft.dimension}
-              disabled={meta.pending}
-              onChange={(e) =>
-                meta.onField(row.original.id, {
-                  dimension: e.target.value as Dimension,
-                })
-              }
-            >
-              {DIMENSIONS.map((d) => (
-                <option key={d} value={d}>
-                  {meta.dimensionLabel(d)}
-                </option>
-              ))}
-            </Select>
+            <div className="flex w-40 flex-col gap-1">
+              <Select
+                aria-label={t('columns.dimension')}
+                aria-describedby={lockReason ? `type-lock-${row.original.id}` : undefined}
+                className="w-32"
+                value={draft.dimension}
+                disabled={meta.pending || lockReason !== null}
+                onChange={(e) =>
+                  meta.onField(row.original.id, {
+                    dimension: e.target.value as Dimension,
+                  })
+                }
+              >
+                {DIMENSIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {meta.dimensionLabel(d)} ({meta.dimensionPillLabel(d)})
+                  </option>
+                ))}
+              </Select>
+              {lockReason ? (
+                <span id={`type-lock-${row.original.id}`} className="text-[11px] leading-snug text-muted-foreground">
+                  {lockReason}
+                </span>
+              ) : draft.dimension !== row.original.dimension && meta.canSeeCosts ? (
+                <span className="text-[11px] leading-snug text-amber-700 dark:text-amber-300">
+                  {t('typeLock.checkPrice', { unit: meta.dimensionPillLabel(draft.dimension) })}
+                </span>
+              ) : null}
+            </div>
           );
         },
       },
@@ -712,6 +749,8 @@ export function IngredientGrid({
       canReorder,
       dimensionLabel,
       dimensionPillLabel,
+      typeLockReason,
+      changeTypeLabel: t('typeLock.change'),
       editLabel: t('actions.edit'),
       saveLabel: t('actions.save'),
       cancelLabel: t('actions.cancel'),
@@ -936,19 +975,20 @@ export function IngredientGrid({
           currency={currency}
           vatCategories={vatCategories}
           vatCategoryId={supplierTarget.vatCategoryId ?? null}
+          vatRateBps={supplierTarget.vatRateBps ?? null}
           supplierNames={supplierNames}
           pricePrefs={pricePrefs}
           initialLink={supplierLinks[supplierTarget.id] ?? null}
           pendingPriceCents={supplierTarget.pendingPriceCents ?? null}
           onClose={() => setSupplierEditId(null)}
-          onSaved={(summary, prefs, vatCategoryId) => {
+          onSaved={(summary, prefs, vatRateBps) => {
             const id = supplierTarget.id;
             setSupplierLinks((prev) => ({ ...prev, [id]: summary }));
             setPricePrefs((prev) => ({ ...prev, [summary.supplierName]: prefs }));
             setRows((prev) =>
               prev.map((r) =>
                 r.id === id
-                  ? { ...r, supplier: summary.supplierName, vatCategoryId }
+                  ? { ...r, supplier: summary.supplierName, vatRateBps }
                   : r,
               ),
             );

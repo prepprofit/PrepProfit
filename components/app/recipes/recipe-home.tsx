@@ -11,6 +11,7 @@ import {
   Folder,
   FolderPlus,
   Inbox,
+  Layers,
   MoreHorizontal,
   Pencil,
   Search,
@@ -37,9 +38,11 @@ export type RecipeSearchItem = {
   id: string;
   name: string;
   folderId: string | null;
-  yieldLabel: string;
   recentActivityAt: Date;
 };
+
+/** How many recent recipes the home shows (the rest are one click away in "All"). */
+const RECENT_LIMIT = 8;
 
 type FolderDialog =
   | { mode: 'create' }
@@ -47,16 +50,18 @@ type FolderDialog =
 
 /**
  * Recipes home: a large search across every folder with a compact "Add recipe"
- * beside it, then the folders as tiles (plus "Unfiled"). Typing swaps the tiles for
- * matching recipes — best match first, recent activity breaking ties — and
- * clearing brings the tiles back. Folder management stays available but quiet:
- * a "New folder" tile and a small menu on each folder tile.
+ * beside it, then the folders as tiles — "All" first, "Unfiled" last — and a short
+ * "Recent recipes" list (latest edit or open first) for jumping straight back in.
+ * Typing swaps tiles and recents for matching recipes — best match first, recent
+ * activity breaking ties — and clearing brings them back. Folder management stays
+ * available but quiet: a "New folder" tile and a small menu on each folder tile.
  */
 export function RecipeHome({
   listing,
   recipes,
 }: {
   listing: FolderListing;
+  /** Every active recipe, in recent-activity order. */
   recipes: RecipeSearchItem[];
 }) {
   const t = useTranslations('recipes.home');
@@ -174,10 +179,7 @@ export function RecipeHome({
                       className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
                     >
                       <BookOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:gap-3">
-                        <span className="truncate font-medium text-foreground">{recipe.name}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">{recipe.yieldLabel}</span>
-                      </span>
+                      <span className="min-w-0 flex-1 truncate text-base font-medium text-foreground">{recipe.name}</span>
                       <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">
                         {recipe.folderId ? (folderName.get(recipe.folderId) ?? t('unfiled')) : t('unfiled')}
                       </span>
@@ -189,7 +191,14 @@ export function RecipeHome({
           )}
         </section>
       ) : (
+        <>
         <section aria-label={tFolders('title')} className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+          <FolderTile
+            href="/recipes?folder=all"
+            name={t('all')}
+            caption={t('allCaption', { count: listing.totalCount })}
+            icon={<Layers className="size-5" aria-hidden />}
+          />
           {listing.folders.map((folder, index) => (
             <div key={folder.id} className="relative focus-within:z-30">
               <FolderTile
@@ -256,6 +265,35 @@ export function RecipeHome({
             <p className="col-span-full px-1 text-sm text-muted-foreground">{t('empty')}</p>
           )}
         </section>
+
+        {recipes.length > 0 && (
+          <section aria-labelledby="recent-recipes" className="flex flex-col gap-2">
+            <div className="flex items-baseline justify-between gap-3 px-1">
+              <h2 id="recent-recipes" className="text-sm font-semibold text-foreground">
+                {t('recent')}
+              </h2>
+              <Link href="/recipes?folder=all" className="text-sm text-accent-700 hover:underline dark:text-accent-300">
+                {t('viewAll')}
+              </Link>
+            </div>
+            <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+              {recipes.slice(0, RECENT_LIMIT).map((recipe) => (
+                <li key={recipe.id}>
+                  <Link
+                    href={`/recipes/${recipe.id}`}
+                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-base font-medium text-foreground">{recipe.name}</span>
+                    <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">
+                      {recipe.folderId ? (folderName.get(recipe.folderId) ?? t('unfiled')) : t('unfiled')}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        </>
       )}
 
       <ConfirmDialog

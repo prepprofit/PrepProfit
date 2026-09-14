@@ -11,6 +11,7 @@ import {
   deleteMenuFolder,
   duplicateDish,
   getMenuById,
+  loadStoredRecipeLines,
   markDishOpened,
   renameMenuFolder,
   searchDishes,
@@ -25,6 +26,7 @@ import {
   dishSchema,
   dishSearchSchema,
   menuFolderSchema,
+  recipeLinesUseGrams,
 } from '@/lib/validation/menus';
 import type { ActionErrorCode, ActionResult } from '@/lib/action-result';
 
@@ -44,8 +46,9 @@ function revalidateMenus(id?: string): void {
   revalidatePath('/trash');
 }
 
-const SAVE_ERRORS: Record<Exclude<SaveDishOutcome['status'], 'ok'>, ActionErrorCode> = {
+const SAVE_ERRORS: Record<Exclude<SaveDishOutcome['status'], 'ok'> | 'grams_required', ActionErrorCode> = {
   not_found: 'NOT_FOUND',
+  grams_required: 'MENU_RECIPE_GRAMS_REQUIRED',
   invalid_recipe: 'MENU_RECIPE_INVALID',
   invalid_ingredient: 'MENU_INGREDIENT_INVALID',
   invalid_folder: 'MENU_FOLDER_INVALID',
@@ -55,6 +58,9 @@ export async function createDishAction(input: unknown): Promise<ActionResult<{ i
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const parsed = dishSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+  if (!recipeLinesUseGrams(parsed.data.recipeLines, [])) {
+    return { ok: false, code: 'MENU_RECIPE_GRAMS_REQUIRED' };
+  }
 
   const organizationId = await getOrgId();
   const actor = await auditActor();
@@ -92,6 +98,10 @@ export async function updateDishAction(id: string, input: unknown): Promise<Acti
   const outcome = await withOrg(organizationId, async (tx) => {
     const before = await getMenuById(tx, organizationId, id);
     if (!before) return { status: 'not_found' } as const;
+    const stored = await loadStoredRecipeLines(tx, organizationId, id);
+    if (!recipeLinesUseGrams(parsed.data.recipeLines, stored)) {
+      return { status: 'grams_required' } as const;
+    }
     const result = await updateDish(tx, organizationId, id, parsed.data);
     if (result.status !== 'ok') return result;
 

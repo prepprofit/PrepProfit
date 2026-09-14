@@ -8,6 +8,7 @@ import {
   lockActiveIngredientRow,
   toKitchenIngredient,
   trashIngredient,
+  listIngredientTypeLocks,
   updateIngredient,
   type KitchenIngredient,
 } from '@/lib/data/ingredients';
@@ -126,6 +127,12 @@ export async function updateIngredientAction(
       if (parsed.data.dimension !== current.dimension && current.priceCents > 0) {
         return 'forbidden' as const;
       }
+      if (
+        parsed.data.dimension !== current.dimension &&
+        (await listIngredientTypeLocks(tx, organizationId, [id])).has(id)
+      ) {
+        return 'type_in_use' as const;
+      }
       // Block a dimension change while a supplier pack would become unit-incompatible
       // (e.g. a kg pack on a now-volume ingredient) — §12.9.
       if (
@@ -148,6 +155,7 @@ export async function updateIngredientAction(
     if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
     if (outcome === 'forbidden') return { ok: false, code: 'FORBIDDEN' };
     if (outcome === 'pack_mismatch') return { ok: false, code: 'PACK_UNIT_MISMATCH' };
+    if (outcome === 'type_in_use') return { ok: false, code: 'INGREDIENT_TYPE_IN_USE' };
     revalidateIngredientConsumers();
     return { ok: true, data: toKitchenIngredient(outcome) };
   }
@@ -167,6 +175,13 @@ export async function updateIngredientAction(
       (await hasIncompatiblePacks(tx, organizationId, id, parsed.data.dimension))
     ) {
       return 'pack_mismatch' as const;
+    }
+    // …and while recipes, dishes or stock hold quantities in the current unit.
+    if (
+      parsed.data.dimension !== current.dimension &&
+      (await listIngredientTypeLocks(tx, organizationId, [id])).has(id)
+    ) {
+      return 'type_in_use' as const;
     }
 
     const priceChanged = parsed.data.priceCents !== current.priceCents;
@@ -203,6 +218,7 @@ export async function updateIngredientAction(
 
   if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
   if (outcome === 'pack_mismatch') return { ok: false, code: 'PACK_UNIT_MISMATCH' };
+  if (outcome === 'type_in_use') return { ok: false, code: 'INGREDIENT_TYPE_IN_USE' };
   revalidateIngredientConsumers();
   return { ok: true, data: outcome };
 }

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import type { PGlite } from '@electric-sql/pglite';
@@ -215,6 +216,40 @@ describe('menu product data layer', () => {
     // 360c components + 2000c labour, the same total — now spread over 8 portions.
     expect(cost?.totalCostCents).toBe(2_360);
     expect(cost?.costPerSaleUnitCents).toBe(295);
+  });
+
+  it('migration 0051 converts kg and weighable portion lines to grams without changing cost', async () => {
+    const noWeight = await createRecipe(db, ORG_A, { name: 'Ganache', yieldPortions: 4 });
+    const added = await addRecipeIngredient(db, ORG_A, { recipeId: noWeight.id, ingredientId: ids.flour.id, quantity: 200 });
+    if (!added.ok) throw new Error('line');
+    const portions = await createDish(db, ORG_A, cake(ids, {
+      name: 'Portions',
+      recipeLines: [
+        { recipeId: ids.sponge.id, quantity: 2, unit: 'portion' },
+        { recipeId: noWeight.id, quantity: 1, unit: 'portion' },
+      ],
+    }));
+    const kilos = await createDish(db, ORG_A, cake(ids, { name: 'Kilos', recipeLines: [{ recipeId: ids.sponge.id, quantity: 0.4, unit: 'kg' }] }));
+    if (portions.status !== 'ok' || kilos.status !== 'ok') throw new Error('create failed');
+    const costsBefore = catalogueDishCosts(await loadActiveCatalogue(db, ORG_A));
+
+    // Re-run the data statements of the migration (the schema part already ran).
+    const file = readFileSync('drizzle/0051_ingredient_vat_rate_menu_grams.sql', 'utf8');
+    for (const statement of file.split('--> statement-breakpoint').filter((st) => /UPDATE "menu_items"/.test(st))) {
+      await db.execute(sql.raw(statement));
+    }
+
+    const p = await getManagerDish(db, ORG_A, portions.menu.id);
+    const k = await getManagerDish(db, ORG_A, kilos.menu.id);
+    // Sponge: 10 portions per 1000 g → 2 portions = 200 g. Ganache has no weight → kept.
+    expect(p?.recipeLines.map((l) => [l.recipeName, l.quantity, l.unit])).toEqual(
+      expect.arrayContaining([['Chocolate sponge', 200, 'g'], ['Ganache', 1, 'portion']]),
+    );
+    expect(k?.recipeLines[0]).toMatchObject({ quantity: 400, unit: 'g' });
+
+    const costsAfter = catalogueDishCosts(await loadActiveCatalogue(db, ORG_A));
+    expect(costsAfter.get(portions.menu.id)?.totalCostCents).toBe(costsBefore.get(portions.menu.id)?.totalCostCents);
+    expect(costsAfter.get(kilos.menu.id)?.totalCostCents).toBe(costsBefore.get(kilos.menu.id)?.totalCostCents);
   });
 
   it('dish editor: converting a weight batch to portions keeps composition and weight', async () => {

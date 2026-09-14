@@ -126,13 +126,8 @@ export function RecipeList({
                 href={`/recipes/${recipe.id}`}
                 className="group flex min-w-0 items-center justify-between gap-2"
               >
-                <span className="min-w-0">
-                  <span className="block truncate font-medium text-foreground">
-                    {recipe.name}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {t('portions', { count: recipe.yieldPortions })}
-                  </span>
+                <span className="min-w-0 text-base font-medium leading-snug text-foreground">
+                  {recipe.name}
                 </span>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </Link>

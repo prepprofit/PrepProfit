@@ -132,3 +132,24 @@ export const DISH_SORTS = ['modified', 'opened', 'name', 'created'] as const;
 export type DishSort = (typeof DISH_SORTS)[number];
 
 export const dishSearchSchema = z.object({ query: z.string().trim().min(1).max(100) });
+
+type RecipeLineShape = { recipeId: string; quantity: number; unit: (typeof DISH_RECIPE_UNITS)[number] };
+
+/**
+ * Recipe components are ENTERED in grams. A line in any other unit (recipe portions,
+ * kilograms from older saves) is only accepted when it is exactly as already stored
+ * — so a legacy line can wait for correction without being reinterpreted, but no
+ * new or edited line can use portions. Pure; the action supplies the stored lines.
+ */
+export function recipeLinesUseGrams(next: readonly RecipeLineShape[], stored: readonly RecipeLineShape[]): boolean {
+  return next.every(
+    (line) =>
+      line.unit === 'g' ||
+      stored.some(
+        (prev) =>
+          prev.recipeId === line.recipeId &&
+          prev.unit === line.unit &&
+          Math.abs(prev.quantity - line.quantity) < 1e-6,
+      ),
+  );
+}

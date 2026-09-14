@@ -25,7 +25,7 @@ export function clerkAppearance(isDark: boolean): ClerkAppearance {
       },
     },
     variables: {
-      colorPrimary: '#086f59',
+      colorPrimary: '#2c7466',
       colorPrimaryForeground: '#ffffff',
       colorBackground: isDark ? '#161618' : '#ffffff',
       colorForeground: isDark ? '#fafafa' : '#0f172a',
@@ -34,7 +34,7 @@ export function clerkAppearance(isDark: boolean): ClerkAppearance {
       colorInputForeground: isDark ? '#fafafa' : '#0f172a',
       colorBorder: isDark ? '#262629' : '#e2e8f0',
       colorNeutral: isDark ? '#fafafa' : '#0f172a',
-      colorRing: '#0b8a6d',
+      colorRing: '#3a8e7d',
       borderRadius: '0.625rem',
       fontFamily: 'var(--font-roboto), ui-sans-serif, system-ui, sans-serif',
     },

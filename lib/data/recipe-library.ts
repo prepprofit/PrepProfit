@@ -2,7 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { ingredientNutritionProfiles } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import type { AllergenSlug } from '@/lib/allergens/catalog';
-import { recipeCost } from '@/lib/calculations/recipeCost';
+import { costPerKgCents, recipeCost } from '@/lib/calculations/recipeCost';
 import { marginPercent } from '@/lib/calculations/margin';
 import { listRecipes } from '@/lib/data/recipes';
 import { loadActiveCatalogue } from '@/lib/data/active-catalogue';
@@ -53,11 +53,19 @@ export type LibraryRecipeRow = {
     /** D4 proxy: some ingredient in the (flattened) lines has no nutrition profile. */
     nutritionIncomplete: boolean;
     noBook: boolean;
+    /** No finished batch weight: cost per kg and gram-based use are unavailable. */
+    missingFinishedWeight: boolean;
   };
   /** Present ONLY on manager payloads. */
   money?: {
     /** Cost per portion, or null when the sub-recipe tree is unresolvable. */
     costPerPortionCents: number | null;
+    /**
+     * Cost per kg of finished batch — the one figure the browsing list shows. null
+     * when it can't be trusted: no finished weight, an unresolvable tree, or an
+     * ingredient still missing its price (never a guessed or zero value).
+     */
+    costPerKgCents: number | null;
     /** Dual-read selling price (default portion option ?? legacy column). */
     sellingPriceCents: number | null;
     /** Margin %, or null when either side is missing. */
@@ -125,8 +133,9 @@ export async function listRecipesForLibrary(
     const bookIds = bookIdsByRecipe.get(recipe.id) ?? [];
 
     let costPerPortionCents: number | null = null;
+    let totalCostCents: number | null = null;
     if (cat && !cat.costUnresolved) {
-      costPerPortionCents = recipeCost({
+      const computed = recipeCost({
         yieldPortions: cat.yieldPortions,
         yieldPercentage: cat.yieldPercentage,
         laborCostCents: cat.laborCostCents,
@@ -139,8 +148,13 @@ export async function listRecipesForLibrary(
           prepYieldBps: l.prepYieldBps ?? undefined,
         })),
         componentMaterialCostsCents: [cat.componentHiddenCostCents],
-      }).costPerPortionCents;
+      });
+      costPerPortionCents = computed.costPerPortionCents;
+      totalCostCents = computed.totalCostCents;
     }
+    const needsPricing = cat
+      ? cat.lines.some((l) => needsPricingIngredients.has(l.ingredientId))
+      : false;
     const sellingPriceCents = cat?.sellingPriceCents ?? null;
 
     return {
@@ -163,9 +177,14 @@ export async function listRecipesForLibrary(
           !cat ||
           cat.lines.some((l) => !profiledIngredients.has(l.ingredientId)),
         noBook: bookIds.length === 0,
+        missingFinishedWeight: recipe.yieldWeightGrams == null || recipe.yieldWeightGrams <= 0,
       },
       money: {
         costPerPortionCents,
+        costPerKgCents:
+          totalCostCents !== null && !needsPricing
+            ? costPerKgCents(totalCostCents, recipe.yieldWeightGrams)
+            : null,
         sellingPriceCents,
         marginPercent:
           costPerPortionCents != null &&
@@ -173,9 +192,7 @@ export async function listRecipesForLibrary(
           sellingPriceCents > 0
             ? marginPercent(costPerPortionCents, sellingPriceCents)
             : null,
-        needsPricing: cat
-          ? cat.lines.some((l) => needsPricingIngredients.has(l.ingredientId))
-          : false,
+        needsPricing,
       },
     };
   });

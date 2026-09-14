@@ -493,6 +493,23 @@ Acceptance criteria:
   activity" = latest of `updated_at` and the new `recipes.last_opened_at` (created when
   neither moved); opening the recipe detail page records `last_opened_at` without touching
   `updated_at`. Migration 0050 (additive; must be applied BEFORE the release that reads it).
+- **Refinements (accent, ingredients, recipes, menu).** Accent is a softer, less
+  saturated emerald/teal (primary #9cd5c8 with #123831 text; accent-700 #2c7466 text).
+  Ingredients: the supplier picker lists supplier records plus supplier names already on
+  ingredients (deduped, locale-aware A→Z); column sorts are strict (the attention-first
+  pin applies only to the opening order), suppliers compare case-insensitively with
+  unassigned last both ways; purchase VAT is a typed rate (`ingredients.vat_rate_bps`, 0%
+  distinct from unset, bands as shortcuts) used by the supplier price conversion; type
+  chips open the row editor and a type change is refused (`INGREDIENT_TYPE_IN_USE`) while
+  recipes, dishes or stock hold quantities in the current unit. Recipes: home has an
+  "All" tile and "Recent recipes"; browsing rows show the name, cost per kg (managers,
+  "—" when unknown) and a "!" issue explainer; the recipe page puts name, "Scale recipe"
+  (typed multiplier, never saved) and ingredients first at full width, with method, cost,
+  nutrition and allergens below (UoM section removed from the screen); editing opens
+  instantly (no URL round-trip) and quantity fields accept decimals. Menu: one first card
+  (name; folder + portions; prices; margin calculator), recipe components in grams only —
+  legacy portion lines are kept and flagged (`MENU_RECIPE_GRAMS_REQUIRED` for new/changed
+  non-gram lines). Migration 0051.
 
 ## Backlog - not scheduled until prioritized
 

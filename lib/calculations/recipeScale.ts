@@ -147,3 +147,32 @@ export function deriveScale(
 
   return { ok: true, factor, scaledPortions };
 }
+
+/** Largest kitchen multiplier the scale field accepts. */
+export const RECIPE_SCALE_FACTOR_MAX = 1000;
+
+export type ScaleFactorParse =
+  | { ok: true; factor: number }
+  | { ok: false; reason: 'empty' | 'invalid' | 'notPositive' | 'tooLarge' };
+
+/**
+ * The "Scale recipe" field: a multiplier of the SAVED recipe. Accepts a decimal
+ * comma or point and an optional trailing x / × ("0,75", "3x", "1.5 ×"). Zero,
+ * negatives, non-finite values, thousands separators and any other text are
+ * rejected with a reason the field can explain.
+ */
+export function parseScaleFactor(text: string): ScaleFactorParse {
+  const trimmed = text.trim().replace(/\s*[x×]$/i, '').trim();
+  if (trimmed === '') return { ok: false, reason: 'empty' };
+  if (!/^[-+]?(\d+([.,]\d*)?|[.,]\d+)$/.test(trimmed)) return { ok: false, reason: 'invalid' };
+  const value = Number(trimmed.replace(',', '.'));
+  if (!Number.isFinite(value)) return { ok: false, reason: 'invalid' };
+  if (value <= 0) return { ok: false, reason: 'notPositive' };
+  if (value > RECIPE_SCALE_FACTOR_MAX) return { ok: false, reason: 'tooLarge' };
+  return { ok: true, factor: value };
+}
+
+/** A factor back into the field's text, trimmed of float noise ("0.75", "3"). */
+export function formatScaleFactor(factor: number): string {
+  return String(Math.round(factor * 10_000) / 10_000);
+}

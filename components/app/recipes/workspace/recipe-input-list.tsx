@@ -390,15 +390,13 @@ export function RecipeInputListEdit({
                 </span>
               ) : null}
             </span>
-            <Input
-              value={String(
+            <DecimalInput
+              value={
                 line.kind === 'ingredient' && line.enteredUnit !== null
                   ? (line.enteredQuantity ?? 0)
-                  : lineQuantity(line),
-              )}
-              onChange={(e) => {
-                const value = Number(e.target.value.replace(',', '.'));
-                const amount = Number.isFinite(value) && value >= 0 ? value : 0;
+                  : lineQuantity(line)
+              }
+              onValue={(amount) => {
                 if (line.kind !== 'ingredient') {
                   updateLine(line.key, { quantityGrams: amount });
                   return;
@@ -420,9 +418,9 @@ export function RecipeInputListEdit({
                     : line.quantity,
                 });
               }}
-              inputMode="decimal"
-              className="h-8 w-24 text-right tabular-nums"
-              aria-label={t('scale')}
+              className="h-9 w-24 text-right tabular-nums"
+              ariaLabel={`${t('quantity')} — ${line.name}`}
+              invalidLabel={t('quantityInvalid')}
             />
             {line.kind === 'ingredient' ? (
               <Select
@@ -577,5 +575,58 @@ export function RecipeInputListEdit({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * A quantity field that keeps what the cook TYPES ("0,", "1.5", "") while editing
+ * and only reports a number when the text is a valid amount ≥ 0 — so decimals with
+ * a comma or point can be typed, and clearing the field doesn't snap it to 0.
+ */
+function DecimalInput({
+  value,
+  onValue,
+  className,
+  ariaLabel,
+  invalidLabel,
+}: {
+  value: number;
+  onValue: (value: number) => void;
+  className?: string;
+  ariaLabel: string;
+  invalidLabel: string;
+}) {
+  const [text, setText] = React.useState(String(value));
+  const [focused, setFocused] = React.useState(false);
+  const parse = (raw: string): number | null => {
+    const trimmed = raw.trim().replace(',', '.');
+    if (!/^(\d+(\.\d*)?|\.\d+)$/.test(trimmed)) return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  // Follow outside changes (e.g. a unit switch) while not being typed in.
+  React.useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+  const invalid = parse(text) === null;
+  return (
+    <Input
+      value={text}
+      inputMode="decimal"
+      aria-label={ariaLabel}
+      aria-invalid={invalid}
+      title={invalid ? invalidLabel : undefined}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        if (parse(text) === null) setText(String(value));
+      }}
+      onChange={(e) => {
+        setText(e.target.value);
+        const n = parse(e.target.value);
+        if (n !== null) onValue(n);
+      }}
+      className={className}
+    />
   );
 }

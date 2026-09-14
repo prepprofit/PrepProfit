@@ -24,31 +24,33 @@
   /* Marketing testimonial marquee — track holds two copies, so -50% loops seamlessly */
   --animate-marquee: marquee 40s linear infinite;
 
-  /* Accent (Mint — a green with a blue undertone) — primary actions, active nav,
-     selected controls, links, focus, glow. FILLED controls use the light mint with
-     DARK text (`bg-primary text-primary-foreground`); white on mint is unreadable.
+  /* Accent (soft muted emerald/teal — a desaturated green with a blue undertone,
+     hue ~166°) — primary actions, active nav, selected controls, links, focus, glow.
+     FILLED controls use the light teal with DARK text (`bg-primary
+     text-primary-foreground`); white on it is unreadable.
      Accent TEXT uses 700 on light grounds and 300/400 on dark grounds. */
-  --color-accent-50: #effcf7;
-  --color-accent-100: #d7f7ea;
-  --color-accent-200: #afeed7;
-  --color-accent-300: #79dfbf;
-  --color-accent-400: #5fd6b1;
-  --color-accent-500: #16ab86;
-  --color-accent-600: #0b8a6d;
-  --color-accent-700: #086f59;
-  --color-accent-800: #0a5a49;
-  --color-accent-900: #0a4a3d;
-  --color-accent-950: #053b30;
+  --color-accent-50: #f1f8f6;
+  --color-accent-100: #dcefe9;
+  --color-accent-200: #c4e7de;
+  --color-accent-300: #9cd5c8;
+  --color-accent-400: #85c9ba;
+  --color-accent-500: #4fa895;
+  --color-accent-600: #3a8e7d;
+  --color-accent-700: #2c7466;
+  --color-accent-800: #245f54;
+  --color-accent-900: #1f4e46;
+  --color-accent-950: #123831;
 
-  /* Primary control fill (buttons, selected chips/tabs, step badges): mint + dark
-     text. #053b30 on #79dfbf = 7.8:1; on the soft #afeed7 = 9.6:1. */
-  --color-primary: #79dfbf;
-  --color-primary-hover: #5fd6b1;
-  --color-primary-soft: #afeed7;
-  --color-primary-foreground: #053b30;
+  /* Primary control fill (buttons, selected chips/tabs, step badges): soft teal +
+     dark text. #123831 on #9cd5c8 ≈ 7.9:1; on the soft #c4e7de ≈ 10:1. Accent-700
+     text (#2c7466) on white ≈ 5.5:1. */
+  --color-primary: #9cd5c8;
+  --color-primary-hover: #85c9ba;
+  --color-primary-soft: #c4e7de;
+  --color-primary-foreground: #123831;
 
   /* Brand (Leaf green) — profit / positive / success ONLY. Deliberately a yellower
-     green (hue ~142°) than the mint accent (~161°), so a primary button never reads
+     green (hue ~142°) than the teal accent (~166°), so a primary button never reads
      as "profitable"; results also always carry a label, never colour alone. */
   --color-brand-50: #f0fdf4;
   --color-brand-100: #dcfce7;
@@ -62,7 +64,7 @@
   --color-brand-900: #14532d;
 
   /* Categorical chart palette (use in order for multi-series charts & rings). */
-  --color-chart-1: #16ab86; /* mint (accent) */
+  --color-chart-1: #4fa895; /* teal (accent) */
   --color-chart-2: #3b82f6; /* blue          */
   --color-chart-3: #8b5cf6; /* violet        */
   --color-chart-4: #f59e0b; /* amber         */
@@ -83,7 +85,7 @@
   --border: #e2e8f0;
   --foreground: #0f172a;
   --muted-foreground: #64748b;
-  --ring: #0b8a6d;
+  --ring: #3a8e7d;
   /* Glass (frosted) surfaces — light needs high opacity to stay readable. */
   --glass-bg: rgba(255, 255, 255, 0.75);
   --glass-border: rgba(15, 23, 42, 0.08);
@@ -97,7 +99,7 @@
   --border: #262629;
   --foreground: #fafafa;
   --muted-foreground: #a1a1aa;
-  --ring: #5fd6b1;
+  --ring: #85c9ba;
   --glass-bg: rgba(22, 22, 24, 0.6);
   --glass-border: rgba(255, 255, 255, 0.08);
 }

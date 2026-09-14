@@ -291,8 +291,8 @@ function numOrNull(value: string | null): number | null {
  *     pack changed (§12.6) — an unchanged pack is a no-op (no new history, no
  *     re-opened pending).
  *
- * The VAT rate is resolved HERE from the ingredient's purchase VAT category (falling
- * back to the org's default band) — never from client input, and no longer from the
+ * The VAT rate is resolved HERE: the ingredient's own typed rate when set (0% is a
+ * real rate), else its purchase VAT category, else the org's default band — never from client input, and no longer from the
  * org's single sales rate: VAT on what you BUY depends on the goods (food 14% vs
  * alcohol 25.5% in Finland), not on the business. It is only needed when the quote
  * `priceIncludesVat` — the net price is otherwise unknowable and we refuse rather
@@ -315,7 +315,11 @@ export async function setDefaultSupplier(
       : input.vatCategoryId === ''
         ? null
         : input.vatCategoryId;
-  const taxRateBps = await resolveVatRateBps(db, organizationId, vatCategoryId);
+  // The typed rate ('null' = not set) wins over the band; a 0% rate is honoured.
+  const vatRateBps =
+    input.vatRateBps === undefined ? ingredient.vatRateBps : input.vatRateBps;
+  const taxRateBps =
+    vatRateBps ?? (await resolveVatRateBps(db, organizationId, vatCategoryId));
 
   const found = await findOrCreateSupplierByName(db, organizationId, input.supplierName);
   if (found.status === 'invalid_name') return { status: 'invalid_name' };
@@ -435,7 +439,7 @@ export async function setDefaultSupplier(
   // persist the VAT band picked in the same dialog (it belongs to the ingredient).
   await db
     .update(ingredients)
-    .set({ supplier: supplier.name, vatCategoryId })
+    .set({ supplier: supplier.name, vatCategoryId, vatRateBps })
     .where(
       and(
         eq(ingredients.organizationId, organizationId),

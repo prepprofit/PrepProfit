@@ -127,6 +127,12 @@ export type ActionErrorCode =
   | 'MENU_INGREDIENT_INVALID'
   // A dish was filed into a folder that no longer exists (Dish Builder).
   | 'MENU_FOLDER_INVALID'
+  // A new or changed Menu recipe component was not entered in grams (recipe
+  // portions are no longer an entry unit; unchanged legacy lines are kept).
+  | 'MENU_RECIPE_GRAMS_REQUIRED'
+  // Changing an ingredient's type (weight / volume / count) while recipes, dishes or
+  // stock hold quantities in its current unit — they would be reinterpreted.
+  | 'INGREDIENT_TYPE_IN_USE'
   // A recipe still referenced by a menu was manually purged (Sprint 10) — remove the
   // menu line (or purge the menu) first; the purge does nothing until then.
   | 'RECIPE_IN_MENU'

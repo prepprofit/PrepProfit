@@ -8,50 +8,53 @@ import {
 } from '@/lib/ingredients/sort';
 
 const rows: SortableIngredient[] = [
-  { name: 'Butter', dimension: 'weight', priceCents: 900, needsPricing: false, supplier: 'Makro', updatedAt: '2026-09-01' },
+  { name: 'Butter', dimension: 'weight', priceCents: 900, needsPricing: false, supplier: 'metro', updatedAt: '2026-09-01' },
   { name: 'Eggs', dimension: 'count', priceCents: 25, needsPricing: false, supplier: null, updatedAt: '2026-09-10' },
-  { name: 'Milk', dimension: 'volume', priceCents: 120, needsPricing: false, supplier: 'Dairy Co', updatedAt: '2026-08-01' },
-  { name: 'Almond flour', dimension: 'weight', priceCents: 1_800, needsPricing: false, supplier: 'Makro', updatedAt: '2026-09-05' },
-  { name: 'Saffron', dimension: 'weight', priceCents: 0, needsPricing: true, supplier: null, updatedAt: '2026-07-01' },
+  { name: 'Milk', dimension: 'volume', priceCents: 120, needsPricing: false, supplier: 'ARLA', updatedAt: '2026-08-01' },
+  { name: 'almond flour', dimension: 'weight', priceCents: 1_800, needsPricing: false, supplier: 'MYLLÄRIN', updatedAt: '2026-09-05' },
+  { name: 'Saffron', dimension: 'weight', priceCents: 0, needsPricing: true, supplier: 'Myllärin', updatedAt: '2026-07-01' },
+  { name: 'Salt', dimension: 'weight', priceCents: 40, needsPricing: false, supplier: '  ', updatedAt: '2026-07-02' },
 ];
 
 const order = (sort: IngredientSort, canSeeCosts = true) =>
   [...rows].sort((a, b) => compareIngredients(a, b, sort, canSeeCosts)).map((r) => r.name);
 
 describe('ingredient column sorting', () => {
-  it('sorts by name both ways, keeping untrustworthy costs pinned on top', () => {
-    expect(order({ column: 'name', direction: 'asc' })).toEqual(['Saffron', 'Almond flour', 'Butter', 'Eggs', 'Milk']);
-    expect(order({ column: 'name', direction: 'desc' })).toEqual(['Saffron', 'Milk', 'Eggs', 'Butter', 'Almond flour']);
+  it('opens attention-first (untrustworthy cost on top), then A→Z case-insensitively', () => {
+    expect(order(DEFAULT_INGREDIENT_SORT)).toEqual(['Saffron', 'almond flour', 'Butter', 'Eggs', 'Milk', 'Salt']);
   });
 
-  it('groups by type: piece, weight, volume (then name)', () => {
-    expect(order({ column: 'dimension', direction: 'asc' })).toEqual(['Saffron', 'Eggs', 'Almond flour', 'Butter', 'Milk']);
-    expect(order({ column: 'dimension', direction: 'desc' })).toEqual(['Saffron', 'Milk', 'Almond flour', 'Butter', 'Eggs']);
+  it('a chosen column gives no row a special position', () => {
+    expect(order({ column: 'name', direction: 'asc' })).toEqual(['almond flour', 'Butter', 'Eggs', 'Milk', 'Saffron', 'Salt']);
+    expect(order({ column: 'name', direction: 'desc' })).toEqual(['Salt', 'Saffron', 'Milk', 'Eggs', 'Butter', 'almond flour']);
   });
 
-  it('sorts by price cheapest or most expensive first', () => {
-    expect(order({ column: 'price', direction: 'asc' })).toEqual(['Saffron', 'Eggs', 'Milk', 'Butter', 'Almond flour']);
-    expect(order({ column: 'price', direction: 'desc' })).toEqual(['Saffron', 'Almond flour', 'Butter', 'Milk', 'Eggs']);
+  it('sorts suppliers alphabetically, locale-aware and case-insensitive, unassigned last both ways', () => {
+    // ARLA < metro < MYLLÄRIN = Myllärin (tie → ingredient name); blank/null last.
+    expect(order({ column: 'supplier', direction: 'asc' })).toEqual(['Milk', 'Butter', 'almond flour', 'Saffron', 'Eggs', 'Salt']);
+    expect(order({ column: 'supplier', direction: 'desc' })).toEqual(['almond flour', 'Saffron', 'Butter', 'Milk', 'Eggs', 'Salt']);
   });
 
-  it('ignores price for a kitchen viewer (no price key) and falls back to name', () => {
-    expect(order({ column: 'price', direction: 'desc' }, false)).toEqual(['Saffron', 'Almond flour', 'Butter', 'Eggs', 'Milk']);
+  it('sorts by type both directions (piece, weight, volume), then name', () => {
+    expect(order({ column: 'dimension', direction: 'asc' })).toEqual(['Eggs', 'almond flour', 'Butter', 'Saffron', 'Salt', 'Milk']);
+    expect(order({ column: 'dimension', direction: 'desc' })).toEqual(['Milk', 'almond flour', 'Butter', 'Saffron', 'Salt', 'Eggs']);
   });
 
-  it('sorts by supplier with unsupplied ingredients last in both directions', () => {
-    expect(order({ column: 'supplier', direction: 'asc' })).toEqual(['Saffron', 'Milk', 'Almond flour', 'Butter', 'Eggs']);
-    expect(order({ column: 'supplier', direction: 'desc' })).toEqual(['Saffron', 'Almond flour', 'Butter', 'Milk', 'Eggs']);
+  it('sorts by price cheapest or most expensive first; kitchen falls back to name', () => {
+    expect(order({ column: 'price', direction: 'asc' })).toEqual(['Saffron', 'Eggs', 'Salt', 'Milk', 'Butter', 'almond flour']);
+    expect(order({ column: 'price', direction: 'desc' })).toEqual(['almond flour', 'Butter', 'Milk', 'Salt', 'Eggs', 'Saffron']);
+    expect(order({ column: 'price', direction: 'desc' }, false)).toEqual(['almond flour', 'Butter', 'Eggs', 'Milk', 'Saffron', 'Salt']);
   });
 
   it('sorts by updated newest or oldest first', () => {
-    expect(order({ column: 'updated', direction: 'desc' })).toEqual(['Saffron', 'Eggs', 'Almond flour', 'Butter', 'Milk']);
-    expect(order({ column: 'updated', direction: 'asc' })).toEqual(['Saffron', 'Milk', 'Butter', 'Almond flour', 'Eggs']);
+    expect(order({ column: 'updated', direction: 'desc' })).toEqual(['Eggs', 'almond flour', 'Butter', 'Milk', 'Salt', 'Saffron']);
+    expect(order({ column: 'updated', direction: 'asc' })).toEqual(['Saffron', 'Salt', 'Milk', 'Butter', 'almond flour', 'Eggs']);
   });
 
   it('toggles a heading and starts new headings at their natural direction', () => {
-    expect(DEFAULT_INGREDIENT_SORT).toEqual({ column: 'name', direction: 'asc' });
     expect(nextSort(DEFAULT_INGREDIENT_SORT, 'name')).toEqual({ column: 'name', direction: 'desc' });
+    expect(nextSort({ column: 'name', direction: 'desc' }, 'name')).toEqual({ column: 'name', direction: 'asc' });
     expect(nextSort(DEFAULT_INGREDIENT_SORT, 'updated')).toEqual({ column: 'updated', direction: 'desc' });
-    expect(nextSort(DEFAULT_INGREDIENT_SORT, 'price')).toEqual({ column: 'price', direction: 'asc' });
+    expect(nextSort(DEFAULT_INGREDIENT_SORT, 'supplier')).toEqual({ column: 'supplier', direction: 'asc' });
   });
 });

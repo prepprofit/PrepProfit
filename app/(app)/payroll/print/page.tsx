@@ -91,7 +91,7 @@ export default async function PayrollPrintPage({
               )}
             </div>
             <div className="flex flex-col items-end gap-0.5">
-              <span className="text-xl font-bold tracking-wide text-[#086f59]">
+              <span className="text-xl font-bold tracking-wide text-[#2c7466]">
                 {labels.title}
               </span>
               <span className="font-semibold text-neutral-900">

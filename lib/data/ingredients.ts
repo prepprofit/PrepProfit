@@ -1,6 +1,14 @@
-import { and, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
-import { ingredients, menuIngredientItems, menus, recipeIngredients, recipes } from '@/lib/db/schema';
+import { and, count, countDistinct, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import {
+  ingredients,
+  inventoryMovements,
+  menuIngredientItems,
+  menus,
+  recipeIngredients,
+  recipes,
+} from '@/lib/db/schema';
 import type { Ingredient, NewIngredient } from '@/lib/db/schema';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { TenantClient } from '@/lib/db/tenant';
 import { nullTaskIngredientLinks } from '@/lib/data/tasks';
 
@@ -383,4 +391,52 @@ export async function countActiveMenusUsingIngredient(
       ),
     );
   return rows[0]?.value ?? 0;
+}
+
+/**
+ * Why an ingredient's TYPE (weight / volume / count) can't change: quantities held in
+ * its current canonical unit — active recipe lines (g/ml/pcs), active dish lines, or
+ * stock movements. Changing the type would silently reinterpret all of them (500 g
+ * becoming 500 pieces), so the edit is refused instead.
+ */
+export type IngredientTypeLock = { recipes: number; menus: number; stock: boolean };
+
+export async function listIngredientTypeLocks(
+  db: TenantClient,
+  organizationId: string,
+  ingredientIds?: string[],
+): Promise<Map<string, IngredientTypeLock>> {
+  const scoped = (column: AnyPgColumn) =>
+    ingredientIds ? inArray(column, ingredientIds) : undefined;
+  if (ingredientIds && ingredientIds.length === 0) return new Map();
+
+  const [recipeRows, menuRows, stockRows] = await Promise.all([
+    db
+      .select({ ingredientId: recipeIngredients.ingredientId, value: countDistinct(recipeIngredients.recipeId) })
+      .from(recipeIngredients)
+      .innerJoin(recipes, and(eq(recipes.organizationId, organizationId), eq(recipes.id, recipeIngredients.recipeId)))
+      .where(and(eq(recipeIngredients.organizationId, organizationId), isNull(recipes.deletedAt), scoped(recipeIngredients.ingredientId)))
+      .groupBy(recipeIngredients.ingredientId),
+    db
+      .select({ ingredientId: menuIngredientItems.ingredientId, value: countDistinct(menuIngredientItems.menuId) })
+      .from(menuIngredientItems)
+      .innerJoin(menus, and(eq(menus.organizationId, organizationId), eq(menus.id, menuIngredientItems.menuId)))
+      .where(and(eq(menuIngredientItems.organizationId, organizationId), isNull(menus.deletedAt), scoped(menuIngredientItems.ingredientId)))
+      .groupBy(menuIngredientItems.ingredientId),
+    db
+      .selectDistinct({ ingredientId: inventoryMovements.ingredientId })
+      .from(inventoryMovements)
+      .where(and(eq(inventoryMovements.organizationId, organizationId), scoped(inventoryMovements.ingredientId))),
+  ]);
+
+  const locks = new Map<string, IngredientTypeLock>();
+  const entry = (id: string) => {
+    const current = locks.get(id) ?? { recipes: 0, menus: 0, stock: false };
+    locks.set(id, current);
+    return current;
+  };
+  for (const r of recipeRows) entry(r.ingredientId).recipes = Number(r.value);
+  for (const r of menuRows) entry(r.ingredientId).menus = Number(r.value);
+  for (const r of stockRows) entry(r.ingredientId).stock = true;
+  return locks;
 }

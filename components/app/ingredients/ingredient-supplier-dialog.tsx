@@ -7,6 +7,7 @@ import { IGNORE_PASSWORD_MANAGERS, Input } from '@/components/ui/input';
 import { SupplierPicker } from '@/components/app/ingredients/supplier-picker';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { centsToAmountInput, formatMoney, parseMoneyToCents } from '@/lib/format/money';
 import {
@@ -23,6 +24,7 @@ import {
   type SupplierPriceBasis,
 } from '@/lib/calculations/purchasePrice';
 import { PACK_UNITS, PRICE_BASES } from '@/lib/validation/suppliers';
+import { parseVatPercent } from '@/lib/validation/vat-rate';
 import {
   isPackBlockingSave,
   validateSupplierPackForm,
@@ -88,6 +90,7 @@ export function IngredientSupplierDialog({
   currency,
   vatCategories,
   vatCategoryId: initialVatCategoryId,
+  vatRateBps: initialVatRateBps,
   supplierNames,
   pricePrefs,
   initialLink,
@@ -104,8 +107,10 @@ export function IngredientSupplierDialog({
   currency: string;
   /** The org's purchase VAT bands; empty = none configured (no gross entry). */
   vatCategories: VatCategoryOption[];
-  /** The ingredient's own band; null = fall back to the org's default band. */
+  /** The ingredient's legacy band; null = fall back to the org's default band. */
   vatCategoryId: string | null;
+  /** The ingredient's own typed VAT rate (bps); null = not set (band / default). */
+  vatRateBps: number | null;
   /** Existing supplier names for the picker (manager's active suppliers). */
   supplierNames: string[];
   /** Remembered price-entry mode per supplier NAME, so the selects prefill. */
@@ -116,7 +121,7 @@ export function IngredientSupplierDialog({
   onSaved: (
     summary: DefaultSupplierSummary,
     prefs: SupplierPricePrefs,
-    vatCategoryId: string | null,
+    vatRateBps: number | null,
   ) => void;
   onCleared: () => void;
   onAccepted: (priceCents: number) => void;
@@ -135,8 +140,9 @@ export function IngredientSupplierDialog({
   const [packPriceText, setPackPriceText] = React.useState('');
   const [basis, setBasis] = React.useState<SupplierPriceBasis>('pack');
   const [includesVat, setIncludesVat] = React.useState(false);
-  // The ingredient's purchase VAT band. '' = no band of its own → the org default.
-  const [vatCategoryId, setVatCategoryId] = React.useState('');
+  // The ingredient's purchase VAT rate as typed (percent). '' = not set → the
+  // ingredient's band, else the org's default band. '0' is a deliberate 0% rate.
+  const [vatText, setVatText] = React.useState('');
   // The stored price is the whole pack EXCL. VAT; what we show is that value
   // converted into the supplier's quoting mode, which can differ by a cent on the
   // round trip. So while the manager hasn't touched any pricing control we send the
@@ -163,14 +169,22 @@ export function IngredientSupplierDialog({
   const pricedUnit = PRICED_UNIT_LABEL[dimension];
 
   /**
-   * The band whose rate converts this quote: the one picked, else the org's
-   * default. Its rate is display-only — the server re-resolves it from the
-   * ingredient's stored band, so a tampered client can't price its own VAT.
+   * The rate that converts this quote: the typed rate when set, else the
+   * ingredient's band, else the org's default band. The server resolves it the
+   * same way from what is saved.
    */
-  const defaultCategory = vatCategories.find((c) => c.isDefault) ?? null;
-  const activeCategory =
-    vatCategories.find((c) => c.id === vatCategoryId) ?? defaultCategory;
-  const taxRateBps = activeCategory?.rateBps ?? null;
+  const fallbackCategory =
+    vatCategories.find((c) => c.id === initialVatCategoryId) ??
+    vatCategories.find((c) => c.isDefault) ??
+    null;
+  const vatParsed = parseVatPercent(vatText);
+  const vatInvalid = vatParsed === 'invalid';
+  const ownRateBps = vatParsed === 'invalid' ? null : vatParsed;
+  const taxRateBps = ownRateBps ?? fallbackCategory?.rateBps ?? null;
+  const presetRates = React.useMemo(() => {
+    const seen = new Set<number>();
+    return vatCategories.filter((c) => (seen.has(c.rateBps) ? false : (seen.add(c.rateBps), true)));
+  }, [vatCategories]);
 
   // Re-seed from the current link whenever the dialog opens.
   React.useEffect(() => {
@@ -182,8 +196,10 @@ export function IngredientSupplierDialog({
     // `taxRateBps` — that changes as the manager picks a band, and depending on it
     // here would re-seed (and wipe) the whole form on every VAT change.
     const seedRateBps =
+      initialVatRateBps ??
       (vatCategories.find((c) => c.id === initialVatCategoryId) ??
-        vatCategories.find((c) => c.isDefault))?.rateBps ?? null;
+        vatCategories.find((c) => c.isDefault))?.rateBps ??
+      null;
     // A gross-quoting supplier is only honoured while a rate exists to strip.
     const seedInclVat = (prefs?.includesVat ?? false) && seedRateBps != null;
     const units = initialLink?.unitsPerPack ?? 1;
@@ -198,7 +214,7 @@ export function IngredientSupplierDialog({
     setPackUnit(unit ?? DEFAULT_PACK_UNIT[dimension]);
     setBasis(seedBasis);
     setIncludesVat(seedInclVat);
-    setVatCategoryId(initialVatCategoryId ?? '');
+    setVatText(initialVatRateBps != null ? String(initialVatRateBps / 100) : '');
     // Show the stored net pack price back in the supplier's quoting mode.
     const stored = initialLink?.packPriceCents ?? null;
     const shown =
@@ -221,7 +237,7 @@ export function IngredientSupplierDialog({
     seededFor.current = name;
     setBannerError(null);
     setSaveAttempted(false);
-  }, [open, initialLink, pricePrefs, dimension, vatCategories, initialVatCategoryId]);
+  }, [open, initialLink, pricePrefs, dimension, vatCategories, initialVatCategoryId, initialVatRateBps]);
 
   React.useEffect(() => {
     const el = ref.current;
@@ -328,7 +344,7 @@ export function IngredientSupplierDialog({
   const onSave = () => {
     setSaveAttempted(true);
     const name = supplierName.trim();
-    if (name === '' || saveBlocked) return;
+    if (name === '' || saveBlocked || vatInvalid) return;
     const priceCents =
       packPriceText.trim() === '' ? undefined : parseMoneyToCents(packPriceText);
 
@@ -353,9 +369,9 @@ export function IngredientSupplierDialog({
       ...(hasSize ? { packSize: sizeNum } : {}),
       ...(unit ? { packUnit: unit } : {}),
       ...(hasUnits ? { unitsPerPack: unitsNum } : {}),
-      // Always sent (including '' = back to the org default) so clearing a band is
-      // a real edit, not an omission the server would read as "leave it alone".
-      vatCategoryId,
+      // Always sent (null = not set) so clearing the rate is a real edit, not an
+      // omission the server would read as "leave it alone".
+      vatRateBps: ownRateBps,
       ...pricePart,
     };
 
@@ -377,7 +393,7 @@ export function IngredientSupplierDialog({
             supplierSku: sku.trim() || null,
           },
           { basis, includesVat },
-          vatCategoryId === '' ? null : vatCategoryId,
+          ownRateBps,
         );
         onClose();
       } else {
@@ -648,44 +664,88 @@ export function IngredientSupplierDialog({
               </Select>
             </div>
             {/*
-              VAT on a PURCHASE depends on the goods, not the business: food 14%,
-              alcohol 25.5% in Finland; other countries band differently. So the rate
-              comes from the ingredient's band, edited right here, not from one
-              org-wide number that would mis-price everything outside its band.
+              VAT on a PURCHASE depends on the goods and the country, so the rate is
+              typed here per ingredient — any rate, including 0% and decimals. The
+              org's bands are only shortcuts that fill the field.
             */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${titleId}-vatcat`}>{t('vatCategory')}</Label>
-              <Select
-                id={`${titleId}-vatcat`}
-                className="w-44"
-                value={vatCategoryId}
-                disabled={pending || vatCategories.length === 0}
-                onChange={(e) => {
-                  setVatCategoryId(e.target.value);
-                  touchPrice();
-                }}
-              >
-                <option value="">
-                  {defaultCategory
-                    ? t('vatCategoryDefault', { name: defaultCategory.name })
-                    : t('vatCategoryNone')}
-                </option>
-                {vatCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {t('vatCategoryOption', {
-                      name: c.name,
-                      rate: String(c.rateBps / 100),
-                    })}
-                  </option>
-                ))}
-              </Select>
+              <Label htmlFor={`${titleId}-vatrate`}>{t('vatRate')}</Label>
+              <div className="relative w-32">
+                <Input
+                  id={`${titleId}-vatrate`}
+                  inputMode="decimal"
+                  {...IGNORE_PASSWORD_MANAGERS}
+                  value={vatText}
+                  placeholder={
+                    fallbackCategory ? String(fallbackCategory.rateBps / 100) : t('vatRateUnset')
+                  }
+                  aria-invalid={vatInvalid}
+                  aria-describedby={`${titleId}-vatrate-hint`}
+                  disabled={pending}
+                  onChange={(e) => {
+                    setVatText(e.target.value);
+                    touchPrice();
+                  }}
+                  className={cn('pr-8 text-right tabular-nums', errorRing(vatInvalid ? 'x' : null))}
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                  %
+                </span>
+              </div>
             </div>
           </div>
-          {taxRateBps == null ? (
-            <p className="text-xs text-muted-foreground">{t('vatRateMissing')}</p>
-          ) : (
-            <p className="text-xs text-muted-foreground">{t('vatCategoryHint')}</p>
+          {presetRates.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">{t('vatPresets')}</span>
+              {presetRates.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={pending}
+                  aria-pressed={ownRateBps === c.rateBps}
+                  onClick={() => {
+                    setVatText(String(c.rateBps / 100));
+                    touchPrice();
+                  }}
+                  className={cn(
+                    'cursor-pointer rounded-full border px-2.5 py-1 text-xs tabular-nums transition-colors',
+                    ownRateBps === c.rateBps
+                      ? 'border-accent-600 bg-accent-50 font-medium text-accent-800 dark:border-accent-400 dark:bg-accent-500/15 dark:text-accent-200'
+                      : 'border-border text-muted-foreground hover:bg-surface-2 hover:text-foreground',
+                  )}
+                >
+                  {t('vatCategoryOption', { name: c.name, rate: String(c.rateBps / 100) })}
+                </button>
+              ))}
+              {vatText.trim() !== '' && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    setVatText('');
+                    touchPrice();
+                  }}
+                  className="cursor-pointer text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  {t('vatRateClear')}
+                </button>
+              )}
+            </div>
           )}
+          <p
+            id={`${titleId}-vatrate-hint`}
+            className={cn('text-xs', vatInvalid ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground')}
+          >
+            {vatInvalid
+              ? t('vatRateInvalid')
+              : ownRateBps === 0
+                ? t('vatRateZero')
+                : ownRateBps !== null
+                  ? t('vatRateSet', { rate: String(ownRateBps / 100) })
+                  : fallbackCategory
+                    ? t('vatRateFallback', { name: fallbackCategory.name, rate: String(fallbackCategory.rateBps / 100) })
+                    : t('vatRateMissing')}
+          </p>
         </fieldset>
 
         {/* ── The answer ─────────────────────────────────────────────────── */}
@@ -698,14 +758,13 @@ export function IngredientSupplierDialog({
               <p className="font-display text-2xl font-semibold tabular-nums">
                 {formatMoney(readout.perPricedUnitExclVatCents, currency)}
               </p>
-              {readout.perPricedUnitInclVatCents != null && activeCategory && (
-                // Naming the band makes a mis-categorization visible — the same
-                // safety-net principle as showing the cost per kg.
+              {readout.perPricedUnitInclVatCents != null && taxRateBps != null && (
+                // Naming the rate makes a wrong VAT visible — the same safety-net
+                // principle as showing the cost per kg.
                 <p className="text-xs text-muted-foreground tabular-nums">
-                  {t('costInclVatCategory', {
+                  {t('costInclVatRate', {
                     amount: formatMoney(readout.perPricedUnitInclVatCents, currency),
-                    name: activeCategory.name,
-                    rate: String(activeCategory.rateBps / 100),
+                    rate: String(taxRateBps / 100),
                   })}
                 </p>
               )}

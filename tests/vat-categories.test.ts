@@ -232,3 +232,57 @@ describe('setDefaultSupplier converts with the ingredient’s band', () => {
     expect(result.status).toBe('vat_rate_required');
   });
 });
+
+describe('setDefaultSupplier with a typed VAT rate', () => {
+  const grossQuote = {
+    packSize: 1,
+    packUnit: 'kg' as const,
+    packPriceCents: 10_000,
+    priceIncludesVat: true,
+    priceBasis: 'pack' as const,
+  };
+
+  it('uses a typed decimal rate, persists it, and keeps it on later saves', async () => {
+    const ingId = await newIngredient(ORG_A, 'Oat drink');
+    await runInOrg(db, ORG_A, (tx) =>
+      setDefaultSupplier(tx, ORG_A, ingId, { supplierName: 'Oat Co', vatRateBps: 1350, ...grossQuote }),
+    );
+    let row = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, ingId));
+    expect(row?.vatRateBps).toBe(1350);
+    expect(row?.pendingPriceCents).toBe(8811); // 100 / 1.135
+
+    // A save that omits the rate leaves it untouched.
+    await runInOrg(db, ORG_A, (tx) =>
+      setDefaultSupplier(tx, ORG_A, ingId, { supplierName: 'Oat Co', ...grossQuote, packPriceCents: 11_350 }),
+    );
+    row = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, ingId));
+    expect(row?.vatRateBps).toBe(1350);
+    expect(row?.pendingPriceCents).toBe(10_000);
+  });
+
+  it('treats 0% as a real rate, distinct from unset (which falls back to the default band)', async () => {
+    const zero = await newIngredient(ORG_A, 'Export sugar');
+    const unset = await newIngredient(ORG_A, 'Local sugar');
+    await runInOrg(db, ORG_A, (tx) =>
+      setDefaultSupplier(tx, ORG_A, zero, { supplierName: 'Sugar Co', vatRateBps: 0, ...grossQuote }),
+    );
+    await runInOrg(db, ORG_A, (tx) =>
+      setDefaultSupplier(tx, ORG_A, unset, { supplierName: 'Sugar Co', vatRateBps: null, ...grossQuote }),
+    );
+    const zeroRow = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, zero));
+    const unsetRow = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, unset));
+    expect(zeroRow?.vatRateBps).toBe(0);
+    expect(zeroRow?.pendingPriceCents).toBe(10_000);
+    expect(unsetRow?.vatRateBps).toBeNull();
+    expect(unsetRow?.pendingPriceCents).toBe(8772); // default Food band, 14%
+  });
+
+  it('rejects out-of-range rates at the database', async () => {
+    const ingId = await newIngredient(ORG_A, 'Bad rate');
+    await expect(
+      runInOrg(db, ORG_A, (tx) =>
+        tx.update(ingredients).set({ vatRateBps: 10_001 }).where(eq(ingredients.id, ingId)),
+      ),
+    ).rejects.toThrow();
+  });
+});

@@ -3,15 +3,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ArrowDown, ArrowUp, ArrowUpDown, Search } from 'lucide-react';
-import {
-  type ColumnDef,
-  type SortingState,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from '@tanstack/react-table';
+import { ArrowDown, ArrowUp, ArrowUpDown, Search, SlidersHorizontal } from 'lucide-react';
 import type { LibraryRecipeRow } from '@/lib/data/recipe-library';
 import { formatMoney } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
@@ -22,24 +14,35 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { bulkTrashRecipesAction } from '@/app/(app)/recipes/book-actions';
 import { cn } from '@/lib/utils';
+import { RecipeIssuesButton, type RecipeIssue } from './recipe-issues-button';
 
 /**
- * Recipes 2.0 library table (Fase 7 Slice 2, parity with `Recipes/1.png`).
- * Server-driven and read-only: the page ships the already-RBAC-stripped rows
- * (kitchen rows carry NO `money` key at all — the Cost/Price/Margin columns are
- * built only when `showMoney`), and a row click navigates to the recipe.
- * Search + sorting are client-side over the folder's active recipes. The rows arrive
- * in recent-activity order (latest edit or open first); with no column sort active
- * the table keeps that order, and clicking a heading sorts by that column instead.
+ * Recipe browsing list. Deliberately calm: the recipe NAME leads each row; the only
+ * figure is cost per kg (managers only — kitchen rows carry no `money` key at all);
+ * anything that needs fixing sits behind a small "!" that explains itself on click.
+ * Yield, allergen chips, selling price and margin live on the recipe page, not here.
+ *
+ * Rows arrive in recent-activity order (latest edit or open first); sorting by name
+ * or cost per kg is a choice, and "Recent activity" returns to the arrival order.
+ * Allergen / issue filters stay available behind "Filters".
  */
 
-/** What the table renders: the manager row with `money` optional (kitchen). */
+/** What the list renders: the manager row with `money` optional (kitchen). */
 export type LibraryTableRow = Omit<LibraryRecipeRow, 'money'> &
   Partial<Pick<LibraryRecipeRow, 'money'>>;
 
-type TableMeta = {
-  onOpen: (id: string) => void;
-};
+type SortKey = 'recent' | 'name-asc' | 'name-desc' | 'cost-asc' | 'cost-desc';
+
+const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+
+export function issuesOf(row: LibraryTableRow, showMoney: boolean): RecipeIssue[] {
+  const issues: RecipeIssue[] = [];
+  if (row.status.allergensUnreviewed) issues.push('allergensUnreviewed');
+  if (row.status.nutritionIncomplete) issues.push('nutritionIncomplete');
+  if (showMoney && row.money?.needsPricing) issues.push('needsPricing');
+  if (row.status.missingFinishedWeight) issues.push('missingFinishedWeight');
+  return issues;
+}
 
 export function LibraryTable({
   rows,
@@ -54,73 +57,36 @@ export function LibraryTable({
 }) {
   const t = useTranslations('recipes.library');
   const tHome = useTranslations('recipes.home');
+  const tIssues = useTranslations('recipes.issues');
   const tAllergens = useTranslations('allergens');
   const tCommon = useTranslations('common');
   const actionError = useActionError();
   const router = useRouter();
   const [query, setQuery] = React.useState('');
-  // Empty = the rows' own recent-activity order.
-  const [sorting, setSorting] = React.useState<SortingState>([]);
-  const sortChoice =
-    sorting.length === 0
-      ? 'recent'
-      : sorting.length === 1 && sorting[0]?.id === 'name' && !sorting[0].desc
-        ? 'name'
-        : 'column';
+  const [sort, setSort] = React.useState<SortKey>('recent');
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [allergenFilter, setAllergenFilter] = React.useState<Set<string>>(new Set());
+  const [issueFilter, setIssueFilter] = React.useState<Set<RecipeIssue>>(new Set());
 
-  // ── Filters (Fase 7 Slice 3, parity with `Nutrition and label/6.png`) ──
-  // Allergen filter: ANY selected slug present (contains OR may-contain).
-  // Status filter: ANY selected flag set. Groups AND together with search.
-  const [allergenFilter, setAllergenFilter] = React.useState<Set<string>>(
-    new Set(),
-  );
-  const [statusFilter, setStatusFilter] = React.useState<Set<string>>(
-    new Set(),
-  );
-
-  // Only allergens actually present in the current view are offered, each with
-  // its contains / may-contain recipe counts.
   const allergenOptions = React.useMemo(() => {
-    const counts = new Map<string, { contains: number; mayContain: number }>();
+    const counts = new Map<string, number>();
     for (const row of rows) {
-      for (const chip of row.allergens) {
-        const entry = counts.get(chip.allergen) ?? { contains: 0, mayContain: 0 };
-        if (chip.presence === 'contains') entry.contains += 1;
-        else entry.mayContain += 1;
-        counts.set(chip.allergen, entry);
-      }
+      for (const chip of row.allergens) counts.set(chip.allergen, (counts.get(chip.allergen) ?? 0) + 1);
     }
-    return [...counts.entries()].map(([allergen, c]) => ({ allergen, ...c }));
+    return [...counts.entries()].map(([allergen, count]) => ({ allergen, count }));
   }, [rows]);
 
-  const statusOptions = React.useMemo(() => {
-    const flagOf = (row: LibraryTableRow, key: string): boolean => {
-      if (key === 'allergensUnreviewed') return row.status.allergensUnreviewed;
-      if (key === 'nutritionIncomplete') return row.status.nutritionIncomplete;
-      if (key === 'needsPricing') return row.money?.needsPricing === true;
-      if (key === 'noSellingPrice') {
-        return row.money !== undefined && row.money.sellingPriceCents == null;
-      }
-      return false;
-    };
-    // Financial statuses exist only when the payload carries money (manager).
-    const keys = [
+  const issueOptions = React.useMemo(() => {
+    const keys: RecipeIssue[] = [
       'allergensUnreviewed',
       'nutritionIncomplete',
-      ...(showMoney ? ['needsPricing', 'noSellingPrice'] : []),
+      ...(showMoney ? (['needsPricing'] as const) : []),
+      'missingFinishedWeight',
     ];
-    return keys.map((key) => ({
-      key,
-      count: rows.filter((r) => flagOf(r, key)).length,
-      flagOf,
-    }));
+    return keys.map((key) => ({ key, count: rows.filter((r) => issuesOf(r, showMoney).includes(key)).length }));
   }, [rows, showMoney]);
 
-  const toggleIn = (
-    set: Set<string>,
-    value: string,
-    apply: (next: Set<string>) => void,
-  ) => {
+  const toggle = <T,>(set: Set<T>, value: T, apply: (next: Set<T>) => void) => {
     const next = new Set(set);
     if (next.has(value)) next.delete(value);
     else next.add(value);
@@ -129,41 +95,36 @@ export function LibraryTable({
 
   const q = query.trim().toLowerCase();
   const visibleRows = React.useMemo(() => {
-    const statusFlag = statusOptions[0]?.flagOf;
-    return rows.filter((r) => {
+    const filtered = rows.filter((r) => {
       if (q && !r.name.toLowerCase().includes(q)) return false;
-      if (
-        allergenFilter.size > 0 &&
-        !r.allergens.some((chip) => allergenFilter.has(chip.allergen))
-      ) {
-        return false;
-      }
-      if (
-        statusFilter.size > 0 &&
-        statusFlag &&
-        ![...statusFilter].some((key) => statusFlag(r, key))
-      ) {
-        return false;
+      if (allergenFilter.size > 0 && !r.allergens.some((chip) => allergenFilter.has(chip.allergen))) return false;
+      if (issueFilter.size > 0) {
+        const issues = issuesOf(r, showMoney);
+        if (![...issueFilter].some((key) => issues.includes(key))) return false;
       }
       return true;
     });
-  }, [rows, q, allergenFilter, statusFilter, statusOptions]);
+    if (sort === 'recent') return filtered;
+    const cost = (r: LibraryTableRow) => r.money?.costPerKgCents ?? null;
+    return [...filtered].sort((a, b) => {
+      if (sort === 'name-asc') return collator.compare(a.name, b.name);
+      if (sort === 'name-desc') return collator.compare(b.name, a.name);
+      // Unknown cost per kg sinks to the bottom in both directions.
+      const ca = cost(a);
+      const cb = cost(b);
+      if (ca === null || cb === null) {
+        return Number(ca === null) - Number(cb === null) || collator.compare(a.name, b.name);
+      }
+      return (sort === 'cost-asc' ? ca - cb : cb - ca) || collator.compare(a.name, b.name);
+    });
+  }, [rows, q, allergenFilter, issueFilter, sort, showMoney]);
 
-  // ── Bulk selection (Slice 4) ──
+  // ── Bulk selection ──
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [bulkError, setBulkError] = React.useState<string | null>(null);
   const [bulkNotice, setBulkNotice] = React.useState<string | null>(null);
   const [confirmTrash, setConfirmTrash] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
-
-  const toggleSelected = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const runBulkTrash = () => {
     setBulkError(null);
@@ -187,193 +148,30 @@ export function LibraryTable({
     });
   };
 
-  const allVisibleSelected =
-    visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
+  const allVisibleSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
+  const activeFilters = allergenFilter.size + issueFilter.size;
 
-  const columns = React.useMemo<ColumnDef<LibraryTableRow>[]>(() => {
-    const cols: ColumnDef<LibraryTableRow>[] = [
-      {
-        id: 'select',
-        enableSorting: false,
-        header: () => (
-          <input
-            type="checkbox"
-            aria-label={t('bulk.selectAll')}
-            className="size-4 cursor-pointer accent-accent-700"
-            checked={allVisibleSelected}
-            onChange={() =>
-              setSelected(
-                allVisibleSelected
-                  ? new Set()
-                  : new Set(visibleRows.map((r) => r.id)),
-              )
-            }
-          />
-        ),
-        cell: ({ row }) => (
-          <input
-            type="checkbox"
-            aria-label={t('bulk.selectRow', { name: row.original.name })}
-            className="size-4 cursor-pointer accent-accent-700"
-            checked={selected.has(row.original.id)}
-            onClick={(e) => e.stopPropagation()}
-            onChange={() => toggleSelected(row.original.id)}
-          />
-        ),
-      },
-      {
-        id: 'name',
-        accessorKey: 'name',
-        header: t('columns.name'),
-        cell: ({ row }) => (
-          <span className="font-medium text-foreground">
-            {row.original.name}
-          </span>
-        ),
-      },
-      {
-        id: 'yield',
-        header: t('columns.yield'),
-        enableSorting: false,
-        cell: ({ row }) => {
-          const r = row.original;
-          return r.yieldQuantity != null && r.yieldUnit
-            ? `${r.yieldQuantity} ${r.yieldUnit}`
-            : t('portions', { count: r.yieldPortions });
-        },
-      },
-      {
-        id: 'allergens',
-        header: t('columns.allergens'),
-        enableSorting: false,
-        cell: ({ row }) => {
-          const chips = row.original.allergens;
-          if (chips.length === 0) {
-            // Never claim "allergen-free" — absence of data is not absence.
-            return <span className="text-muted-foreground">—</span>;
-          }
-          return (
-            <span className="flex flex-wrap gap-1">
-              {chips.map((chip) => (
-                <span
-                  key={chip.allergen}
-                  title={`${tAllergens(`presence.${chip.presence}`)}: ${tAllergens(`labels.${chip.allergen}`)}`}
-                  className={cn(
-                    'rounded-full px-2 py-0.5 text-xs',
-                    chip.presence === 'contains'
-                      ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'
-                      : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
-                  )}
-                >
-                  {tAllergens(`labels.${chip.allergen}`)}
-                </span>
-              ))}
-            </span>
-          );
-        },
-      },
-      {
-        id: 'status',
-        header: t('columns.status'),
-        enableSorting: false,
-        cell: ({ row }) => {
-          const r = row.original;
-          const badges: string[] = [];
-          if (r.status.allergensUnreviewed) badges.push(t('status.allergensUnreviewed'));
-          if (r.status.nutritionIncomplete) badges.push(t('status.nutritionIncomplete'));
-          if (showMoney && r.money?.needsPricing) badges.push(t('status.needsPricing'));
-          if (showMoney && r.money && r.money.sellingPriceCents == null) {
-            badges.push(t('status.noSellingPrice'));
-          }
-          if (badges.length === 0) {
-            return <span className="text-muted-foreground">—</span>;
-          }
-          return (
-            <span className="flex flex-wrap gap-1">
-              {badges.map((label) => (
-                <span
-                  key={label}
-                  className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
-                >
-                  {label}
-                </span>
-              ))}
-            </span>
-          );
-        },
-      },
-    ];
-
-    if (showMoney) {
-      cols.push(
-        {
-          id: 'cost',
-          accessorFn: (r) => r.money?.costPerPortionCents ?? null,
-          header: t('columns.cost'),
-          sortUndefined: 'last',
-          cell: ({ row }) => {
-            const cents = row.original.money?.costPerPortionCents;
-            return cents != null ? (
-              <span className="tabular-nums">{formatMoney(cents, currency)}</span>
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            );
-          },
-        },
-        {
-          id: 'price',
-          accessorFn: (r) => r.money?.sellingPriceCents ?? null,
-          header: t('columns.price'),
-          cell: ({ row }) => {
-            const cents = row.original.money?.sellingPriceCents;
-            return cents != null ? (
-              <span className="tabular-nums">{formatMoney(cents, currency)}</span>
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            );
-          },
-        },
-        {
-          id: 'margin',
-          accessorFn: (r) => r.money?.marginPercent ?? null,
-          header: t('columns.margin'),
-          cell: ({ row }) => {
-            const pct = row.original.money?.marginPercent;
-            return pct != null ? (
-              <span className="tabular-nums">{pct}%</span>
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            );
-          },
-        },
-      );
-    }
-    return cols;
-  }, [
-    currency,
-    showMoney,
-    t,
-    tAllergens,
-    selected,
-    allVisibleSelected,
-    visibleRows,
-  ]);
-
-  const table = useReactTable({
-    data: visibleRows,
-    columns,
-    state: { sorting },
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    meta: {
-      onOpen: (id: string) => router.push(`/recipes/${id}`),
-    } satisfies TableMeta,
-  });
+  const headingSort = (key: 'name' | 'cost') => {
+    setSort((current) =>
+      key === 'name'
+        ? current === 'name-asc'
+          ? 'name-desc'
+          : 'name-asc'
+        : current === 'cost-asc'
+          ? 'cost-desc'
+          : 'cost-asc',
+    );
+  };
+  const sortIcon = (key: 'name' | 'cost') => {
+    const Icon = sort === `${key}-asc` ? ArrowUp : sort === `${key}-desc` ? ArrowDown : ArrowUpDown;
+    return <Icon className={cn('size-3.5', !sort.startsWith(key) && 'opacity-40')} aria-hidden />;
+  };
+  const ariaSort = (key: 'name' | 'cost') =>
+    sort === `${key}-asc` ? 'ascending' : sort === `${key}-desc` ? 'descending' : undefined;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -388,88 +186,71 @@ export function LibraryTable({
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="library-sort" className="shrink-0 text-sm text-muted-foreground">
             {tHome('sortLabel')}
           </label>
           <Select
             id="library-sort"
-            value={sortChoice}
-            onChange={(e) =>
-              setSorting(e.target.value === 'name' ? [{ id: 'name', desc: false }] : [])
-            }
-            className="h-10 w-48"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="h-10 w-44"
           >
             <option value="recent">{tHome('sort.recent')}</option>
-            <option value="name">{tHome('sort.name')}</option>
-            {sortChoice === 'column' && <option value="column">{tHome('sort.column')}</option>}
+            <option value="name-asc">{tHome('sort.name')}</option>
+            <option value="name-desc">{tHome('sort.nameDesc')}</option>
+            {showMoney && <option value="cost-asc">{tHome('sort.costAsc')}</option>}
+            {showMoney && <option value="cost-desc">{tHome('sort.costDesc')}</option>}
           </Select>
+          <Button
+            type="button"
+            variant="outline"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((v) => !v)}
+            className="h-10 px-3"
+          >
+            <SlidersHorizontal className="size-4" aria-hidden />
+            {activeFilters > 0 ? t('filters.toggleActive', { count: activeFilters }) : t('filters.toggle')}
+          </Button>
         </div>
       </div>
 
-      {allergenOptions.length > 0 && (
-        <fieldset className="flex flex-wrap items-center gap-1.5">
-          <legend className="sr-only">{t('filters.allergens')}</legend>
-          <span aria-hidden className="text-xs font-medium text-muted-foreground">
-            {t('filters.allergens')}
-          </span>
-          {allergenOptions.map((option) => {
-            const selected = allergenFilter.has(option.allergen);
-            return (
-              <button
-                key={option.allergen}
-                type="button"
-                aria-pressed={selected}
-                title={t('filters.allergenCounts', {
-                  contains: option.contains,
-                  mayContain: option.mayContain,
-                })}
-                onClick={() =>
-                  toggleIn(allergenFilter, option.allergen, setAllergenFilter)
-                }
-                className={cn(
-                  'cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors',
-                  selected
-                    ? 'border-accent-700 bg-accent-50 font-medium text-accent-700 dark:border-accent-300 dark:bg-accent-500/15 dark:text-accent-300'
-                    : 'border-border text-muted-foreground hover:bg-surface-2 hover:text-foreground',
-                )}
-              >
-                {tAllergens(`labels.${option.allergen}`)}
-                <span className="ml-1 tabular-nums opacity-70">
-                  {option.contains + option.mayContain}
-                </span>
-              </button>
-            );
-          })}
-        </fieldset>
+      {filtersOpen && (
+        <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
+          <fieldset className="flex flex-wrap items-center gap-1.5">
+            <legend className="sr-only">{t('filters.status')}</legend>
+            <span aria-hidden className="text-xs font-medium text-muted-foreground">
+              {t('filters.status')}
+            </span>
+            {issueOptions.map((option) => (
+              <FilterChip
+                key={option.key}
+                selected={issueFilter.has(option.key)}
+                onClick={() => toggle(issueFilter, option.key, setIssueFilter)}
+                label={tIssues(`${option.key}.label`)}
+                count={option.count}
+              />
+            ))}
+          </fieldset>
+          {allergenOptions.length > 0 && (
+            <fieldset className="flex flex-wrap items-center gap-1.5">
+              <legend className="sr-only">{t('filters.allergens')}</legend>
+              <span aria-hidden className="text-xs font-medium text-muted-foreground">
+                {t('filters.allergens')}
+              </span>
+              {allergenOptions.map((option) => (
+                <FilterChip
+                  key={option.allergen}
+                  selected={allergenFilter.has(option.allergen)}
+                  onClick={() => toggle(allergenFilter, option.allergen, setAllergenFilter)}
+                  label={tAllergens(`labels.${option.allergen}`)}
+                  count={option.count}
+                />
+              ))}
+            </fieldset>
+          )}
+        </div>
       )}
-
-      <fieldset className="flex flex-wrap items-center gap-1.5">
-        <legend className="sr-only">{t('filters.status')}</legend>
-        <span aria-hidden className="text-xs font-medium text-muted-foreground">
-          {t('filters.status')}
-        </span>
-        {statusOptions.map((option) => {
-          const selected = statusFilter.has(option.key);
-          return (
-            <button
-              key={option.key}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => toggleIn(statusFilter, option.key, setStatusFilter)}
-              className={cn(
-                'cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors',
-                selected
-                  ? 'border-accent-700 bg-accent-50 font-medium text-accent-700 dark:border-accent-300 dark:bg-accent-500/15 dark:text-accent-300'
-                  : 'border-border text-muted-foreground hover:bg-surface-2 hover:text-foreground',
-              )}
-            >
-              {t(`status.${option.key}`)}
-              <span className="ml-1 tabular-nums opacity-70">{option.count}</span>
-            </button>
-          );
-        })}
-      </fieldset>
 
       {(bulkError || bulkNotice) && (
         <div
@@ -487,18 +268,19 @@ export function LibraryTable({
 
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
-          <span className="text-sm text-muted-foreground">
-            {t('bulk.selected', { count: selected.size })}
-          </span>
+          <span className="text-sm text-muted-foreground">{t('bulk.selected', { count: selected.size })}</span>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="text-red-600 dark:text-red-400"
+            className="text-red-700 dark:text-red-300"
             disabled={pending}
             onClick={() => setConfirmTrash(true)}
           >
             {t('bulk.trash')}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+            {tCommon('cancel')}
           </Button>
         </div>
       )}
@@ -515,83 +297,142 @@ export function LibraryTable({
         onCancel={() => setConfirmTrash(false)}
       />
 
-      <Card className="overflow-x-auto p-0">
-        <table className="w-full min-w-[40rem] text-sm">
+      <Card className="overflow-visible p-0">
+        <table className="w-full text-sm">
           <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b border-border">
-                {headerGroup.headers.map((header) => {
-                  const canSort = header.column.getCanSort();
-                  const dir = header.column.getIsSorted();
-                  return (
-                    <th
-                      key={header.id}
-                      className="px-3 py-2.5 text-left font-medium text-muted-foreground"
-                    >
-                      {canSort ? (
-                        <button
-                          type="button"
-                          className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground"
-                          onClick={header.column.getToggleSortingHandler()}
-                        >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                          {dir === 'asc' ? (
-                            <ArrowUp className="size-3.5" />
-                          ) : dir === 'desc' ? (
-                            <ArrowDown className="size-3.5" />
-                          ) : (
-                            <ArrowUpDown className="size-3.5 opacity-40" />
-                          )}
-                        </button>
-                      ) : (
-                        flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            ))}
+            <tr className="border-b border-border">
+              <th className="w-10 py-2.5 pl-4 pr-1 text-left">
+                <input
+                  type="checkbox"
+                  aria-label={t('bulk.selectAll')}
+                  className="size-4 cursor-pointer accent-accent-700"
+                  checked={allVisibleSelected}
+                  onChange={() =>
+                    setSelected(allVisibleSelected ? new Set() : new Set(visibleRows.map((r) => r.id)))
+                  }
+                />
+              </th>
+              <th className="px-3 py-2.5 text-left font-medium text-muted-foreground" aria-sort={ariaSort('name')}>
+                <button
+                  type="button"
+                  className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground"
+                  onClick={() => headingSort('name')}
+                >
+                  {t('columns.name')}
+                  {sortIcon('name')}
+                </button>
+              </th>
+              {showMoney && (
+                <th className="px-3 py-2.5 text-right font-medium text-muted-foreground" aria-sort={ariaSort('cost')}>
+                  <button
+                    type="button"
+                    className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground"
+                    onClick={() => headingSort('cost')}
+                  >
+                    {t('columns.costPerKg')}
+                    {sortIcon('cost')}
+                  </button>
+                </th>
+              )}
+              <th className="w-12 py-2.5 pl-1 pr-4">
+                <span className="sr-only">{tIssues('title')}</span>
+              </th>
+            </tr>
           </thead>
           <tbody>
-            {table.getRowModel().rows.length === 0 ? (
+            {visibleRows.length === 0 ? (
               <tr>
-                <td
-                  colSpan={columns.length}
-                  className="px-3 py-8 text-center text-muted-foreground"
-                >
+                <td colSpan={showMoney ? 4 : 3} className="px-4 py-10 text-center text-muted-foreground">
                   {t('empty')}
                 </td>
               </tr>
             ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr
-                  key={row.id}
-                  tabIndex={0}
-                  role="link"
-                  aria-label={row.original.name}
-                  className="cursor-pointer border-b border-border/60 transition-colors last:border-b-0 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
-                  onClick={() => router.push(`/recipes/${row.original.id}`)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') router.push(`/recipes/${row.original.id}`);
-                  }}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-3 py-2.5 align-top">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              visibleRows.map((row) => {
+                const cost = row.money?.costPerKgCents ?? null;
+                return (
+                  <tr
+                    key={row.id}
+                    tabIndex={0}
+                    aria-label={row.name}
+                    className="cursor-pointer border-b border-border/60 transition-colors last:border-b-0 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
+                    onClick={() => router.push(`/recipes/${row.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') router.push(`/recipes/${row.id}`);
+                    }}
+                  >
+                    <td className="py-3.5 pl-4 pr-1 align-middle">
+                      <input
+                        type="checkbox"
+                        aria-label={t('bulk.selectRow', { name: row.name })}
+                        className="size-4 cursor-pointer accent-accent-700"
+                        checked={selected.has(row.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() =>
+                          setSelected((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(row.id)) next.delete(row.id);
+                            else next.add(row.id);
+                            return next;
+                          })
+                        }
+                      />
                     </td>
-                  ))}
-                </tr>
-              ))
+                    <td className="px-3 py-3.5 align-middle">
+                      <span className="text-base font-medium leading-snug text-foreground">{row.name}</span>
+                    </td>
+                    {showMoney && (
+                      <td className="whitespace-nowrap px-3 py-3.5 text-right align-middle tabular-nums">
+                        {cost !== null ? (
+                          <span className="text-foreground">
+                            {formatMoney(cost, currency)}
+                            <span className="ml-0.5 text-xs text-muted-foreground">/kg</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground" title={t('costUnknown')}>
+                            —
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    <td className="py-3.5 pl-1 pr-4 text-right align-middle">
+                      <RecipeIssuesButton name={row.name} issues={issuesOf(row, showMoney)} />
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </Card>
     </div>
+  );
+}
+
+function FilterChip({
+  selected,
+  onClick,
+  label,
+  count,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={cn(
+        'cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors',
+        selected
+          ? 'border-accent-600 bg-accent-50 font-medium text-accent-800 dark:border-accent-400 dark:bg-accent-500/15 dark:text-accent-200'
+          : 'border-border text-muted-foreground hover:bg-surface-2 hover:text-foreground',
+      )}
+    >
+      {label}
+      <span className="ml-1 tabular-nums opacity-70">{count}</span>
+    </button>
   );
 }

@@ -7,7 +7,6 @@ import { useTranslations } from 'next-intl';
 import { AlertTriangle, ArrowLeft, Check, Copy, Info, Plus, Search, Trash2, X } from 'lucide-react';
 import {
   compositionCost,
-  DISH_RECIPE_UNITS,
   ingredientCanonicalQuantity,
   ingredientLineKey,
   ingredientUnitsFor,
@@ -185,8 +184,14 @@ export function DishBuilder({
       amount: e.kind === 'expense' ? centsToAmountInput(e.amountCents) : '',
     })),
   );
+  // Recipe components are entered in grams. Older kilogram lines convert exactly;
+  // recipe-portion lines stay as saved until corrected (see the recipes section).
   const [recipeLines, setRecipeLines] = React.useState<RecipeLineState[]>(() =>
-    initial.recipeLines.map((l) => ({ recipeId: l.recipeId, name: l.recipeName, quantity: numberToField(l.quantity), unit: l.unit })),
+    initial.recipeLines.map((l) =>
+      l.unit === 'kg'
+        ? { recipeId: l.recipeId, name: l.recipeName, quantity: numberToField(l.quantity * 1000), unit: 'g' as const }
+        : { recipeId: l.recipeId, name: l.recipeName, quantity: numberToField(l.quantity), unit: l.unit },
+    ),
   );
   const [ingredientLines, setIngredientLines] = React.useState<IngredientLineState[]>(() =>
     initial.ingredientLines.map((l) => ({
@@ -315,13 +320,8 @@ export function DishBuilder({
   function addRecipe(option: DishRecipeOption) {
     setRecipeLines((prev) => [
       ...prev,
-      {
-        recipeId: option.id,
-        name: option.name,
-        // Grams when the recipe has a finished weight; otherwise its own portions.
-        quantity: option.yieldWeightGrams ? '100' : '1',
-        unit: option.yieldWeightGrams ? 'g' : 'portion',
-      },
+      // Always grams; a recipe without a finished weight is flagged, never guessed.
+      { recipeId: option.id, name: option.name, quantity: '100', unit: 'g' },
     ]);
   }
   function addIngredient(option: DishIngredientOption) {
@@ -470,6 +470,17 @@ export function DishBuilder({
     });
   }
 
+  // The compact summary appears only while the pricing card is out of view.
+  const firstCardRef = React.useRef<HTMLDivElement>(null);
+  const [summaryPinned, setSummaryPinned] = React.useState(false);
+  React.useEffect(() => {
+    const el = firstCardRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(([entry]) => setSummaryPinned(entry ? !entry.isIntersecting : false));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const dash = '—';
   const priceShown = pricing.priceExclCents !== null ? money(pricing.priceExclCents) : dash;
   const costShown = pricing.costPerPortionCents !== null ? money(pricing.costPerPortionCents) : dash;
@@ -592,6 +603,7 @@ export function DishBuilder({
         </Card>
       )}
 
+      <div ref={firstCardRef}>
       <Card>
         <CardContent className="flex flex-col gap-5 pt-6">
           {/* 1. Dish name */}
@@ -607,22 +619,39 @@ export function DishBuilder({
             />
           </Field>
 
-          {/* 2. Folder */}
-          <Field id="dish-folder" label={t('fields.folder')}>
-            <Select
-              id="dish-folder"
-              value={folderId ?? ''}
-              onChange={(e) => setFolderId(e.target.value === '' ? null : e.target.value)}
-              className="h-12 text-base"
-            >
-              <option value="">{t('fields.unfiled')}</option>
-              {folders.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {/* 2. Folder + number of portions, side by side on wider screens */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
+            <Field id="dish-folder" label={t('fields.folder')}>
+              <Select
+                id="dish-folder"
+                value={folderId ?? ''}
+                onChange={(e) => setFolderId(e.target.value === '' ? null : e.target.value)}
+                className="h-12 text-base"
+              >
+                <option value="">{t('fields.unfiled')}</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field id="portions" label={t('portions.label')}>
+              <Input
+                id="portions"
+                inputMode="numeric"
+                value={portionsText}
+                aria-invalid={!needsConversion && portions === null}
+                aria-describedby="portions-hint"
+                disabled={needsConversion}
+                onChange={(e) => setPortionsText(e.target.value)}
+                className="h-12 text-right text-base tabular-nums"
+              />
+              <p id="portions-hint" className="text-sm text-muted-foreground">
+                {t('portions.hint')}
+              </p>
+            </Field>
+          </div>
 
           {/* 3. Selling price excl. / incl. VAT */}
           <div className="flex flex-col gap-2">
@@ -681,112 +710,98 @@ export function DishBuilder({
             </div>
           </div>
 
-          {/* 4. Number of portions */}
-          <Field id="portions" label={t('portions.label')}>
-            <Input
-              id="portions"
-              inputMode="numeric"
-              value={portionsText}
-              aria-invalid={!needsConversion && portions === null}
-              aria-describedby="portions-hint"
-              disabled={needsConversion}
-              onChange={(e) => setPortionsText(e.target.value)}
-              className="h-12 w-32 text-right text-base tabular-nums"
-            />
-            <p id="portions-hint" className="text-sm text-muted-foreground">
-              {t('portions.hint')}
-            </p>
-          </Field>
+          {/* 4. Profit-margin calculator + live summary, in the same card */}
+          <section aria-labelledby="margin-calculator" className="flex flex-col gap-4 border-t border-border pt-5">
+            <div>
+              <h3 id="margin-calculator" className="text-base font-semibold text-foreground">
+                {t('calc.title')}
+              </h3>
+              <p className="text-xs text-muted-foreground">{t('calc.vatBasis')}</p>
+            </div>
+            <dl className="flex flex-col gap-2 text-sm">
+              <Row label={t('calc.price')} value={priceShown} />
+              <Row label={t('calc.costPerPortion')} value={costShown} />
+              <Row label={t('calc.leftPerPortion')} value={leftShown} strong negative={leftNegative} />
+              <Row label={t('calc.margin')} value={marginShown} strong negative={leftNegative} />
+              <Row
+                label={t('calc.totalCostPct')}
+                value={pricing.totalCostBps !== null ? formatPercentBps(pricing.totalCostBps) : dash}
+              />
+              <Row
+                label={portions !== null ? t('calc.totalCost', { count: portions }) : t('calc.totalCostUnknown')}
+                value={cost.totalCostCents !== null && portions !== null ? money(cost.totalCostCents) : dash}
+                divided
+              />
+            </dl>
+
+            {missingReason ? (
+              <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                {missingReason}
+              </p>
+            ) : null}
+            <p className="text-xs text-muted-foreground">{t('calc.overheads')}</p>
+
+            <div className="flex flex-col gap-3 rounded-xl bg-surface-2 p-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Field id="target-margin" label={t('calc.target')}>
+                  <div className="relative">
+                    <Input
+                      id="target-margin"
+                      inputMode="decimal"
+                      value={targetText}
+                      placeholder="70"
+                      aria-invalid={targetText.trim() !== '' && targetBps === null}
+                      onChange={(e) => setTargetText(e.target.value)}
+                      className="bg-surface pr-8 text-right tabular-nums"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                </Field>
+                <ReadOnly label={t('calc.suggestedExcl')} value={suggestedExcl !== null ? money(suggestedExcl) : dash} />
+                <ReadOnly label={t('calc.suggestedIncl')} value={suggestedIncl !== null ? money(suggestedIncl) : dash} />
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={suggestedExcl === null || needsConversion || suggestedExcl === priceExclCents}
+                  onClick={() => {
+                    if (suggestedExcl === null) return;
+                    setPriceExclCents(suggestedExcl);
+                    setPriceDraft(null);
+                  }}
+                >
+                  {t('calc.usePrice')}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {targetText.trim() !== '' && targetBps === null
+                    ? t('calc.targetInvalid')
+                    : targetBps !== null && suggestedExcl === null
+                      ? t('calc.suggestedNeedsCost')
+                      : t('calc.targetHint')}
+                </span>
+              </div>
+            </div>
+          </section>
         </CardContent>
       </Card>
-
-      {/* Compact live summary: stays in view while costs are edited further down. */}
-      <div
-        aria-live="polite"
-        className="sticky top-0 z-10 rounded-xl border border-accent-200 bg-accent-50/95 px-4 py-2.5 shadow-sm backdrop-blur dark:border-accent-800 dark:bg-accent-950/90"
-      >
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
-          <MiniStat label={t('calc.price')} value={priceShown} />
-          <MiniStat label={t('calc.costPerPortion')} value={costShown} />
-          <MiniStat label={t('calc.leftPerPortion')} value={leftShown} negative={leftNegative} />
-          <MiniStat label={t('calc.margin')} value={marginShown} negative={leftNegative} />
-        </dl>
       </div>
 
-      {/* 5. Margin calculator */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">{t('calc.title')}</CardTitle>
-          <p className="text-xs text-muted-foreground">{t('calc.vatBasis')}</p>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <dl className="flex flex-col gap-2 text-sm">
-            <Row label={t('calc.price')} value={priceShown} />
-            <Row label={t('calc.costPerPortion')} value={costShown} />
-            <Row label={t('calc.leftPerPortion')} value={leftShown} strong negative={leftNegative} />
-            <Row label={t('calc.margin')} value={marginShown} strong negative={leftNegative} />
-            <Row
-              label={t('calc.totalCostPct')}
-              value={pricing.totalCostBps !== null ? formatPercentBps(pricing.totalCostBps) : dash}
-            />
-            <Row
-              label={portions !== null ? t('calc.totalCost', { count: portions }) : t('calc.totalCostUnknown')}
-              value={cost.totalCostCents !== null && portions !== null ? money(cost.totalCostCents) : dash}
-              divided
-            />
+      {/* Compact live summary — only once the pricing card has scrolled out of view. */}
+      {summaryPinned && (
+        <div
+          aria-hidden
+          className="sticky top-0 z-10 rounded-xl border border-accent-200 bg-accent-50/95 px-4 py-2.5 shadow-sm backdrop-blur dark:border-accent-800 dark:bg-accent-950/90"
+        >
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+            <MiniStat label={t('calc.price')} value={priceShown} />
+            <MiniStat label={t('calc.costPerPortion')} value={costShown} />
+            <MiniStat label={t('calc.leftPerPortion')} value={leftShown} negative={leftNegative} />
+            <MiniStat label={t('calc.margin')} value={marginShown} negative={leftNegative} />
           </dl>
-
-          {missingReason ? (
-            <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              {missingReason}
-            </p>
-          ) : null}
-          <p className="text-xs text-muted-foreground">{t('calc.overheads')}</p>
-
-          <div className="flex flex-col gap-3 rounded-xl bg-surface-2 p-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field id="target-margin" label={t('calc.target')}>
-                <div className="relative">
-                  <Input
-                    id="target-margin"
-                    inputMode="decimal"
-                    value={targetText}
-                    placeholder="70"
-                    aria-invalid={targetText.trim() !== '' && targetBps === null}
-                    onChange={(e) => setTargetText(e.target.value)}
-                    className="bg-surface pr-8 text-right tabular-nums"
-                  />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
-                </div>
-              </Field>
-              <ReadOnly label={t('calc.suggestedExcl')} value={suggestedExcl !== null ? money(suggestedExcl) : dash} />
-              <ReadOnly label={t('calc.suggestedIncl')} value={suggestedIncl !== null ? money(suggestedIncl) : dash} />
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={suggestedExcl === null || needsConversion || suggestedExcl === priceExclCents}
-                onClick={() => {
-                  if (suggestedExcl === null) return;
-                  setPriceExclCents(suggestedExcl);
-                  setPriceDraft(null);
-                }}
-              >
-                {t('calc.usePrice')}
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                {targetText.trim() !== '' && targetBps === null
-                  ? t('calc.targetInvalid')
-                  : targetBps !== null && suggestedExcl === null
-                    ? t('calc.suggestedNeedsCost')
-                    : t('calc.targetHint')}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      )}
 
       {/* 6. Recipes */}
       <Card>
@@ -803,16 +818,62 @@ export function DishBuilder({
                 const option = recipeById.get(line.recipeId);
                 const contribution = lineCost.get(recipeLineKey(line.recipeId)) ?? null;
                 const perKg = excludeLabour ? option?.costPerKgWithoutLabourCents : option?.costPerKgCents;
-                const perPortion = excludeLabour ? option?.costPerPortionWithoutLabourCents : option?.costPerPortionCents;
-                const unitCost =
-                  perKg != null
-                    ? t('recipes.perKg', { amount: money(perKg) })
-                    : perPortion != null
-                      ? t('recipes.perPortion', { amount: money(perPortion) })
-                      : null;
-                // g / kg only when the recipe has a finished weight — no guessed conversions.
-                const units = DISH_RECIPE_UNITS.filter((u) => u === 'portion' || option?.yieldWeightGrams || u === line.unit);
                 const q = parseNumber(line.quantity);
+                const remove = () => setRecipeLines((prev) => prev.filter((_, i) => i !== index));
+                const hasWeight = option != null && option.yieldWeightGrams != null && option.yieldWeightGrams > 0;
+                if (line.unit !== 'g') {
+                  // A line saved in recipe portions: kept exactly as saved (and costed as
+                  // before) until it is converted to grams or removed — never reinterpreted.
+                  const saved = parseNumber(line.quantity) ?? 0;
+                  const grams =
+                    hasWeight && option.yieldPortions > 0
+                      ? Math.round(((saved * (option.yieldWeightGrams as number)) / option.yieldPortions) * 10_000) / 10_000
+                      : null;
+                  return (
+                    <li key={line.recipeId} className="flex flex-col gap-2 py-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <div className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-0 sm:flex-1">
+                          <span className="truncate font-medium text-foreground">{line.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {t('recipes.savedPortions', { count: saved })}
+                          </span>
+                        </div>
+                        <span className="ml-auto w-24 text-right text-sm font-medium tabular-nums text-foreground">
+                          {contribution !== null ? money(contribution) : dash}
+                        </span>
+                        <Button type="button" variant="ghost" size="sm" aria-label={`${t('remove')} — ${line.name}`} onClick={remove}>
+                          <X />
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                        <AlertTriangle className="size-4 shrink-0" aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          {grams !== null
+                            ? t('recipes.portionLineConvertible', { grams: numberToField(grams) })
+                            : t('recipes.portionLineNeedsWeight', { name: line.name })}
+                        </span>
+                        {grams !== null ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setRecipeLines((prev) =>
+                                prev.map((l, i) => (i === index ? { ...l, quantity: numberToField(grams), unit: 'g' } : l)),
+                              )
+                            }
+                          >
+                            {t('recipes.convertToGrams', { grams: numberToField(grams) })}
+                          </Button>
+                        ) : option ? (
+                          <Link href={`/recipes/${line.recipeId}`} className="font-medium underline underline-offset-2">
+                            {t('recipes.openRecipe')}
+                          </Link>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                }
                 return (
                   <ComponentRow
                     key={line.recipeId}
@@ -820,25 +881,27 @@ export function DishBuilder({
                     meta={
                       !option ? (
                         <Badge variant="negative">{t('unavailable')}</Badge>
-                      ) : unitCost ? (
-                        <span>{unitCost}</span>
+                      ) : !hasWeight ? (
+                        <Badge variant="warning">{t('recipes.noWeight')}</Badge>
+                      ) : perKg != null ? (
+                        <span>{t('recipes.perKg', { amount: money(perKg) })}</span>
                       ) : (
                         <Badge variant="warning">{t('needsPricing')}</Badge>
                       )
                     }
-                    warning={option && line.unit !== 'portion' && !option.yieldWeightGrams ? t('recipes.needsWeight') : undefined}
+                    warning={option && !hasWeight ? t('recipes.needsWeight', { name: line.name }) : undefined}
+                    warningHref={option && !hasWeight ? `/recipes/${line.recipeId}` : undefined}
+                    warningLinkLabel={t('recipes.openRecipe')}
                     quantity={line.quantity}
                     quantityInvalid={q === null || q <= 0}
                     onQuantity={(value) => setRecipeLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))}
-                    unit={line.unit}
-                    units={units.map((u) => ({ value: u, label: tUnits(u) }))}
-                    onUnit={(value) =>
-                      setRecipeLines((prev) => prev.map((l, i) => (i === index ? { ...l, unit: value as DishRecipeUnit } : l)))
-                    }
+                    unit="g"
+                    units={[{ value: 'g', label: tUnits('g') }]}
+                    onUnit={() => undefined}
                     contribution={contribution !== null ? money(contribution) : dash}
                     removeLabel={t('remove')}
-                    onRemove={() => setRecipeLines((prev) => prev.filter((_, i) => i !== index))}
-                    quantityLabel={t('quantity')}
+                    onRemove={remove}
+                    quantityLabel={t('recipes.grams')}
                     unitLabel={t('unit')}
                   />
                 );
@@ -852,16 +915,14 @@ export function DishBuilder({
               .filter((r) => !recipeLines.some((l) => l.recipeId === r.id))
               .map((r) => {
                 const perKg = excludeLabour ? r.costPerKgWithoutLabourCents : r.costPerKgCents;
-                const perPortion = excludeLabour ? r.costPerPortionWithoutLabourCents : r.costPerPortionCents;
                 return {
                   id: r.id,
                   name: r.name,
-                  hint:
-                    perKg !== null
+                  hint: !r.yieldWeightGrams
+                    ? t('recipes.noWeight')
+                    : perKg !== null
                       ? t('recipes.perKg', { amount: money(perKg) })
-                      : perPortion !== null
-                        ? t('recipes.perPortion', { amount: money(perPortion) })
-                        : t('needsPricing'),
+                      : t('needsPricing'),
                 };
               })}
             onPick={(id) => {
@@ -1303,6 +1364,8 @@ function ComponentRow({
   name,
   meta,
   warning,
+  warningHref,
+  warningLinkLabel,
   quantity,
   quantityInvalid,
   onQuantity,
@@ -1318,6 +1381,8 @@ function ComponentRow({
   name: string;
   meta: React.ReactNode;
   warning?: string;
+  warningHref?: string;
+  warningLinkLabel?: string;
   quantity: string;
   quantityInvalid: boolean;
   onQuantity: (value: string) => void;
@@ -1335,7 +1400,19 @@ function ComponentRow({
       <div className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-0 sm:flex-1">
         <span className="truncate font-medium text-foreground">{name}</span>
         <span className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">{meta}</span>
-        {warning && <span className="text-xs text-amber-700 dark:text-amber-300">{warning}</span>}
+        {warning && (
+          <span className="text-xs text-amber-700 dark:text-amber-300">
+            {warning}
+            {warningHref && (
+              <>
+                {' '}
+                <Link href={warningHref} className="font-medium underline underline-offset-2">
+                  {warningLinkLabel}
+                </Link>
+              </>
+            )}
+          </span>
+        )}
       </div>
       <Input
         inputMode="decimal"
@@ -1346,13 +1423,17 @@ function ComponentRow({
         className="h-11 w-24 text-right text-base tabular-nums"
       />
       <div className="w-28">
-        <Select value={unit} aria-label={`${unitLabel} — ${name}`} onChange={(e) => onUnit(e.target.value)} className="h-11">
-          {units.map((u) => (
-            <option key={u.value} value={u.value}>
-              {u.label}
-            </option>
-          ))}
-        </Select>
+        {units.length === 1 ? (
+          <span className="flex h-11 items-center px-1 text-sm text-muted-foreground">{units[0]?.label}</span>
+        ) : (
+          <Select value={unit} aria-label={`${unitLabel} — ${name}`} onChange={(e) => onUnit(e.target.value)} className="h-11">
+            {units.map((u) => (
+              <option key={u.value} value={u.value}>
+                {u.label}
+              </option>
+            ))}
+          </Select>
+        )}
       </div>
       <span className="ml-auto w-24 text-right text-sm font-medium tabular-nums text-foreground">{contribution}</span>
       <Button type="button" variant="ghost" size="sm" aria-label={`${removeLabel} — ${name}`} onClick={onRemove}>

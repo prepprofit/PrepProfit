@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dishSchema, dishSearchSchema, menuFolderSchema } from '@/lib/validation/menus';
+import { dishSchema, dishSearchSchema, menuFolderSchema, recipeLinesUseGrams } from '@/lib/validation/menus';
 
 const base = {
   name: 'Caesar salad',
@@ -77,5 +77,22 @@ describe('folder + search schemas', () => {
     expect(menuFolderSchema.safeParse({ name: 'x'.repeat(81) }).success).toBe(false);
     expect(dishSearchSchema.safeParse({ query: '' }).success).toBe(false);
     expect(dishSearchSchema.safeParse({ query: 'x'.repeat(101) }).success).toBe(false);
+  });
+});
+
+describe('recipeLinesUseGrams (Menu recipe components in grams)', () => {
+  it('accepts gram lines and rejects new portion or kilogram lines', () => {
+    expect(recipeLinesUseGrams([{ recipeId: 'r1', quantity: 250, unit: 'g' }], [])).toBe(true);
+    expect(recipeLinesUseGrams([{ recipeId: 'r1', quantity: 2, unit: 'portion' }], [])).toBe(false);
+    expect(recipeLinesUseGrams([{ recipeId: 'r1', quantity: 0.5, unit: 'kg' }], [])).toBe(false);
+  });
+
+  it('keeps a legacy portion line only while it is exactly as saved', () => {
+    const stored = [{ recipeId: 'r1', quantity: 2, unit: 'portion' as const }];
+    expect(recipeLinesUseGrams([{ recipeId: 'r1', quantity: 2, unit: 'portion' }], stored)).toBe(true);
+    expect(recipeLinesUseGrams([{ recipeId: 'r1', quantity: 3, unit: 'portion' }], stored)).toBe(false);
+    expect(recipeLinesUseGrams([{ recipeId: 'r2', quantity: 2, unit: 'portion' }], stored)).toBe(false);
+    // Converting it to grams is always allowed.
+    expect(recipeLinesUseGrams([{ recipeId: 'r1', quantity: 180, unit: 'g' }], stored)).toBe(true);
   });
 });

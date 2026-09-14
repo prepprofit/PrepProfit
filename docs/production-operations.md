@@ -119,10 +119,14 @@ the second layer of defense exists.
   Pass it inline — it is **not** the string in Coolify.
 - **Verify after deploy**: confirm `drizzle.__drizzle_migrations` max `created_at` matches the
   newest migration, and spot-check the new columns/tables + that RLS is `enabled + forced`.
-- Current head: **0050** (`0050_recipe_last_opened`: nullable `recipes.last_opened_at` for the
-  library's "recent activity" order). Additive, but the app selects every `recipes` column,
-  so **apply 0050 before deploying the release that includes it** — the other way round,
-  every recipe read fails until the column exists.
+- Current head: **0051** (`0051_ingredient_vat_rate_menu_grams`: nullable
+  `ingredients.vat_rate_bps` (+ 0–10000 CHECK) for a typed purchase VAT rate, and a data
+  step converting Menu recipe lines to grams — kg exactly, recipe portions only where the
+  recipe has a finished weight and portion yield; the rest stay as saved and the editor
+  flags them). The app selects every `ingredients` column, so **apply 0051 before
+  deploying the release that includes it**.
+- Previous head: **0050** (`0050_recipe_last_opened`: nullable `recipes.last_opened_at` for the
+  library's "recent activity" order).
 - Previous head: **0049** (`0049_menu_batches`: `menu_extras` table; `menus` batch output
   (`output_quantity`/`output_unit`/`size_description`/`finished_weight_grams`/`price_basis`)
   and production labour (`labour_hours`/`labour_hourly_cents`), backfilled from `portions`).
@@ -256,7 +260,7 @@ as every one of them purges data or sends real email.
 - [ ] All env vars set in Coolify, `NEXT_PUBLIC_*` ticked as Build Variables; a fresh
       deploy is green and `curl -s https://prepprofit.com/sign-in | grep -o 'pk_[a-z]*_'`
       returns `pk_live_`.
-- [ ] Migrations applied + verified (head 0050); RLS enabled + forced on every business table.
+- [ ] Migrations applied + verified (head 0051); RLS enabled + forced on every business table.
 - [ ] All six Scheduled Tasks exist with the full `node -e …` command; `ai-cost-report`
       returns 200 on a manual run.
 - [ ] Clerk webhook endpoint on the **apex** + secret set; a `user.created` test event is accepted.

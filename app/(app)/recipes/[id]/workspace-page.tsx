@@ -501,9 +501,9 @@ export async function RecipeWorkspacePage({
   };
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       {/* Allergens stay OPERATIONAL and shared with the legacy page; here they
-          render as their own tab in the workspace right column. */}
+          render below the recipe, like every supporting section. */}
       <RecipeWorkspace
         data={data}
         allergenPanel={

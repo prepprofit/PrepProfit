@@ -273,6 +273,10 @@ export const ingredients = pgTable(
     // use the org's default category. Only ever read to convert an incl.-VAT
     // supplier quote into the stored net price; never part of recipe/margin maths.
     vatCategoryId: text('vat_category_id'),
+    // PURCHASE VAT rate typed for this ingredient, in basis points (1400 = 14%,
+    // 0 = a deliberate 0% rate). NULL = not set → the band above, else the org's
+    // default band. Takes precedence over the band; never country-hardcoded.
+    vatRateBps: integer('vat_rate_bps'),
     // Allergen review provenance (Sprint 9). `reviewed_at` NULL = the ingredient's
     // allergens have never been reviewed (NOT "no allergens" — correctly unreviewed);
     // a timestamp = reviewed then. `reviewed_by` is the Clerk user id who reviewed.
@@ -286,6 +290,10 @@ export const ingredients = pgTable(
     deletedAt: deletedAt(),
   },
   (t) => [
+    check(
+      'ingredients_vat_rate_chk',
+      sql`${t.vatRateBps} IS NULL OR (${t.vatRateBps} >= 0 AND ${t.vatRateBps} <= 10000)`,
+    ),
     index('ingredients_org_idx').on(t.organizationId),
     index('ingredients_org_name_idx').on(t.organizationId, t.name),
     // Serves the /trash listing and keeps active-row filtering index-friendly.

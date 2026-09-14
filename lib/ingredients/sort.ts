@@ -4,17 +4,28 @@ import { isIncomplete, type IncompleteCandidate } from './incomplete';
  * Column sorting for the Ingredients table: each heading sorts its own column, like a
  * spreadsheet. Pure so the ordering is tested without rendering the grid.
  *
- * Two tiers, always (decision D2): rows whose cost can't be trusted stay pinned on top;
- * the chosen column orders each tier. Empty values (no supplier) sink to the bottom in
- * BOTH directions — "nothing" is not a name. Ties fall back to the ingredient name.
+ * The list OPENS in "attention first" order (decision D2): rows whose cost can't be
+ * trusted pinned on top, then A→Z. As soon as the user picks a column, that column
+ * alone decides the order — no row keeps a special position, so the Supplier or Type
+ * order you asked for is exactly the order you see.
+ *
+ * Text compares locale-aware and case-insensitively ("myllärin" = "MYLLÄRIN", numbers
+ * in natural order). Empty values (no supplier) sink to the bottom in BOTH
+ * directions — the "Set supplier" placeholder is not a name. Ties fall back to the
+ * ingredient name, A→Z.
  */
 
 export const INGREDIENT_SORT_COLUMNS = ['name', 'dimension', 'price', 'supplier', 'updated'] as const;
 export type IngredientSortColumn = (typeof INGREDIENT_SORT_COLUMNS)[number];
 export type SortDirection = 'asc' | 'desc';
-export type IngredientSort = { column: IngredientSortColumn; direction: SortDirection };
+export type IngredientSort = {
+  column: IngredientSortColumn;
+  direction: SortDirection;
+  /** Only the opening order pins untrustworthy costs on top. */
+  attentionFirst?: boolean;
+};
 
-export const DEFAULT_INGREDIENT_SORT: IngredientSort = { column: 'name', direction: 'asc' };
+export const DEFAULT_INGREDIENT_SORT: IngredientSort = { column: 'name', direction: 'asc', attentionFirst: true };
 
 /** First click on a heading: newest first for Updated, otherwise A→Z / cheapest first. */
 export function firstDirection(column: IngredientSortColumn): SortDirection {
@@ -39,13 +50,16 @@ export type SortableIngredient = IncompleteCandidate & {
 /** Type order: bought by the piece, by weight, by volume. */
 const DIMENSION_ORDER: Record<SortableIngredient['dimension'], number> = { count: 0, weight: 1, volume: 2 };
 
+const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+
 function timeOf(value: Date | string | null): number {
   if (!value) return 0;
   const time = (value instanceof Date ? value : new Date(value)).getTime();
   return Number.isNaN(time) ? 0 : time;
 }
 
-const byName = (a: SortableIngredient, b: SortableIngredient) => a.name.localeCompare(b.name);
+const byName = (a: SortableIngredient, b: SortableIngredient) => collator.compare(a.name, b.name);
+const supplierOf = (row: SortableIngredient) => row.supplier?.trim() ?? '';
 
 export function compareIngredients(
   a: SortableIngredient,
@@ -53,8 +67,10 @@ export function compareIngredients(
   sort: IngredientSort,
   canSeeCosts: boolean,
 ): number {
-  const pinned = Number(isIncomplete(b, canSeeCosts)) - Number(isIncomplete(a, canSeeCosts));
-  if (pinned !== 0) return pinned;
+  if (sort.attentionFirst) {
+    const pinned = Number(isIncomplete(b, canSeeCosts)) - Number(isIncomplete(a, canSeeCosts));
+    if (pinned !== 0) return pinned;
+  }
 
   const sign = sort.direction === 'asc' ? 1 : -1;
   switch (sort.column) {
@@ -68,9 +84,11 @@ export function compareIngredients(
       return sign * ((a.priceCents ?? 0) - (b.priceCents ?? 0)) || byName(a, b);
     }
     case 'supplier': {
-      const empty = Number(!a.supplier) - Number(!b.supplier);
+      const sa = supplierOf(a);
+      const sb = supplierOf(b);
+      const empty = Number(sa === '') - Number(sb === '');
       if (empty !== 0) return empty;
-      return sign * (a.supplier ?? '').localeCompare(b.supplier ?? '') || byName(a, b);
+      return sign * collator.compare(sa, sb) || byName(a, b);
     }
     case 'updated':
       return sign * (timeOf(a.updatedAt) - timeOf(b.updatedAt)) || byName(a, b);

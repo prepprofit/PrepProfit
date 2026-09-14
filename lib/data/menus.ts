@@ -632,6 +632,18 @@ export async function listDishBuilderOptions(
   };
 }
 
+/** A dish's stored recipe lines as saved (unit + amount in that unit). */
+export async function loadStoredRecipeLines(
+  db: TenantClient,
+  organizationId: string,
+  menuId: string,
+): Promise<{ recipeId: string; quantity: number; unit: DishRecipeUnit }[]> {
+  return db
+    .select({ recipeId: menuItems.recipeId, quantity: menuItems.quantity, unit: menuItems.unit })
+    .from(menuItems)
+    .where(and(eq(menuItems.organizationId, organizationId), eq(menuItems.menuId, menuId)));
+}
+
 // ── Mutations ────────────────────────────────────────────────────────────────
 
 export type SaveDishOutcome =

@@ -1,11 +1,17 @@
 import { canSeeRecipeCosts, getOrgId, getUserRole } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
-import { listIngredients, toKitchenIngredient } from '@/lib/data/ingredients';
+import {
+  listIngredients,
+  listIngredientTypeLocks,
+  toKitchenIngredient,
+  type IngredientTypeLock,
+} from '@/lib/data/ingredients';
 import {
   loadIngredientAllergensByIngredient,
   type AllergenTag,
 } from '@/lib/data/allergens';
 import { listSuppliersWithCounts } from '@/lib/data/suppliers';
+import { supplierPickerNames } from '@/lib/suppliers/picker-names';
 import {
   loadDefaultLinksByIngredient,
   type DefaultSupplierSummary,
@@ -78,7 +84,12 @@ export default async function IngredientsPage({
       ),
       await listVatCategories(tx, organizationId),
     ]);
-    supplierNames = suppliers.map((s) => s.name);
+    // Every supplier the business uses is selectable — records AND names already
+    // on ingredients (see `supplierPickerNames`).
+    supplierNames = supplierPickerNames(
+      suppliers.map((s) => s.name),
+      ingredientRows.map((r) => r.supplier),
+    );
     vatCategories = bands.map((c) => ({
       id: c.id,
       name: c.name,
@@ -94,6 +105,10 @@ export default async function IngredientsPage({
     for (const [id, link] of links) initialSupplierLinks[id] = link;
   }
 
+  // Type changes are refused while quantities use the current unit; the grid says why.
+  const locks = await withOrg(organizationId, (tx) => listIngredientTypeLocks(tx, organizationId));
+  const typeLocks: Record<string, IngredientTypeLock> = Object.fromEntries(locks);
+
   return (
     <div className="flex flex-col gap-5">
       <IngredientGrid
@@ -107,6 +122,7 @@ export default async function IngredientsPage({
         initialSupplierLinks={initialSupplierLinks}
         supplierPricePrefs={supplierPricePrefs}
         vatCategories={vatCategories}
+        typeLocks={typeLocks}
       />
     </div>
   );
