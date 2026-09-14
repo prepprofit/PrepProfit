@@ -3,6 +3,9 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Droplet,
   Hash,
   Pencil,
@@ -21,7 +24,15 @@ import {
 import type { Ingredient } from '@/lib/db/schema';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
 import { isLowStock } from '@/lib/calculations/inventory';
-import { isIncomplete } from '@/lib/ingredients/incomplete';
+import {
+  compareIngredients,
+  DEFAULT_INGREDIENT_SORT,
+  INGREDIENT_SORT_COLUMNS,
+  nextSort,
+  type IngredientSort,
+  type IngredientSortColumn,
+  type SortDirection,
+} from '@/lib/ingredients/sort';
 import { centsToAmountInput, formatMoney, parseMoneyToCents } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -132,33 +143,6 @@ function operationalInput(draft: Draft) {
 }
 
 /**
- * List orderings offered by the Sort select. Adding a key = one entry here plus one
- * `sortOptions.<key>` string; the select and the comparator both read this map.
- */
-const SORT_KEYS = ['nameAsc', 'nameDesc', 'supplier', 'updated'] as const;
-type SortKey = (typeof SORT_KEYS)[number];
-
-const SORT_COMPARATORS: Record<
-  SortKey,
-  (a: IngredientRow, b: IngredientRow) => number
-> = {
-  nameAsc: (a, b) => a.name.localeCompare(b.name),
-  nameDesc: (a, b) => b.name.localeCompare(a.name),
-  // Unsupplied ingredients sink to the bottom — an empty supplier is not a name.
-  supplier: (a, b) =>
-    Number(!a.supplier) - Number(!b.supplier) ||
-    (a.supplier ?? '').localeCompare(b.supplier ?? '') ||
-    a.name.localeCompare(b.name),
-  updated: (a, b) => timeOf(b.updatedAt) - timeOf(a.updatedAt),
-};
-
-function timeOf(value: Date | string | null | undefined): number {
-  if (!value) return 0;
-  const time = (value instanceof Date ? value : new Date(value)).getTime();
-  return Number.isNaN(time) ? 0 : time;
-}
-
-/**
  * The system-set "last touched" stamp. Rendered with `suppressHydrationWarning`
  * because the server formats in UTC and the browser in the viewer's zone, which can
  * disagree by a day at the boundary — a cosmetic diff, never a data one.
@@ -256,30 +240,18 @@ export function IngredientGrid({
     Object.fromEntries(initialIngredients.map((r) => [r.id, draftFromRow(r)])),
   );
   const [query, setQuery] = React.useState('');
-  const sortId = React.useId();
-  const [sortKey, setSortKey] = React.useState<SortKey>('nameAsc');
+  const [sort, setSort] = React.useState<IngredientSort>(DEFAULT_INGREDIENT_SORT);
   /**
-   * Client-side sort over the loaded list, in TWO TIERS. The viewer's chosen key
-   * orders the list, but rows whose COST cannot be trusted are pinned above it
-   * (decision D2) — a wrong price corrupts every recipe that uses the ingredient,
-   * so it outranks any ordering preference. Within each tier the chosen key still
-   * applies, and a row that gets a price drops straight into its normal position.
-   *
-   * This is a WRAPPER, not a replacement: `SORT_COMPARATORS` is untouched, which
-   * is why there is no longer a "Needs pricing first" sort option — the pinning is
-   * unconditional, so an option saying the same thing would contradict it.
+   * Client-side sort over the loaded list, driven by the column headings (click to
+   * sort, click again to reverse). Rows whose COST can't be trusted stay pinned on
+   * top whatever the column (decision D2) — see `compareIngredients`.
    */
   const visibleRows = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    const bySortKey = SORT_COMPARATORS[sortKey];
     return rows
       .filter((r) => !q || r.name.toLowerCase().includes(q))
-      .sort(
-        (a, b) =>
-          Number(isIncomplete(b, canSeeCosts)) - Number(isIncomplete(a, canSeeCosts)) ||
-          bySortKey(a, b),
-      );
-  }, [rows, query, sortKey, canSeeCosts]);
+      .sort((a, b) => compareIngredients(a, b, sort, canSeeCosts));
+  }, [rows, query, sort, canSeeCosts]);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   // Explicit edit: exactly one row is editable at a time and NOTHING commits until
@@ -798,27 +770,6 @@ export function IngredientGrid({
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-2">
-        <label
-          htmlFor={sortId}
-          className="text-xs font-medium text-muted-foreground"
-        >
-          {t('sort.label')}
-        </label>
-        <Select
-          id={sortId}
-          className="w-48"
-          value={sortKey}
-          onChange={(e) => setSortKey(e.target.value as SortKey)}
-        >
-          {SORT_KEYS.map((key) => (
-            <option key={key} value={key}>
-              {t(`sort.options.${key}`)}
-            </option>
-          ))}
-        </Select>
-      </div>
-
       <Card className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
@@ -827,12 +778,32 @@ export function IngredientGrid({
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
+                    aria-sort={
+                      sort.column === header.column.id
+                        ? sort.direction === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : undefined
+                    }
                     className={cn(
                       'px-2.5 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground first:pl-4 last:pr-4',
                       header.column.id === 'price' && 'text-right',
                     )}
                   >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {isSortColumn(header.column.id) ? (
+                      <SortHeading
+                        label={flexRender(header.column.columnDef.header, header.getContext())}
+                        active={sort.column === header.column.id}
+                        direction={sort.direction}
+                        alignRight={header.column.id === 'price'}
+                        ariaLabel={t('sort.by', { column: String(header.column.columnDef.header) })}
+                        onClick={() =>
+                          setSort((current) => nextSort(current, header.column.id as IngredientSortColumn))
+                        }
+                      />
+                    ) : (
+                      flexRender(header.column.columnDef.header, header.getContext())
+                    )}
                   </th>
                 ))}
               </tr>
@@ -1006,5 +977,42 @@ export function IngredientGrid({
         />
       )}
     </div>
+  );
+}
+
+const isSortColumn = (id: string): id is IngredientSortColumn =>
+  (INGREDIENT_SORT_COLUMNS as readonly string[]).includes(id);
+
+/** A column heading that sorts its column: the label plus a small up/down arrow. */
+function SortHeading({
+  label,
+  active,
+  direction,
+  alignRight,
+  ariaLabel,
+  onClick,
+}: {
+  label: React.ReactNode;
+  active: boolean;
+  direction: SortDirection;
+  alignRight: boolean;
+  ariaLabel: string;
+  onClick: () => void;
+}) {
+  const Icon = !active ? ArrowUpDown : direction === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className={cn(
+        'inline-flex cursor-pointer items-center gap-1 rounded uppercase tracking-wider hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        active && 'text-foreground',
+        alignRight && 'flex-row-reverse',
+      )}
+    >
+      {label}
+      <Icon className={cn('size-3.5', !active && 'opacity-40')} aria-hidden />
+    </button>
   );
 }

@@ -980,19 +980,13 @@
       "cancel": "Cancel"
     },
     "sort": {
-      "label": "Sort",
-      "options": {
-        "nameAsc": "Name (A–Z)",
-        "nameDesc": "Name (Z–A)",
-        "supplier": "Supplier",
-        "updated": "Last updated"
-      }
+      "by": "Sort by {column}"
     },
     "addDialog": {
       "title": "Add ingredient",
       "subtitle": "Just the ingredient itself — you can price and source it after.",
       "supplierNote": "Supplier, pack size, supplier code and VAT are set later with the supplier toggle on the ingredient's row.",
-      "catalogHint": "Not sure? Catalog ingredients come with nutrition already filled in —"
+      "catalogHint": "Not sure? Catalog ingredients come with typical allergens and a suggested USDA nutrition match you can import —"
     },
     "errors": {
       "nameRequired": "Give the ingredient a name."
