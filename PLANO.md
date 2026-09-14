@@ -451,6 +451,26 @@ Acceptance criteria:
   explodes fractional recipe portions + direct ingredients per sold portion. Kitchen gets a
   money-free composition + allergens (incl. direct ingredients). An ingredient used by an
   active dish can't be trashed. Migration 0048; export schema v15.
+- **Menu batches, labour and extras.** A Menu product is one batch: "This batch makes
+  [qty] [g | kg | pieces | cakes | portions]" (canonical grams or count; g ↔ kg is display
+  only) with an optional size text and, for count batches, an optional finished weight
+  (never inferred). The selling price basis is stored explicitly (per kg for weight, per
+  unit for count). Production labour (total hands-on hours × cost per hour) is optional:
+  blank keeps legacy recipe costs; entered (0 allowed) is the complete labour estimate,
+  so recipe labour — own and nested sub-recipe — is excluded while energy and packaging
+  stay (catalogue now tracks `componentLaborCostCents`). Extra work (hours × rate) and
+  expenses (amount) are editable lists (`menu_extras`). Results: components, labour,
+  extra work, expenses, total batch cost, cost per kg/unit (+ per kg with a finished
+  weight), price, estimated sales if the batch sells and the amount left for overheads
+  and profit; "Food cost" became "Total cost %". "Make a different quantity" scales
+  every component (and a known finished weight) but never hours or expenses, and asks
+  the chef to confirm they reviewed them; editing the output corrects the yield. "Make a
+  copy" duplicates everything into an independent product. Sales count Menu products in
+  sale units (whole kg for weight batches, else pieces/cakes/portions) and every consumer
+  (stock depletion, Menu Engineering, CFO, daily close, profit leaks, cost impact, prep
+  planner) uses cost per sale unit from the shared `compositionCost`. Migration 0049;
+  export schema v16. Follow-up: sales of weight products are whole kg — decimal kg needs a
+  sales money-model change; drop deprecated `menus.portions`.
 
 ## Backlog - not scheduled until prioritized
 

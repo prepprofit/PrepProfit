@@ -119,11 +119,13 @@ the second layer of defense exists.
   Pass it inline — it is **not** the string in Coolify.
 - **Verify after deploy**: confirm `drizzle.__drizzle_migrations` max `created_at` matches the
   newest migration, and spot-check the new columns/tables + that RLS is `enabled + forced`.
-- Current head: **0048** (`0048_dish_builder`: `menu_folders` + `menu_ingredient_items`
-  tables; `menus` folder/portions/VAT/last-opened; `menu_items.quantity` → numeric + `unit`).
-  RLS is `enabled + forced` on every business table at this head. 0048 must be applied
-  BEFORE the code that reads it goes live (old code reads the numeric quantity as a
-  string, so apply it right before the deploy).
+- Current head: **0049** (`0049_menu_batches`: `menu_extras` table; `menus` batch output
+  (`output_quantity`/`output_unit`/`size_description`/`finished_weight_grams`/`price_basis`)
+  and production labour (`labour_hours`/`labour_hourly_cents`), backfilled from `portions`).
+  RLS is `enabled + forced` on every business table at this head. 0049 is additive, so
+  the previous release keeps working during a deploy. Follow-up: `menus.portions` is
+  deprecated (no longer read or written) — drop it in a later migration, applied only
+  AFTER a release that doesn't read it is live.
 - The database did **not** move during the Vercel→Coolify migration. It moved afterwards, on
   2026-08-04, to a Neon project in `eu-central-1`: the old `us-east-1` project cost ~107 ms
   per round-trip from the VPS, so a `withOrg` transaction (4 round-trips) spent ~430 ms on
@@ -250,7 +252,7 @@ as every one of them purges data or sends real email.
 - [ ] All env vars set in Coolify, `NEXT_PUBLIC_*` ticked as Build Variables; a fresh
       deploy is green and `curl -s https://prepprofit.com/sign-in | grep -o 'pk_[a-z]*_'`
       returns `pk_live_`.
-- [ ] Migrations applied + verified (head 0048); RLS enabled + forced on every business table.
+- [ ] Migrations applied + verified (head 0049); RLS enabled + forced on every business table.
 - [ ] All six Scheduled Tasks exist with the full `node -e …` command; `ai-cost-report`
       returns 200 on a manual run.
 - [ ] Clerk webhook endpoint on the **apex** + secret set; a `user.created` test event is accepted.
