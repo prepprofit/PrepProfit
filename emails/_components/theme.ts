@@ -8,7 +8,8 @@ import type { CSSProperties } from 'react';
  * deliberately avoid the `<Tailwind>` runtime and complex selectors the React
  * Email docs warn about; the "Barebone" visual language (quiet boxed layout,
  * clear header, simple cards/tables, restrained footer) is expressed here,
- * rethemed to PrepProfit's accent (the app's orange `accent-700`).
+ * rethemed to PrepProfit's accent (the app's mint scale: deep `accent-700` for text,
+ * light mint with dark text for the CTA).
  */
 
 export const palette = {
@@ -24,14 +25,16 @@ export const palette = {
   muted: '#64748b',
   /** Faintest supporting text (footer, fine print). */
   faint: '#94a3b8',
-  /** Brand accent (app `--color-accent-700`) — headers, CTAs, links. */
-  accent: '#c2410c',
-  /** Text on an accent-filled surface. */
-  accentForeground: '#ffffff',
+  /** Brand accent TEXT (app `--color-accent-700`) — headers, bullets, links. */
+  accent: '#086f59',
+  /** CTA fill (app `--color-primary`) — light mint. */
+  accentFill: '#79dfbf',
+  /** Text on the mint fill (app `--color-primary-foreground`), 7.8:1. */
+  accentForeground: '#053b30',
   /** A soft accent tint for subtle highlights. */
-  accentSoft: '#fff7ed',
-  /** Positive tone (good trend). */
-  positive: '#047857',
+  accentSoft: '#effcf7',
+  /** Positive tone (good trend) — the leaf green, distinct from the mint accent. */
+  positive: '#15803d',
   /** Negative / warning tone (bad trend, partial-data note). */
   negative: '#b91c1c',
   /** Amber note tone (confidence / caveats). */

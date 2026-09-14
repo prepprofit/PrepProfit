@@ -21,11 +21,15 @@ export const CHART_COLORS = [
   'var(--color-chart-6)',
 ] as const;
 
-/** Semantic colours for finance series (emerald = positive, never orange). */
+/**
+ * Semantic colours for finance series. Income = the leaf "positive" green, expense =
+ * amber, profit = blue — never the mint accent, so a line's colour never implies
+ * "brand" or "profitable" on its own.
+ */
 export const FINANCE_COLORS = {
-  income: 'var(--color-chart-2)',
-  expense: 'var(--color-chart-1)',
-  profit: 'var(--color-chart-5)',
+  income: 'var(--color-brand-600)',
+  expense: 'var(--color-chart-4)',
+  profit: 'var(--color-chart-2)',
 } as const;
 
 /** Responsive frame: a fixed-height box wrapping Recharts' ResponsiveContainer. */

@@ -10,9 +10,9 @@ const Switch = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SwitchPrimitives.Root
     className={cn(
-      // accent-700 for the checked track keeps the white thumb/track contrast
-      // consistent with solid CTA rules (see button.tsx).
-      'peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent-700 data-[state=unchecked]:bg-border',
+      // accent-600 for the checked track keeps the white thumb readable against it
+      // (4.3:1); the pale mint fill is for text controls, not a thumb track.
+      'peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent-600 data-[state=unchecked]:bg-border',
       className,
     )}
     {...props}

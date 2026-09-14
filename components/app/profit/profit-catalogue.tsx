@@ -205,13 +205,13 @@ export function ProfitCatalogue({
   return (
     <div className="flex flex-col gap-5">
       {rate ? (
-        <Card className="border-transparent bg-gradient-to-br from-accent-500 to-accent-600 text-white shadow-lg shadow-accent-500/30">
+        <Card className="border-transparent bg-gradient-to-br from-accent-100 to-accent-300 text-primary-foreground shadow-lg shadow-accent-500/20">
           <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-1">
               <p className="font-display text-xl font-semibold leading-tight sm:text-2xl">
                 {t('rate.headline', { amount: money(rate.trueHourlyRateCents) })}
               </p>
-              <p className="text-sm text-white/90">
+              <p className="text-sm text-primary-foreground/80">
                 {t('rate.breakdown', {
                   fixed: money(rate.fixedCostPerHourCents),
                   owner: money(rate.ownerTargetIncomePerHourCents),
@@ -220,7 +220,7 @@ export function ProfitCatalogue({
             </div>
             <Link
               href="/profit/rate"
-              className="inline-flex h-9 w-fit shrink-0 items-center rounded-full bg-white/15 px-4 text-sm font-medium text-white hover:bg-white/25"
+              className="inline-flex h-9 w-fit shrink-0 items-center rounded-full bg-white/60 px-4 text-sm font-medium text-primary-foreground hover:bg-white/80"
             >
               {t('rate.edit')}
             </Link>
@@ -232,7 +232,7 @@ export function ProfitCatalogue({
             <p className="text-sm text-muted-foreground">{t('rate.notConfigured')}</p>
             <Link
               href="/profit/rate"
-              className="inline-flex h-10 w-fit shrink-0 items-center rounded-full bg-accent-700 px-5 text-sm font-medium text-white shadow-sm hover:bg-accent-800"
+              className="inline-flex h-10 w-fit shrink-0 items-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary-hover"
             >
               {t('rate.setUp')}
             </Link>

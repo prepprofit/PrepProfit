@@ -74,7 +74,7 @@ export default async function MenuEngineeringPage({
             className={cn(
               'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
               option === days
-                ? 'border-accent-600 bg-accent-600 text-white'
+                ? 'border-primary bg-primary text-primary-foreground'
                 : 'border-border text-muted-foreground hover:border-accent-300 hover:text-accent-700 dark:hover:text-accent-300',
             )}
           >

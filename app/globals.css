@@ -24,39 +24,50 @@
   /* Marketing testimonial marquee — track holds two copies, so -50% loops seamlessly */
   --animate-marquee: marquee 40s linear infinite;
 
-  /* Accent (Orange) — primary actions, active nav, primary chart series, glow.
-     For solid CTAs use accent-600+ with white text (WCAG); the bright accent-500
-     is reserved for non-text accents (markers, icons, chart fills, glow). */
-  --color-accent-50: #fff7ed;
-  --color-accent-100: #ffedd5;
-  --color-accent-200: #fed7aa;
-  --color-accent-300: #fdba74;
-  --color-accent-400: #fb923c;
-  --color-accent-500: #f97316;
-  --color-accent-600: #ea580c;
-  --color-accent-700: #c2410c;
-  --color-accent-800: #9a3412;
-  --color-accent-900: #7c2d12;
+  /* Accent (Mint — a green with a blue undertone) — primary actions, active nav,
+     selected controls, links, focus, glow. FILLED controls use the light mint with
+     DARK text (`bg-primary text-primary-foreground`); white on mint is unreadable.
+     Accent TEXT uses 700 on light grounds and 300/400 on dark grounds. */
+  --color-accent-50: #effcf7;
+  --color-accent-100: #d7f7ea;
+  --color-accent-200: #afeed7;
+  --color-accent-300: #79dfbf;
+  --color-accent-400: #5fd6b1;
+  --color-accent-500: #16ab86;
+  --color-accent-600: #0b8a6d;
+  --color-accent-700: #086f59;
+  --color-accent-800: #0a5a49;
+  --color-accent-900: #0a4a3d;
+  --color-accent-950: #053b30;
 
-  /* Brand (Emerald) — profit / positive / success. Never use orange for "good". */
-  --color-brand-50: #effdf4;
-  --color-brand-100: #d9fbe6;
-  --color-brand-200: #b5f5d1;
-  --color-brand-300: #7decb5;
-  --color-brand-400: #3fda91;
-  --color-brand-500: #1abf73;
-  --color-brand-600: #109b5a;
-  --color-brand-700: #0f7a49;
-  --color-brand-800: #10603d;
-  --color-brand-900: #0e4f33;
+  /* Primary control fill (buttons, selected chips/tabs, step badges): mint + dark
+     text. #053b30 on #79dfbf = 7.8:1; on the soft #afeed7 = 9.6:1. */
+  --color-primary: #79dfbf;
+  --color-primary-hover: #5fd6b1;
+  --color-primary-soft: #afeed7;
+  --color-primary-foreground: #053b30;
+
+  /* Brand (Leaf green) — profit / positive / success ONLY. Deliberately a yellower
+     green (hue ~142°) than the mint accent (~161°), so a primary button never reads
+     as "profitable"; results also always carry a label, never colour alone. */
+  --color-brand-50: #f0fdf4;
+  --color-brand-100: #dcfce7;
+  --color-brand-200: #bbf7d0;
+  --color-brand-300: #86efac;
+  --color-brand-400: #4ade80;
+  --color-brand-500: #22c55e;
+  --color-brand-600: #16a34a;
+  --color-brand-700: #15803d;
+  --color-brand-800: #166534;
+  --color-brand-900: #14532d;
 
   /* Categorical chart palette (use in order for multi-series charts & rings). */
-  --color-chart-1: #f97316; /* orange  */
-  --color-chart-2: #10b981; /* emerald */
-  --color-chart-3: #8b5cf6; /* violet  */
-  --color-chart-4: #14b8a6; /* teal    */
-  --color-chart-5: #3b82f6; /* blue    */
-  --color-chart-6: #f59e0b; /* amber   */
+  --color-chart-1: #16ab86; /* mint (accent) */
+  --color-chart-2: #3b82f6; /* blue          */
+  --color-chart-3: #8b5cf6; /* violet        */
+  --color-chart-4: #f59e0b; /* amber         */
+  --color-chart-5: #ec4899; /* pink          */
+  --color-chart-6: #64748b; /* slate         */
 
   /* Subtle accent "glow" for highlighted / floating surfaces (reference look). */
   --shadow-glow: 0 0 0 1px color-mix(in oklab, var(--color-accent-500) 35%, transparent),
@@ -72,7 +83,7 @@
   --border: #e2e8f0;
   --foreground: #0f172a;
   --muted-foreground: #64748b;
-  --ring: #ea580c;
+  --ring: #0b8a6d;
   /* Glass (frosted) surfaces — light needs high opacity to stay readable. */
   --glass-bg: rgba(255, 255, 255, 0.75);
   --glass-border: rgba(15, 23, 42, 0.08);
@@ -86,7 +97,7 @@
   --border: #262629;
   --foreground: #fafafa;
   --muted-foreground: #a1a1aa;
-  --ring: #f97316;
+  --ring: #5fd6b1;
   --glass-bg: rgba(22, 22, 24, 0.6);
   --glass-border: rgba(255, 255, 255, 0.08);
 }
@@ -211,7 +222,7 @@ body {
 }
 
 /* footer-wash paints the same brand-accent watercolor as the hero, but rising
-   from the bottom of the footer (orange lobes, pure CSS — no image). Masked to
+   from the bottom of the footer (mint lobes, pure CSS — no image). Masked to
    fade toward the top so it blends into the page above. */
 .footer-wash {
   background:

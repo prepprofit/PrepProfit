@@ -219,7 +219,7 @@ export function CommandPalette({
           {/* ── Panel 1 — search header (accent-bordered, with keyboard hints) ── */}
           <div className="overflow-hidden rounded-2xl border border-accent-500/40 bg-surface shadow-glow">
             <div className="flex items-center gap-3 px-4">
-              <Search className="size-5 shrink-0 text-accent-500" aria-hidden />
+              <Search className="size-5 shrink-0 text-accent-600 dark:text-accent-400" aria-hidden />
               <CommandInput
                 value={query}
                 onValueChange={setQuery}
@@ -289,7 +289,7 @@ export function CommandPalette({
               {/* Loading */}
               {hasQuery && loading && (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin text-accent-500" aria-hidden />
+                  <Loader2 className="size-4 animate-spin text-accent-600 dark:text-accent-400" aria-hidden />
                   {t('loading')}
                 </div>
               )}

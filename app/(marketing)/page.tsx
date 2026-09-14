@@ -239,7 +239,7 @@ export default async function MarketingPage() {
       </main>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Footer (light, nguyen-style, with a pure-CSS orange wash rising     */}
+      {/* Footer (light, nguyen-style, with a pure-CSS mint wash rising     */}
       {/* from the bottom — no background image)                             */}
       {/* ------------------------------------------------------------------ */}
       <footer className="relative overflow-hidden">

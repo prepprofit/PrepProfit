@@ -8,9 +8,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // accent-700 keeps white-on-orange at WCAG AA 4.5:1 (accent-600 fails);
-        // the brighter accent stays for non-text accents (icons, markers, charts).
-        default: 'bg-accent-700 text-white shadow-sm hover:bg-accent-800',
+        // Light mint with dark text: 7.8:1 (white on mint would be 1.6:1).
+        default: 'bg-primary text-primary-foreground shadow-sm hover:bg-primary-hover',
         outline:
           'border border-border bg-surface text-foreground hover:bg-surface-2',
         ghost: 'text-muted-foreground hover:bg-surface-2 hover:text-foreground',

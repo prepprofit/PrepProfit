@@ -14,10 +14,10 @@ import { formatMoney, formatDocDate, safeText } from './format';
  * Invoice PDF (Sprint 3.5A) built with `@react-pdf/renderer` (Node runtime only —
  * this module is imported solely by the PDF route handler). Consumes the shared
  * `InvoiceDocumentData` view-model and pre-resolved labels, so it never touches
- * the DB or the i18n runtime. Brand accent matches the app (orange).
+ * the DB or the i18n runtime. Brand accent matches the app (deep mint).
  */
 
-const ACCENT = '#c2410c'; // orange-700, the app CTA accent
+const ACCENT = '#086f59'; // accent-700, the app's deep mint for text
 const INK = '#1f2937'; // neutral-800
 const MUTED = '#6b7280'; // neutral-500
 const BORDER = '#e5e7eb'; // neutral-200

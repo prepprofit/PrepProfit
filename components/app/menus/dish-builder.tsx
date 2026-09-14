@@ -1295,7 +1295,7 @@ function Section({ step, title, children }: { step: number; title: string; child
   return (
     <Card>
       <CardHeader className="flex-row items-center gap-3 pb-4">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-700 text-sm font-semibold text-white">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
           {step}
         </span>
         <CardTitle className="text-lg">{title}</CardTitle>

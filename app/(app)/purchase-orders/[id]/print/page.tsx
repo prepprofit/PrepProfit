@@ -98,13 +98,13 @@ export default async function PurchaseOrderPrintPage({
               {seller.email && <span className="text-neutral-500">{seller.email}</span>}
             </div>
             <div className="flex flex-col items-end gap-1">
-              <span className="text-2xl font-bold tracking-wide text-[#c2410c]">
+              <span className="text-2xl font-bold tracking-wide text-[#086f59]">
                 {labels.title}
               </span>
               <span className="font-semibold text-neutral-900">
                 {labels.poNo} {data.number}
               </span>
-              <span className="mt-1 rounded border border-[#c2410c] px-2 py-0.5 text-xs font-semibold uppercase text-[#c2410c]">
+              <span className="mt-1 rounded border border-[#086f59] px-2 py-0.5 text-xs font-semibold uppercase text-[#086f59]">
                 {labels.status[data.status]}
               </span>
             </div>

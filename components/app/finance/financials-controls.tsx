@@ -30,7 +30,7 @@ export async function FinancialsControls({
     cn(
       'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
       active
-        ? 'bg-accent-700 text-white'
+        ? 'bg-primary text-primary-foreground'
         : 'text-muted-foreground hover:bg-surface-2',
     );
 

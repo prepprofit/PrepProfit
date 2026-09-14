@@ -31,7 +31,7 @@ export function PrepProfitCard({
 
   return (
     <Card className="flex flex-col items-start gap-4 border-accent-200 bg-accent-50 p-4 sm:flex-row sm:items-center sm:gap-5 dark:border-accent-500/20 dark:bg-accent-500/10">
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-600 text-white">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
         <Sparkles className="size-4" aria-hidden />
       </span>
 

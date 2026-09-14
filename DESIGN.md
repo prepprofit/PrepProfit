@@ -29,40 +29,48 @@ the reference's information architecture: it maps onto PrepProfit's own modules
 
 ### Brand & accent scales (theme-independent)
 
-`accent` = **Orange** — primary actions, active nav, primary chart series, the
-"running timer" affordance. Matches the reference's main accent.
+`accent` = **Mint** (a green with a blue undertone, hue ~161°) — primary actions,
+active nav, selected controls, links, focus. Adopted 2026-09-14, replacing orange,
+so the product feels calm and positive; it is used sparingly so it keeps meaning.
 
 ```
---color-accent-50:#fff7ed --color-accent-100:#ffedd5 --color-accent-200:#fed7aa
---color-accent-300:#fdba74 --color-accent-400:#fb923c --color-accent-500:#f97316
---color-accent-600:#ea580c --color-accent-700:#c2410c --color-accent-800:#9a3412
---color-accent-900:#7c2d12
+--color-accent-50:#effcf7 --color-accent-100:#d7f7ea --color-accent-200:#afeed7
+--color-accent-300:#79dfbf --color-accent-400:#5fd6b1 --color-accent-500:#16ab86
+--color-accent-600:#0b8a6d --color-accent-700:#086f59 --color-accent-800:#0a5a49
+--color-accent-900:#0a4a3d --color-accent-950:#053b30
 ```
-Primary action color: solid CTAs use `accent-700` + white text (WCAG AA, 4.5:1;
-`accent-500`/`accent-600` + white fail at ~2.3–3.6:1). The brighter `accent-500`
-is reserved for **non-text** accents: active nav marker, icons, chart series,
-focus ring, glow.
+**Filled controls use the light mint with DARK text** — white on mint is 1.6:1 and
+unreadable. Tokens: `--color-primary:#79dfbf`, `--color-primary-hover:#5fd6b1`,
+`--color-primary-soft:#afeed7` (selected nav), `--color-primary-foreground:#053b30`
+(7.8:1 on primary, 9.6:1 on soft). Use `bg-primary text-primary-foreground`, never
+`bg-accent-* text-white`. **Accent text** (links, active labels) uses `accent-700` on
+light grounds (5.9:1) and `accent-300`/`400` on dark grounds. Switch tracks use
+`accent-600` so the white thumb stays visible. Exceptions that need a deep accent
+under white or on white: Clerk (`colorPrimary` 700, it derives link colours from it),
+PDFs and email text (700).
 
-`brand` = **Emerald** — reserved for **profit / positive / success** (e.g. "+12%"
-deltas, margin in the green, completed states). This keeps PrepProfit's
-"profit = green" semantic, which is ideal for a finance product.
+`brand` = **Leaf green** (hue ~142°) — reserved for **profit / positive / success**.
+It is deliberately yellower than the mint accent so an ordinary green button never
+reads as "profitable"; results always carry a label too, never colour alone.
 
 ```
---color-brand-50:#effdf4 --color-brand-100:#d9fbe6 --color-brand-200:#b5f5d1
---color-brand-300:#7decb5 --color-brand-400:#3fda91 --color-brand-500:#1abf73
---color-brand-600:#109b5a --color-brand-700:#0f7a49 --color-brand-800:#10603d
---color-brand-900:#0e4f33
+--color-brand-50:#f0fdf4 --color-brand-100:#dcfce7 --color-brand-200:#bbf7d0
+--color-brand-300:#86efac --color-brand-400:#4ade80 --color-brand-500:#22c55e
+--color-brand-600:#16a34a --color-brand-700:#15803d --color-brand-800:#166534
+--color-brand-900:#14532d
 ```
 
 **Chart categorical palette** (use in this order for multi-series charts & rings):
 ```
---color-chart-1:#f97316  /* orange  */
---color-chart-2:#10b981  /* emerald */
---color-chart-3:#8b5cf6  /* violet  */
---color-chart-4:#14b8a6  /* teal    */
---color-chart-5:#3b82f6  /* blue    */
---color-chart-6:#f59e0b  /* amber   */
+--color-chart-1:#16ab86  /* mint (accent) */
+--color-chart-2:#3b82f6  /* blue   */
+--color-chart-3:#8b5cf6  /* violet */
+--color-chart-4:#f59e0b  /* amber  */
+--color-chart-5:#ec4899  /* pink   */
+--color-chart-6:#64748b  /* slate  */
 ```
+Finance series: income = `brand-600`, expense = amber (`chart-4`), profit = blue
+(`chart-2`) — never the accent.
 Semantic: red `#ef4444` (negative/loss), amber `#f59e0b` (warning/low stock).
 
 ### Semantic tokens (theme-aware)
@@ -75,7 +83,7 @@ Semantic: red `#ef4444` (negative/loss), amber `#f59e0b` (warning/low stock).
 | `--border` | `#e2e8f0` | `#262629` | borders / dividers |
 | `--foreground` | `#0f172a` | `#fafafa` | primary text / numbers |
 | `--muted-foreground` | `#64748b` | `#a1a1aa` | secondary text |
-| `--ring` | `#f97316` | `#f97316` | focus ring (accent) |
+| `--ring` | `#0b8a6d` | `#5fd6b1` | focus ring (accent) |
 
 ---
 
@@ -89,7 +97,7 @@ Semantic: red `#ef4444` (negative/loss), amber `#f59e0b` (warning/low stock).
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
 
-  /* accent (orange) + brand (emerald) + chart-* scales here (see section 2) */
+  /* accent (mint) + primary + brand (leaf green) + chart-* scales here (see section 2) */
 }
 
 :root {
@@ -123,12 +131,13 @@ components will be migrated to these tokens.)
 
 ## 4. Color usage rules
 
-- **Orange (`accent`)**: primary buttons/CTAs, active sidebar item, primary chart
-  series, the timer/play control, the avatar ring.
-- **Emerald (`brand`)**: positive deltas, profit/margin in the green, completed
-  badges, success. Never use orange to signal "good number" — that's green's job.
-- **Charts**: follow the categorical palette order. Rings (work-activity style)
-  use chart-1..3; area/step charts use an orange gradient fill over `surface-2`.
+- **Mint (`accent` / `primary`)**: primary buttons/CTAs (mint fill, dark text),
+  active sidebar item (soft mint), selected chips/tabs, step badges, links, focus.
+  One primary action per screen.
+- **Leaf green (`brand`)**: positive deltas, profit/margin in the green, completed
+  badges, success. Never use the mint accent to signal "good number".
+- **Charts**: follow the categorical palette order. Rings use chart-1..3; area/step
+  charts use a mint gradient fill over `surface-2`.
 - **Badges**: positive → `bg-brand-50 text-brand-600` (light) / tinted in dark;
   warning → amber; negative → red.
 
@@ -160,7 +169,7 @@ components will be migrated to these tokens.)
   *Operations* (Dashboard, Recipes, Ingredients, Inventory) ·
   *Finance* (Break-even, Invoices) · *Team* (Payroll). Logo + product name at
   top; OrganizationSwitcher (workspace) pinned at the bottom. Active item:
-  surface chip + orange icon/text + left accent marker.
+  soft mint chip + dark mint text/icon.
 - **Top bar**: page title/context on the left; on the right: theme toggle,
   notifications, and the Clerk `UserButton`. (A timer/project selector like the
   reference is out of scope — it's HorizonHub-specific.)
@@ -181,15 +190,15 @@ components will be migrated to these tokens.)
 
 **Data viz (built with real data in Sprint 2; mock visually now)**
 - Bar chart (Time-tracked style): rounded-top bars, one highlighted series in
-  orange, rest muted.
-- Area/step chart (KPI style): orange gradient fill on `surface-2`.
+  mint, rest muted.
+- Area/step chart (KPI style): mint gradient fill on `surface-2`.
 - Concentric **activity rings** (Work-activity style): chart-1..3.
 - **Segmented progress bar** (Task-overview style): multi-color segments.
 - **Completion ring + %** (Project-progress style).
 
 **Controls**
-- Buttons: pill (`rounded-full`); primary = orange, plus `outline` and `ghost`.
-- Inputs/selects: `surface-2` bg, `border`, focus `ring` (orange).
+- Buttons: pill (`rounded-full`); primary = mint fill + dark text, plus `outline` and `ghost`.
+- Inputs/selects: `surface-2` bg, `border`, focus `ring` (mint 600 / 400 dark).
 
 ---
 

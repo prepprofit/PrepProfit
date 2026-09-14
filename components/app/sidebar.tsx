@@ -74,7 +74,7 @@ function navRowClass(active: boolean, collapsed: boolean) {
     'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
     collapsed && 'justify-center px-0',
     active
-      ? 'bg-accent-600 text-white shadow-sm shadow-accent-600/30'
+      ? 'bg-primary-soft text-primary-foreground dark:bg-primary'
       : 'text-muted-foreground hover:bg-accent-50 hover:text-accent-700 dark:hover:bg-accent-500/10 dark:hover:text-accent-300',
   );
 }
@@ -260,7 +260,7 @@ export function Sidebar({
                     className={cn(
                       'size-4 shrink-0',
                       active
-                        ? 'text-white'
+                        ? 'text-primary-foreground'
                         : 'text-muted-foreground group-hover:text-accent-700 dark:group-hover:text-accent-300',
                     )}
                   />
@@ -325,7 +325,7 @@ export function Sidebar({
                     className={cn(
                       'size-4 shrink-0',
                       active
-                        ? 'text-white'
+                        ? 'text-primary-foreground'
                         : 'text-muted-foreground group-hover:text-accent-700 dark:group-hover:text-accent-300',
                     )}
                   />

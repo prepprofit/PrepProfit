@@ -13,7 +13,7 @@ export function CtaButton({ href, label }: { href: string; label: string }) {
       <Button
         href={href}
         style={{
-          backgroundColor: palette.accent,
+          backgroundColor: palette.accentFill,
           color: palette.accentForeground,
           fontFamily,
           fontSize: '14px',

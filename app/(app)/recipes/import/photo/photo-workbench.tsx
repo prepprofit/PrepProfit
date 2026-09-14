@@ -860,7 +860,7 @@ function LineEditor({
             </select>
           </label>
           {line.packageSizeInferred && (
-            <span className="inline-flex items-center gap-1 pb-1.5 text-[11px] text-accent-600 dark:text-accent-400">
+            <span className="inline-flex items-center gap-1 pb-1.5 text-[11px] text-accent-700 dark:text-accent-400">
               <Sparkles className="size-3" />
               {t('draft.packageSizeInferred')}
             </span>

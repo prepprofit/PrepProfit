@@ -129,7 +129,7 @@ export default async function PayrollPage({
   const tab = (active: boolean) =>
     cn(
       'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
-      active ? 'bg-accent-700 text-white' : 'text-muted-foreground hover:bg-surface-2',
+      active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-surface-2',
     );
   const navBtn =
     'flex size-9 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground';

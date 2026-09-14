@@ -127,7 +127,7 @@ export default async function RecipePrepCardPrintPage({
               )}
             </div>
             <div className="flex flex-col items-end gap-0.5">
-              <span className="text-xl font-bold tracking-wide text-[#c2410c]">
+              <span className="text-xl font-bold tracking-wide text-[#086f59]">
                 {labels.title}
               </span>
               <span className="text-base font-semibold text-neutral-900">
@@ -138,7 +138,7 @@ export default async function RecipePrepCardPrintPage({
                 {labels.usableYield} {data.yieldPercentage}%
               </span>
               {data.scale && (
-                <span className="font-semibold text-[#c2410c]">
+                <span className="font-semibold text-[#086f59]">
                   {labels.scaledTo({
                     portions: String(data.scale.scaledPortions),
                     factor: String(data.scale.factor),

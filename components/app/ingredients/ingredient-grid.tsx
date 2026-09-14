@@ -105,8 +105,8 @@ const PER_UNIT_SUFFIX: Record<Dimension, string> = {
 /**
  * The READ-state type pill. Colour encodes the UNIT SYSTEM — the one place on this
  * row where colour earns its keep, so a manager scanning the list sees at a glance
- * which ingredients are weighed, poured, or counted. Deliberately NOT accent orange:
- * the brand orange stays reserved for the single primary action (Add) and active nav.
+ * which ingredients are weighed, poured, or counted. Deliberately NOT the accent:
+ * the brand mint stays reserved for the single primary action (Add) and active nav.
  */
 const DIMENSION_PILL: Record<
   Dimension,
@@ -762,7 +762,7 @@ export function IngredientGrid({
           >
             {t('catalog.open')}
           </Button>
-          {/* The ONE primary (orange) action on this screen. */}
+          {/* The ONE primary (mint) action on this screen. */}
           <Button type="button" disabled={pending} onClick={() => setAddOpen(true)}>
             <Plus className="size-4" />
             {t('actions.addIngredient')}

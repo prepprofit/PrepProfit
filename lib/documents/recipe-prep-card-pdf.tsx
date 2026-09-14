@@ -17,7 +17,7 @@ import { safeText } from './format';
  * anywhere, so the document is safe for both kitchen and managers.
  */
 
-const ACCENT = '#c2410c';
+const ACCENT = '#086f59'; // accent-700, the app's deep mint for text
 const INK = '#1f2937';
 const MUTED = '#6b7280';
 const BORDER = '#e5e7eb';

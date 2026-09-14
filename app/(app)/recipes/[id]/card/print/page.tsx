@@ -174,7 +174,7 @@ export default async function RecipeCardPrintPage({
               )}
             </div>
             <div className="flex flex-col items-end gap-0.5">
-              <span className="text-xl font-bold tracking-wide text-[#c2410c]">
+              <span className="text-xl font-bold tracking-wide text-[#086f59]">
                 {labels.title}
               </span>
               <span className="text-base font-semibold text-neutral-900">
@@ -185,7 +185,7 @@ export default async function RecipeCardPrintPage({
                 {labels.usableYield} {data.yieldPercentage}%
               </span>
               {data.scale && (
-                <span className="font-semibold text-[#c2410c]">
+                <span className="font-semibold text-[#086f59]">
                   {labels.scaledTo({
                     portions: String(data.scale.scaledPortions),
                     factor: String(data.scale.factor),
@@ -280,7 +280,7 @@ export default async function RecipeCardPrintPage({
               </div>
             )}
             {data.marginPercent != null && (
-              <div className="mt-1 flex justify-between font-semibold text-[#c2410c]">
+              <div className="mt-1 flex justify-between font-semibold text-[#086f59]">
                 <span>{labels.margin}</span>
                 <span>{data.marginPercent}%</span>
               </div>

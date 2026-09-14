@@ -92,7 +92,7 @@ export function OnboardingStepper({ settings }: { settings: SettingsFormValues }
                 <span
                   className={cn(
                     'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors',
-                    active && 'bg-accent-700 text-white',
+                    active && 'bg-primary text-primary-foreground',
                     done && 'bg-brand-600 text-white',
                     !active && !done && 'bg-surface-2 text-muted-foreground',
                   )}

@@ -10,7 +10,7 @@ export type CategoryDatum = {
 };
 
 /**
- * By-category totals as proportion bars (income = emerald, expense = orange).
+ * By-category totals as proportion bars (income = leaf green, expense = amber).
  * Presentational and legible on mobile — the page resolves display names first.
  */
 export function CategoryBreakdown({
@@ -42,7 +42,7 @@ export function CategoryBreakdown({
             <div
               className={cn(
                 'h-full rounded-full',
-                item.kind === 'income' ? 'bg-brand-500' : 'bg-accent-500',
+                item.kind === 'income' ? 'bg-brand-500' : 'bg-amber-500',
               )}
               style={{ width: `${Math.round((item.totalCents / max) * 100)}%` }}
             />

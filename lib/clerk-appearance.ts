@@ -9,8 +9,9 @@ type ClerkAppearance = NonNullable<
  * Theme Clerk's prebuilt components (UserButton, OrganizationSwitcher, auth
  * pages) with PrepProfit's tokens — without pulling in `@clerk/themes`. Values
  * mirror the semantic tokens in `app/globals.css`; pass the resolved theme so it
- * tracks the light/dark toggle. `colorPrimary` uses accent-700 so white-on-orange
- * stays at WCAG AA.
+ * tracks the light/dark toggle. Clerk also derives LINK colours from
+ * `colorPrimary`, so it uses the deep mint accent-700 with white (6.1:1) rather than
+ * the pale app button fill, which would make Clerk's links unreadable.
  */
 export function clerkAppearance(isDark: boolean): ClerkAppearance {
   return {
@@ -24,7 +25,7 @@ export function clerkAppearance(isDark: boolean): ClerkAppearance {
       },
     },
     variables: {
-      colorPrimary: '#c2410c',
+      colorPrimary: '#086f59',
       colorPrimaryForeground: '#ffffff',
       colorBackground: isDark ? '#161618' : '#ffffff',
       colorForeground: isDark ? '#fafafa' : '#0f172a',
@@ -33,7 +34,7 @@ export function clerkAppearance(isDark: boolean): ClerkAppearance {
       colorInputForeground: isDark ? '#fafafa' : '#0f172a',
       colorBorder: isDark ? '#262629' : '#e2e8f0',
       colorNeutral: isDark ? '#fafafa' : '#0f172a',
-      colorRing: '#f97316',
+      colorRing: '#0b8a6d',
       borderRadius: '0.625rem',
       fontFamily: 'var(--font-roboto), ui-sans-serif, system-ui, sans-serif',
     },
