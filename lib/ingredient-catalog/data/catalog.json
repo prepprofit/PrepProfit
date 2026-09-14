@@ -3618,7 +3618,10 @@
  {
   "id": "butter",
   "nameEn": "Butter",
-  "aliases": [],
+  "aliases": [
+   "unsalted butter",
+   "salted butter"
+  ],
   "dimension": "weight",
   "category": "Dairy and Egg Products",
   "allergens": [
@@ -5112,7 +5115,10 @@
  {
   "id": "cheese-cream",
   "nameEn": "Cheese, cream",
-  "aliases": [],
+  "aliases": [
+   "cream cheese",
+   "soft cheese"
+  ],
   "dimension": "weight",
   "category": "Dairy and Egg Products",
   "allergens": [
@@ -6182,7 +6188,12 @@
  {
   "id": "chocolate-dark-60-69-cacao-solids",
   "nameEn": "Chocolate, dark, 60-69% cacao solids",
-  "aliases": [],
+  "aliases": [
+   "chocolate",
+   "dark chocolate",
+   "baking chocolate",
+   "couverture"
+  ],
   "dimension": "weight",
   "category": "Sweets",
   "allergens": [],
@@ -6191,7 +6202,10 @@
  {
   "id": "chocolate-dark-70-85-cacao-solids",
   "nameEn": "Chocolate, dark, 70-85% cacao solids",
-  "aliases": [],
+  "aliases": [
+   "extra dark chocolate",
+   "bitter chocolate"
+  ],
   "dimension": "weight",
   "category": "Sweets",
   "allergens": [],
@@ -6267,7 +6281,11 @@
  {
   "id": "cocoa-dry-powder",
   "nameEn": "Cocoa, dry powder",
-  "aliases": [],
+  "aliases": [
+   "cocoa powder",
+   "cocoa",
+   "unsweetened cocoa"
+  ],
   "dimension": "weight",
   "category": "Sweets",
   "allergens": [],
@@ -7638,7 +7656,11 @@
  {
   "id": "cornstarch",
   "nameEn": "Cornstarch",
-  "aliases": [],
+  "aliases": [
+   "cornflour",
+   "corn starch",
+   "maize starch"
+  ],
   "dimension": "weight",
   "category": "Cereal Grains and Pasta",
   "allergens": [],
@@ -8596,7 +8618,11 @@
  {
   "id": "cream-fluid-half-and-half",
   "nameEn": "Cream, fluid, half and half",
-  "aliases": [],
+  "aliases": [
+   "single cream",
+   "half and half",
+   "light cream"
+  ],
   "dimension": "volume",
   "category": "Dairy and Egg Products",
   "allergens": [
@@ -8610,7 +8636,13 @@
  {
   "id": "cream-fluid-heavy-whipping",
   "nameEn": "Cream, fluid, heavy whipping",
-  "aliases": [],
+  "aliases": [
+   "cream",
+   "double cream",
+   "heavy cream",
+   "whipping cream",
+   "fresh cream"
+  ],
   "dimension": "volume",
   "category": "Dairy and Egg Products",
   "allergens": [
@@ -8664,7 +8696,10 @@
  {
   "id": "cream-sour-cultured",
   "nameEn": "Cream, sour, cultured",
-  "aliases": [],
+  "aliases": [
+   "sour cream",
+   "soured cream"
+  ],
   "dimension": "volume",
   "category": "Dairy and Egg Products",
   "allergens": [
@@ -9446,7 +9481,11 @@
  {
   "id": "egg",
   "nameEn": "Egg",
-  "aliases": [],
+  "aliases": [
+   "whole egg",
+   "hen egg",
+   "large egg"
+  ],
   "dimension": "count",
   "category": "Dairy and Egg Products",
   "allergens": [
@@ -11601,7 +11640,11 @@
  {
   "id": "gelatins-dry-powder",
   "nameEn": "Gelatins, dry powder",
-  "aliases": [],
+  "aliases": [
+   "gelatin",
+   "gelatine",
+   "powdered gelatine"
+  ],
   "dimension": "weight",
   "category": "Sweets",
   "allergens": [],
@@ -11998,7 +12041,10 @@
  {
   "id": "honey",
   "nameEn": "Honey",
-  "aliases": [],
+  "aliases": [
+   "runny honey",
+   "clear honey"
+  ],
   "dimension": "weight",
   "category": "Sweets",
   "allergens": [],
@@ -12727,7 +12773,12 @@
  {
   "id": "leavening-agents-baking-soda",
   "nameEn": "Leavening agents, baking soda",
-  "aliases": [],
+  "aliases": [
+   "baking soda",
+   "bicarbonate of soda",
+   "bicarb",
+   "sodium bicarbonate"
+  ],
   "dimension": "weight",
   "category": "Baked Products",
   "allergens": [
@@ -12753,7 +12804,9 @@
  {
   "id": "leavening-agents-cream-of-tartar",
   "nameEn": "Leavening agents, cream of tartar",
-  "aliases": [],
+  "aliases": [
+   "cream of tartar"
+  ],
   "dimension": "weight",
   "category": "Baked Products",
   "allergens": [
@@ -12869,7 +12922,10 @@
  {
   "id": "lemons-without-peel",
   "nameEn": "Lemons, without peel",
-  "aliases": [],
+  "aliases": [
+   "lemon",
+   "lemons"
+  ],
   "dimension": "weight",
   "category": "Fruits and Fruit Juices",
   "allergens": [],
@@ -13457,7 +13513,12 @@
  {
   "id": "milk-3-25-milkfat-without-added-vitamin-a-and-vitamin-d",
   "nameEn": "Milk, 3.25% milkfat, without added vitamin A and vitamin D",
-  "aliases": [],
+  "aliases": [
+   "milk",
+   "whole milk",
+   "full fat milk",
+   "full-cream milk"
+  ],
   "dimension": "volume",
   "category": "Dairy and Egg Products",
   "allergens": [
@@ -14925,7 +14986,11 @@
  {
   "id": "oil-canola",
   "nameEn": "Oil, canola",
-  "aliases": [],
+  "aliases": [
+   "rapeseed oil",
+   "canola oil",
+   "vegetable oil"
+  ],
   "dimension": "volume",
   "category": "Fats and Oils",
   "allergens": [],
@@ -15067,7 +15132,11 @@
  {
   "id": "oil-olive-salad-or-cooking",
   "nameEn": "Oil, olive, salad or cooking",
-  "aliases": [],
+  "aliases": [
+   "olive oil",
+   "extra virgin olive oil",
+   "virgin olive oil"
+  ],
   "dimension": "volume",
   "category": "Fats and Oils",
   "allergens": [],
@@ -18703,7 +18772,12 @@
  {
   "id": "rice-white-long-grain",
   "nameEn": "Rice, white, long-grain",
-  "aliases": [],
+  "aliases": [
+   "rice",
+   "white rice",
+   "long grain rice",
+   "basmati rice"
+  ],
   "dimension": "weight",
   "category": "Cereal Grains and Pasta",
   "allergens": [],
@@ -19572,7 +19646,12 @@
  {
   "id": "salt-table",
   "nameEn": "Salt, table",
-  "aliases": [],
+  "aliases": [
+   "salt",
+   "table salt",
+   "fine salt",
+   "cooking salt"
+  ],
   "dimension": "weight",
   "category": "Spices and Herbs",
   "allergens": [],
@@ -21042,7 +21121,10 @@
  {
   "id": "strawberries",
   "nameEn": "Strawberries",
-  "aliases": [],
+  "aliases": [
+   "strawberry",
+   "fresh strawberries"
+  ],
   "dimension": "weight",
   "category": "Fruits and Fruit Juices",
   "allergens": [],
@@ -21122,7 +21204,11 @@
  {
   "id": "sugars-brown",
   "nameEn": "Sugars, brown",
-  "aliases": [],
+  "aliases": [
+   "brown sugar",
+   "light brown sugar",
+   "soft brown sugar"
+  ],
   "dimension": "weight",
   "category": "Sweets",
   "allergens": [],
@@ -21131,7 +21217,13 @@
  {
   "id": "sugars-granulated",
   "nameEn": "Sugars, granulated",
-  "aliases": [],
+  "aliases": [
+   "sugar",
+   "white sugar",
+   "granulated sugar",
+   "caster sugar",
+   "superfine sugar"
+  ],
   "dimension": "weight",
   "category": "Sweets",
   "allergens": [],
@@ -21149,7 +21241,11 @@
  {
   "id": "sugars-powdered",
   "nameEn": "Sugars, powdered",
-  "aliases": [],
+  "aliases": [
+   "icing sugar",
+   "powdered sugar",
+   "confectioners sugar"
+  ],
   "dimension": "weight",
   "category": "Sweets",
   "allergens": [],
@@ -22162,7 +22258,10 @@
  {
   "id": "vanilla-extract",
   "nameEn": "Vanilla extract",
-  "aliases": [],
+  "aliases": [
+   "vanilla",
+   "vanilla essence"
+  ],
   "dimension": "volume",
   "category": "Spices and Herbs",
   "allergens": [],
@@ -22830,7 +22929,13 @@
  {
   "id": "wheat-flour-white-all-purpose",
   "nameEn": "Wheat flour, white, all-purpose",
-  "aliases": [],
+  "aliases": [
+   "flour",
+   "plain flour",
+   "all-purpose flour",
+   "white flour",
+   "wheat flour"
+  ],
   "dimension": "weight",
   "category": "Cereal Grains and Pasta",
   "allergens": [
@@ -22844,7 +22949,11 @@
  {
   "id": "wheat-flour-white-bread",
   "nameEn": "Wheat flour, white, bread",
-  "aliases": [],
+  "aliases": [
+   "bread flour",
+   "strong flour",
+   "strong white flour"
+  ],
   "dimension": "weight",
   "category": "Cereal Grains and Pasta",
   "allergens": [
@@ -22858,7 +22967,10 @@
  {
   "id": "wheat-flour-white-cake",
   "nameEn": "Wheat flour, white, cake",
-  "aliases": [],
+  "aliases": [
+   "cake flour",
+   "pastry flour"
+  ],
   "dimension": "weight",
   "category": "Cereal Grains and Pasta",
   "allergens": [
@@ -23245,7 +23357,10 @@
  {
   "id": "yogurt-greek-whole-milk",
   "nameEn": "Yogurt, Greek, whole milk",
-  "aliases": [],
+  "aliases": [
+   "greek yogurt",
+   "greek yoghurt"
+  ],
   "dimension": "weight",
   "category": "Dairy and Egg Products",
   "allergens": [
@@ -23287,7 +23402,12 @@
  {
   "id": "yogurt-whole-milk",
   "nameEn": "Yogurt, whole milk",
-  "aliases": [],
+  "aliases": [
+   "yogurt",
+   "yoghurt",
+   "plain yogurt",
+   "natural yogurt"
+  ],
   "dimension": "weight",
   "category": "Dairy and Egg Products",
   "allergens": [

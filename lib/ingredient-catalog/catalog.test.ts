@@ -6,7 +6,7 @@ import {
   searchIngredientCatalog,
 } from './index';
 import { catalogSchema, type CatalogEntry } from './schema';
-import { normalizeSearchText, searchCatalogEntries } from './search';
+import { normalizeSearchText, searchCatalogEntries, singularize } from './search';
 
 describe('seed ingredient catalog dataset', () => {
   it('validates the entire committed dataset (Zod, unique ids)', () => {
@@ -28,9 +28,34 @@ describe('seed ingredient catalog dataset', () => {
     }
   });
 
-  it('finds staples every kitchen needs', () => {
-    for (const term of ['salt', 'butter', 'olive oil', 'flour', 'egg']) {
-      expect(searchIngredientCatalog(term).length).toBeGreaterThan(0);
+  it('finds staples every kitchen needs as the FIRST result', () => {
+    const first: Record<string, string> = {
+      'baking soda': 'leavening-agents-baking-soda',
+      'bicarbonate of soda': 'leavening-agents-baking-soda',
+      sugar: 'sugars-granulated',
+      'caster sugar': 'sugars-granulated',
+      butter: 'butter',
+      flour: 'wheat-flour-white-all-purpose',
+      'plain flour': 'wheat-flour-white-all-purpose',
+      cream: 'cream-fluid-heavy-whipping',
+      'double cream': 'cream-fluid-heavy-whipping',
+      milk: 'milk-3-25-milkfat-without-added-vitamin-a-and-vitamin-d',
+      eggs: 'egg',
+      strawberries: 'strawberries',
+      chocolate: 'chocolate-dark-60-69-cacao-solids',
+      'olive oil': 'oil-olive-salad-or-cooking',
+      salt: 'salt-table',
+      cornflour: 'cornstarch',
+      yoghurt: 'yogurt-whole-milk',
+    };
+    for (const [term, id] of Object.entries(first)) {
+      expect(searchIngredientCatalog(term, 1)[0]?.id, term).toBe(id);
+    }
+  });
+
+  it('keeps every entry within the alias cap', () => {
+    for (const entry of getIngredientCatalog()) {
+      expect(entry.aliases.length).toBeLessThanOrEqual(10);
     }
   });
 
@@ -39,6 +64,18 @@ describe('seed ingredient catalog dataset', () => {
     if (!first) throw new Error('empty catalog');
     expect(getCatalogEntry(first.id)?.id).toBe(first.id);
     expect(getCatalogEntry('definitely-not-a-real-id')).toBeNull();
+  });
+});
+
+describe('singularize', () => {
+  it('handles the plural shapes ingredient names use, without mangling short words', () => {
+    expect(singularize('eggs')).toBe('egg');
+    expect(singularize('strawberries')).toBe('strawberry');
+    expect(singularize('tomatoes')).toBe('tomato');
+    expect(singularize('peaches')).toBe('peach');
+    expect(singularize('grass')).toBe('grass');
+    expect(singularize('asparagus')).toBe('asparagus');
+    expect(singularize('oil')).toBe('oil');
   });
 });
 

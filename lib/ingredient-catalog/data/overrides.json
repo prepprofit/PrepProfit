@@ -1,14 +1,263 @@
 {
   "remove": [],
   "patch": [
-    { "id": "mustard-greens", "allergens": [] },
-    { "id": "cabbage-mustard", "allergens": [] }
+    {
+      "id": "mustard-greens",
+      "allergens": []
+    },
+    {
+      "id": "cabbage-mustard",
+      "allergens": []
+    },
+    {
+      "id": "wheat-flour-white-all-purpose",
+      "aliases": [
+        "flour",
+        "plain flour",
+        "all-purpose flour",
+        "white flour",
+        "wheat flour"
+      ]
+    },
+    {
+      "id": "wheat-flour-white-bread",
+      "aliases": [
+        "bread flour",
+        "strong flour",
+        "strong white flour"
+      ]
+    },
+    {
+      "id": "wheat-flour-white-cake",
+      "aliases": [
+        "cake flour",
+        "pastry flour"
+      ]
+    },
+    {
+      "id": "sugars-granulated",
+      "aliases": [
+        "sugar",
+        "white sugar",
+        "granulated sugar",
+        "caster sugar",
+        "superfine sugar"
+      ]
+    },
+    {
+      "id": "sugars-brown",
+      "aliases": [
+        "brown sugar",
+        "light brown sugar",
+        "soft brown sugar"
+      ]
+    },
+    {
+      "id": "sugars-powdered",
+      "aliases": [
+        "icing sugar",
+        "powdered sugar",
+        "confectioners sugar"
+      ]
+    },
+    {
+      "id": "butter",
+      "aliases": [
+        "unsalted butter",
+        "salted butter"
+      ]
+    },
+    {
+      "id": "cream-fluid-heavy-whipping",
+      "aliases": [
+        "cream",
+        "double cream",
+        "heavy cream",
+        "whipping cream",
+        "fresh cream"
+      ]
+    },
+    {
+      "id": "cream-fluid-half-and-half",
+      "aliases": [
+        "single cream",
+        "half and half",
+        "light cream"
+      ]
+    },
+    {
+      "id": "cream-sour-cultured",
+      "aliases": [
+        "sour cream",
+        "soured cream"
+      ]
+    },
+    {
+      "id": "milk-3-25-milkfat-without-added-vitamin-a-and-vitamin-d",
+      "aliases": [
+        "milk",
+        "whole milk",
+        "full fat milk",
+        "full-cream milk"
+      ]
+    },
+    {
+      "id": "egg",
+      "aliases": [
+        "whole egg",
+        "hen egg",
+        "large egg"
+      ]
+    },
+    {
+      "id": "chocolate-dark-60-69-cacao-solids",
+      "aliases": [
+        "chocolate",
+        "dark chocolate",
+        "baking chocolate",
+        "couverture"
+      ]
+    },
+    {
+      "id": "chocolate-dark-70-85-cacao-solids",
+      "aliases": [
+        "extra dark chocolate",
+        "bitter chocolate"
+      ]
+    },
+    {
+      "id": "oil-olive-salad-or-cooking",
+      "aliases": [
+        "olive oil",
+        "extra virgin olive oil",
+        "virgin olive oil"
+      ]
+    },
+    {
+      "id": "oil-canola",
+      "aliases": [
+        "rapeseed oil",
+        "canola oil",
+        "vegetable oil"
+      ]
+    },
+    {
+      "id": "leavening-agents-baking-soda",
+      "aliases": [
+        "baking soda",
+        "bicarbonate of soda",
+        "bicarb",
+        "sodium bicarbonate"
+      ]
+    },
+    {
+      "id": "leavening-agents-cream-of-tartar",
+      "aliases": [
+        "cream of tartar"
+      ]
+    },
+    {
+      "id": "salt-table",
+      "aliases": [
+        "salt",
+        "table salt",
+        "fine salt",
+        "cooking salt"
+      ]
+    },
+    {
+      "id": "cocoa-dry-powder",
+      "aliases": [
+        "cocoa powder",
+        "cocoa",
+        "unsweetened cocoa"
+      ]
+    },
+    {
+      "id": "cornstarch",
+      "aliases": [
+        "cornflour",
+        "corn starch",
+        "maize starch"
+      ]
+    },
+    {
+      "id": "vanilla-extract",
+      "aliases": [
+        "vanilla",
+        "vanilla essence"
+      ]
+    },
+    {
+      "id": "cheese-cream",
+      "aliases": [
+        "cream cheese",
+        "soft cheese"
+      ]
+    },
+    {
+      "id": "yogurt-whole-milk",
+      "aliases": [
+        "yogurt",
+        "yoghurt",
+        "plain yogurt",
+        "natural yogurt"
+      ]
+    },
+    {
+      "id": "yogurt-greek-whole-milk",
+      "aliases": [
+        "greek yogurt",
+        "greek yoghurt"
+      ]
+    },
+    {
+      "id": "lemons-without-peel",
+      "aliases": [
+        "lemon",
+        "lemons"
+      ]
+    },
+    {
+      "id": "rice-white-long-grain",
+      "aliases": [
+        "rice",
+        "white rice",
+        "long grain rice",
+        "basmati rice"
+      ]
+    },
+    {
+      "id": "strawberries",
+      "aliases": [
+        "strawberry",
+        "fresh strawberries"
+      ]
+    },
+    {
+      "id": "gelatins-dry-powder",
+      "aliases": [
+        "gelatin",
+        "gelatine",
+        "powdered gelatine"
+      ]
+    },
+    {
+      "id": "honey",
+      "aliases": [
+        "runny honey",
+        "clear honey"
+      ]
+    }
   ],
   "add": [
     {
       "id": "yeast-bakers-active-dry",
       "nameEn": "Yeast, baker's, active dry",
-      "aliases": ["dry yeast", "instant yeast"],
+      "aliases": [
+        "dry yeast",
+        "instant yeast"
+      ],
       "dimension": "weight",
       "category": "Baked Products",
       "allergens": [],
@@ -17,7 +266,10 @@
     {
       "id": "yeast-bakers-compressed",
       "nameEn": "Yeast, baker's, compressed",
-      "aliases": ["fresh yeast", "cake yeast"],
+      "aliases": [
+        "fresh yeast",
+        "cake yeast"
+      ],
       "dimension": "weight",
       "category": "Baked Products",
       "allergens": [],
