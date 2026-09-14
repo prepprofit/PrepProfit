@@ -1,75 +1,36 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { formatMoney } from '@/lib/format/money';
-import { scaleMoneyCents } from '@/lib/calculations/recipeScale';
-import type { RecipeCost } from '@/lib/calculations/recipeCost';
-import {
-  PortionOptionsSection,
-  type PortionYieldContext,
-} from './recipe-portion-options';
+import type { UomAnchors } from '@/lib/calculations/uom';
+import type { Dimension } from '@/lib/units';
 
 /**
- * One expandable row of the cost panel (Fase 5, §7.3) — MANAGER-ONLY data
- * assembled server-side; the kitchen payload ships `cost: null` and none of
- * these keys ever exist in it.
+ * Shared view types for the recipe page + the read-only preparation method.
+ *
+ * Costs are MANAGER-ONLY: the kitchen payload ships `cost: null` and none of these
+ * keys exist in it. Only what matters is carried — a cost beside each ingredient
+ * line, cost per batch and cost per kg — plus any labour/energy left over from the
+ * retired editor so it stays visible for review.
  */
-export type CostLineDetailView = {
-  key: string;
-  kind: 'ingredient' | 'component';
-  name: string;
-  prepName: string | null;
-  /** Pre-formatted canonical amount, e.g. "500 g" (server formats). */
-  quantityLabel: string;
-  needsPricing: boolean;
-  /** Line cost at 1x batch (client scales by factor); null = unpriced. */
-  lineCostCents: number | null;
-  /** Approved price per purchase unit (ingredient lines only). */
-  priceCents: number | null;
-  /** Purchase-unit label for the price, e.g. "kg" / "l" / "pc". */
-  unitLabel: string | null;
-  supplierName: string | null;
-  packSize: number | null;
-  packUnit: string | null;
-  packPriceCents: number | null;
-  priceSource: 'manual' | 'order' | 'quote' | 'import' | null;
-  /** ISO date of the accepted price observation. */
-  priceSourceDate: string | null;
-};
-
-/**
- * Cost of one portion option as its fraction of the batch (Fase 5, §6.8),
- * extended in Fase 5b with the editable fields the manager CRUD form needs.
- * Lives INSIDE `cost`, so it is manager-only by construction — the kitchen
- * payload ships `cost: null` and none of these keys ever exist in it.
- */
-export type PortionCostView = {
-  key: string;
-  name: string;
-  quantityLabel: string;
-  /** Raw quantity/unit the edit form starts from. */
-  quantity: number;
-  unit: string;
-  isDefault: boolean;
-  isNutritionServing: boolean;
-  sellingPriceCents: number | null;
-  targetFoodCostBps: number | null;
-  /** null = incomputable (unit mismatch / missing yield) — renders "—". */
-  costCents: number | null;
-};
 
 export type WorkspaceCostView =
   | {
       complete: true;
-      cost: RecipeCost;
-      details: CostLineDetailView[];
-      /** Cost per kg of finished batch (scale-invariant); null when no weight. */
+      /** Cost of one batch as saved (ingredients + remaining hidden costs), cents. */
+      batchCostCents: number;
+      /** Batch cost ÷ finished weight; null when no finished weight is known. */
       costPerKgCents: number | null;
-      /** Cost per chef-facing yield unit, e.g. per "qt" (scale-invariant). */
-      perYieldUnit: { unit: string; cents: number } | null;
-      portionCosts: PortionCostView[];
+      /** Line key → line cost in cents (null = no price yet). */
+      lineCosts: Record<string, number | null>;
+      legacy: { labourCents: number; energyCents: number };
     }
-  | { complete: false }
+  | {
+      complete: false;
+      lineCosts: Record<string, number | null>;
+      /** Ingredient lines still missing a price. */
+      unpricedLineKeys: string[];
+      legacy: { labourCents: number; energyCents: number };
+    }
   | null;
 
 export type MethodSectionView = {
@@ -81,6 +42,24 @@ export type MethodSectionView = {
     /** Signed short-lived URLs of READY media (empty when signing unavailable). */
     media: { mediaId: string; url: string | null; kind: 'image' | 'video' }[];
   }[];
+};
+
+/** Unit-conversion context per ingredient — used by the line editor, not rendered. */
+export type UomTabItem = {
+  ingredientId: string;
+  name: string;
+  dimension: Dimension;
+  equivalency: (UomAnchors & { source: 'manual' | 'standard' }) | null;
+  prepActions: {
+    id: string;
+    name: string;
+    yieldBps: number;
+    weightGrams: number | null;
+    volumeMl: number | null;
+    eachCount: number | null;
+    sortOrder: number;
+  }[];
+  missingAnchorDimensions: Dimension[];
 };
 
 export function MethodPanel({
@@ -154,166 +133,6 @@ export function MethodPanel({
           <p className="whitespace-pre-wrap text-sm text-muted-foreground">
             {legacyNotes}
           </p>
-        </section>
-      ) : null}
-    </div>
-  );
-}
-
-export function CostPanel({
-  cost,
-  factor,
-  currency,
-  recipeId,
-  recipeYield,
-}: {
-  cost: WorkspaceCostView;
-  factor: number;
-  currency: string;
-  recipeId: string;
-  recipeYield: Omit<PortionYieldContext, 'totalCostCents'>;
-}) {
-  const t = useTranslations('recipes.workspace.cost');
-
-  if (cost === null) {
-    return <p className="text-sm text-muted-foreground">{t('managersOnly')}</p>;
-  }
-  if (!cost.complete) {
-    return <p className="text-sm text-muted-foreground">{t('incomplete')}</p>;
-  }
-
-  const rows: { label: string; cents: number }[] = [
-    {
-      label: t('ingredientCost'),
-      cents: scaleMoneyCents(cost.cost.ingredientCostCents, factor),
-    },
-    {
-      label: t('hiddenCost'),
-      cents: scaleMoneyCents(cost.cost.hiddenCostCents, factor),
-    },
-    {
-      label: t('totalCost'),
-      cents: scaleMoneyCents(cost.cost.totalCostCents, factor),
-    },
-    { label: t('costPerPortion'), cents: cost.cost.costPerPortionCents },
-  ];
-  // Scale-invariant per-unit metrics (§16 Fase 5 slice 5): cost/kg and cost
-  // per chef-facing yield unit are the same at any batch factor.
-  if (cost.costPerKgCents !== null) {
-    rows.push({ label: t('costPerKg'), cents: cost.costPerKgCents });
-  }
-  if (cost.perYieldUnit !== null) {
-    rows.push({
-      label: t('costPerYieldUnit', { unit: cost.perYieldUnit.unit }),
-      cents: cost.perYieldUnit.cents,
-    });
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <dl className="grid grid-cols-2 gap-3">
-        {rows.map((row) => (
-          <div
-            key={row.label}
-            className="rounded-lg border border-border bg-surface px-4 py-3"
-          >
-            <dt className="text-xs text-muted-foreground">{row.label}</dt>
-            <dd className="text-lg font-semibold tabular-nums">
-              {formatMoney(row.cents, currency)}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      {/* Fase 5b: manager CRUD + bidirectional calculator. Safe here — this
-          branch only renders when the server shipped cost data (manager). */}
-      <PortionOptionsSection
-        recipeId={recipeId}
-        portions={cost.portionCosts}
-        yieldContext={{
-          totalCostCents: cost.cost.totalCostCents,
-          ...recipeYield,
-        }}
-        currency={currency}
-      />
-
-      {cost.details.length > 0 ? (
-        <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {t('lines')}
-          </h3>
-          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-            {cost.details.map((line) => (
-              <li key={line.key}>
-                <details className="group">
-                  <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-2.5 text-sm [&::-webkit-details-marker]:hidden">
-                    <span className="min-w-0 truncate">
-                      {line.name}
-                      {line.prepName ? (
-                        <span className="text-muted-foreground">
-                          {' '}
-                          · {line.prepName}
-                        </span>
-                      ) : null}
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {line.quantityLabel}
-                      </span>
-                    </span>
-                    {line.needsPricing || line.lineCostCents === null ? (
-                      <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-                        {t('needsPricing')}
-                      </span>
-                    ) : (
-                      <span className="shrink-0 font-medium tabular-nums">
-                        {formatMoney(
-                          scaleMoneyCents(line.lineCostCents, factor),
-                          currency,
-                        )}
-                      </span>
-                    )}
-                  </summary>
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-border bg-surface-2/50 px-4 py-3 text-xs">
-                    {line.priceCents !== null && line.unitLabel ? (
-                      <>
-                        <dt className="text-muted-foreground">
-                          {t('approvedPrice')}
-                        </dt>
-                        <dd className="text-right tabular-nums">
-                          {formatMoney(line.priceCents, currency)} / {line.unitLabel}
-                        </dd>
-                      </>
-                    ) : null}
-                    <dt className="text-muted-foreground">{t('supplier')}</dt>
-                    <dd className="truncate text-right">
-                      {line.supplierName ?? '—'}
-                    </dd>
-                    {line.packSize !== null && line.packUnit ? (
-                      <>
-                        <dt className="text-muted-foreground">
-                          {t('purchaseItem')}
-                        </dt>
-                        <dd className="text-right tabular-nums">
-                          {line.packSize} {line.packUnit}
-                          {line.packPriceCents !== null
-                            ? ` — ${formatMoney(line.packPriceCents, currency)}`
-                            : ''}
-                        </dd>
-                      </>
-                    ) : null}
-                    <dt className="text-muted-foreground">{t('priceOrigin')}</dt>
-                    <dd className="text-right">
-                      {line.priceSource
-                        ? t(`priceSources.${line.priceSource}`)
-                        : '—'}
-                      {line.priceSourceDate
-                        ? ` · ${new Date(line.priceSourceDate).toLocaleDateString()}`
-                        : ''}
-                    </dd>
-                  </dl>
-                </details>
-              </li>
-            ))}
-          </ul>
         </section>
       ) : null}
     </div>

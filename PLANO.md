@@ -510,6 +510,21 @@ Acceptance criteria:
   (name; folder + portions; prices; margin calculator), recipe components in grams only —
   legacy portion lines are kept and flagged (`MENU_RECIPE_GRAMS_REQUIRED` for new/changed
   non-gram lines). Migration 0051.
+- **Supplier editor, deletion, recipes overhaul.** Supplier editor saves a supplier alone;
+  pack/price/VAT are independent optional parts (omitted keeps, null clears to unknown,
+  never 0) and an incomplete price never blocks the supplier or touches the approved
+  cost; price per pack ↔ per kg/l/piece on one VAT basis (last edited price is the
+  source); VAT suggested entry → ingredient → band → business default purchase VAT
+  (Settings), deliberate 0% remembered. Ingredient delete explains a blocking recipe/dish
+  in the dialog, confirms with Undo. Recipes: home is folders only (All first); rows are
+  name, cost per kg, quick view, print (`/api/recipes/[id]/print/pdf`, money-free), trash;
+  "Back to recipes" returns to the originating list (search/sort/scroll). One recipe
+  screen for every org (classic editor retired): recipe first, yield calculator
+  (finished = input × yield% or measured, loss applied ONCE — `recipeCost`, production and
+  prep no longer divide by yield), drag-to-reorder (saved order used everywhere), line
+  costs + cost per batch / per kg only, legacy labour/energy shown for review with a
+  remove action, kitchen presets. Subtitle, line notes, sections and portion options are
+  preserved, just not edited there. Migrations 0052–0053.
 
 ## Backlog - not scheduled until prioritized
 

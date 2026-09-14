@@ -365,6 +365,20 @@
       "when": 1789407962446,
       "tag": "0051_ingredient_vat_rate_menu_grams",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1789415065191,
+      "tag": "0052_supplier_vat_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1789416314706,
+      "tag": "0053_recipe_yield_model",
+      "breakpoints": true
     }
   ]
 }

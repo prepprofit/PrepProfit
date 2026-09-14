@@ -99,6 +99,10 @@ export const organizationSettings = pgTable('organization_settings', {
   // lines default from it and may override per item (see lib/calculations/tax.ts).
   // It is validated/capped in Zod + the tax module, not by a DB constraint.
   defaultTaxRateBps: integer('default_tax_rate_bps'),
+  // Default PURCHASE VAT, basis points, set deliberately in Settings. NULL = none:
+  // the supplier editor then leaves VAT unset instead of borrowing the sales rate
+  // above or inventing a statutory one. Only a suggestion — always editable.
+  defaultPurchaseVatBps: integer('default_purchase_vat_bps'),
   // Financial-only mode (Sprint F5). Events (sales/productions) dated BEFORE this
   // bare calendar date book revenue/cost but do NOT move stock — so importing
   // history can't wreck on-hand quantities. NULL = stock control always active.
@@ -640,6 +644,14 @@ export const recipes = pgTable(
       scale: 2,
       mode: 'number',
     }),
+    // Where `yield_weight_grams` came from: 'measured' = the chef weighed the finished
+    // batch; 'calculated' = input weight × yield_percentage ÷ 100 (weight lines +
+    // sub-recipe grams only, never ml/pieces). NULL = no finished weight / legacy.
+    yieldWeightSource: text('yield_weight_source', { enum: ['measured', 'calculated'] }),
+    // Set once by migration 0053 for recipes whose yield % was saved under the old
+    // model (which inflated ingredient cost). Cleared when the yield is confirmed in
+    // the recipe editor. Drives a "review yield" flag — never changes a number.
+    yieldReviewNeeded: boolean('yield_review_needed').notNull().default(false),
     // Hidden per-recipe costs beyond ingredients, in integer cents (CLAUDE.md).
     laborCostCents: integer('labor_cost_cents').notNull().default(0),
     energyCostCents: integer('energy_cost_cents').notNull().default(0),
@@ -2757,6 +2769,10 @@ export const ingredientSuppliers = pgTable(
     // ingredient's own name is the only name the kitchen ever sees.
     supplierProductName: text('supplier_product_name'),
     supplierSku: text('supplier_sku'),
+    // Purchase VAT this supplier charges on this ingredient, basis points (0 = a
+    // deliberate 0%). NULL = not set → the ingredient's VAT, then the business
+    // default purchase VAT. Used only to turn an incl.-VAT quote into the net price.
+    vatRateBps: integer('vat_rate_bps'),
     // Exactly one default link per ingredient (partial unique below). The default's
     // supplier name mirrors into the legacy `ingredients.supplier` column.
     isDefault: boolean('is_default').notNull().default(false),
@@ -2788,6 +2804,10 @@ export const ingredientSuppliers = pgTable(
       .where(sql`${t.isDefault}`),
     // Pack integrity (§12.8): positive size, non-negative price, and a price only
     // when both size and unit are present (otherwise the per-unit cost is undefined).
+    check(
+      'ingredient_suppliers_vat_rate_chk',
+      sql`${t.vatRateBps} IS NULL OR (${t.vatRateBps} >= 0 AND ${t.vatRateBps} <= 10000)`,
+    ),
     check(
       'ingredient_suppliers_pack_size_chk',
       sql`${t.packSize} is null or ${t.packSize} > 0`,

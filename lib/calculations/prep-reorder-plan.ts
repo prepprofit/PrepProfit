@@ -14,10 +14,10 @@ import type { Dimension } from '@/lib/units';
  * Scaling mirrors the cost engine (lib/calculations/recipeCost.ts) so prep and cost tell
  * the same story: a recipe's lines are the canonical amounts (g / ml / count) used to make
  * its base `yieldPortions` at `yieldPercentage`. To make N portions the batch scales by
- * `N / yieldPortions`, and — exactly like `recipeCost` inflates ingredient cost by the loss
- * fraction — the RAW amount to buy/pull is divided by the yield fraction:
+ * `N / yieldPortions`. Production loss already sits in what a batch makes, so — like
+ * `recipeCost` — it is not applied to the ingredients again:
  *
- *   requiredCanonical(line) = line.quantity × (expectedPortions / yieldPortions) / yieldFraction
+ *   requiredCanonical(line) = line.quantity × (expectedPortions / yieldPortions)
  *
  * Honesty rules (mirroring the Profit Leak Detector / Daily Close):
  *   - A recipe with a non-positive `yieldPortions` can't be scaled → its demand is NOT
@@ -213,8 +213,6 @@ export function buildPrepReorderPlan(
     }
 
     const scalable = Number.isFinite(recipe.yieldPortions) && recipe.yieldPortions > 0;
-    const yieldFraction =
-      recipe.yieldPercentage > 0 ? recipe.yieldPercentage / 100 : 1;
 
     if (scalable) {
       const scale = expectedPortions / recipe.yieldPortions;
@@ -229,7 +227,7 @@ export function buildPrepReorderPlan(
           hasIssues = true;
           continue;
         }
-        const required = (lineItem.quantity * scale) / yieldFraction;
+        const required = lineItem.quantity * scale;
         if (!Number.isFinite(required) || required <= 0) continue;
         requiredByIngredient.set(
           lineItem.ingredientId,

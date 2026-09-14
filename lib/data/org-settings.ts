@@ -27,6 +27,8 @@ export type OrgSettingsValues = {
   businessLogoUrl: string | null;
   /** Single org VAT rate in integer basis points (Sprint F5); null = not configured. */
   defaultTaxRateBps: number | null;
+  /** Default PURCHASE VAT (bps) set deliberately in Settings; null = none. */
+  defaultPurchaseVatBps: number | null;
   /** Financial-only mode start date 'YYYY-MM-DD' (Sprint F5); null = always moves stock. */
   stockControlStartDate: string | null;
   /** Weekly CFO report email opt-in (default OFF); the enqueue cron reads this. */
@@ -45,6 +47,7 @@ export const DEFAULT_ORG_SETTINGS: OrgSettingsValues = {
   businessEmail: null,
   businessLogoUrl: null,
   defaultTaxRateBps: null,
+  defaultPurchaseVatBps: null,
   stockControlStartDate: null,
   weeklyCfoReportEmailEnabled: false,
   onboardedAt: null,
@@ -198,4 +201,23 @@ export async function getOrgSettings(): Promise<OrgSettingsValues> {
     getOrgSettingsRow(tx, organizationId),
   );
   return row ?? DEFAULT_ORG_SETTINGS;
+}
+
+/**
+ * Sets (or clears, with null) the business's default PURCHASE VAT in basis points —
+ * the last-resort suggestion in the ingredient supplier editor. Creates the settings
+ * row when the org has none yet, leaving every other column at its default.
+ */
+export async function setDefaultPurchaseVat(
+  db: TenantClient,
+  organizationId: string,
+  rateBps: number | null,
+): Promise<void> {
+  await db
+    .insert(organizationSettings)
+    .values({ organizationId, defaultPurchaseVatBps: rateBps })
+    .onConflictDoUpdate({
+      target: organizationSettings.organizationId,
+      set: { defaultPurchaseVatBps: rateBps, updatedAt: new Date() },
+    });
 }

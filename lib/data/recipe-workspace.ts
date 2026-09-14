@@ -37,6 +37,7 @@ import {
   type UomAnchors,
 } from '@/lib/calculations/uom';
 import { roundCanonical } from '@/lib/calculations/recipeScale';
+import { impliedYieldPercentage, recipeInputWeightGrams } from '@/lib/calculations/recipeCost';
 import type { Unit } from '@/lib/units';
 
 /**
@@ -386,6 +387,8 @@ export type RecipeWorkspaceHeaderDraft = {
    * id references a READY, non-deleted media row of THIS recipe. null clears.
    */
   coverMediaId?: string | null;
+  /** Yield calculator input (see `workspaceHeaderSchema.yield`). */
+  yield?: { percentage: number; measuredGrams: number | null };
 };
 
 /**
@@ -902,6 +905,9 @@ export async function saveRecipeWorkspace(
               note: line.note ?? null,
               sectionId,
               displaySortOrder: index,
+              // Legacy consumers (kitchen calculator, prep card) read `sort_order`;
+              // keep it equal to the chef's order so every display agrees.
+              sortOrder: index,
             })
             .where(
               and(
@@ -1139,16 +1145,47 @@ export async function saveRecipeWorkspace(
     changedAreas.push('method');
   }
 
-  const header = draft.header ?? {};
-  const changedFields = Object.keys(header).filter(
-    (k) => header[k as keyof RecipeWorkspaceHeaderDraft] !== undefined,
+  const { yield: yieldInput, ...header } = draft.header ?? {};
+  const changedFields = Object.keys(draft.header ?? {}).filter(
+    (k) => (draft.header ?? {})[k as keyof RecipeWorkspaceHeaderDraft] !== undefined,
   );
+
+  // Finished weight (loss applied once): a measured weight wins; otherwise input
+  // weight × yield%. Recomputed on every save of a calculated recipe so it follows
+  // the ingredient quantities; never guessed when ml / piece lines are present.
+  const [yieldRow] = await db
+    .select({
+      yieldPercentage: recipes.yieldPercentage,
+      yieldWeightGrams: recipes.yieldWeightGrams,
+      yieldWeightSource: recipes.yieldWeightSource,
+    })
+    .from(recipes)
+    .where(and(eq(recipes.organizationId, organizationId), eq(recipes.id, recipeId)))
+    .limit(1);
+  const yieldFields: Partial<Pick<Recipe, 'yieldPercentage' | 'yieldWeightGrams' | 'yieldWeightSource' | 'yieldReviewNeeded'>> = {};
+  if (yieldInput || yieldRow?.yieldWeightSource === 'calculated') {
+    const inputGrams = await loadRecipeInputWeightGrams(db, organizationId, recipeId);
+    if (yieldInput?.measuredGrams != null) {
+      const implied = impliedYieldPercentage(inputGrams, yieldInput.measuredGrams);
+      yieldFields.yieldWeightGrams = Math.round(yieldInput.measuredGrams * 100) / 100;
+      yieldFields.yieldWeightSource = 'measured';
+      yieldFields.yieldPercentage =
+        implied !== null ? Math.min(100, Math.max(1, Math.round(implied))) : yieldInput.percentage;
+    } else {
+      const percentage = yieldInput?.percentage ?? yieldRow?.yieldPercentage ?? 100;
+      const grams = inputGrams !== null ? Math.round(((inputGrams * percentage) / 100) * 100) / 100 : null;
+      yieldFields.yieldPercentage = percentage;
+      yieldFields.yieldWeightGrams = grams !== null && grams > 0 ? grams : null;
+      yieldFields.yieldWeightSource = grams !== null && grams > 0 ? 'calculated' : null;
+    }
+    if (yieldInput) yieldFields.yieldReviewNeeded = false;
+  }
   if (changedFields.length > 0) changedAreas.push('header');
   const newVersion = expectedVersion + 1;
 
   await db
     .update(recipes)
-    .set({ ...header, version: newVersion })
+    .set({ ...header, ...yieldFields, version: newVersion })
     .where(
       and(eq(recipes.organizationId, organizationId), eq(recipes.id, recipeId)),
     );
@@ -1170,6 +1207,35 @@ export async function saveRecipeWorkspace(
   });
 
   return { ok: true, version: newVersion };
+}
+
+/**
+ * A recipe's ingredient INPUT weight in grams: weight lines plus sub-recipe grams.
+ * Null when any line is measured in ml or pieces (no gram value is assumed).
+ */
+export async function loadRecipeInputWeightGrams(
+  db: TenantClient,
+  organizationId: string,
+  recipeId: string,
+): Promise<number | null> {
+  const [lineRows, componentRows] = await Promise.all([
+    db
+      .select({ quantity: recipeIngredients.quantity, dimension: ingredients.dimension })
+      .from(recipeIngredients)
+      .innerJoin(
+        ingredients,
+        and(eq(ingredients.organizationId, organizationId), eq(ingredients.id, recipeIngredients.ingredientId)),
+      )
+      .where(and(eq(recipeIngredients.organizationId, organizationId), eq(recipeIngredients.recipeId, recipeId))),
+    db
+      .select({ grams: recipeComponents.quantityGrams })
+      .from(recipeComponents)
+      .where(and(eq(recipeComponents.organizationId, organizationId), eq(recipeComponents.recipeId, recipeId))),
+  ]);
+  return recipeInputWeightGrams(
+    lineRows.map((l) => ({ dimension: l.dimension, quantity: Number(l.quantity) })),
+    componentRows.map((c) => Number(c.grams)),
+  );
 }
 
 /** Per-org Recipes 2.0 flag (plan Release B). Missing settings row = OFF. */

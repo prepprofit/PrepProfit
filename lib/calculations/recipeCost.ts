@@ -47,7 +47,11 @@ function prepYieldFraction(prepYieldBps: number | undefined): number {
 
 export type RecipeCostInput = {
   yieldPortions: number;
-  /** Usable yield after trim/loss as a percentage (100 = no loss). */
+  /**
+   * Output yield after production loss (100 = no loss). Loss applies ONCE, to what a
+   * batch MAKES — finished weight = input weight × yield ÷ 100 — so it never inflates
+   * what the batch COSTS here. Kept on the input for callers that pass the recipe row.
+   */
   yieldPercentage: number;
   laborCostCents: number;
   energyCostCents: number;
@@ -63,7 +67,7 @@ export type RecipeCostInput = {
 };
 
 export type RecipeCost = {
-  /** Ingredient cost after the loss adjustment, in cents. */
+  /** Ingredient cost of the batch (what goes in), in cents. */
   ingredientCostCents: number;
   /** Labor + energy + packaging, in cents. */
   hiddenCostCents: number;
@@ -170,10 +174,9 @@ export function recipeCost(input: RecipeCostInput): RecipeCost {
     input.lines.reduce((sum, line) => sum + lineCostCents(line), 0) +
     (input.componentMaterialCostsCents ?? []).reduce((sum, c) => sum + c, 0);
 
-  // Trim/loss inflates the ingredient cost needed per usable output. Hidden costs
-  // are per batch and are NOT loss-adjusted.
-  const yieldFraction = input.yieldPercentage > 0 ? input.yieldPercentage / 100 : 1;
-  const ingredientCost = rawIngredientCost / yieldFraction;
+  // Production loss is applied once, to the finished WEIGHT (see
+  // `finishedWeightGrams`) — never by inflating the ingredients' cost as well.
+  const ingredientCost = rawIngredientCost;
 
   const hiddenCostCents =
     input.laborCostCents + input.energyCostCents + input.packagingCostCents;
@@ -187,4 +190,55 @@ export function recipeCost(input: RecipeCostInput): RecipeCost {
     totalCostCents: Math.round(totalFloat),
     costPerPortionCents: Math.round(totalFloat / portions),
   };
+}
+
+/**
+ * Finished usable output of a batch, in grams (Recipes yield calculator):
+ *
+ *   measured weight, when the chef weighed the batch; otherwise
+ *   input weight × yield% ÷ 100, where input weight = weight lines (g) + sub-recipe
+ *   components (finished g).
+ *
+ * Volume and count lines never count as grams — with any of them present (and no
+ * measured weight) the result is `null`, so the UI asks for a measured weight
+ * instead of inventing one.
+ */
+export function finishedWeightGrams(input: {
+  measuredGrams: number | null | undefined;
+  yieldPercentage: number;
+  lines: { dimension: Dimension; quantity: number }[];
+  componentGrams: number[];
+}): number | null {
+  if (input.measuredGrams != null && Number.isFinite(input.measuredGrams) && input.measuredGrams > 0) {
+    return input.measuredGrams;
+  }
+  const weight = recipeInputWeightGrams(input.lines, input.componentGrams);
+  if (weight === null) return null;
+  if (!Number.isFinite(input.yieldPercentage) || input.yieldPercentage <= 0) return null;
+  const grams = Math.round(((weight * input.yieldPercentage) / 100) * 100) / 100;
+  return grams > 0 ? grams : null;
+}
+
+/** Ingredient input weight in grams, or null when a volume/count line has no gram value. */
+export function recipeInputWeightGrams(
+  lines: { dimension: Dimension; quantity: number }[],
+  componentGrams: number[],
+): number | null {
+  let grams = 0;
+  for (const line of lines) {
+    if (line.dimension !== 'weight') return null;
+    if (!Number.isFinite(line.quantity) || line.quantity < 0) return null;
+    grams += line.quantity;
+  }
+  for (const g of componentGrams) {
+    if (!Number.isFinite(g) || g < 0) return null;
+    grams += g;
+  }
+  return grams > 0 ? grams : null;
+}
+
+/** Yield % that a measured finished weight implies (for the calculator's display). */
+export function impliedYieldPercentage(inputGrams: number | null, measuredGrams: number | null): number | null {
+  if (inputGrams == null || measuredGrams == null || !(inputGrams > 0) || !(measuredGrams > 0)) return null;
+  return Math.round((measuredGrams / inputGrams) * 10_000) / 100;
 }

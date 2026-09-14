@@ -60,28 +60,28 @@ describe('recipeCost with componentMaterialCostsCents', () => {
     lines: [{ dimension: 'weight', priceCents: 100, quantity: 1000 }], // 100
   };
 
-  it('adds component material cost before the loss adjustment', () => {
-    // raw material = 100 + 150 = 250; 80% yield → 312.5 → round once = 313.
+  it('adds component material cost; yield never inflates it (loss sits in finished weight)', () => {
+    // raw material = 100 + 150 = 250; an 80% yield leaves the cost at 250.
     const cost = recipeCost({
       ...base,
       yieldPercentage: 80,
       componentMaterialCostsCents: [150],
     });
-    expect(cost.ingredientCostCents).toBe(313);
-    expect(cost.totalCostCents).toBe(313);
+    expect(cost.ingredientCostCents).toBe(250);
+    expect(cost.totalCostCents).toBe(250);
   });
 
-  it('does NOT loss-adjust hidden costs, exactly as today', () => {
+  it('adds hidden costs as they are', () => {
     const cost = recipeCost({
       ...base,
       yieldPercentage: 50,
       laborCostCents: 100,
       componentMaterialCostsCents: [100],
     });
-    // (100 + 100) / 0.5 = 400 material; + 100 labor = 500.
-    expect(cost.ingredientCostCents).toBe(400);
+    // 100 + 100 = 200 material; + 100 labor = 300.
+    expect(cost.ingredientCostCents).toBe(200);
     expect(cost.hiddenCostCents).toBe(100);
-    expect(cost.totalCostCents).toBe(500);
+    expect(cost.totalCostCents).toBe(300);
   });
 
   it('rounds once at the batch boundary with fractional component costs', () => {
@@ -129,14 +129,14 @@ describe('explodeRecipeTree', () => {
     const result = explodeRecipeTree([{ recipeId: 'r1', plannedQty: 4 }], nodes);
     expect(result.complete).toBe(true);
     if (result.complete) {
-      // 1000 × 4 / 10 / 0.8 = 500
+      // 1000 × 4 / 10 = 400 (the 80% yield is already in the portions a batch makes)
       expect(result.requirements).toEqual([
-        { ingredientId: 'flour', quantityCanonical: 500 },
+        { ingredientId: 'flour', quantityCanonical: 400 },
       ]);
     }
   });
 
-  it('explodes a 2-level tree through the child batch scale + child loss', () => {
+  it('explodes a 2-level tree through the child batch scale (child loss sits in its finished weight)', () => {
     const nodes = new Map<string, RecipeTreeNode>([
       [
         'parent',
@@ -160,9 +160,9 @@ describe('explodeRecipeTree', () => {
     expect(result.complete).toBe(true);
     if (result.complete) {
       // parentScale = 4/2/1 = 2 → sugar 200; dough finished needed = 500×2 = 1000 g
-      // childBatchScale = 1000/1000 = 1; child loss 80% → flour 800/0.8 = 1000.
+      // childBatchScale = 1000/1000 = 1 → flour 800 (not re-inflated by the 80% yield).
       expect(result.requirements).toEqual([
-        { ingredientId: 'flour', quantityCanonical: 1000 },
+        { ingredientId: 'flour', quantityCanonical: 800 },
         { ingredientId: 'sugar', quantityCanonical: 200 },
       ]);
     }

@@ -256,10 +256,10 @@ export async function loadActiveCatalogue(
         flatMemo.set(recipeId, null);
         return null;
       }
-      // Finished-output slice of the child batch, then the child's own loss
-      // (material only — hidden costs are per-batch, never loss-adjusted).
+      // Finished-output slice of the child batch. The child's loss already sits in
+      // its finished weight, so material and hidden costs scale alike (loss once).
       const batchScale = edge.quantityGrams / childYield;
-      const materialScale = batchScale / ((childLossPct as number) / 100);
+      const materialScale = batchScale;
       for (const line of sub.lines) {
         out.push({ ...line, quantity: line.quantity * materialScale });
       }

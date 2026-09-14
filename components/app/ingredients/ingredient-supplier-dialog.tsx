@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
+import { ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IGNORE_PASSWORD_MANAGERS, Input } from '@/components/ui/input';
 import { SupplierPicker } from '@/components/app/ingredients/supplier-picker';
@@ -9,78 +10,56 @@ import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { useActionError } from '@/lib/i18n/use-action-error';
-import { centsToAmountInput, formatMoney, parseMoneyToCents } from '@/lib/format/money';
+import { centsToAmountInput, formatMoney } from '@/lib/format/money';
+import { dimensionOf, formatInUnit, PRICED_UNIT_LABEL, unitLabel, type Dimension, type Unit } from '@/lib/units';
+import { quotedPriceCents, supplierUnitCost } from '@/lib/calculations/purchasePrice';
 import {
-  dimensionOf,
-  formatInUnit,
-  PRICED_UNIT_LABEL,
-  unitLabel,
-  type Dimension,
-  type Unit,
-} from '@/lib/units';
-import {
-  quotedPriceCents,
-  supplierUnitCost,
-  type SupplierPriceBasis,
-} from '@/lib/calculations/purchasePrice';
-import { PACK_UNITS, PRICE_BASES } from '@/lib/validation/suppliers';
+  derivePriceCents,
+  parseMoneyText,
+  parsePositiveDecimal,
+  parseWholeCount,
+  suggestPurchaseVat,
+  type PriceSource,
+} from '@/lib/calculations/supplierPriceForm';
+import { PACK_UNITS } from '@/lib/validation/suppliers';
 import { parseVatPercent } from '@/lib/validation/vat-rate';
-import {
-  isPackBlockingSave,
-  validateSupplierPackForm,
-  type SupplierPackFormErrors,
-} from '@/lib/validation/supplier-pack-form';
 import {
   acceptPendingCostAction,
   clearIngredientSupplierAction,
   setIngredientSupplierAction,
 } from '@/app/(app)/ingredients/actions';
 import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
-import type {
-  SupplierPricePrefs,
-  VatCategoryOption,
-} from '@/components/app/ingredients/ingredient-grid';
+import type { SupplierPricePrefs, VatCategoryOption } from '@/components/app/ingredients/ingredient-grid';
 
 /**
- * Set the DEFAULT supplier + purchase pack on one ingredient (Sprint 7),
- * MANAGER-ONLY (the grid only mounts it for cost-seeing managers; the server is
- * the real gate).
+ * Ingredient supplier editor (manager-only; the server is the real gate).
  *
- * The dialog asks TWO QUESTIONS and gives ONE ANSWER:
- *   • what you buy    — units × pack size + unit (a 4 × 1,65 kg case)
- *   • what they charge — the quoted price, plus how to read it (per pack / per
- *     unit / per kg, excl. or incl. VAT)
- *   • the answer      — the live cost per priced unit. That number is the safety
- *     net: forget the case quantity and it jumps 4×, before it reaches a recipe.
+ * Supplier first, pricing optional: pick a supplier and Save — nothing else is
+ * required. Pack, price and VAT can be completed later, one at a time; a part left
+ * as it was keeps its stored value, a cleared field is stored as unknown (never 0),
+ * and a typo is marked beside its field without blocking the supplier.
  *
- * The supplier's PRODUCT NAME lives here and only here — purchasing sees it,
- * recipes and menus never do. Native `<dialog>`, mirroring the allergen editor.
+ * Prices work in either direction on ONE VAT basis: type the pack price or the price
+ * per kg / litre / piece and the other is calculated (and labelled so). The last
+ * price typed is the source; changing the pack keeps it and recalculates the other.
+ * VAT is suggested from what the system already knows (this entry → the ingredient
+ * → the business's default purchase VAT) and applied once, on the server, when an
+ * incl.-VAT price is stored as the net pack price. The supplier's product name and
+ * code stay purchasing-only.
  */
 
-/**
- * One inline message, under the field it belongs to. Rendering nothing when there
- * is nothing to say keeps the form's height stable on the happy path.
- */
-function FieldError({ id, message }: { id?: string; message: string | null }) {
+const DEFAULT_PACK_UNIT: Record<Dimension, Unit> = { weight: 'kg', volume: 'l', count: 'count' };
+
+function FieldError({ id, message }: { id: string; message: string | null }) {
   if (!message) return null;
   return (
-    <p id={id} className="text-xs text-red-600 dark:text-red-400">
+    <p id={id} className="text-xs text-red-700 dark:text-red-300">
       {message}
     </p>
   );
 }
 
-/** Red hairline on the offending control, so the message has something to point at. */
-function errorRing(message: string | null): string | undefined {
-  return message ? 'border-red-400 dark:border-red-500/60' : undefined;
-}
-
-/** Pack unit pre-filled from the ingredient's own dimension (the common case). */
-const DEFAULT_PACK_UNIT: Record<Dimension, Unit> = {
-  weight: 'kg',
-  volume: 'l',
-  count: 'count',
-};
+export type SupplierSavedNotice = { message: string; incomplete: boolean };
 
 export function IngredientSupplierDialog({
   open,
@@ -89,11 +68,13 @@ export function IngredientSupplierDialog({
   dimension,
   currency,
   vatCategories,
-  vatCategoryId: initialVatCategoryId,
-  vatRateBps: initialVatRateBps,
+  vatCategoryId: ingredientBandId,
+  vatRateBps: ingredientVatBps,
+  businessPurchaseVatBps,
   supplierNames,
   pricePrefs,
   initialLink,
+  currentPriceCents,
   pendingPriceCents,
   onClose,
   onSaved,
@@ -105,139 +86,119 @@ export function IngredientSupplierDialog({
   ingredientName: string;
   dimension: Dimension;
   currency: string;
-  /** The org's purchase VAT bands; empty = none configured (no gross entry). */
+  /** VAT bands — offered as one-click shortcuts only. */
   vatCategories: VatCategoryOption[];
-  /** The ingredient's legacy band; null = fall back to the org's default band. */
+  /** The ingredient's explicitly chosen VAT band (legacy); null = none. */
   vatCategoryId: string | null;
-  /** The ingredient's own typed VAT rate (bps); null = not set (band / default). */
+  /** The ingredient's own purchase VAT (bps); null = not set. */
   vatRateBps: number | null;
-  /** Existing supplier names for the picker (manager's active suppliers). */
+  /** The business's configured default purchase VAT (bps); null = none. */
+  businessPurchaseVatBps: number | null;
   supplierNames: string[];
-  /** Remembered price-entry mode per supplier NAME, so the selects prefill. */
   pricePrefs: Record<string, SupplierPricePrefs>;
   initialLink: DefaultSupplierSummary | null;
+  /** The ingredient's approved cost per priced unit (excl. VAT). */
+  currentPriceCents: number | null;
   pendingPriceCents: number | null;
   onClose: () => void;
-  onSaved: (
-    summary: DefaultSupplierSummary,
-    prefs: SupplierPricePrefs,
-    vatRateBps: number | null,
-  ) => void;
+  onSaved: (summary: DefaultSupplierSummary, prefs: SupplierPricePrefs, notice: SupplierSavedNotice) => void;
   onCleared: () => void;
   onAccepted: (priceCents: number) => void;
 }) {
   const t = useTranslations('suppliers.ingredientEditor');
   const actionError = useActionError();
   const ref = React.useRef<HTMLDialogElement>(null);
-  const titleId = React.useId();
+  const id = React.useId();
+  const pricedUnit = PRICED_UNIT_LABEL[dimension];
 
+  const bandBps = vatCategories.find((c) => c.id === ingredientBandId)?.rateBps ?? null;
+  const unitOptions = React.useMemo(() => PACK_UNITS.filter((u) => dimensionOf(u) === dimension), [dimension]);
+  const vatShortcuts = React.useMemo(
+    () => [...new Map(vatCategories.map((c) => [c.rateBps, c])).values()],
+    [vatCategories],
+  );
+
+  // ── Form state ────────────────────────────────────────────────────────────
   const [supplierName, setSupplierName] = React.useState('');
   const [productName, setProductName] = React.useState('');
   const [sku, setSku] = React.useState('');
-  const [unitsPerPack, setUnitsPerPack] = React.useState('1');
-  const [packSize, setPackSize] = React.useState('');
-  const [packUnit, setPackUnit] = React.useState<Unit | ''>('');
-  const [packPriceText, setPackPriceText] = React.useState('');
-  const [basis, setBasis] = React.useState<SupplierPriceBasis>('pack');
+  const [unitsText, setUnitsText] = React.useState('1');
+  const [sizeText, setSizeText] = React.useState('');
+  const [packUnit, setPackUnit] = React.useState<Unit>(DEFAULT_PACK_UNIT[dimension]);
   const [includesVat, setIncludesVat] = React.useState(false);
-  // The ingredient's purchase VAT rate as typed (percent). '' = not set → the
-  // ingredient's band, else the org's default band. '0' is a deliberate 0% rate.
   const [vatText, setVatText] = React.useState('');
-  // The stored price is the whole pack EXCL. VAT; what we show is that value
-  // converted into the supplier's quoting mode, which can differ by a cent on the
-  // round trip. So while the manager hasn't touched any pricing control we send the
-  // STORED cents straight back — opening and saving a link never moves the price.
-  const [priceTouched, setPriceTouched] = React.useState(false);
-  // The top banner now carries ONLY server-returned codes (VAT_RATE_REQUIRED,
-  // SUPPLIER_INACTIVE, …). Anything the form can see for itself is reported
-  // inline, next to the field that is wrong.
+  const [vatTouched, setVatTouched] = React.useState(false);
+  const [priceSource, setPriceSource] = React.useState<PriceSource>('pack');
+  const [sourceText, setSourceText] = React.useState('');
+  /** Which parts were changed — untouched parts aren't sent, so the server keeps them. */
+  const [touched, setTouched] = React.useState({ pack: false, price: false, details: false });
+  const [showDetails, setShowDetails] = React.useState(false);
   const [bannerError, setBannerError] = React.useState<string | null>(null);
-  // A supplier name is missing on every fresh form, so its inline error waits for
-  // the first Save rather than greeting the manager in red.
-  const [saveAttempted, setSaveAttempted] = React.useState(false);
+  const [priceNotice, setPriceNotice] = React.useState<string | null>(null);
+  const [nameAttempted, setNameAttempted] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
-
-  // The supplier whose quoting mode is currently loaded, so switching supplier
-  // re-seeds the two selects exactly once instead of on every keystroke.
   const seededFor = React.useRef<string | null>(null);
 
-  // Pack units valid for this ingredient's dimension (PACK_UNIT_MISMATCH otherwise).
-  const unitOptions = React.useMemo(
-    () => PACK_UNITS.filter((u) => dimensionOf(u) === dimension),
-    [dimension],
-  );
-  const pricedUnit = PRICED_UNIT_LABEL[dimension];
+  const suggestion = suggestPurchaseVat({
+    entryBps: initialLink?.vatRateBps ?? null,
+    ingredientBps: ingredientVatBps,
+    bandBps,
+    businessBps: businessPurchaseVatBps,
+  });
 
-  /**
-   * The rate that converts this quote: the typed rate when set, else the
-   * ingredient's band, else the org's default band. The server resolves it the
-   * same way from what is saved.
-   */
-  const fallbackCategory =
-    vatCategories.find((c) => c.id === initialVatCategoryId) ??
-    vatCategories.find((c) => c.isDefault) ??
-    null;
-  const vatParsed = parseVatPercent(vatText);
-  const vatInvalid = vatParsed === 'invalid';
-  const ownRateBps = vatParsed === 'invalid' ? null : vatParsed;
-  const taxRateBps = ownRateBps ?? fallbackCategory?.rateBps ?? null;
-  const presetRates = React.useMemo(() => {
-    const seen = new Set<number>();
-    return vatCategories.filter((c) => (seen.has(c.rateBps) ? false : (seen.add(c.rateBps), true)));
-  }, [vatCategories]);
-
-  // Re-seed from the current link whenever the dialog opens.
+  // Re-seed from what is stored whenever the dialog opens.
   React.useEffect(() => {
     if (!open) return;
     const name = initialLink?.supplierName ?? '';
-    const prefs = pricePrefs[name];
-    const seedBasis = prefs?.basis ?? 'pack';
-    // Seed the rate from the ingredient's stored band, NOT from the derived
-    // `taxRateBps` — that changes as the manager picks a band, and depending on it
-    // here would re-seed (and wipe) the whole form on every VAT change.
-    const seedRateBps =
-      initialVatRateBps ??
-      (vatCategories.find((c) => c.id === initialVatCategoryId) ??
-        vatCategories.find((c) => c.isDefault))?.rateBps ??
-      null;
-    // A gross-quoting supplier is only honoured while a rate exists to strip.
-    const seedInclVat = (prefs?.includesVat ?? false) && seedRateBps != null;
     const units = initialLink?.unitsPerPack ?? 1;
     const size = initialLink?.packSize ?? null;
-    const unit = (initialLink?.packUnit as Unit | null) ?? null;
+    const unit = (initialLink?.packUnit as Unit | null) ?? DEFAULT_PACK_UNIT[dimension];
+    const rate = suggestion?.bps ?? null;
+    const prefs = pricePrefs[name];
+    // A supplier who quotes incl. VAT is shown that way only while a rate is known.
+    const inclVat = (prefs?.includesVat ?? false) && rate != null;
+    const showUnitPrice = prefs?.basis === 'priced';
 
     setSupplierName(name);
     setProductName(initialLink?.supplierProductName ?? '');
     setSku(initialLink?.supplierSku ?? '');
-    setUnitsPerPack(String(units));
-    setPackSize(size != null ? String(size) : '');
-    setPackUnit(unit ?? DEFAULT_PACK_UNIT[dimension]);
-    setBasis(seedBasis);
-    setIncludesVat(seedInclVat);
-    setVatText(initialVatRateBps != null ? String(initialVatRateBps / 100) : '');
-    // Show the stored net pack price back in the supplier's quoting mode.
+    setShowDetails(Boolean(initialLink?.supplierProductName || initialLink?.supplierSku));
+    setUnitsText(String(units));
+    setSizeText(size != null ? String(size) : '');
+    setPackUnit(unit);
+    setIncludesVat(inclVat);
+    setVatText(rate != null ? String(rate / 100) : '');
+    setVatTouched(false);
+    setTouched({ pack: false, price: false, details: false });
+
+    // The stored net pack price shown back on the chosen basis (display only).
     const stored = initialLink?.packPriceCents ?? null;
-    const shown =
-      stored != null && size != null && unit != null
-        ? quotedPriceCents({
-            packPriceExclVatCents: stored,
-            basis: seedBasis,
-            includesVat: seedInclVat,
-            taxRateBps: seedRateBps,
-            unitsPerPack: units,
-            packSize: size,
-            packUnit: unit,
-            dimension,
-          })
-        : null;
-    setPackPriceText(shown != null ? centsToAmountInput(shown) : '');
-    setPriceTouched(false);
-    // This supplier's mode is already loaded — don't let the switch effect below
-    // treat the initial name as a change and mark the price touched.
+    let text = '';
+    if (stored != null && size != null && initialLink?.packUnit) {
+      try {
+        const shown = quotedPriceCents({
+          packPriceExclVatCents: stored,
+          basis: showUnitPrice ? 'priced' : 'pack',
+          includesVat: inclVat,
+          taxRateBps: rate,
+          unitsPerPack: units,
+          packSize: size,
+          packUnit: unit,
+          dimension,
+        });
+        text = shown != null ? centsToAmountInput(shown) : '';
+      } catch {
+        text = '';
+      }
+    }
+    setPriceSource(showUnitPrice ? 'unit' : 'pack');
+    setSourceText(text);
     seededFor.current = name;
     setBannerError(null);
-    setSaveAttempted(false);
-  }, [open, initialLink, pricePrefs, dimension, vatCategories, initialVatCategoryId, initialVatRateBps]);
+    setPriceNotice(null);
+    setNameAttempted(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once per open / stored entry
+  }, [open, initialLink, dimension]);
 
   React.useEffect(() => {
     const el = ref.current;
@@ -246,163 +207,149 @@ export function IngredientSupplierDialog({
     else if (!open && el.open) el.close();
   }, [open]);
 
-  // Typing/picking a DIFFERENT known supplier adopts that supplier's remembered
-  // quoting mode. Keyed on the name so it fires once per supplier, not per keystroke.
+  // Picking a different known supplier adopts how that supplier quotes (VAT basis).
   React.useEffect(() => {
     if (!open) return;
     const key = supplierName.trim();
     if (key === '' || key === seededFor.current) return;
-    const prefs = pricePrefs[key];
     seededFor.current = key;
-    if (!prefs) return;
-    if (prefs.basis) setBasis(prefs.basis);
-    if (prefs.includesVat != null) setIncludesVat(prefs.includesVat && taxRateBps != null);
-    setPriceTouched(true);
-  }, [open, supplierName, pricePrefs, taxRateBps]);
+    const prefs = pricePrefs[key];
+    if (prefs?.includesVat != null && !touched.price) setIncludesVat(prefs.includesVat);
+  }, [open, supplierName, pricePrefs, touched.price]);
 
-  /** Any pricing control the manager touches invalidates the send-stored shortcut. */
-  const touchPrice = React.useCallback(() => setPriceTouched(true), []);
+  // ── Parsed values; only what was actually typed is validated ─────────────
+  const units = unitsText.trim() === '' ? 1 : parseWholeCount(unitsText);
+  const size = sizeText.trim() === '' ? null : parsePositiveDecimal(sizeText);
+  const sizeInvalid = sizeText.trim() !== '' && size === null;
+  const unitsInvalid = units === null;
+  const vatParsed = parseVatPercent(vatText);
+  const vatInvalid = vatParsed === 'invalid';
+  const vatBps = vatInvalid ? (suggestion?.bps ?? null) : vatParsed;
+  const sourceCents = sourceText.trim() === '' ? null : parseMoneyText(sourceText);
+  const priceInvalid = sourceText.trim() !== '' && sourceCents === null;
 
-  // Parsed pack, shared by the live readout and the save payload.
-  const sizeNum = packSize.trim() === '' ? Number.NaN : Number(packSize);
-  const unitsNum = unitsPerPack.trim() === '' ? Number.NaN : Number(unitsPerPack);
-  const hasSize = Number.isFinite(sizeNum) && sizeNum > 0;
-  const hasUnits = Number.isInteger(unitsNum) && unitsNum > 0;
-  const unit = packUnit === '' ? null : packUnit;
+  const pack = size !== null && units !== null ? { unitsPerPack: units, packSize: size, packUnit, dimension } : null;
+  const derivedCents = pack && sourceCents !== null ? derivePriceCents(priceSource, sourceCents, pack) : null;
+  const packCents = priceSource === 'pack' ? sourceCents : derivedCents;
+  const unitCents = priceSource === 'unit' ? sourceCents : derivedCents;
+  const needsVatForPrice = includesVat && sourceCents !== null && vatBps === null;
+  const priceNeedsPack = sourceCents !== null && pack === null;
+  const totalLabel = pack ? formatInUnit(pack.unitsPerPack * pack.packSize, packUnit) : null;
 
-  /**
-   * "6.6 kg" — the quantity one purchase actually brings in. `formatInUnit`
-   * already appends the unit label; appending it again is what produced "25 kg kg".
-   */
-  const totalLabel = hasSize && hasUnits && unit ? formatInUnit(unitsNum * sizeNum, unit) : null;
-
-  /** The one number that matters: cost per kg / litre / piece. */
-  const readout = React.useMemo(() => {
-    if (!hasSize || !hasUnits || !unit || packPriceText.trim() === '') return null;
+  // What the entered price would make the ingredient cost (net, per priced unit).
+  let newNetUnitCents: number | null = null;
+  const packPriceForCost = packCents;
+  if (pack !== null && packPriceForCost !== null) {
     try {
-      return supplierUnitCost({
-        priceCents: parseMoneyToCents(packPriceText),
-        basis,
+      newNetUnitCents = supplierUnitCost({
+        priceCents: packPriceForCost,
+        basis: 'pack',
         includesVat,
-        taxRateBps,
-        unitsPerPack: unitsNum,
-        packSize: sizeNum,
-        packUnit: unit,
-        dimension,
-      });
-    } catch {
-      // An impossible pack (NaN/0 after conversion) — the readout just stays empty.
-      return null;
-    }
-  }, [
-    hasSize,
-    hasUnits,
-    unit,
-    packPriceText,
-    basis,
-    includesVat,
-    taxRateBps,
-    unitsNum,
-    sizeNum,
-    dimension,
-  ]);
-
-  /**
-   * Field-level validation, live. Pure and unit-tested in
-   * `tests/supplier-pack-form.test.ts` — it is the rule most likely to drift, and
-   * it decides whether Save is clickable at all.
-   */
-  const fieldErrors: SupplierPackFormErrors = React.useMemo(
-    () =>
-      validateSupplierPackForm({
-        supplierName,
-        unitsPerPack,
-        packSize,
+        taxRateBps: vatBps,
+        unitsPerPack: pack.unitsPerPack,
+        packSize: pack.packSize,
         packUnit,
-        packPrice: packPriceText,
-      }),
-    [supplierName, unitsPerPack, packSize, packUnit, packPriceText],
-  );
+        dimension,
+      })?.perPricedUnitExclVatCents ?? null;
+    } catch {
+      newNetUnitCents = null;
+    }
+  }
+  const costDiffers =
+    touched.price &&
+    !needsVatForPrice &&
+    newNetUnitCents !== null &&
+    currentPriceCents !== null &&
+    currentPriceCents > 0 &&
+    newNetUnitCents !== currentPriceCents;
 
-  /**
-   * Save is dead ONLY on a half-described pack — a state the manager created and
-   * can see marked. A name-only link still saves (decision D1).
-   */
-  const saveBlocked = isPackBlockingSave(fieldErrors);
+  const nameMissing = supplierName.trim() === '';
+  const vatHint = vatTouched
+    ? vatParsed === null
+      ? t('vatHint.cleared')
+      : null
+    : suggestion
+      ? t(`vatHint.${suggestion.source}`)
+      : t('vatHint.none');
 
-  /** Inline message for a field, or null when it has nothing to say yet. */
-  const fieldError = (field: keyof SupplierPackFormErrors): string | null => {
-    const code = fieldErrors[field];
-    if (!code) return null;
-    // Pack errors only exist once the manager typed a size or a price, so they
-    // are always self-inflicted and safe to show immediately. The name error is
-    // the one that would fire on an untouched form.
-    if (field === 'supplierName' && !saveAttempted) return null;
-    return t(`fieldErrors.${code}`);
-  };
+  function editPrice(source: PriceSource, text: string) {
+    setPriceSource(source);
+    setSourceText(text);
+    setTouched((prev) => ({ ...prev, price: true }));
+    setPriceNotice(null);
+  }
+  function touchPack() {
+    setTouched((prev) => ({ ...prev, pack: true }));
+    setPriceNotice(null);
+  }
 
-  const onSave = () => {
-    setSaveAttempted(true);
-    const name = supplierName.trim();
-    if (name === '' || saveBlocked || vatInvalid) return;
-    const priceCents =
-      packPriceText.trim() === '' ? undefined : parseMoneyToCents(packPriceText);
+  // ── Save ──────────────────────────────────────────────────────────────────
+  function buildPayload(): Record<string, unknown> {
+    const payload: Record<string, unknown> = { supplierName: supplierName.trim() };
+    if (touched.details) {
+      payload.supplierProductName = productName.trim();
+      payload.supplierSku = sku.trim();
+    }
+    if (touched.pack) {
+      // A mistyped value is left out (the stored one stays) and marked in place.
+      if (!unitsInvalid) payload.unitsPerPack = units;
+      if (!sizeInvalid) payload.packSize = size;
+      payload.packUnit = packUnit;
+    }
+    // Only a deliberate VAT edit is remembered; a suggested default is not stored.
+    if (vatTouched && !vatInvalid) payload.vatRateBps = vatParsed;
+    const pricingChanged = touched.price || touched.pack || (vatTouched && includesVat);
+    if (pricingChanged && !priceInvalid) {
+      payload.packPriceCents = sourceCents;
+      payload.priceBasis = priceSource === 'pack' ? 'pack' : 'priced';
+      payload.priceIncludesVat = includesVat;
+    }
+    return payload;
+  }
 
-    // Untouched pricing → replay the stored whole-pack net price verbatim (and leave
-    // the supplier's remembered mode alone by omitting both hints).
-    const keepStored =
-      !priceTouched && initialLink?.packPriceCents != null && priceCents !== undefined;
-    const pricePart = keepStored
-      ? { packPriceCents: initialLink.packPriceCents as number }
-      : priceCents !== undefined
-        ? {
-            packPriceCents: priceCents,
-            priceBasis: basis,
-            priceIncludesVat: includesVat,
-          }
-        : {};
-
-    const input = {
-      supplierName: name,
-      ...(productName.trim() ? { supplierProductName: productName.trim() } : {}),
-      ...(sku.trim() ? { supplierSku: sku.trim() } : {}),
-      ...(hasSize ? { packSize: sizeNum } : {}),
-      ...(unit ? { packUnit: unit } : {}),
-      ...(hasUnits ? { unitsPerPack: unitsNum } : {}),
-      // Always sent (null = not set) so clearing the rate is a real edit, not an
-      // omission the server would read as "leave it alone".
-      vatRateBps: ownRateBps,
-      ...pricePart,
-    };
-
+  function save() {
+    setNameAttempted(true);
+    if (nameMissing) return;
     setBannerError(null);
+    setPriceNotice(null);
     startTransition(async () => {
-      const result = await setIngredientSupplierAction(ingredientId, input);
-      if (result.ok) {
-        onSaved(
-          {
-            supplierName: name,
-            packSize: hasSize ? sizeNum : null,
-            packUnit: unit,
-            // What the server stored: the whole pack, excl. VAT.
-            packPriceCents: keepStored
-              ? (initialLink.packPriceCents as number)
-              : (readout?.packPriceExclVatCents ?? null),
-            unitsPerPack: hasUnits ? unitsNum : 1,
-            supplierProductName: productName.trim() || null,
-            supplierSku: sku.trim() || null,
-          },
-          { basis, includesVat },
-          ownRateBps,
-        );
-        onClose();
-      } else {
+      const result = await setIngredientSupplierAction(ingredientId, buildPayload());
+      if (!result.ok) {
+        // Everything typed stays in the form so it can be corrected and saved again.
         setBannerError(actionError(result.code));
+        return;
+      }
+      const prefs: SupplierPricePrefs = { basis: priceSource === 'pack' ? 'pack' : 'priced', includesVat };
+      const { priceStatus, link, pendingRaised } = result.data;
+      const incomplete =
+        priceStatus === 'needs_vat' ||
+        priceStatus === 'needs_pack' ||
+        priceInvalid ||
+        sizeInvalid ||
+        unitsInvalid ||
+        vatInvalid;
+      const message =
+        priceStatus === 'needs_vat'
+          ? t('saved.needsVat')
+          : priceStatus === 'needs_pack'
+            ? t('saved.needsPack')
+            : incomplete
+              ? t('saved.partial')
+              : pendingRaised
+                ? t('saved.pending', { name: link.supplierName })
+                : t('saved.ok', { name: link.supplierName });
+      onSaved(link, prefs, { message, incomplete });
+      if (incomplete) {
+        // The supplier is saved; stay open so the price can be finished.
+        setPriceNotice(message);
+        setTouched((prev) => ({ ...prev, details: false }));
+      } else {
+        onClose();
       }
     });
-  };
+  }
 
-  const onClear = () => {
+  function clearSupplier() {
     setBannerError(null);
     startTransition(async () => {
       const result = await clearIngredientSupplierAction(ingredientId);
@@ -413,9 +360,9 @@ export function IngredientSupplierDialog({
         setBannerError(actionError(result.code));
       }
     });
-  };
+  }
 
-  const onAccept = () => {
+  function acceptPending() {
     setBannerError(null);
     startTransition(async () => {
       const result = await acceptPendingCostAction(ingredientId);
@@ -426,12 +373,14 @@ export function IngredientSupplierDialog({
         setBannerError(actionError(result.code));
       }
     });
-  };
+  }
+
+  const basisLabel = includesVat ? t('vat.incl') : t('vat.excl');
 
   return (
     <dialog
       ref={ref}
-      aria-labelledby={titleId}
+      aria-labelledby={`${id}-title`}
       onCancel={(e) => {
         e.preventDefault();
         if (!pending) onClose();
@@ -441,357 +390,369 @@ export function IngredientSupplierDialog({
       }}
       className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-border bg-surface p-0 text-foreground shadow-lg backdrop:bg-black/50 backdrop:backdrop-blur-sm"
     >
-      <div className="flex max-h-[85vh] flex-col gap-4 overflow-y-auto p-5">
-        <div className="flex flex-col gap-1">
-          <h2 id={titleId} className="font-display text-lg font-semibold">
-            {t('heading')}
-          </h2>
-          <p className="text-sm text-muted-foreground">{ingredientName}</p>
-        </div>
+      <form
+        className="flex max-h-[88vh] flex-col"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <div className="flex flex-col gap-4 overflow-y-auto p-5">
+          <div className="flex flex-col gap-0.5">
+            <h2 id={`${id}-title`} className="font-display text-lg font-semibold">
+              {t('heading')}
+            </h2>
+            <p className="text-sm text-muted-foreground">{ingredientName}</p>
+          </div>
 
-        {pendingPriceCents != null && (
-          <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
-            <p className="text-amber-800 dark:text-amber-200">
-              {t('pendingHint', { amount: formatMoney(pendingPriceCents, currency) })}
-            </p>
-            <Button
-              type="button"
-              size="sm"
-              className="self-start"
-              onClick={onAccept}
-              disabled={pending}
+          {pendingPriceCents != null && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+              <p className="text-amber-800 dark:text-amber-200">
+                {t('pendingHint', { amount: formatMoney(pendingPriceCents, currency) })}
+              </p>
+              <Button type="button" size="sm" onClick={acceptPending} disabled={pending}>
+                {t('accept')}
+              </Button>
+            </div>
+          )}
+
+          {bannerError && (
+            <p
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
             >
-              {t('accept')}
-            </Button>
-          </div>
-        )}
-
-        {bannerError && (
-          <div
-            role="alert"
-            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
-          >
-            {bannerError}
-          </div>
-        )}
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${titleId}-name`}>{t('supplierName')}</Label>
-          <SupplierPicker
-            id={`${titleId}-name`}
-            value={supplierName}
-            options={supplierNames}
-            disabled={pending}
-            invalid={fieldError('supplierName') != null}
-            describedBy={
-              fieldError('supplierName') != null ? `${titleId}-name-error` : undefined
-            }
-            onChange={setSupplierName}
-          />
-          <FieldError id={`${titleId}-name-error`} message={fieldError('supplierName')} />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${titleId}-product`}>{t('productName')}</Label>
-          <Input
-            {...IGNORE_PASSWORD_MANAGERS}
-            id={`${titleId}-product`}
-            placeholder={t('productNamePlaceholder')}
-            value={productName}
-            disabled={pending}
-            onChange={(e) => setProductName(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">{t('productNameHint')}</p>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${titleId}-sku`}>{t('sku')}</Label>
-          <Input
-            {...IGNORE_PASSWORD_MANAGERS}
-            id={`${titleId}-sku`}
-            placeholder={t('skuPlaceholder')}
-            value={sku}
-            disabled={pending}
-            onChange={(e) => setSku(e.target.value)}
-          />
-        </div>
-
-        {/* ── What you buy ───────────────────────────────────────────────── */}
-        <fieldset className="flex flex-col gap-2 rounded-xl border border-border p-3">
-          <legend className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {t('buySectionTitle')}
-          </legend>
-          <div className="grid grid-cols-[4.5rem_1fr_7rem] gap-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${titleId}-units`}>{t('unitsPerPack')}</Label>
-              <Input
-                {...IGNORE_PASSWORD_MANAGERS}
-                id={`${titleId}-units`}
-                inputMode="numeric"
-                value={unitsPerPack}
-                disabled={pending}
-                aria-invalid={fieldError('unitsPerPack') != null}
-                aria-describedby={
-                  fieldError('unitsPerPack') != null ? `${titleId}-units-error` : undefined
-                }
-                className={errorRing(fieldError('unitsPerPack'))}
-                onChange={(e) => {
-                  setUnitsPerPack(e.target.value);
-                  touchPrice();
-                }}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${titleId}-size`}>{t('packSize')}</Label>
-              <Input
-                {...IGNORE_PASSWORD_MANAGERS}
-                id={`${titleId}-size`}
-                inputMode="decimal"
-                placeholder="0"
-                value={packSize}
-                disabled={pending}
-                aria-invalid={fieldError('packSize') != null}
-                aria-describedby={
-                  fieldError('packSize') != null ? `${titleId}-size-error` : undefined
-                }
-                className={errorRing(fieldError('packSize'))}
-                onChange={(e) => {
-                  setPackSize(e.target.value);
-                  touchPrice();
-                }}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${titleId}-unit`}>{t('packUnit')}</Label>
-              <Select
-                id={`${titleId}-unit`}
-                value={packUnit}
-                disabled={pending}
-                aria-invalid={fieldError('packUnit') != null}
-                aria-describedby={
-                  fieldError('packUnit') != null ? `${titleId}-unit-error` : undefined
-                }
-                className={errorRing(fieldError('packUnit'))}
-                onChange={(e) => {
-                  setPackUnit(e.target.value as Unit | '');
-                  touchPrice();
-                }}
-              >
-                <option value="">—</option>
-                {unitOptions.map((u) => (
-                  <option key={u} value={u}>
-                    {unitLabel(u) || u}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          </div>
-          <FieldError id={`${titleId}-units-error`} message={fieldError('unitsPerPack')} />
-          <FieldError id={`${titleId}-size-error`} message={fieldError('packSize')} />
-          <FieldError id={`${titleId}-unit-error`} message={fieldError('packUnit')} />
-          {totalLabel && (
-            <p className="text-xs text-muted-foreground">
-              {t('packTotal', { total: totalLabel })}
+              {bannerError}
             </p>
           )}
-        </fieldset>
 
-        {/* ── What the supplier charges ──────────────────────────────────── */}
-        <fieldset className="flex flex-col gap-2 rounded-xl border border-border p-3">
-          <legend className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {t('chargeSectionTitle')}
-          </legend>
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${titleId}-price`}>
-                {t('packPrice')} · {currency}
-              </Label>
-              <Input
-                {...IGNORE_PASSWORD_MANAGERS}
-                id={`${titleId}-price`}
-                inputMode="decimal"
-                placeholder="0.00"
-                value={packPriceText}
-                disabled={pending}
-                aria-invalid={fieldError('packPrice') != null}
-                aria-describedby={
-                  fieldError('packPrice') != null ? `${titleId}-price-error` : undefined
-                }
-                className={errorRing(fieldError('packPrice'))}
-                onChange={(e) => {
-                  setPackPriceText(e.target.value);
-                  touchPrice();
-                }}
-              />
-              <FieldError id={`${titleId}-price-error`} message={fieldError('packPrice')} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${titleId}-basis`}>{t('priceBasis')}</Label>
-              <Select
-                id={`${titleId}-basis`}
-                className="w-32"
-                value={basis}
-                disabled={pending}
-                onChange={(e) => {
-                  setBasis(e.target.value as SupplierPriceBasis);
-                  touchPrice();
-                }}
-              >
-                {PRICE_BASES.map((b) => (
-                  <option key={b} value={b}>
-                    {t(`basis.${b}`, { unit: pricedUnit })}
-                  </option>
-                ))}
-              </Select>
-            </div>
+          {/* Supplier — the only thing needed to save. */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`${id}-name`}>{t('supplierName')}</Label>
+            <SupplierPicker
+              id={`${id}-name`}
+              value={supplierName}
+              options={supplierNames}
+              disabled={pending}
+              invalid={nameAttempted && nameMissing}
+              describedBy={nameAttempted && nameMissing ? `${id}-name-error` : undefined}
+              onChange={(name) => {
+                setSupplierName(name);
+                setNameAttempted(false);
+              }}
+            />
+            <FieldError
+              id={`${id}-name-error`}
+              message={nameAttempted && nameMissing ? t('fieldErrors.supplierRequired') : null}
+            />
           </div>
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${titleId}-vat`}>{t('vatBasis')}</Label>
-              <Select
-                id={`${titleId}-vat`}
-                value={includesVat ? 'incl' : 'excl'}
-                // Without a resolvable rate there is no way to strip VAT back out,
-                // so gross entry stays closed rather than silently assuming 0%.
-                disabled={pending || taxRateBps == null}
-                onChange={(e) => {
-                  setIncludesVat(e.target.value === 'incl');
-                  touchPrice();
-                }}
-              >
-                <option value="excl">{t('vat.excl')}</option>
-                <option value="incl">{t('vat.incl')}</option>
-              </Select>
-            </div>
-            {/*
-              VAT on a PURCHASE depends on the goods and the country, so the rate is
-              typed here per ingredient — any rate, including 0% and decimals. The
-              org's bands are only shortcuts that fill the field.
-            */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${titleId}-vatrate`}>{t('vatRate')}</Label>
-              <div className="relative w-32">
+
+          {/* Pricing — optional, can be completed later. */}
+          <fieldset className="flex flex-col gap-3 rounded-xl border border-border p-3">
+            <legend className="px-1 text-xs font-medium text-muted-foreground">{t('pricingOptional')}</legend>
+
+            <div className="grid grid-cols-[4.5rem_1fr_6.5rem] gap-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`${id}-units`}>{t('unitsPerPack')}</Label>
                 <Input
-                  id={`${titleId}-vatrate`}
-                  inputMode="decimal"
                   {...IGNORE_PASSWORD_MANAGERS}
-                  value={vatText}
-                  placeholder={
-                    fallbackCategory ? String(fallbackCategory.rateBps / 100) : t('vatRateUnset')
-                  }
-                  aria-invalid={vatInvalid}
-                  aria-describedby={`${titleId}-vatrate-hint`}
+                  id={`${id}-units`}
+                  inputMode="numeric"
+                  value={unitsText}
+                  disabled={pending}
+                  aria-invalid={unitsInvalid}
+                  aria-describedby={unitsInvalid ? `${id}-units-error` : undefined}
+                  className="text-right tabular-nums"
+                  onChange={(e) => {
+                    setUnitsText(e.target.value);
+                    touchPack();
+                  }}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`${id}-size`}>{t('packSize')}</Label>
+                <Input
+                  {...IGNORE_PASSWORD_MANAGERS}
+                  id={`${id}-size`}
+                  inputMode="decimal"
+                  placeholder={t('optional')}
+                  value={sizeText}
+                  disabled={pending}
+                  aria-invalid={sizeInvalid}
+                  aria-describedby={sizeInvalid ? `${id}-size-error` : undefined}
+                  className="text-right tabular-nums"
+                  onChange={(e) => {
+                    setSizeText(e.target.value);
+                    touchPack();
+                  }}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`${id}-unit`}>{t('packUnit')}</Label>
+                <Select
+                  id={`${id}-unit`}
+                  value={packUnit}
                   disabled={pending}
                   onChange={(e) => {
-                    setVatText(e.target.value);
-                    touchPrice();
+                    setPackUnit(e.target.value as Unit);
+                    touchPack();
                   }}
-                  className={cn('pr-8 text-right tabular-nums', errorRing(vatInvalid ? 'x' : null))}
-                />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                  %
-                </span>
+                >
+                  {unitOptions.map((u) => (
+                    <option key={u} value={u}>
+                      {unitLabel(u) || u}
+                    </option>
+                  ))}
+                </Select>
               </div>
             </div>
-          </div>
-          {presetRates.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-muted-foreground">{t('vatPresets')}</span>
-              {presetRates.map((c) => (
+            <FieldError id={`${id}-units-error`} message={unitsInvalid ? t('fieldErrors.unitsInvalid') : null} />
+            <FieldError id={`${id}-size-error`} message={sizeInvalid ? t('fieldErrors.packSizeInvalid') : null} />
+            {totalLabel && units !== null && units > 1 && (
+              <p className="-mt-1 text-xs text-muted-foreground">{t('packTotal', { total: totalLabel })}</p>
+            )}
+
+            <div className="grid grid-cols-[1fr_7rem] gap-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`${id}-basis`}>{t('pricesAre')}</Label>
+                <Select
+                  id={`${id}-basis`}
+                  value={includesVat ? 'incl' : 'excl'}
+                  disabled={pending}
+                  onChange={(e) => {
+                    setIncludesVat(e.target.value === 'incl');
+                    setTouched((prev) => ({ ...prev, price: true }));
+                  }}
+                >
+                  <option value="excl">{t('vat.excl')}</option>
+                  <option value="incl">{t('vat.incl')}</option>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`${id}-vat`}>{t('vatRate')}</Label>
+                <div className="relative">
+                  <Input
+                    {...IGNORE_PASSWORD_MANAGERS}
+                    id={`${id}-vat`}
+                    inputMode="decimal"
+                    placeholder={t('vatRateUnset')}
+                    value={vatText}
+                    disabled={pending}
+                    aria-invalid={vatInvalid}
+                    aria-describedby={`${id}-vat-hint`}
+                    className="pr-7 text-right tabular-nums"
+                    onChange={(e) => {
+                      setVatText(e.target.value);
+                      setVatTouched(true);
+                      setPriceNotice(null);
+                    }}
+                  />
+                  <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    %
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div id={`${id}-vat-hint`} className="-mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+              {vatInvalid ? (
+                <span className="text-red-700 dark:text-red-300">{t('vatRateInvalid')}</span>
+              ) : (
+                <>
+                  {vatHint && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-muted-foreground">{vatHint}</span>}
+                  {vatBps === 0 && <span className="text-muted-foreground">{t('vatRateZero')}</span>}
+                </>
+              )}
+              {vatShortcuts.map((c) => (
                 <button
                   key={c.id}
                   type="button"
                   disabled={pending}
-                  aria-pressed={ownRateBps === c.rateBps}
                   onClick={() => {
                     setVatText(String(c.rateBps / 100));
-                    touchPrice();
+                    setVatTouched(true);
                   }}
-                  className={cn(
-                    'cursor-pointer rounded-full border px-2.5 py-1 text-xs tabular-nums transition-colors',
-                    ownRateBps === c.rateBps
-                      ? 'border-accent-600 bg-accent-50 font-medium text-accent-800 dark:border-accent-400 dark:bg-accent-500/15 dark:text-accent-200'
-                      : 'border-border text-muted-foreground hover:bg-surface-2 hover:text-foreground',
-                  )}
+                  className="cursor-pointer rounded-full border border-border px-2 py-0.5 tabular-nums text-muted-foreground hover:bg-surface-2 hover:text-foreground"
                 >
                   {t('vatCategoryOption', { name: c.name, rate: String(c.rateBps / 100) })}
                 </button>
               ))}
-              {vatText.trim() !== '' && (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => {
-                    setVatText('');
-                    touchPrice();
-                  }}
-                  className="cursor-pointer text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                >
-                  {t('vatRateClear')}
-                </button>
-              )}
             </div>
-          )}
-          <p
-            id={`${titleId}-vatrate-hint`}
-            className={cn('text-xs', vatInvalid ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground')}
-          >
-            {vatInvalid
-              ? t('vatRateInvalid')
-              : ownRateBps === 0
-                ? t('vatRateZero')
-                : ownRateBps !== null
-                  ? t('vatRateSet', { rate: String(ownRateBps / 100) })
-                  : fallbackCategory
-                    ? t('vatRateFallback', { name: fallbackCategory.name, rate: String(fallbackCategory.rateBps / 100) })
-                    : t('vatRateMissing')}
-          </p>
-        </fieldset>
 
-        {/* ── The answer ─────────────────────────────────────────────────── */}
-        <div className="rounded-xl bg-surface-2 px-4 py-3">
-          {readout ? (
-            <>
-              <p className="text-xs text-muted-foreground">
-                {t('costLabel', { unit: pricedUnit })}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <PriceField
+                id={`${id}-pack-price`}
+                label={t('packPriceLabel', { basis: basisLabel })}
+                currency={currency}
+                value={priceSource === 'pack' ? sourceText : packCents !== null ? centsToAmountInput(packCents) : ''}
+                calculated={priceSource !== 'pack' && packCents !== null}
+                entered={priceSource === 'pack' && sourceText.trim() !== ''}
+                invalid={priceSource === 'pack' && priceInvalid}
+                disabled={pending}
+                calculatedLabel={t('calculated')}
+                enteredLabel={t('entered')}
+                onChange={(text) => editPrice('pack', text)}
+              />
+              <PriceField
+                id={`${id}-unit-price`}
+                label={t('unitPriceLabel', { unit: pricedUnit, basis: basisLabel })}
+                currency={currency}
+                value={priceSource === 'unit' ? sourceText : unitCents !== null ? centsToAmountInput(unitCents) : ''}
+                calculated={priceSource !== 'unit' && unitCents !== null}
+                entered={priceSource === 'unit' && sourceText.trim() !== ''}
+                invalid={priceSource === 'unit' && priceInvalid}
+                disabled={pending}
+                calculatedLabel={t('calculated')}
+                enteredLabel={t('entered')}
+                onChange={(text) => editPrice('unit', text)}
+              />
+            </div>
+            <FieldError id={`${id}-price-error`} message={priceInvalid ? t('fieldErrors.priceInvalid') : null} />
+            {priceNeedsPack && !priceInvalid && (
+              <p className="text-xs text-amber-700 dark:text-amber-300">{t('priceNeedsPack', { unit: pricedUnit })}</p>
+            )}
+            {needsVatForPrice && <p className="text-xs text-amber-700 dark:text-amber-300">{t('priceNeedsVat')}</p>}
+
+            <div className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted-foreground">
+              <p>
+                {currentPriceCents !== null && currentPriceCents > 0
+                  ? t('currentCost', { amount: formatMoney(currentPriceCents, currency), unit: pricedUnit })
+                  : t('currentCostUnknown')}
               </p>
-              <p className="font-display text-2xl font-semibold tabular-nums">
-                {formatMoney(readout.perPricedUnitExclVatCents, currency)}
-              </p>
-              {readout.perPricedUnitInclVatCents != null && taxRateBps != null && (
-                // Naming the rate makes a wrong VAT visible — the same safety-net
-                // principle as showing the cost per kg.
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  {t('costInclVatRate', {
-                    amount: formatMoney(readout.perPricedUnitInclVatCents, currency),
-                    rate: String(taxRateBps / 100),
-                  })}
+              {costDiffers && newNetUnitCents !== null && (
+                <p className="mt-1 text-amber-800 dark:text-amber-300">
+                  {t('costWillBePending', { amount: formatMoney(newNetUnitCents, currency), unit: pricedUnit })}
                 </p>
               )}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t('costUnknown')}</p>
-          )}
-        </div>
+            </div>
+          </fieldset>
 
-        <div className="mt-1 flex items-center justify-between gap-2">
-          {initialLink ? (
-            <Button type="button" variant="ghost" onClick={onClear} disabled={pending}>
-              {t('clear')}
-            </Button>
-          ) : (
-            <span />
-          )}
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
-              {t('cancel')}
-            </Button>
-            <Button type="button" onClick={onSave} disabled={pending || saveBlocked}>
-              {t('save')}
-            </Button>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              aria-expanded={showDetails}
+              onClick={() => setShowDetails((v) => !v)}
+              className="inline-flex w-fit cursor-pointer items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ChevronDown className={cn('size-4 transition-transform', !showDetails && '-rotate-90')} aria-hidden />
+              {t('moreDetails')}
+            </button>
+            {showDetails && (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor={`${id}-product`}>{t('productName')}</Label>
+                  <Input
+                    {...IGNORE_PASSWORD_MANAGERS}
+                    id={`${id}-product`}
+                    placeholder={t('productNamePlaceholder')}
+                    value={productName}
+                    disabled={pending}
+                    onChange={(e) => {
+                      setProductName(e.target.value);
+                      setTouched((prev) => ({ ...prev, details: true }));
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor={`${id}-sku`}>{t('sku')}</Label>
+                  <Input
+                    {...IGNORE_PASSWORD_MANAGERS}
+                    id={`${id}-sku`}
+                    placeholder={t('skuPlaceholder')}
+                    value={sku}
+                    disabled={pending}
+                    onChange={(e) => {
+                      setSku(e.target.value);
+                      setTouched((prev) => ({ ...prev, details: true }));
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
+
+        {/* Save stays in reach at the bottom of the dialog. */}
+        <div className="flex flex-col gap-2 border-t border-border px-5 py-3">
+          {priceNotice && (
+            <p role="status" className="text-sm text-amber-800 dark:text-amber-300">
+              {priceNotice}
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            {initialLink ? (
+              <Button type="button" variant="ghost" onClick={clearSupplier} disabled={pending}>
+                {t('clear')}
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+                {priceNotice ? t('done') : t('cancel')}
+              </Button>
+              <Button type="submit" disabled={pending}>
+                {pending ? t('saving') : t('save')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </form>
     </dialog>
+  );
+}
+
+function PriceField({
+  id,
+  label,
+  currency,
+  value,
+  calculated,
+  entered,
+  invalid,
+  disabled,
+  calculatedLabel,
+  enteredLabel,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  currency: string;
+  value: string;
+  calculated: boolean;
+  entered: boolean;
+  invalid: boolean;
+  disabled: boolean;
+  calculatedLabel: string;
+  enteredLabel: string;
+  onChange: (text: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        {calculated ? (
+          <span className="rounded-full bg-accent-50 px-2 py-0.5 text-[11px] font-medium text-accent-800 dark:bg-accent-500/15 dark:text-accent-200">
+            {calculatedLabel}
+          </span>
+        ) : entered ? (
+          <span className="text-[11px] text-muted-foreground">{enteredLabel}</span>
+        ) : null}
+      </div>
+      <div className="relative">
+        <Input
+          {...IGNORE_PASSWORD_MANAGERS}
+          id={id}
+          inputMode="decimal"
+          placeholder="—"
+          value={value}
+          disabled={disabled}
+          aria-invalid={invalid}
+          className={cn('pr-12 text-right tabular-nums', calculated && 'bg-accent-50/50 dark:bg-accent-500/10')}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+          {currency}
+        </span>
+      </div>
+    </div>
   );
 }

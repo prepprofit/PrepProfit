@@ -54,7 +54,8 @@ import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu'
 import type { AllergenTag } from '@/lib/data/allergens';
 import type { SupplierPriceBasis } from '@/lib/calculations/purchasePrice';
 import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
-import type { IngredientTypeLock } from '@/lib/data/ingredients';
+import type { IngredientTypeLock, IngredientUsage } from '@/lib/data/ingredients';
+import { restoreIngredientAction } from '@/app/(app)/trash/actions';
 
 type Dimension = Ingredient['dimension'];
 
@@ -196,6 +197,9 @@ type GridMeta = {
   canManageSuppliers: boolean;
   onEditSupplier: (id: string) => void;
   supplierName: (id: string) => string | null;
+  /** True when the supplier entry has no usable price yet (shown quietly, never blocking). */
+  pricingIncomplete: (id: string) => boolean;
+  pricingIncompleteLabel: string;
   supplierLabel: string;
   noSupplierLabel: string;
   pendingCostLabel: string;
@@ -212,6 +216,7 @@ export function IngredientGrid({
   initialSupplierLinks = {},
   supplierPricePrefs = {},
   vatCategories = [],
+  businessPurchaseVatBps = null,
   typeLocks = {},
 }: {
   initialIngredients: IngredientRow[];
@@ -232,6 +237,8 @@ export function IngredientGrid({
   supplierPricePrefs?: Record<string, SupplierPricePrefs>;
   /** The org's purchase VAT bands — shortcuts in the supplier dialog (manager-only). */
   vatCategories?: VatCategoryOption[];
+  /** The business's configured default purchase VAT (bps) — supplier editor default. */
+  businessPurchaseVatBps?: number | null;
   /** Ingredients whose type is locked because quantities use the current unit. */
   typeLocks?: Record<string, IngredientTypeLock>;
 }) {
@@ -261,6 +268,10 @@ export function IngredientGrid({
   }, [rows, query, sort, canSeeCosts]);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
+  const [deleteProblem, setDeleteProblem] = React.useState<
+    { kind: 'in_use'; usage: IngredientUsage } | { kind: 'error'; message: string } | null
+  >(null);
+  const [notice, setNotice] = React.useState<{ message: string; undo: IngredientRow | null; isError?: boolean } | null>(null);
   // Explicit edit: exactly one row is editable at a time and NOTHING commits until
   // Save. (Replaces the old auto-save-on-blur, which wrote silently on every focus
   // change and forced every cell to look like an input.)
@@ -396,7 +407,10 @@ export function IngredientGrid({
     [drafts, rows, resetDraft, actionError, canSeeCosts, t],
   );
 
-  const requestDelete = React.useCallback((id: string) => setConfirmId(id), []);
+  const requestDelete = React.useCallback((id: string) => {
+    setDeleteProblem(null);
+    setConfirmId(id);
+  }, []);
   const editAllergens = React.useCallback((id: string) => setAllergenEditId(id), []);
   const editSupplier = React.useCallback((id: string) => setSupplierEditId(id), []);
   const unreviewedAllergens = React.useCallback(
@@ -426,23 +440,54 @@ export function IngredientGrid({
   const confirmDelete = React.useCallback(() => {
     const id = confirmId;
     if (!id) return;
+    const row = rows.find((r) => r.id === id);
     setError(null);
+    setDeleteProblem(null);
     startTransition(async () => {
       const result = await deleteIngredientAction(id);
-      if (result.ok) {
-        setRows((prev) => prev.filter((r) => r.id !== id));
-        setDrafts((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
-        setEditingId((prev) => (prev === id ? null : prev));
-      } else {
-        setError(actionError(result.code));
+      if (!result.ok) {
+        // Keep the dialog open and say why, right where the user is looking.
+        setDeleteProblem({ kind: 'error', message: actionError(result.code) });
+        return;
       }
+      if (result.data.status === 'in_use') {
+        setDeleteProblem({ kind: 'in_use', usage: result.data.usage });
+        return;
+      }
+      setRows((prev) => prev.filter((r) => r.id !== id));
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setEditingId((prev) => (prev === id ? null : prev));
       setConfirmId(null);
+      setNotice({ message: t('deleted', { name: row?.name ?? '' }), undo: row ?? null });
     });
-  }, [confirmId, actionError]);
+  }, [confirmId, actionError, rows, t]);
+
+  const undoDelete = React.useCallback(
+    (row: IngredientRow) => {
+      startTransition(async () => {
+        const result = await restoreIngredientAction(row.id);
+        if (!result.ok) {
+          setNotice({ message: actionError(result.code), undo: null, isError: true });
+          return;
+        }
+        setRows((prev) => (prev.some((r) => r.id === row.id) ? prev : [...prev, row]));
+        setDrafts((prev) => ({ ...prev, [row.id]: draftFromRow(row) }));
+        setNotice({ message: t('restored', { name: row.name }), undo: null });
+      });
+    },
+    [actionError, t],
+  );
+
+  // The confirmation toast clears itself after a few seconds.
+  React.useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), notice.undo ? 8000 : 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   /** Adopt a row created elsewhere (add popup, catalogue) into the loaded list. */
   const adoptRow = React.useCallback((row: IngredientRow) => {
@@ -620,6 +665,11 @@ export function IngredientGrid({
                   {name ?? meta.noSupplierLabel}
                 </span>
               </Button>
+              {!hasPending && meta.pricingIncomplete(row.original.id) && (
+                <span className="text-[11px] text-muted-foreground" title={meta.pricingIncompleteLabel}>
+                  {meta.pricingIncompleteLabel}
+                </span>
+              )}
               {hasPending && (
                 <span
                   className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
@@ -761,6 +811,11 @@ export function IngredientGrid({
       canManageSuppliers: canSeeCosts,
       onEditSupplier: editSupplier,
       supplierName,
+      pricingIncomplete: (id: string) => {
+        const link = supplierLinks[id];
+        return link != null && link.packPriceCents == null;
+      },
+      pricingIncompleteLabel: tSuppliers('noPriceYet'),
       supplierLabel: t('columns.supplier'),
       noSupplierLabel: tSuppliers('none'),
       pendingCostLabel: tSuppliers('pendingBadge'),
@@ -911,14 +966,77 @@ export function IngredientGrid({
 
       <ConfirmDialog
         open={confirmId !== null}
-        title={t('deleteConfirm.title')}
-        description={t('deleteConfirm.body', { name: confirmTarget?.name ?? '' })}
-        confirmLabel={tCommon('moveToTrash')}
-        cancelLabel={tCommon('cancel')}
+        title={deleteProblem?.kind === 'in_use' ? t('deleteBlocked.title') : t('deleteConfirm.title')}
+        description={
+          deleteProblem?.kind === 'in_use'
+            ? t('deleteBlocked.body', { name: confirmTarget?.name ?? '' })
+            : t('deleteConfirm.body', { name: confirmTarget?.name ?? '' })
+        }
+        confirmLabel={deleteProblem?.kind === 'in_use' ? t('deleteBlocked.tryAgain') : tCommon('moveToTrash')}
+        cancelLabel={deleteProblem?.kind === 'in_use' ? t('deleteBlocked.close') : tCommon('cancel')}
+        destructive={deleteProblem?.kind !== 'in_use'}
         pending={pending}
         onConfirm={confirmDelete}
-        onCancel={() => setConfirmId(null)}
-      />
+        onCancel={() => {
+          setConfirmId(null);
+          setDeleteProblem(null);
+        }}
+      >
+        {deleteProblem?.kind === 'in_use' ? (
+          <div role="alert" className="mt-2 flex flex-col gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">
+            {deleteProblem.usage.recipeCount > 0 && (
+              <p>
+                {t('deleteBlocked.recipes', { count: deleteProblem.usage.recipeCount })}{' '}
+                <span className="font-medium">
+                  {deleteProblem.usage.recipeNames.join(', ')}
+                  {deleteProblem.usage.recipeCount > deleteProblem.usage.recipeNames.length ? '…' : ''}
+                </span>
+              </p>
+            )}
+            {deleteProblem.usage.menuCount > 0 && (
+              <p>
+                {t('deleteBlocked.menus', { count: deleteProblem.usage.menuCount })}{' '}
+                <span className="font-medium">
+                  {deleteProblem.usage.menuNames.join(', ')}
+                  {deleteProblem.usage.menuCount > deleteProblem.usage.menuNames.length ? '…' : ''}
+                </span>
+              </p>
+            )}
+            <p className="text-xs">{t('deleteBlocked.help')}</p>
+          </div>
+        ) : deleteProblem?.kind === 'error' ? (
+          <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300">
+            {deleteProblem.message}
+          </p>
+        ) : null}
+      </ConfirmDialog>
+
+      {notice && (
+        <div
+          role={notice.isError ? 'alert' : 'status'}
+          className={cn(
+            'fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-3 text-sm shadow-lg',
+            notice.isError
+              ? 'bg-red-700 text-white'
+              : 'bg-foreground text-background',
+          )}
+        >
+          <span>{notice.message}</span>
+          {notice.undo && canSeeCosts && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => notice.undo && undoDelete(notice.undo)}
+              className="cursor-pointer font-semibold underline underline-offset-2"
+            >
+              {t('undo')}
+            </button>
+          )}
+          <button type="button" aria-label={tCommon('close')} onClick={() => setNotice(null)} className="cursor-pointer opacity-70 hover:opacity-100">
+            ×
+          </button>
+        </div>
+      )}
 
       <IngredientAddDialog
         open={addOpen}
@@ -976,22 +1094,25 @@ export function IngredientGrid({
           vatCategories={vatCategories}
           vatCategoryId={supplierTarget.vatCategoryId ?? null}
           vatRateBps={supplierTarget.vatRateBps ?? null}
+          businessPurchaseVatBps={businessPurchaseVatBps}
+          currentPriceCents={supplierTarget.priceCents ?? null}
           supplierNames={supplierNames}
           pricePrefs={pricePrefs}
           initialLink={supplierLinks[supplierTarget.id] ?? null}
           pendingPriceCents={supplierTarget.pendingPriceCents ?? null}
           onClose={() => setSupplierEditId(null)}
-          onSaved={(summary, prefs, vatRateBps) => {
+          onSaved={(summary, prefs, savedNotice) => {
             const id = supplierTarget.id;
             setSupplierLinks((prev) => ({ ...prev, [id]: summary }));
             setPricePrefs((prev) => ({ ...prev, [summary.supplierName]: prefs }));
             setRows((prev) =>
               prev.map((r) =>
                 r.id === id
-                  ? { ...r, supplier: summary.supplierName, vatRateBps }
+                  ? { ...r, supplier: summary.supplierName, vatRateBps: summary.vatRateBps ?? r.vatRateBps }
                   : r,
               ),
             );
+            if (!savedNotice.incomplete) setNotice({ message: savedNotice.message, undo: null });
           }}
           onCleared={() => {
             const id = supplierTarget.id;

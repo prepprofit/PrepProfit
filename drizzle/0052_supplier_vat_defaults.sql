@@ -1,0 +1,3 @@
+ALTER TABLE "ingredient_suppliers" ADD COLUMN "vat_rate_bps" integer;--> statement-breakpoint
+ALTER TABLE "organization_settings" ADD COLUMN "default_purchase_vat_bps" integer;--> statement-breakpoint
+ALTER TABLE "ingredient_suppliers" ADD CONSTRAINT "ingredient_suppliers_vat_rate_chk" CHECK ("ingredient_suppliers"."vat_rate_bps" IS NULL OR ("ingredient_suppliers"."vat_rate_bps" >= 0 AND "ingredient_suppliers"."vat_rate_bps" <= 10000));

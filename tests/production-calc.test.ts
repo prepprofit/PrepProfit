@@ -82,16 +82,16 @@ describe('explodeProduction (mise-en-place)', () => {
     ]);
   });
 
-  it('reconciles the yield/loss convention with recipeCost', () => {
+  it('reconciles the yield convention with recipeCost (loss applied once, to output)', () => {
     // yieldPortions 4, 50% yield, line 100g, 8 portions:
-    //   needed = 100 × 8 / 4 / 0.5 = 400.
+    //   needed = 100 × 8 / 4 = 200 (the yield is already in the 4 portions a batch makes).
     const result = explodeProduction([
       recipe('r1', 8, [{ ingredientId: 'butter', quantity: 100 }], {
         yieldPortions: 4,
         yieldPercentage: 50,
       }),
     ]);
-    expect(result.complete && result.requirements[0]?.quantityCanonical).toBe(400);
+    expect(result.complete && result.requirements[0]?.quantityCanonical).toBe(200);
 
     // The per-portion ingredient cost from recipeCost uses the same loss/yield math,
     // so an ingredient priced at 1000c/kg over 100g → cost mirrors the explosion ratio.
@@ -103,8 +103,8 @@ describe('explodeProduction (mise-en-place)', () => {
       packagingCostCents: 0,
       lines: [{ dimension: 'weight', priceCents: 1000, quantity: 100 }],
     });
-    // ingredientCost = (1000 × 100 / 1000) / 0.5 = 200; per portion = 200 / 4 = 50.
-    expect(cost.costPerPortionCents).toBe(50);
+    // ingredientCost = 1000 × 100 / 1000 = 100; per portion = 100 / 4 = 25 — the same 2× ratio.
+    expect(cost.costPerPortionCents).toBe(25);
   });
 
   it('sorts requirements deterministically by ingredient id', () => {

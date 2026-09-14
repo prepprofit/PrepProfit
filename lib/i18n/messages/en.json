@@ -821,12 +821,12 @@
       "supplierEmpty": "No suppliers yet — type a name to add the first one.",
       "fieldErrors": {
         "supplierRequired": "Pick or type a supplier name.",
-        "unitsInvalid": "Enter a whole number of packs (1 or more).",
+        "unitsInvalid": "Enter a whole number of units (1 or more).",
         "packSizeRequired": "Pack size is required to work out the cost.",
-        "packSizeInvalid": "Enter a pack size greater than zero, using a dot for decimals.",
+        "packSizeInvalid": "Enter a pack size above zero, like 2,5 or 500.",
         "packUnitRequired": "Pick the unit this pack is measured in.",
         "priceRequired": "Enter the price for this pack.",
-        "priceInvalid": "Enter a price greater than zero."
+        "priceInvalid": "Enter a price like 20 or 19,90."
       },
       "vatRate": "VAT rate",
       "vatRateUnset": "Not set",
@@ -836,7 +836,38 @@
       "vatRateZero": "0% — this purchase has no VAT.",
       "vatRateSet": "Using {rate}% for this ingredient.",
       "vatRateFallback": "Not set — using {name} ({rate}%). Type a rate to use a different one.",
-      "costInclVatRate": "{amount} incl. {rate}% VAT"
+      "costInclVatRate": "{amount} incl. {rate}% VAT",
+      "pricingOptional": "Pack and price (optional — you can add these later)",
+      "optional": "Optional",
+      "pricesAre": "Prices below are",
+      "packPriceLabel": "Pack price ({basis})",
+      "unitPriceLabel": "Price per {unit} ({basis})",
+      "calculated": "Calculated",
+      "entered": "Entered",
+      "priceNeedsPack": "Add the pack size to calculate the other price and work out the cost per {unit}.",
+      "priceNeedsVat": "These prices include VAT but no VAT rate is set — add the rate to save the price. The supplier still saves.",
+      "currentCost": "Current ingredient cost: {amount} per {unit} (excl. VAT).",
+      "currentCostUnknown": "This ingredient has no approved cost yet.",
+      "costWillBePending": "This price works out at {amount} per {unit} excl. VAT. It's saved for you to accept — the current cost stays until you do.",
+      "moreDetails": "Supplier product name and code",
+      "done": "Done",
+      "saving": "Saving…",
+      "vatHint": {
+        "entry": "Saved for this supplier",
+        "ingredient": "Default: this ingredient's VAT",
+        "band": "Default: this ingredient's VAT band",
+        "business": "Default: your business purchase VAT",
+        "none": "No VAT set — optional",
+        "cleared": "Not set"
+      },
+      "saved": {
+        "ok": "Supplier saved: {name}.",
+        "pending": "Supplier saved: {name}. The new cost is waiting for you to accept it.",
+        "partial": "Supplier saved. Fields marked in red weren't saved — correct them and save again.",
+        "needsVat": "Supplier saved. The price wasn't saved because it includes VAT and no VAT rate is set.",
+        "needsPack": "Supplier saved. The price wasn't saved yet — add the pack size to store it."
+      },
+      "noPriceYet": "No price yet"
     },
     "invoices": {
       "cardTitle": "Read a supplier invoice",
@@ -943,7 +974,8 @@
     "moveToTrash": "Move to Trash",
     "deleteForever": "Delete permanently",
     "searchPlaceholder": "Search…",
-    "noMatches": "Nothing matches your search."
+    "noMatches": "Nothing matches your search.",
+    "close": "Close"
   },
   "dimensions": {
     "weight": "Weight",
@@ -1018,6 +1050,18 @@
       "menus": "{count, plural, one {# dish} other {# dishes}}",
       "stock": "stock records",
       "checkPrice": "The price will now mean per {unit} — check it before saving."
+    },
+    "deleted": "“{name}” moved to Trash.",
+    "restored": "“{name}” restored.",
+    "undo": "Undo",
+    "deleteBlocked": {
+      "title": "This ingredient is still in use",
+      "body": "“{name}” can't move to Trash while active recipes or dishes use it — they would lose its cost and allergens.",
+      "recipes": "{count, plural, one {Used in # recipe:} other {Used in # recipes:}}",
+      "menus": "{count, plural, one {Used in # dish:} other {Used in # dishes:}}",
+      "help": "Remove it from those recipes and dishes (or replace it), then try again.",
+      "tryAgain": "Try again",
+      "close": "Close"
     }
   },
   "recipes": {
@@ -1311,6 +1355,45 @@
           "notPositive": "The multiplier must be more than 0.",
           "tooLarge": "Use a multiplier of 1000 or less."
         }
+      },
+      "backToRecipes": "Back to recipes",
+      "savedNotice": "Recipe saved.",
+      "reorderHandle": "Reorder {name}",
+      "reorderTitle": "Drag to reorder",
+      "reorderHelp": "Drag the handle, or focus it and use the up and down arrow keys, to change the ingredient order.",
+      "yieldCalc": {
+        "title": "Yield",
+        "input": "Ingredient input weight",
+        "percent": "Yield after production loss",
+        "finished": "Finished usable weight",
+        "measured": "Measured finished weight",
+        "modePercent": "Calculate finished weight from yield %",
+        "modeMeasured": "I weighed the finished batch",
+        "hintPercent": "Finished weight = input weight × yield % ÷ 100. Loss is counted once — in the finished weight, not in the cost.",
+        "hintMeasured": "The weighed batch is used as the finished weight; the yield % it implies is shown for reference.",
+        "needsMeasured": "Some ingredients are in ml or pieces, so the input weight can't be added up. Weigh the finished batch instead.",
+        "percentInvalid": "Enter a whole yield % from 1 to 100.",
+        "measuredInvalid": "Enter the measured finished weight in grams (above 0).",
+        "makes": "Makes (optional)",
+        "inputShort": "Input {weight}",
+        "yieldShort": "Yield {percent}%",
+        "finishedShort": "Finished {weight}",
+        "source": {
+          "measured": "measured",
+          "calculated": "calculated"
+        },
+        "reviewNeeded": "Check this yield: it was saved when yield increased ingredient cost. It now reduces the finished weight instead — open Edit and save to confirm."
+      },
+      "costSummary": {
+        "title": "Recipe cost",
+        "batch": "Cost per batch",
+        "batchScaled": "Cost for this amount (×{factor})",
+        "perKg": "Cost per kg",
+        "noPrice": "No price",
+        "incomplete": "Some ingredients have no price or a sub-recipe is incomplete, so the totals aren't shown.",
+        "needsWeight": "Cost per kg needs a finished weight — edit the recipe and use a measured weight.",
+        "legacy": "Includes labour {labour} and energy {energy} saved by the old recipe editor. Labour and extra costs now belong in Menu.",
+        "legacyRemove": "Remove from recipe"
       }
     },
     "title": "Recipes",
@@ -1471,9 +1554,9 @@
     },
     "presets": {
       "title": "Kitchen presets",
-      "description": "Named target weights (e.g. “18cm cake”) you can scale to in one click.",
+      "description": "Useful output weights for the kitchen calculator — e.g. “Per person — 40 g” or “18 cm ring cake — 450 g”. Quantity shortcuts only, not portions or prices.",
       "name": "Preset name",
-      "namePlaceholder": "e.g. 18cm cake",
+      "namePlaceholder": "e.g. 18 cm ring cake",
       "targetWeight": "Target weight",
       "estimatedCost": "Est. cost",
       "add": "Add preset",
@@ -1481,7 +1564,7 @@
       "moveUp": "Move preset up",
       "moveDown": "Move preset down",
       "empty": "No presets yet. Add a target weight below.",
-      "needsYieldWeight": "Set a batch yield weight above to scale to a preset.",
+      "needsYieldWeight": "Set the recipe's yield (finished weight) to scale to a preset.",
       "errors": {
         "nameRequired": "Give the preset a name.",
         "weightRequired": "Enter a target weight greater than zero."
@@ -1605,7 +1688,8 @@
         "status": "Issues:",
         "allergenCounts": "Contains: {contains} · May contain: {mayContain}",
         "toggle": "Filters",
-        "toggleActive": "Filters ({count})"
+        "toggleActive": "Filters ({count})",
+        "noIssues": "No issues found."
       },
       "columns": {
         "name": "Recipe",
@@ -1616,7 +1700,8 @@
         "cost": "Cost / portion",
         "price": "Price",
         "margin": "Margin",
-        "costPerKg": "Cost / kg"
+        "costPerKg": "Cost / kg",
+        "actions": "Actions"
       },
       "status": {
         "allergensUnreviewed": "Allergens unreviewed",
@@ -1640,7 +1725,19 @@
           "body": "{count, plural, one {# recipe} other {# recipes}} will move to the Trash. Recipes used as sub-recipes by an active recipe are skipped. You can restore them within 30 days."
         }
       },
-      "costUnknown": "Cost per kg can't be calculated — see the recipe's issues."
+      "costUnknown": "Cost per kg can't be calculated — see the recipe's issues.",
+      "actions": {
+        "quickView": "Quick view: {name}",
+        "print": "Print {name}",
+        "printShort": "Print",
+        "trash": "Move {name} to Trash"
+      },
+      "trashed": "“{name}” moved to Trash.",
+      "costReason": {
+        "weight": "Cost per kg needs a finished weight — some ingredients are in ml or pieces, so weigh the finished batch and add it to the recipe.",
+        "prices": "Cost per kg can't be shown — some ingredients have no price yet.",
+        "incomplete": "Cost per kg can't be calculated — a sub-recipe's cost or finished weight is missing."
+      }
     },
     "books": {
       "title": "Recipe books",
@@ -1677,7 +1774,27 @@
       "missingFinishedWeight": {
         "label": "Missing finished weight",
         "help": "Weigh the finished batch and add it to the recipe to see cost per kg and use it in grams."
+      },
+      "yieldReviewNeeded": {
+        "label": "Yield needs review",
+        "help": "This yield % was saved before yield reduced the finished weight. Open the recipe, check the yield and save."
+      },
+      "legacyLabourOrEnergy": {
+        "label": "Labour or energy to review",
+        "help": "Labour or energy amounts from the old editor are still included in this recipe's cost. Review them on the recipe."
       }
+    },
+    "quickView": {
+      "loading": "Loading…",
+      "close": "Close",
+      "openRecipe": "Open full recipe",
+      "ingredients": "Ingredients",
+      "noIngredients": "No ingredients yet.",
+      "method": "Preparation method",
+      "noMethod": "No preparation steps yet.",
+      "subRecipe": "sub-recipe",
+      "makes": "Makes {amount} {unit}",
+      "finishedWeight": "Finished weight {grams} g"
     }
   },
   "inventory": {
@@ -1853,7 +1970,11 @@
       "save": "Save band",
       "cancel": "Cancel",
       "edit": "Edit band",
-      "delete": "Delete band"
+      "delete": "Delete band",
+      "defaultPurchase": "Default purchase VAT (%)",
+      "defaultPurchaseNone": "Not set",
+      "defaultPurchaseSaved": "Saved",
+      "defaultPurchaseHint": "Suggested in the supplier editor when an ingredient has no VAT of its own. Leave empty to keep VAT optional. It is separate from your sales VAT."
     }
   },
   "import": {
@@ -3744,5 +3865,16 @@
     "noOrgActivity": "No extractions in this period.",
     "model": "Model: {model}",
     "estimateNote": "Estimated from token usage × Gemini list price; may differ slightly from Google billing."
+  },
+  "recipePrintDocument": {
+    "makes": "Makes",
+    "finishedWeight": "Finished weight",
+    "yield": "Yield",
+    "ingredients": "Ingredients",
+    "amount": "Amount",
+    "subRecipe": "(sub-recipe)",
+    "method": "Preparation method",
+    "noMethod": "No preparation steps yet.",
+    "footer": "Recipe sheet — not an allergen or nutrition label."
   }
 }

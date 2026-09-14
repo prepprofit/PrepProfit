@@ -119,7 +119,14 @@ the second layer of defense exists.
   Pass it inline — it is **not** the string in Coolify.
 - **Verify after deploy**: confirm `drizzle.__drizzle_migrations` max `created_at` matches the
   newest migration, and spot-check the new columns/tables + that RLS is `enabled + forced`.
-- Current head: **0051** (`0051_ingredient_vat_rate_menu_grams`: nullable
+- Current head: **0053** (`0052_supplier_vat_defaults`: `ingredient_suppliers.vat_rate_bps` +
+  `organization_settings.default_purchase_vat_bps`; `0053_recipe_yield_model`:
+  `recipes.yield_weight_source` / `yield_review_needed`, flags recipes with a non-100 yield
+  for review and backfills a calculated finished weight for all-gram recipes). The app
+  selects every column of those tables, so **apply before deploying**. Note the yield model
+  change in the same release: yield % now reduces the finished weight only — it no longer
+  inflates ingredient cost or production/prep demand (loss applied once).
+- Previous head: **0051** (`0051_ingredient_vat_rate_menu_grams`: nullable
   `ingredients.vat_rate_bps` (+ 0–10000 CHECK) for a typed purchase VAT rate, and a data
   step converting Menu recipe lines to grams — kg exactly, recipe portions only where the
   recipe has a finished weight and portion yield; the rest stay as saved and the editor
@@ -260,7 +267,7 @@ as every one of them purges data or sends real email.
 - [ ] All env vars set in Coolify, `NEXT_PUBLIC_*` ticked as Build Variables; a fresh
       deploy is green and `curl -s https://prepprofit.com/sign-in | grep -o 'pk_[a-z]*_'`
       returns `pk_live_`.
-- [ ] Migrations applied + verified (head 0051); RLS enabled + forced on every business table.
+- [ ] Migrations applied + verified (head 0053); RLS enabled + forced on every business table.
 - [ ] All six Scheduled Tasks exist with the full `node -e …` command; `ai-cost-report`
       returns 200 on a manual run.
 - [ ] Clerk webhook endpoint on the **apex** + secret set; a `user.created` test event is accepted.

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronRight, Search, Trash2 } from 'lucide-react';
 import type { Recipe } from '@/lib/db/schema';
@@ -15,6 +15,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { deleteRecipeAction } from '@/app/(app)/recipes/actions';
 import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
+import { rememberRecipeListReturn, scrollContainer } from './recipe-list-return';
 
 export type FolderOption = { id: string; name: string };
 
@@ -46,6 +47,9 @@ export function RecipeList({
   const tCommon = useTranslations('common');
   const actionError = useActionError();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const listHref = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
   const [query, setQuery] = React.useState('');
   const q = query.trim().toLowerCase();
   const visibleRecipes = q
@@ -124,6 +128,7 @@ export function RecipeList({
             >
               <Link
                 href={`/recipes/${recipe.id}`}
+                onClick={() => rememberRecipeListReturn({ href: listHref, query, sort: 'recent', scrollTop: scrollContainer()?.scrollTop ?? 0 })}
                 className="group flex min-w-0 items-center justify-between gap-2"
               >
                 <span className="min-w-0 text-base font-medium leading-snug text-foreground">

@@ -104,10 +104,11 @@ describe('resolveRecipeCostTree', () => {
     const resolution = resolutions.get(cake.id);
     expect(resolution?.complete).toBe(true);
     if (resolution?.complete) {
-      // material = 100 / 0.8 = 125; total = 125 + 100 labor = 225; per portion 113.
-      expect(resolution.cost.ingredientCostCents).toBe(125);
-      expect(resolution.cost.totalCostCents).toBe(225);
-      expect(resolution.cost.costPerPortionCents).toBe(113);
+      // material = 100 (the 80% yield sits in the finished weight, not the cost);
+      // total = 100 + 100 labor = 200; per portion 100.
+      expect(resolution.cost.ingredientCostCents).toBe(100);
+      expect(resolution.cost.totalCostCents).toBe(200);
+      expect(resolution.cost.costPerPortionCents).toBe(100);
       expect(resolution.componentMaterialCostsCents).toEqual([100]);
       if (added.ok) {
         expect(resolution.componentLineCostsCents.get(added.row.id)).toBe(100);
@@ -178,13 +179,13 @@ describe('loadActiveCatalogue — sub-recipe flattening', () => {
     const flatPie = catalogue.recipes.find((r) => r.id === pie.id);
     expect(flatPie).toBeDefined();
     expect(flatPie?.costUnresolved).toBe(false);
-    // batchScale = 0.5; materialScale = 0.5/0.8 = 0.625 → butter 312.5 g.
+    // batchScale = 0.5 → butter 250 g (the child's yield is already in its 1000 g).
     expect(flatPie?.lines).toEqual([
       {
         ingredientId: butter.id,
         dimension: 'weight',
         priceCents: 800,
-        quantity: 312.5,
+        quantity: 250,
         prepYieldBps: null,
       },
     ]);
@@ -211,8 +212,8 @@ describe('loadActiveCatalogue — sub-recipe flattening', () => {
     if (resolution?.complete) {
       expect(viaCatalogue.totalCostCents).toBe(resolution.cost.totalCostCents);
     }
-    // dough child total = 400/0.8 + 200 = 700; pie = 700 × 0.5 = 350.
-    expect(viaCatalogue.totalCostCents).toBe(350);
+    // dough child total = 400 + 200 = 600 (loss sits in its 1000 g); pie = 600 × 0.5 = 300.
+    expect(viaCatalogue.totalCostCents).toBe(300);
   });
 
   it('keeps component-free recipes byte-identical (regression)', async () => {

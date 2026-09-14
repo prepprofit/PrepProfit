@@ -62,50 +62,27 @@ export const PRICE_BASES = ['pack', 'inner', 'priced'] as const;
  * (never the client). Both default to the historical meaning (whole pack, excl.
  * VAT), so a payload that omits them behaves exactly as before.
  */
-export const ingredientSupplierSchema = z
-  .object({
-    supplierName: z.string().trim().min(1).max(120),
-    // Purchasing-only identifiers — never shown in recipes/menus/ingredient lists.
-    supplierProductName: optionalText(160),
-    supplierSku: optionalText(60),
-    // Case quantity: inner units per purchase. Defaults to 1 (single-item purchase).
-    unitsPerPack: z.number().int().positive().max(100_000).optional(),
-    // Size of ONE inner unit.
-    packSize: z.number().positive().max(1_000_000).optional(),
-    packUnit: z.enum(PACK_UNITS).optional(),
-    // The quoted price in integer cents, as entered (see the doc above).
-    packPriceCents: z.number().int().min(0).max(100_000_000).optional(),
-    priceBasis: z.enum(PRICE_BASES).optional(),
-    priceIncludesVat: z.boolean().optional(),
-    // The ingredient's PURCHASE VAT band, edited from the same dialog because it is
-    // the other half of "what do they charge". A property of the INGREDIENT, not of
-    // the link: '' clears it back to the org default; omitted leaves it untouched.
-    // Only the id travels — the rate is always resolved server-side.
-    vatCategoryId: z.union([z.literal(''), z.string().uuid()]).optional(),
-    // The ingredient's own typed purchase VAT rate in basis points (0 = a deliberate
-    // 0% rate). null clears it back to the band / org default; omitted = untouched.
-    vatRateBps: z.number().int().min(0).max(10_000).nullable().optional(),
-  })
-  .refine(
-    // A price is only meaningful with a size + unit (mirrors the DB CHECK).
-    (v) =>
-      v.packPriceCents === undefined ||
-      (v.packSize !== undefined && v.packUnit !== undefined),
-    { message: 'A pack price requires a pack size and unit.', path: ['packPriceCents'] },
-  )
-  .refine(
-    // Size and unit travel together (a size with no unit is unusable).
-    (v) =>
-      (v.packSize === undefined) === (v.packUnit === undefined),
-    { message: 'Provide both a pack size and unit, or neither.', path: ['packUnit'] },
-  )
-  .refine(
-    // A case quantity describes a pack — it means nothing without one.
-    (v) => v.unitsPerPack === undefined || v.unitsPerPack === 1 || v.packSize !== undefined,
-    {
-      message: 'A case quantity requires a pack size and unit.',
-      path: ['unitsPerPack'],
-    },
-  );
+export const ingredientSupplierSchema = z.object({
+  supplierName: z.string().trim().min(1).max(120),
+  // Purchasing-only identifiers — never shown in recipes/menus/ingredient lists.
+  supplierProductName: optionalText(160),
+  supplierSku: optionalText(60),
+  // Every pack/price field is independently optional: omitted = keep what the entry
+  // stores, null = clear it. The server prices only a complete pack and says so.
+  // Case quantity: inner units per purchase.
+  unitsPerPack: z.number().int().positive().max(100_000).nullable().optional(),
+  // Size of ONE inner unit.
+  packSize: z.number().positive().max(1_000_000).nullable().optional(),
+  packUnit: z.enum(PACK_UNITS).nullable().optional(),
+  // The quoted price in integer cents, as entered (see the doc above).
+  packPriceCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  priceBasis: z.enum(PRICE_BASES).optional(),
+  priceIncludesVat: z.boolean().optional(),
+  // Legacy purchase VAT band id ('' clears); the editor now sends `vatRateBps`.
+  vatCategoryId: z.union([z.literal(''), z.string().uuid()]).optional(),
+  // This entry's purchase VAT rate in basis points (0 = a deliberate 0% rate).
+  // null clears it; omitted = untouched (the suggested default is not stored).
+  vatRateBps: z.number().int().min(0).max(10_000).nullable().optional(),
+});
 
 export type IngredientSupplierInput = z.infer<typeof ingredientSupplierSchema>;

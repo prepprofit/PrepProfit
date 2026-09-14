@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { unexpected } from '@/lib/observability';
 import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import {
@@ -10,6 +11,7 @@ import {
   trashIngredient,
   listIngredientTypeLocks,
   updateIngredient,
+  type IngredientUsage,
   type KitchenIngredient,
 } from '@/lib/data/ingredients';
 import {
@@ -20,6 +22,8 @@ import {
   clearDefaultSupplier,
   hasIncompatiblePacks,
   setDefaultSupplier,
+  type DefaultSupplierSummary,
+  type SupplierPriceStatus,
 } from '@/lib/data/ingredient-suppliers';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
@@ -261,23 +265,32 @@ export async function acceptPendingCostAction(
  * between the two (addRecipeIngredient takes the same lock). Restorable for 30
  * days via /trash.
  */
+export type DeleteIngredientResult =
+  | { status: 'trashed' }
+  | { status: 'in_use'; usage: IngredientUsage };
+
 export async function deleteIngredientAction(
   id: string,
-): Promise<ActionResult> {
-  const organizationId = await getOrgId();
-  const outcome = await withOrg(organizationId, (tx) =>
-    trashIngredient(tx, organizationId, id),
-  );
-
-  if (outcome.status === 'in_use') {
-    return { ok: false, code: 'INGREDIENT_IN_USE' };
+): Promise<ActionResult<DeleteIngredientResult>> {
+  if (typeof id !== 'string' || id.trim() === '') return { ok: false, code: 'INVALID_INPUT' };
+  try {
+    const organizationId = await getOrgId();
+    const outcome = await withOrg(organizationId, (tx) =>
+      trashIngredient(tx, organizationId, id),
+    );
+    if (outcome.status === 'not_found') {
+      return { ok: false, code: 'NOT_FOUND' };
+    }
+    // A real dependency is an answer, not a failure: the UI names what uses it.
+    if (outcome.status === 'in_use') {
+      return { ok: true, data: { status: 'in_use', usage: outcome.usage } };
+    }
+    revalidateIngredientConsumers();
+    revalidatePath('/trash');
+    return { ok: true, data: { status: 'trashed' } };
+  } catch (error) {
+    return unexpected('deleteIngredientAction', error);
   }
-  if (outcome.status === 'not_found') {
-    return { ok: false, code: 'NOT_FOUND' };
-  }
-  revalidateIngredientConsumers();
-  revalidatePath('/trash');
-  return { ok: true, data: undefined };
 }
 
 /**
@@ -288,10 +301,17 @@ export async function deleteIngredientAction(
  * the audit event run in one `withOrg` tx. Audit metadata is ids + non-PII pack
  * descriptors only — never supplier contact details.
  */
+export type SetIngredientSupplierResult = {
+  priceStatus: SupplierPriceStatus;
+  pendingRaised: boolean;
+  /** The stored entry, so the editor reopens exactly as saved. */
+  link: DefaultSupplierSummary;
+};
+
 export async function setIngredientSupplierAction(
   ingredientId: string,
   input: unknown,
-): Promise<ActionResult> {
+): Promise<ActionResult<SetIngredientSupplierResult>> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
 
   const parsed = ingredientSupplierSchema.safeParse(input);
@@ -299,45 +319,52 @@ export async function setIngredientSupplierAction(
 
   const organizationId = await getOrgId();
   const actor = await auditActor();
-  // The VAT rate is server-derived from the ingredient's purchase VAT category
-  // inside the transaction — never a client-sent rate.
+  // The VAT rate used to read an incl.-VAT quote is resolved server-side inside the
+  // transaction (entry → ingredient → business default purchase VAT).
   const outcome = await withOrg(organizationId, async (tx) => {
-    const result = await setDefaultSupplier(
-      tx,
-      organizationId,
-      ingredientId,
-      parsed.data,
-    );
-    if (result.status !== 'ok') return result.status;
+    const result = await setDefaultSupplier(tx, organizationId, ingredientId, parsed.data);
+    if (result.status !== 'ok') return result;
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'ingredient.supplierSet',
       entityType: 'ingredient',
       entityId: ingredientId,
       metadata: {
         supplierId: result.supplier.id,
-        packSize: parsed.data.packSize ?? null,
-        packUnit: parsed.data.packUnit ?? null,
-        unitsPerPack: parsed.data.unitsPerPack ?? 1,
+        packSize: result.link.packSize == null ? null : Number(result.link.packSize),
+        packUnit: result.link.packUnit,
+        unitsPerPack: result.link.unitsPerPack,
         // The STORED whole-pack net price, not the raw quote.
         packPriceCents: result.link.packPriceCents,
+        priceStatus: result.priceStatus,
         pendingRaised: result.pendingRaised,
       },
     });
-    return 'ok' as const;
+    return result;
   });
 
-  if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
-  if (outcome === 'supplier_inactive') return { ok: false, code: 'SUPPLIER_INACTIVE' };
-  if (outcome === 'invalid_name') return { ok: false, code: 'INVALID_INPUT' };
-  if (outcome === 'vat_rate_required') {
-    return { ok: false, code: 'VAT_RATE_REQUIRED' };
-  }
-  if (outcome === 'pack_unit_mismatch') {
-    return { ok: false, code: 'PACK_UNIT_MISMATCH' };
-  }
+  if (outcome.status === 'not_found') return { ok: false, code: 'NOT_FOUND' };
+  if (outcome.status === 'supplier_inactive') return { ok: false, code: 'SUPPLIER_INACTIVE' };
+  if (outcome.status === 'invalid_name') return { ok: false, code: 'INVALID_INPUT' };
+  if (outcome.status === 'pack_unit_mismatch') return { ok: false, code: 'PACK_UNIT_MISMATCH' };
   revalidateIngredientConsumers();
   revalidatePath('/suppliers');
-  return { ok: true, data: undefined };
+  return {
+    ok: true,
+    data: {
+      priceStatus: outcome.priceStatus,
+      pendingRaised: outcome.pendingRaised,
+      link: {
+        supplierName: outcome.supplier.name,
+        packSize: outcome.link.packSize == null ? null : Number(outcome.link.packSize),
+        packUnit: outcome.link.packUnit,
+        packPriceCents: outcome.link.packPriceCents,
+        unitsPerPack: outcome.link.unitsPerPack,
+        supplierProductName: outcome.link.supplierProductName,
+        supplierSku: outcome.link.supplierSku,
+        vatRateBps: outcome.link.vatRateBps,
+      },
+    },
+  };
 }
 
 /**

@@ -143,13 +143,13 @@ describe('frozen cost fixtures', () => {
     if (!dish?.complete) throw new Error('dish resolution incomplete');
     // Direct pasta: (300+120) g @ 180c/kg = 75.6c.
     // Sauce component: finished-output cost 68c (incl. its labor) for 200 g
-    // → 150 g = 51c. Material 126.6c / 90% yield = 140.66…c → 141c;
-    // + labor 100c = 241c; 120c/portion.
+    // → 150 g = 51c. Material 126.6c → 127c (the 90% yield reduces the finished
+    // weight, it no longer inflates cost); + labor 100c = 227c; 113c/portion.
     expect(dish.cost).toEqual({
-      ingredientCostCents: 141,
+      ingredientCostCents: 127,
       hiddenCostCents: 100,
-      totalCostCents: 241,
-      costPerPortionCents: 120,
+      totalCostCents: 227,
+      costPerPortionCents: 113,
     });
     expect(dish.componentLineCostsCents.get([...dish.componentLineCostsCents.keys()][0]!)).toBe(51);
   });

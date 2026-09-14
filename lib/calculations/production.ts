@@ -9,7 +9,9 @@
  *   canonicalNeeded = line.quantity
  *                   × plannedQty
  *                   / recipe.yieldPortions
- *                   / (recipe.yieldPercentage / 100)
+ *
+ * Production loss (yield %) already sits in what a batch makes (portions / finished
+ * weight), so it is not applied to the ingredients a second time.
  *
  * Contributions are accumulated UNROUNDED across every recipe and rounded ONCE,
  * after aggregation, to 2 canonical decimals (the `numeric(12,2)` domain). The
@@ -113,13 +115,12 @@ export function explodeProduction(
     if (!Number.isFinite(recipe.yieldPercentage) || recipe.yieldPercentage <= 0) {
       return invalid('invalid_math');
     }
-    const yieldFraction = recipe.yieldPercentage / 100;
     for (const line of recipe.lines) {
       if (!Number.isFinite(line.quantity) || line.quantity < 0) {
         return invalid('invalid_math');
       }
       const contribution =
-        (line.quantity * recipe.plannedQty) / recipe.yieldPortions / yieldFraction;
+        (line.quantity * recipe.plannedQty) / recipe.yieldPortions;
       totals.set(
         line.ingredientId,
         (totals.get(line.ingredientId) ?? 0) + contribution,
@@ -186,11 +187,13 @@ export type RecipeTreeNode = {
  * traversing sub-recipe components to raw ingredients. Scaling contract
  * (sub-recipes plan, locked):
  *
- *   parentScaleAfterLoss = plannedQty / yieldPortions / yieldFraction
- *   direct line          → line.quantity × parentScaleAfterLoss
- *   component line       → finishedGramsNeeded = quantityGrams × parentScaleAfterLoss
- *                          childBatchScale = finishedGramsNeeded / child.yieldWeightGrams
- *                          recurse with childBatchScale / childYieldFraction
+ *   parentScale     = plannedQty / yieldPortions
+ *   direct line     → line.quantity × parentScale
+ *   component line  → finishedGramsNeeded = quantityGrams × parentScale
+ *                     childBatchScale = finishedGramsNeeded / child.yieldWeightGrams
+ *                     recurse with childBatchScale
+ *
+ * Loss is applied once: the child's finished weight already reflects its yield.
  *
  * Same complete-or-incomplete contract as `explodeProduction`: a trashed or
  * missing component is `recipe_unavailable` (its id listed); a component with
@@ -271,7 +274,7 @@ export function explodeRecipeTree(
       }
       const childBatchScale =
         (component.quantityGrams * scaleAfterLoss) / child.yieldWeightGrams;
-      const childScaleAfterLoss = childBatchScale / (child.yieldPercentage / 100);
+      const childScaleAfterLoss = childBatchScale;
       const nextVisited = new Set(visited);
       nextVisited.add(component.componentRecipeId);
       if (
@@ -293,8 +296,7 @@ export function explodeRecipeTree(
     if (!Number.isFinite(node.yieldPercentage) || node.yieldPercentage <= 0) {
       return invalid('invalid_math');
     }
-    const scaleAfterLoss =
-      item.plannedQty / node.yieldPortions / (node.yieldPercentage / 100);
+    const scaleAfterLoss = item.plannedQty / node.yieldPortions;
     if (!walk(item.recipeId, scaleAfterLoss, 0, new Set([item.recipeId]))) {
       corrupted = true;
       break;

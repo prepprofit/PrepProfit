@@ -23,3 +23,10 @@ export type VatCategoryInput = z.infer<typeof vatCategorySchema>;
 export function bpsToRatePercent(bps: number): string {
   return String(Math.round(bps) / 100);
 }
+
+/** The business default purchase VAT: a percentage 0..100, or '' / null to clear. */
+export const defaultPurchaseVatSchema = z
+  .object({ ratePercent: z.union([z.literal(''), z.null(), z.coerce.number().min(0).max(100)]) })
+  .transform((v) => ({
+    rateBps: v.ratePercent === '' || v.ratePercent === null ? null : Math.round(v.ratePercent * 100),
+  }));

@@ -1,9 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ArrowDown, ArrowUp, ArrowUpDown, Search, SlidersHorizontal } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Printer, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type { LibraryRecipeRow } from '@/lib/data/recipe-library';
 import { formatMoney } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
@@ -12,35 +13,39 @@ import { Card } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useActionError } from '@/lib/i18n/use-action-error';
-import { bulkTrashRecipesAction } from '@/app/(app)/recipes/book-actions';
+import { deleteRecipeAction } from '@/app/(app)/recipes/actions';
 import { cn } from '@/lib/utils';
-import { RecipeIssuesButton, type RecipeIssue } from './recipe-issues-button';
+import { RecipeQuickView } from './recipe-quick-view';
+import { readRecipeListReturn, rememberRecipeListReturn, scrollContainer } from './recipe-list-return';
 
 /**
- * Recipe browsing list. Deliberately calm: the recipe NAME leads each row; the only
- * figure is cost per kg (managers only — kitchen rows carry no `money` key at all);
- * anything that needs fixing sits behind a small "!" that explains itself on click.
- * Yield, allergen chips, selling price and margin live on the recipe page, not here.
+ * Recipe browsing list. Each row: the recipe NAME (large; opens the recipe), cost per
+ * kg (managers only — kitchen rows carry no `money` key at all; "—" with the reason
+ * when it can't be calculated), then quick view, print and move-to-Trash. Nothing
+ * else lives in the row — no yield, prices, margins or status badges.
  *
- * Rows arrive in recent-activity order (latest edit or open first); sorting by name
- * or cost per kg is a choice, and "Recent activity" returns to the arrival order.
- * Allergen / issue filters stay available behind "Filters".
+ * Rows arrive in recent-activity order (latest edit or open first). Search, sort and
+ * the scroll position are remembered when a recipe is opened, so "Back to recipes"
+ * returns to exactly this list.
  */
 
-/** What the list renders: the manager row with `money` optional (kitchen). */
-export type LibraryTableRow = Omit<LibraryRecipeRow, 'money'> &
-  Partial<Pick<LibraryRecipeRow, 'money'>>;
+export type LibraryTableRow = Omit<LibraryRecipeRow, 'money'> & Partial<Pick<LibraryRecipeRow, 'money'>>;
 
 type SortKey = 'recent' | 'name-asc' | 'name-desc' | 'cost-asc' | 'cost-desc';
+const SORT_KEYS: SortKey[] = ['recent', 'name-asc', 'name-desc', 'cost-asc', 'cost-desc'];
+
+type IssueKey = 'allergensUnreviewed' | 'nutritionIncomplete' | 'needsPricing' | 'missingFinishedWeight' | 'yieldReviewNeeded' | 'legacyLabourOrEnergy';
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 
-export function issuesOf(row: LibraryTableRow, showMoney: boolean): RecipeIssue[] {
-  const issues: RecipeIssue[] = [];
+function issuesOf(row: LibraryTableRow, showMoney: boolean): IssueKey[] {
+  const issues: IssueKey[] = [];
   if (row.status.allergensUnreviewed) issues.push('allergensUnreviewed');
   if (row.status.nutritionIncomplete) issues.push('nutritionIncomplete');
   if (showMoney && row.money?.needsPricing) issues.push('needsPricing');
   if (row.status.missingFinishedWeight) issues.push('missingFinishedWeight');
+  if (row.status.yieldReviewNeeded) issues.push('yieldReviewNeeded');
+  if (showMoney && row.money?.legacyLabourOrEnergy) issues.push('legacyLabourOrEnergy');
   return issues;
 }
 
@@ -51,7 +56,6 @@ export function LibraryTable({
 }: {
   /** Already in recent-activity order. */
   rows: LibraryTableRow[];
-  /** Manager only — kitchen rows have no money to show anyway. */
   showMoney: boolean;
   currency: string;
 }) {
@@ -59,14 +63,34 @@ export function LibraryTable({
   const tHome = useTranslations('recipes.home');
   const tIssues = useTranslations('recipes.issues');
   const tAllergens = useTranslations('allergens');
+  const tRecipes = useTranslations('recipes');
   const tCommon = useTranslations('common');
   const actionError = useActionError();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const listHref = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+
   const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState<SortKey>('recent');
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [allergenFilter, setAllergenFilter] = React.useState<Set<string>>(new Set());
-  const [issueFilter, setIssueFilter] = React.useState<Set<RecipeIssue>>(new Set());
+  const [issueFilter, setIssueFilter] = React.useState<Set<IssueKey>>(new Set());
+
+  // Coming back from a recipe: restore this list's search, sort and scroll.
+  React.useEffect(() => {
+    const saved = readRecipeListReturn();
+    if (!saved || saved.href !== listHref) return;
+    setQuery(saved.query);
+    if (SORT_KEYS.includes(saved.sort as SortKey)) setSort(saved.sort as SortKey);
+    const top = saved.scrollTop;
+    requestAnimationFrame(() => scrollContainer()?.scrollTo({ top }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore once on mount
+  }, []);
+
+  const remember = React.useCallback(() => {
+    rememberRecipeListReturn({ href: listHref, query, sort, scrollTop: scrollContainer()?.scrollTop ?? 0 });
+  }, [listHref, query, sort]);
 
   const allergenOptions = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -77,14 +101,18 @@ export function LibraryTable({
   }, [rows]);
 
   const issueOptions = React.useMemo(() => {
-    const keys: RecipeIssue[] = [
+    const keys: IssueKey[] = [
       'allergensUnreviewed',
       'nutritionIncomplete',
       ...(showMoney ? (['needsPricing'] as const) : []),
       'missingFinishedWeight',
+      'yieldReviewNeeded',
+      ...(showMoney ? (['legacyLabourOrEnergy'] as const) : []),
     ];
-    return keys.map((key) => ({ key, count: rows.filter((r) => issuesOf(r, showMoney).includes(key)).length }));
-  }, [rows, showMoney]);
+    return keys
+      .map((key) => ({ key, count: rows.filter((r) => issuesOf(r, showMoney).includes(key)).length }))
+      .filter((o) => o.count > 0 || issueFilter.has(o.key));
+  }, [rows, showMoney, issueFilter]);
 
   const toggle = <T,>(set: Set<T>, value: T, apply: (next: Set<T>) => void) => {
     const next = new Set(set);
@@ -109,74 +137,68 @@ export function LibraryTable({
     return [...filtered].sort((a, b) => {
       if (sort === 'name-asc') return collator.compare(a.name, b.name);
       if (sort === 'name-desc') return collator.compare(b.name, a.name);
-      // Unknown cost per kg sinks to the bottom in both directions.
       const ca = cost(a);
       const cb = cost(b);
-      if (ca === null || cb === null) {
-        return Number(ca === null) - Number(cb === null) || collator.compare(a.name, b.name);
-      }
+      if (ca === null || cb === null) return Number(ca === null) - Number(cb === null) || collator.compare(a.name, b.name);
       return (sort === 'cost-asc' ? ca - cb : cb - ca) || collator.compare(a.name, b.name);
     });
   }, [rows, q, allergenFilter, issueFilter, sort, showMoney]);
 
-  // ── Bulk selection ──
-  const [selected, setSelected] = React.useState<Set<string>>(new Set());
-  const [bulkError, setBulkError] = React.useState<string | null>(null);
-  const [bulkNotice, setBulkNotice] = React.useState<string | null>(null);
-  const [confirmTrash, setConfirmTrash] = React.useState(false);
+  // ── Quick view + Trash ──
+  const [quickViewId, setQuickViewId] = React.useState<string | null>(null);
+  const [trashTarget, setTrashTarget] = React.useState<LibraryTableRow | null>(null);
+  const [trashError, setTrashError] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const [hidden, setHidden] = React.useState<Set<string>>(new Set());
   const [pending, startTransition] = React.useTransition();
 
-  const runBulkTrash = () => {
-    setBulkError(null);
-    setBulkNotice(null);
+  React.useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  const confirmTrash = () => {
+    const target = trashTarget;
+    if (!target) return;
+    setTrashError(null);
     startTransition(async () => {
-      const result = await bulkTrashRecipesAction({ recipeIds: [...selected] });
-      if (result.ok) {
-        setBulkNotice(
-          t('bulk.trashDone', {
-            trashed: result.data.trashed,
-            blocked: result.data.blocked,
-            skipped: result.data.skipped,
-          }),
-        );
-        setSelected(new Set());
-        router.refresh();
-      } else {
-        setBulkError(actionError(result.code));
+      const result = await deleteRecipeAction(target.id);
+      if (!result.ok) {
+        setTrashError(actionError(result.code));
+        return;
       }
-      setConfirmTrash(false);
+      setHidden((prev) => new Set(prev).add(target.id));
+      setTrashTarget(null);
+      setNotice(t('trashed', { name: target.name }));
+      router.refresh();
     });
   };
 
-  const allVisibleSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
-  const activeFilters = allergenFilter.size + issueFilter.size;
-
-  const headingSort = (key: 'name' | 'cost') => {
+  const headingSort = (key: 'name' | 'cost') =>
     setSort((current) =>
-      key === 'name'
-        ? current === 'name-asc'
-          ? 'name-desc'
-          : 'name-asc'
-        : current === 'cost-asc'
-          ? 'cost-desc'
-          : 'cost-asc',
+      key === 'name' ? (current === 'name-asc' ? 'name-desc' : 'name-asc') : current === 'cost-asc' ? 'cost-desc' : 'cost-asc',
     );
-  };
   const sortIcon = (key: 'name' | 'cost') => {
     const Icon = sort === `${key}-asc` ? ArrowUp : sort === `${key}-desc` ? ArrowDown : ArrowUpDown;
     return <Icon className={cn('size-3.5', !sort.startsWith(key) && 'opacity-40')} aria-hidden />;
   };
   const ariaSort = (key: 'name' | 'cost') =>
     sort === `${key}-asc` ? 'ascending' : sort === `${key}-desc` ? 'descending' : undefined;
+  const activeFilters = allergenFilter.size + issueFilter.size;
+  const shownRows = visibleRows.filter((r) => !hidden.has(r.id));
+
+  const costReason = (row: LibraryTableRow): string => {
+    if (row.status.missingFinishedWeight) return t('costReason.weight');
+    if (row.money?.needsPricing) return t('costReason.prices');
+    return t('costReason.incomplete');
+  };
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input
             type="search"
             aria-label={t('searchPlaceholder')}
@@ -190,25 +212,14 @@ export function LibraryTable({
           <label htmlFor="library-sort" className="shrink-0 text-sm text-muted-foreground">
             {tHome('sortLabel')}
           </label>
-          <Select
-            id="library-sort"
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            className="h-10 w-44"
-          >
+          <Select id="library-sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="h-10 w-44">
             <option value="recent">{tHome('sort.recent')}</option>
             <option value="name-asc">{tHome('sort.name')}</option>
             <option value="name-desc">{tHome('sort.nameDesc')}</option>
             {showMoney && <option value="cost-asc">{tHome('sort.costAsc')}</option>}
             {showMoney && <option value="cost-desc">{tHome('sort.costDesc')}</option>}
           </Select>
-          <Button
-            type="button"
-            variant="outline"
-            aria-expanded={filtersOpen}
-            onClick={() => setFiltersOpen((v) => !v)}
-            className="h-10 px-3"
-          >
+          <Button type="button" variant="outline" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((v) => !v)} className="h-10 px-3">
             <SlidersHorizontal className="size-4" aria-hidden />
             {activeFilters > 0 ? t('filters.toggleActive', { count: activeFilters }) : t('filters.toggle')}
           </Button>
@@ -222,6 +233,7 @@ export function LibraryTable({
             <span aria-hidden className="text-xs font-medium text-muted-foreground">
               {t('filters.status')}
             </span>
+            {issueOptions.length === 0 && <span className="text-xs text-muted-foreground">{t('filters.noIssues')}</span>}
             {issueOptions.map((option) => (
               <FilterChip
                 key={option.key}
@@ -252,150 +264,90 @@ export function LibraryTable({
         </div>
       )}
 
-      {(bulkError || bulkNotice) && (
-        <div
-          role={bulkError ? 'alert' : 'status'}
-          className={cn(
-            'rounded-lg border px-3 py-1.5 text-xs',
-            bulkError
-              ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
-              : 'border-border bg-surface-2 text-muted-foreground',
-          )}
-        >
-          {bulkError ?? bulkNotice}
-        </div>
-      )}
-
-      {selected.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
-          <span className="text-sm text-muted-foreground">{t('bulk.selected', { count: selected.size })}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="text-red-700 dark:text-red-300"
-            disabled={pending}
-            onClick={() => setConfirmTrash(true)}
-          >
-            {t('bulk.trash')}
-          </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-            {tCommon('cancel')}
-          </Button>
-        </div>
-      )}
-
-      <ConfirmDialog
-        open={confirmTrash}
-        title={t('bulk.trashConfirm.title')}
-        description={t('bulk.trashConfirm.body', { count: selected.size })}
-        confirmLabel={tCommon('delete')}
-        cancelLabel={tCommon('cancel')}
-        destructive
-        pending={pending}
-        onConfirm={runBulkTrash}
-        onCancel={() => setConfirmTrash(false)}
-      />
-
-      <Card className="overflow-visible p-0">
+      <Card className="overflow-hidden p-0">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
-              <th className="w-10 py-2.5 pl-4 pr-1 text-left">
-                <input
-                  type="checkbox"
-                  aria-label={t('bulk.selectAll')}
-                  className="size-4 cursor-pointer accent-accent-700"
-                  checked={allVisibleSelected}
-                  onChange={() =>
-                    setSelected(allVisibleSelected ? new Set() : new Set(visibleRows.map((r) => r.id)))
-                  }
-                />
-              </th>
-              <th className="px-3 py-2.5 text-left font-medium text-muted-foreground" aria-sort={ariaSort('name')}>
-                <button
-                  type="button"
-                  className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground"
-                  onClick={() => headingSort('name')}
-                >
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground" aria-sort={ariaSort('name')}>
+                <button type="button" className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground" onClick={() => headingSort('name')}>
                   {t('columns.name')}
                   {sortIcon('name')}
                 </button>
               </th>
               {showMoney && (
                 <th className="px-3 py-2.5 text-right font-medium text-muted-foreground" aria-sort={ariaSort('cost')}>
-                  <button
-                    type="button"
-                    className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground"
-                    onClick={() => headingSort('cost')}
-                  >
+                  <button type="button" className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground" onClick={() => headingSort('cost')}>
                     {t('columns.costPerKg')}
                     {sortIcon('cost')}
                   </button>
                 </th>
               )}
-              <th className="w-12 py-2.5 pl-1 pr-4">
-                <span className="sr-only">{tIssues('title')}</span>
+              <th className="w-px py-2.5 pl-2 pr-3">
+                <span className="sr-only">{t('columns.actions')}</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            {visibleRows.length === 0 ? (
+            {shownRows.length === 0 ? (
               <tr>
-                <td colSpan={showMoney ? 4 : 3} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={showMoney ? 3 : 2} className="px-4 py-10 text-center text-muted-foreground">
                   {t('empty')}
                 </td>
               </tr>
             ) : (
-              visibleRows.map((row) => {
+              shownRows.map((row) => {
                 const cost = row.money?.costPerKgCents ?? null;
                 return (
-                  <tr
-                    key={row.id}
-                    tabIndex={0}
-                    aria-label={row.name}
-                    className="cursor-pointer border-b border-border/60 transition-colors last:border-b-0 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
-                    onClick={() => router.push(`/recipes/${row.id}`)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') router.push(`/recipes/${row.id}`);
-                    }}
-                  >
-                    <td className="py-3.5 pl-4 pr-1 align-middle">
-                      <input
-                        type="checkbox"
-                        aria-label={t('bulk.selectRow', { name: row.name })}
-                        className="size-4 cursor-pointer accent-accent-700"
-                        checked={selected.has(row.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() =>
-                          setSelected((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(row.id)) next.delete(row.id);
-                            else next.add(row.id);
-                            return next;
-                          })
-                        }
-                      />
-                    </td>
-                    <td className="px-3 py-3.5 align-middle">
-                      <span className="text-base font-medium leading-snug text-foreground">{row.name}</span>
+                  <tr key={row.id} className="border-b border-border/60 transition-colors last:border-b-0 hover:bg-surface-2/60">
+                    <td className="px-4 py-4 align-middle">
+                      <Link
+                        href={`/recipes/${row.id}`}
+                        onClick={remember}
+                        className="block rounded text-lg font-medium leading-snug text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {row.name}
+                      </Link>
                     </td>
                     {showMoney && (
-                      <td className="whitespace-nowrap px-3 py-3.5 text-right align-middle tabular-nums">
+                      <td className="whitespace-nowrap px-3 py-4 text-right align-middle tabular-nums">
                         {cost !== null ? (
-                          <span className="text-foreground">
+                          <span className="text-base text-foreground">
                             {formatMoney(cost, currency)}
                             <span className="ml-0.5 text-xs text-muted-foreground">/kg</span>
                           </span>
                         ) : (
-                          <span className="text-muted-foreground" title={t('costUnknown')}>
-                            —
+                          <span className="cursor-help text-base text-muted-foreground" title={costReason(row)}>
+                            <span aria-hidden>—</span>
+                            <span className="sr-only">{costReason(row)}</span>
                           </span>
                         )}
                       </td>
                     )}
-                    <td className="py-3.5 pl-1 pr-4 text-right align-middle">
-                      <RecipeIssuesButton name={row.name} issues={issuesOf(row, showMoney)} />
+                    <td className="py-4 pl-2 pr-3 align-middle">
+                      <div className="flex items-center justify-end gap-0.5">
+                        <IconButton label={t('actions.quickView', { name: row.name })} onClick={() => setQuickViewId(row.id)}>
+                          <Eye className="size-[18px]" aria-hidden />
+                        </IconButton>
+                        <a
+                          href={`/api/recipes/${row.id}/print/pdf`}
+                          target="_blank"
+                          rel="noopener"
+                          aria-label={t('actions.print', { name: row.name })}
+                          title={t('actions.printShort')}
+                          className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <Printer className="size-[18px]" aria-hidden />
+                        </a>
+                        <IconButton
+                          label={t('actions.trash', { name: row.name })}
+                          onClick={() => {
+                            setTrashError(null);
+                            setTrashTarget(row);
+                          }}
+                        >
+                          <Trash2 className="size-[18px]" aria-hidden />
+                        </IconButton>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -404,21 +356,51 @@ export function LibraryTable({
           </tbody>
         </table>
       </Card>
+
+      <RecipeQuickView recipeId={quickViewId} onClose={() => setQuickViewId(null)} onOpen={remember} />
+
+      <ConfirmDialog
+        open={trashTarget !== null}
+        title={tRecipes('deleteConfirm.title')}
+        description={tRecipes('deleteConfirm.body', { name: trashTarget?.name ?? '' })}
+        confirmLabel={tCommon('moveToTrash')}
+        cancelLabel={tCommon('cancel')}
+        destructive
+        pending={pending}
+        onConfirm={confirmTrash}
+        onCancel={() => setTrashTarget(null)}
+      >
+        {trashError && (
+          <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300">
+            {trashError}
+          </p>
+        )}
+      </ConfirmDialog>
+
+      {notice && (
+        <div role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-foreground px-4 py-3 text-sm text-background shadow-lg">
+          {notice}
+        </div>
+      )}
     </div>
   );
 }
 
-function FilterChip({
-  selected,
-  onClick,
-  label,
-  count,
-}: {
-  selected: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-}) {
+function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {children}
+    </button>
+  );
+}
+
+function FilterChip({ selected, onClick, label, count }: { selected: boolean; onClick: () => void; label: string; count: number }) {
   return (
     <button
       type="button"

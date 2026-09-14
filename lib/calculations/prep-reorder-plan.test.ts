@@ -64,18 +64,18 @@ describe('buildPrepReorderPlan', () => {
     expect(plan.issues).toHaveLength(0);
   });
 
-  it('applies the loss fraction to the raw required amount (mirrors the cost engine)', () => {
+  it('does not re-apply the yield loss to what the batch uses (mirrors the cost engine)', () => {
     const plan = buildPrepReorderPlan(
       input({
         demand: [{ recipeId: 'r-bread', expectedPortions: 10 }],
-        // 80% yield → need 5 kg / 0.8 = 6.25 kg raw for the base batch.
+        // 80% yield reduces what the batch makes, not what it uses → 5 kg for the base batch.
         recipes: [recipe({ yieldPercentage: 80 })],
         ingredients: [ingredient({ onHandCanonical: 0, lowStockThresholdCanonical: null })],
       }),
     );
     expect(plan.reorderSuggestions).toHaveLength(1);
-    expect(plan.reorderSuggestions[0]!.requiredCanonical).toBeCloseTo(6250, 5);
-    expect(plan.reorderSuggestions[0]!.shortfallCanonical).toBeCloseTo(6250, 5);
+    expect(plan.reorderSuggestions[0]!.requiredCanonical).toBeCloseTo(5000, 5);
+    expect(plan.reorderSuggestions[0]!.shortfallCanonical).toBeCloseTo(5000, 5);
   });
 
   it('flags insufficient stock as a reorder shortfall', () => {

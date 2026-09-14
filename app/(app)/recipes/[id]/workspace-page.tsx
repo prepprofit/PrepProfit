@@ -8,8 +8,10 @@ import { listIngredients } from '@/lib/data/ingredients';
 import { listComponentPickerRecipes } from '@/lib/data/recipe-components';
 import { resolveRecipeCostTree } from '@/lib/data/recipe-cost-tree';
 import { loadRecipeIngredientCostDetails } from '@/lib/data/recipe-cost-details';
-import { costPerKgCents } from '@/lib/calculations/recipeCost';
-import { portionOptionCostCents } from '@/lib/calculations/foodCost';
+import { costPerKgCents, recipeInputWeightGrams } from '@/lib/calculations/recipeCost';
+import { loadRecipeFinishedWeights } from '@/lib/data/recipe-yield';
+import { listRecipePresets } from '@/lib/data/recipe-presets';
+import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 import { loadRecipeAllergenRollup } from '@/lib/data/allergens';
 import { resolveRecipeNutritionTree } from '@/lib/data/recipe-nutrition-tree';
 import { nutritionLabelRows } from '@/lib/calculations/nutritionLabel';
@@ -24,7 +26,7 @@ import {
   type WorkspaceClientData,
 } from '@/components/app/recipes/workspace/recipe-workspace';
 import type { DraftLine } from '@/components/app/recipes/workspace/recipe-input-list';
-import type { UomTabItem } from '@/components/app/recipes/workspace/recipe-uom-tab';
+import type { UomTabItem } from '@/components/app/recipes/workspace/recipe-workspace-tabs';
 import { dimensionOf, type Unit } from '@/lib/units';
 import {
   missingAnchorsByIngredient,
@@ -53,7 +55,7 @@ export async function RecipeWorkspacePage({
   const role = await getUserRole();
   const workspaceRole = canSeeRecipeCosts(role) ? 'manager' : 'kitchen';
 
-  const [dto, ingredientRows, pickerRecipes, allergenRollup, settings] =
+  const [dto, ingredientRows, pickerRecipes, allergenRollup, settings, presets] =
     await Promise.all([
       withOrg(organizationId, (tx) =>
         getRecipeWorkspace(tx, organizationId, recipeId, workspaceRole),
@@ -66,8 +68,19 @@ export async function RecipeWorkspacePage({
         loadRecipeAllergenRollup(tx, organizationId, recipeId),
       ),
       getOrgSettings(),
+      withOrg(organizationId, (tx) => listRecipePresets(tx, organizationId, recipeId)),
     ]);
   if (!dto) notFound();
+
+  // Yield calculator inputs + the ONE finished-weight source used for cost per kg.
+  const inputWeightGrams = recipeInputWeightGrams(
+    dto.ingredientLines.map((l) => ({ dimension: l.ingredient.dimension, quantity: l.quantity })),
+    dto.componentLines.map((l) => l.quantityGrams),
+  );
+  const finishedWeights = await withOrg(organizationId, (tx) =>
+    loadRecipeFinishedWeights(tx, organizationId, [dto.recipe]),
+  );
+  const finishedWeightGrams = finishedWeights.get(dto.recipe.id) ?? null;
 
   // Merged visual sequence: ingredient + component lines by display order.
   type OrderedLine = DraftLine & { displaySortOrder: number };
@@ -334,115 +347,44 @@ export async function RecipeWorkspacePage({
     canEdit: workspaceRole === 'manager',
   };
 
-  // Manager-only cost summary from the shared resolver (kitchen: null).
+  // Manager-only costs from the shared resolver (kitchen: null): the line cost beside
+  // each ingredient, cost per batch and cost per kg — nothing per serving/portion.
   let cost: WorkspaceClientData['cost'] = null;
   if (dto.role === 'manager') {
-    const [resolutionMap, lineDetails] = await withOrg(
-      organizationId,
-      async (tx) =>
-        Promise.all([
-          resolveRecipeCostTree(tx, organizationId, [recipeId]),
-          loadRecipeIngredientCostDetails(tx, organizationId, recipeId),
-        ]),
+    const [resolutionMap, lineDetails] = await withOrg(organizationId, async (tx) =>
+      Promise.all([
+        resolveRecipeCostTree(tx, organizationId, [recipeId]),
+        loadRecipeIngredientCostDetails(tx, organizationId, recipeId),
+      ]),
     );
     const resolution = resolutionMap.get(recipeId);
-    if (resolution?.complete) {
-      // Per-line expandable details (§7.3): ingredient lines with supplier/
-      // price-origin info + component lines priced by the shared resolver, in
-      // the merged display order the ingredient area uses.
-      const PRICE_UNIT_LABEL: Record<'weight' | 'volume' | 'count', string> = {
-        weight: 'kg',
-        volume: 'l',
-        count: 'pc',
-      };
-      const ingredientDetails = lineDetails.map((d) => ({
-        key: d.lineId,
-        kind: 'ingredient' as const,
-        name: d.name,
-        prepName: d.prepName,
-        quantityLabel: `${d.quantity} ${UNIT_LABEL[d.dimension]}`,
-        needsPricing: d.needsPricing,
-        lineCostCents: d.lineCostCents,
-        priceCents: d.needsPricing ? null : d.priceCents,
-        unitLabel: PRICE_UNIT_LABEL[d.dimension],
-        supplierName: d.supplierName,
-        packSize: d.packSize,
-        packUnit: d.packUnit,
-        packPriceCents: d.packPriceCents,
-        priceSource: d.priceSource,
-        priceSourceDate: d.priceSourceDate,
-      }));
-      const componentDetails = dto.componentLines.map((l) => ({
-        key: l.id,
-        kind: 'component' as const,
-        name: l.componentRecipeName,
-        prepName: null,
-        quantityLabel: `${l.quantityGrams} g`,
-        needsPricing: false,
-        lineCostCents: resolution.componentLineCostsCents.get(l.id) ?? null,
-        priceCents: null,
-        unitLabel: null,
-        supplierName: null,
-        packSize: null,
-        packUnit: null,
-        packPriceCents: null,
-        priceSource: null,
-        priceSourceDate: null,
-      }));
-      const orderByLineId = new Map(
-        [...ingredientLines, ...componentLines].map((l) => [
-          l.id,
-          l.displaySortOrder,
-        ]),
-      );
-      const details = [...ingredientDetails, ...componentDetails].sort(
-        (a, b) =>
-          (orderByLineId.get(a.key) ?? 0) - (orderByLineId.get(b.key) ?? 0),
-      );
-      // Scale-invariant per-unit summary + per-portion-option costs (§6.8).
-      const perYieldUnitCents =
-        dto.recipe.yieldUnit &&
-        dto.recipe.yieldQuantity != null &&
-        dto.recipe.yieldQuantity > 0 &&
-        Number.isFinite(dto.recipe.yieldQuantity)
-          ? Math.round(resolution.cost.totalCostCents / dto.recipe.yieldQuantity)
-          : null;
-      const portionCosts = dto.portionOptions.map((o) => ({
-        key: o.id,
-        name: o.name,
-        quantityLabel: `${o.quantity} ${o.unit}`,
-        quantity: o.quantity,
-        unit: o.unit,
-        isDefault: o.isDefault,
-        isNutritionServing: o.isNutritionServing,
-        sellingPriceCents: o.sellingPriceCents,
-        targetFoodCostBps: o.targetFoodCostBps,
-        costCents: portionOptionCostCents({
-          totalCostCents: resolution.cost.totalCostCents,
-          portionQuantity: o.quantity,
-          portionUnit: o.unit,
-          yieldQuantity: dto.recipe.yieldQuantity,
-          yieldUnit: dto.recipe.yieldUnit,
-          yieldPortions: dto.recipe.yieldPortions,
-        }),
-      }));
-      cost = {
-        complete: true,
-        cost: resolution.cost,
-        details,
-        costPerKgCents: costPerKgCents(
-          resolution.cost.totalCostCents,
-          dto.recipe.yieldWeightGrams,
-        ),
-        perYieldUnit:
-          perYieldUnitCents !== null && dto.recipe.yieldUnit
-            ? { unit: dto.recipe.yieldUnit, cents: perYieldUnitCents }
-            : null,
-        portionCosts,
-      };
-    } else {
-      cost = { complete: false };
+    const lineCosts: Record<string, number | null> = {};
+    const unpricedLineKeys: string[] = [];
+    for (const d of lineDetails) {
+      lineCosts[d.lineId] = d.needsPricing ? null : d.lineCostCents;
+      if (d.needsPricing) unpricedLineKeys.push(d.lineId);
     }
+    if (resolution?.complete) {
+      for (const l of dto.componentLines) {
+        lineCosts[l.id] = resolution.componentLineCostsCents.get(l.id) ?? null;
+      }
+    }
+    // Labour / energy saved by the retired editor stay inside the batch cost until
+    // the manager removes them — shown for review, never hidden or double-counted.
+    const legacy = {
+      labourCents: dto.recipe.laborCostCents,
+      energyCents: dto.recipe.energyCostCents,
+    };
+    cost =
+      resolution?.complete && unpricedLineKeys.length === 0
+        ? {
+            complete: true,
+            batchCostCents: resolution.cost.totalCostCents,
+            costPerKgCents: costPerKgCents(resolution.cost.totalCostCents, finishedWeightGrams),
+            lineCosts,
+            legacy,
+          }
+        : { complete: false, lineCosts, unpricedLineKeys, legacy };
   }
 
   const data: WorkspaceClientData = {
@@ -455,6 +397,12 @@ export async function RecipeWorkspacePage({
       yieldUnit: dto.recipe.yieldUnit,
       yieldPortions: dto.recipe.yieldPortions,
       yieldWeightGrams: dto.recipe.yieldWeightGrams,
+      yieldPercentage: dto.recipe.yieldPercentage,
+      yieldWeightSource: dto.recipe.yieldWeightSource,
+      yieldReviewNeeded: dto.recipe.yieldReviewNeeded,
+      inputWeightGrams,
+      finishedWeightGrams,
+      folderId: dto.recipe.folderId,
       notes: dto.recipe.notes,
       coverMediaId: dto.recipe.coverMediaId,
       coverUrl: dto.recipe.coverMediaId
@@ -496,19 +444,27 @@ export async function RecipeWorkspacePage({
       .map((p) => ({ id: p.id, name: p.name })),
     cost,
     currency: settings.currency,
+    measurementSystem: settings.measurementSystem,
+    presets: presets.map((p) => ({
+      id: p.id,
+      name: p.name,
+      targetWeightGrams: p.targetWeightGrams,
+      sortOrder: p.sortOrder,
+    })),
     uom,
     nutrition,
   };
 
   return (
     <div className="flex w-full flex-col gap-6">
-      {/* Allergens stay OPERATIONAL and shared with the legacy page; here they
-          render below the recipe, like every supporting section. */}
+      {/* Allergens are OPERATIONAL (both roles) and render below the recipe, like
+          every supporting section. */}
       <RecipeWorkspace
         data={data}
         allergenPanel={
           <RecipeAllergenPanel recipeId={recipeId} initialRollup={allergenRollup} />
         }
+        taskMenu={<AddToTaskListMenu kind="prep" sourceId={recipeId} />}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
-import { ingredients, ingredientSuppliers, suppliers } from '@/lib/db/schema';
+import { ingredients, ingredientSuppliers, organizationSettings, suppliers } from '@/lib/db/schema';
 import type { IngredientSupplier, Supplier } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { lockActiveIngredientRow } from '@/lib/data/ingredients';
@@ -168,6 +168,8 @@ export type DefaultSupplierSummary = {
   unitsPerPack: number;
   supplierProductName: string | null;
   supplierSku: string | null;
+  /** The entry's own purchase VAT (bps); null = not set. */
+  vatRateBps: number | null;
 };
 
 /**
@@ -193,6 +195,7 @@ export async function loadDefaultLinksByIngredient(
       unitsPerPack: ingredientSuppliers.unitsPerPack,
       supplierProductName: ingredientSuppliers.supplierProductName,
       supplierSku: ingredientSuppliers.supplierSku,
+      vatRateBps: ingredientSuppliers.vatRateBps,
     })
     .from(ingredientSuppliers)
     .innerJoin(
@@ -219,6 +222,7 @@ export async function loadDefaultLinksByIngredient(
       unitsPerPack: r.unitsPerPack,
       supplierProductName: r.supplierProductName,
       supplierSku: r.supplierSku,
+      vatRateBps: r.vatRateBps,
     });
   }
   return map;
@@ -264,13 +268,32 @@ export async function loadSupplierPacksByIngredientName(
   return map;
 }
 
+/**
+ * What happened to the PRICE part of a supplier save. The supplier itself is always
+ * assigned (unless the name/unit is invalid); pricing is optional and may be
+ * completed later, so an incomplete price never blocks the save:
+ *  - `saved`       a new whole-pack net price was stored;
+ *  - `unchanged`   no price sent (or the same pack) — the stored price was kept;
+ *  - `none`        no price is known for this link;
+ *  - `needs_pack`  a price was entered but there's no complete pack size to price;
+ *  - `needs_vat`   an incl.-VAT price was entered but no VAT rate is known.
+ */
+export type SupplierPriceStatus = 'saved' | 'unchanged' | 'none' | 'needs_pack' | 'needs_vat';
+
 export type SetDefaultSupplierResult =
-  | { status: 'ok'; link: IngredientSupplier; supplier: Supplier; pendingRaised: boolean }
+  | {
+      status: 'ok';
+      link: IngredientSupplier;
+      supplier: Supplier;
+      pendingRaised: boolean;
+      priceStatus: SupplierPriceStatus;
+      /** The VAT rate the save used to read an incl.-VAT price (null = unknown). */
+      vatRateBps: number | null;
+    }
   | { status: 'not_found' }
   | { status: 'supplier_inactive' }
   | { status: 'invalid_name' }
-  | { status: 'pack_unit_mismatch' }
-  | { status: 'vat_rate_required' };
+  | { status: 'pack_unit_mismatch' };
 
 /** Numeric-or-null coercion for the stored numeric pack size (driver returns a string). */
 function numOrNull(value: string | null): number | null {
@@ -280,23 +303,45 @@ function numOrNull(value: string | null): number | null {
 }
 
 /**
- * Set (or update) the DEFAULT supplier for an ingredient — the dual-write
- * transaction (transition contract §5/§6). All under the caller's `withOrg` + a
- * FOR UPDATE lock on the ingredient:
+ * The purchase VAT that applies to an ingredient's supplier entry, most specific
+ * first: the entry's own rate → the ingredient's typed rate → the ingredient's
+ * (explicitly chosen) VAT band → the business's configured default purchase VAT.
+ * NULL when none is set — never the sales rate, never an invented statutory rate.
+ */
+export async function resolvePurchaseVatBps(
+  db: TenantClient,
+  organizationId: string,
+  sources: { linkVatBps: number | null; ingredientVatBps: number | null; ingredientBandId: string | null },
+): Promise<number | null> {
+  if (sources.linkVatBps != null) return sources.linkVatBps;
+  if (sources.ingredientVatBps != null) return sources.ingredientVatBps;
+  if (sources.ingredientBandId != null) {
+    const band = await resolveVatRateBps(db, organizationId, sources.ingredientBandId, { fallbackToDefault: false });
+    if (band != null) return band;
+  }
+  const [settings] = await db
+    .select({ vat: organizationSettings.defaultPurchaseVatBps })
+    .from(organizationSettings)
+    .where(eq(organizationSettings.organizationId, organizationId))
+    .limit(1);
+  return settings?.vat ?? null;
+}
+
+/**
+ * Set (or update) the DEFAULT supplier for an ingredient — a PARTIAL update, all
+ * under the caller's `withOrg` + a FOR UPDATE lock on the ingredient:
  *  1. find-or-create the supplier by name (rejects empty / refuses an archived one);
- *  2. validate the pack unit's dimension matches the ingredient;
- *  3. upsert the link and flip `is_default` (clearing any prior default);
- *  4. mirror the supplier name into the legacy `ingredients.supplier` column;
- *  5. raise a pending observed cost ONLY when a real pack price is present AND the
- *     pack changed (§12.6) — an unchanged pack is a no-op (no new history, no
- *     re-opened pending).
- *
- * The VAT rate is resolved HERE: the ingredient's own typed rate when set (0% is a
- * real rate), else its purchase VAT category, else the org's default band — never from client input, and no longer from the
- * org's single sales rate: VAT on what you BUY depends on the goods (food 14% vs
- * alcohol 25.5% in Finland), not on the business. It is only needed when the quote
- * `priceIncludesVat` — the net price is otherwise unknowable and we refuse rather
- * than guess 0% (`vat_rate_required`).
+ *  2. merge the entry: a field OMITTED (`undefined`) keeps what this ingredient ⇄
+ *     supplier entry already stores; `null` clears it; a value replaces it. Unknown
+ *     stays NULL — never 0;
+ *  3. validate the pack unit's dimension matches the ingredient;
+ *  4. price (optional): stored as the whole-pack net price only when it can be
+ *     derived honestly (complete pack; a VAT rate when entered incl. VAT). Otherwise
+ *     the supplier still saves and `priceStatus` says what's missing;
+ *  5. upsert the link, flip `is_default`, mirror the supplier name;
+ *  6. raise a pending observed cost ONLY when a real pack price is stored AND the
+ *     pack changed (§12.6). The ingredient's approved cost is never overwritten
+ *     here — let alone with zero.
  */
 export async function setDefaultSupplier(
   db: TenantClient,
@@ -307,54 +352,12 @@ export async function setDefaultSupplier(
   const ingredient = await lockActiveIngredientRow(db, organizationId, ingredientId);
   if (!ingredient) return { status: 'not_found' };
 
-  // The band this save applies: the one just picked ('' = back to the org default),
-  // else whatever the ingredient already carried.
-  const vatCategoryId =
-    input.vatCategoryId === undefined
-      ? ingredient.vatCategoryId
-      : input.vatCategoryId === ''
-        ? null
-        : input.vatCategoryId;
-  // The typed rate ('null' = not set) wins over the band; a 0% rate is honoured.
-  const vatRateBps =
-    input.vatRateBps === undefined ? ingredient.vatRateBps : input.vatRateBps;
-  const taxRateBps =
-    vatRateBps ?? (await resolveVatRateBps(db, organizationId, vatCategoryId));
-
   const found = await findOrCreateSupplierByName(db, organizationId, input.supplierName);
   if (found.status === 'invalid_name') return { status: 'invalid_name' };
   if (found.status === 'inactive') return { status: 'supplier_inactive' };
   const supplier = found.supplier;
 
-  // The pack's new state (a missing field clears it; Zod kept size+unit coupled).
-  // `packSize` is the size of ONE inner unit; the purchase holds `unitsPerPack` of them.
-  const newPackSize = input.packSize ?? null;
-  const newPackUnit = (input.packUnit ?? null) as Unit | null;
-  const newUnitsPerPack = input.unitsPerPack ?? 1;
-
-  if (newPackUnit && !isPackUnitCompatible(newPackUnit, ingredient.dimension)) {
-    return { status: 'pack_unit_mismatch' };
-  }
-
-  // Normalize the quoted price into the stored shape: whole pack, EXCL. VAT. The
-  // client sends what the manager typed plus how to read it; the maths lives here.
-  let newPackPriceCents: number | null = null;
-  if (input.packPriceCents != null && newPackSize != null && newPackUnit != null) {
-    const net = packPriceExclVatCents({
-      priceCents: input.packPriceCents,
-      basis: input.priceBasis ?? 'pack',
-      includesVat: input.priceIncludesVat ?? false,
-      taxRateBps,
-      unitsPerPack: newUnitsPerPack,
-      packSize: newPackSize,
-      packUnit: newPackUnit,
-      dimension: ingredient.dimension,
-    });
-    if (net == null) return { status: 'vat_rate_required' };
-    newPackPriceCents = net;
-  }
-
-  // Prior state of this exact link (if any), to detect a real pack change.
+  // What this exact ingredient ⇄ supplier entry stores today (if anything).
   const [prior] = await db
     .select()
     .from(ingredientSuppliers)
@@ -366,6 +369,73 @@ export async function setDefaultSupplier(
       ),
     )
     .limit(1);
+
+  const keep = <T>(value: T | undefined, stored: T): T => (value === undefined ? stored : value);
+  const priorSize = numOrNull(prior?.packSize ?? null);
+  const priorUnit = (prior?.packUnit ?? null) as Unit | null;
+  const priorUnits = prior?.unitsPerPack ?? 1;
+
+  const newPackSize = keep(input.packSize, priorSize);
+  const newPackUnit = keep(input.packUnit as Unit | null | undefined, priorUnit);
+  const newUnitsPerPack = keep(input.unitsPerPack, priorUnits) ?? 1;
+  const productName = keep(input.supplierProductName, prior?.supplierProductName ?? null);
+  const sku = keep(input.supplierSku, prior?.supplierSku ?? null);
+
+  if (newPackUnit && !isPackUnitCompatible(newPackUnit, ingredient.dimension)) {
+    return { status: 'pack_unit_mismatch' };
+  }
+
+  // VAT: a deliberate rate (incl. 0%) is remembered on the entry; omitted keeps it.
+  const linkVatBps = keep(input.vatRateBps, prior?.vatRateBps ?? null);
+  // The legacy band travels only when the caller still sends one.
+  const vatCategoryId =
+    input.vatCategoryId === undefined
+      ? ingredient.vatCategoryId
+      : input.vatCategoryId === ''
+        ? null
+        : input.vatCategoryId;
+  const taxRateBps = await resolvePurchaseVatBps(db, organizationId, {
+    linkVatBps,
+    ingredientVatBps: ingredient.vatRateBps,
+    ingredientBandId: vatCategoryId,
+  });
+
+  const packComplete = newPackSize != null && newPackSize > 0 && newPackUnit != null && newUnitsPerPack > 0;
+  const packSameAsPrior =
+    prior != null && priorSize === newPackSize && priorUnit === newPackUnit && priorUnits === newUnitsPerPack;
+
+  let newPackPriceCents: number | null;
+  let priceStatus: SupplierPriceStatus;
+  if (input.packPriceCents === undefined) {
+    // No price sent: the stored price still describes the stored pack — keep it;
+    // a different pack makes it meaningless, so it becomes unknown (not zero).
+    newPackPriceCents = packSameAsPrior ? (prior?.packPriceCents ?? null) : null;
+    priceStatus = newPackPriceCents == null ? 'none' : 'unchanged';
+  } else if (input.packPriceCents === null) {
+    newPackPriceCents = null;
+    priceStatus = 'none';
+  } else if (!packComplete) {
+    newPackPriceCents = packSameAsPrior ? (prior?.packPriceCents ?? null) : null;
+    priceStatus = 'needs_pack';
+  } else {
+    const net = packPriceExclVatCents({
+      priceCents: input.packPriceCents,
+      basis: input.priceBasis ?? 'pack',
+      includesVat: input.priceIncludesVat ?? false,
+      taxRateBps,
+      unitsPerPack: newUnitsPerPack,
+      packSize: newPackSize as number,
+      packUnit: newPackUnit as Unit,
+      dimension: ingredient.dimension,
+    });
+    if (net == null) {
+      newPackPriceCents = packSameAsPrior ? (prior?.packPriceCents ?? null) : null;
+      priceStatus = 'needs_vat';
+    } else {
+      newPackPriceCents = net;
+      priceStatus = 'saved';
+    }
+  }
 
   // Clear the current default FIRST so the partial unique (≤1 default/ingredient)
   // is never momentarily violated when we set this link's default flag.
@@ -380,93 +450,65 @@ export async function setDefaultSupplier(
       ),
     );
 
+  const values = {
+    packSize: newPackSize?.toString() ?? null,
+    packUnit: newPackUnit,
+    packPriceCents: newPackPriceCents,
+    unitsPerPack: newUnitsPerPack,
+    supplierProductName: productName,
+    supplierSku: sku,
+    vatRateBps: linkVatBps,
+    isDefault: true,
+  };
   const [link] = await db
     .insert(ingredientSuppliers)
-    .values({
-      organizationId,
-      ingredientId,
-      supplierId: supplier.id,
-      packSize: newPackSize?.toString() ?? null,
-      packUnit: newPackUnit,
-      packPriceCents: newPackPriceCents,
-      unitsPerPack: newUnitsPerPack,
-      supplierProductName: input.supplierProductName ?? null,
-      supplierSku: input.supplierSku ?? null,
-      isDefault: true,
-    })
+    .values({ organizationId, ingredientId, supplierId: supplier.id, ...values })
     .onConflictDoUpdate({
       target: [
         ingredientSuppliers.organizationId,
         ingredientSuppliers.ingredientId,
         ingredientSuppliers.supplierId,
       ],
-      set: {
-        packSize: newPackSize?.toString() ?? null,
-        packUnit: newPackUnit,
-        packPriceCents: newPackPriceCents,
-        unitsPerPack: newUnitsPerPack,
-        supplierProductName: input.supplierProductName ?? null,
-        supplierSku: input.supplierSku ?? null,
-        isDefault: true,
-        updatedAt: new Date(),
-      },
+      set: { ...values, updatedAt: new Date() },
     })
     .returning();
   if (!link) return { status: 'not_found' };
 
-  // Remember how this supplier quotes prices, so the next ingredient prefills both
-  // selects. Display convenience only — the stored price stays whole-pack net.
+  // Remember how this supplier quotes prices, so the next ingredient prefills.
   if (input.priceBasis !== undefined || input.priceIncludesVat !== undefined) {
     await db
       .update(suppliers)
       .set({
-        ...(input.priceBasis !== undefined
-          ? { defaultPriceBasis: input.priceBasis }
-          : {}),
-        ...(input.priceIncludesVat !== undefined
-          ? { defaultPriceIncludesVat: input.priceIncludesVat }
-          : {}),
+        ...(input.priceBasis !== undefined ? { defaultPriceBasis: input.priceBasis } : {}),
+        ...(input.priceIncludesVat !== undefined ? { defaultPriceIncludesVat: input.priceIncludesVat } : {}),
       })
-      .where(
-        and(
-          eq(suppliers.organizationId, organizationId),
-          eq(suppliers.id, supplier.id),
-        ),
-      );
+      .where(and(eq(suppliers.organizationId, organizationId), eq(suppliers.id, supplier.id)));
   }
 
-  // Mirror the supplier name into the legacy column (transition contract §6), and
-  // persist the VAT band picked in the same dialog (it belongs to the ingredient).
+  // Mirror the supplier name into the legacy column (transition contract §6). A
+  // deliberate VAT rate also becomes the ingredient's own rate, so its other
+  // supplier entries default to it.
   await db
     .update(ingredients)
-    .set({ supplier: supplier.name, vatCategoryId, vatRateBps })
-    .where(
-      and(
-        eq(ingredients.organizationId, organizationId),
-        eq(ingredients.id, ingredientId),
-      ),
-    );
+    .set({
+      supplier: supplier.name,
+      vatCategoryId,
+      ...(input.vatRateBps != null ? { vatRateBps: input.vatRateBps } : {}),
+    })
+    .where(and(eq(ingredients.organizationId, organizationId), eq(ingredients.id, ingredientId)));
 
-  // Raise a pending observed cost only when a real price is present AND the pack
-  // actually changed (§12.6).
   let pendingRaised = false;
   const packChanged =
-    numOrNull(prior?.packSize ?? null) !== newPackSize ||
-    (prior?.packUnit ?? null) !== newPackUnit ||
-    (prior?.unitsPerPack ?? 1) !== newUnitsPerPack ||
+    priorSize !== newPackSize ||
+    priorUnit !== newPackUnit ||
+    priorUnits !== newUnitsPerPack ||
     (prior?.packPriceCents ?? null) !== newPackPriceCents;
 
-  if (
-    newPackPriceCents != null &&
-    newPackSize != null &&
-    newPackUnit != null &&
-    packChanged
-  ) {
+  if (priceStatus === 'saved' && newPackPriceCents != null && newPackSize != null && newPackUnit != null && packChanged) {
     await recordPriceObservation(db, organizationId, {
       ingredientId,
       source: 'quote',
-      // The price trail records the quantity actually purchased (4 × 1.65 kg → 6.6),
-      // so the derived cost per kg reads back honestly from one pair of numbers.
+      // The price trail records the quantity actually purchased (4 × 1.65 kg → 6.6).
       packSize: newUnitsPerPack * newPackSize,
       packUnit: newPackUnit,
       packPriceCents: newPackPriceCents,
@@ -475,7 +517,7 @@ export async function setDefaultSupplier(
     pendingRaised = true;
   }
 
-  return { status: 'ok', link, supplier, pendingRaised };
+  return { status: 'ok', link, supplier, pendingRaised, priceStatus, vatRateBps: taxRateBps };
 }
 
 /**

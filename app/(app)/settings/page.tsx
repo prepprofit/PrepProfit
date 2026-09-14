@@ -55,6 +55,7 @@ export default async function SettingsPage() {
       />
 
       <VatCategoriesSection
+        defaultPurchaseVatBps={settings.defaultPurchaseVatBps ?? null}
         categories={vatCategories.map((c) => ({
           id: c.id,
           name: c.name,

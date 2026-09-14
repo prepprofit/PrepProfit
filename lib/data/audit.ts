@@ -169,6 +169,8 @@ export type AuditAction =
   | 'settings.vatCategoryCreate'
   | 'settings.vatCategoryUpdate'
   | 'settings.vatCategoryDelete'
+  // The business default purchase VAT (bps or null) — org configuration, never PII.
+  | 'settings.defaultPurchaseVat'
   // Sensitive exports / generated documents
   | 'export.transactionsCsv'
   | 'export.invoicePdf'
@@ -176,6 +178,10 @@ export type AuditAction =
   // Operational scaled prep card (Recipe scaling MVP) — money-free, BOTH roles;
   // metadata is the recipe id only (no costs, no scale value beyond the id).
   | 'export.recipePrepCardPdf'
+  // Print-ready recipe PDF (recipe list) — money-free, both roles; metadata = recipe id.
+  | 'export.recipePrintPdf'
+  // Labour / energy amounts from the retired recipe editor removed (metadata = cents cleared).
+  | 'recipe.legacyCostsCleared'
   // Nutrition label PDF (Fase 6) — money-free, both roles; metadata = recipe id
   // + draft flag only, never nutrient values.
   | 'export.nutritionLabelPdf'

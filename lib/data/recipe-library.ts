@@ -8,6 +8,7 @@ import { listRecipes } from '@/lib/data/recipes';
 import { loadActiveCatalogue } from '@/lib/data/active-catalogue';
 import { loadRecipeAllergensByIds } from '@/lib/data/allergens';
 import { loadBookIdsByRecipe } from '@/lib/data/recipe-books';
+import { loadRecipeFinishedWeights } from '@/lib/data/recipe-yield';
 import { compareRecentActivity, recentActivityAt } from '@/lib/recipes/library-order';
 
 /**
@@ -53,8 +54,10 @@ export type LibraryRecipeRow = {
     /** D4 proxy: some ingredient in the (flattened) lines has no nutrition profile. */
     nutritionIncomplete: boolean;
     noBook: boolean;
-    /** No finished batch weight: cost per kg and gram-based use are unavailable. */
+    /** No finished weight (measured or calculable): cost per kg is unavailable. */
     missingFinishedWeight: boolean;
+    /** Yield % was saved under the old model — confirm it in the editor. */
+    yieldReviewNeeded: boolean;
   };
   /** Present ONLY on manager payloads. */
   money?: {
@@ -72,6 +75,8 @@ export type LibraryRecipeRow = {
     marginPercent: number | null;
     /** Some ingredient in the recipe still needs pricing (cost is understated). */
     needsPricing: boolean;
+    /** Labour / energy saved by the old recipe editor, still inside the batch cost. */
+    legacyLabourOrEnergy: boolean;
   };
 };
 
@@ -93,10 +98,11 @@ export async function listRecipesForLibrary(
   if (recipeRows.length === 0) return [];
   const recipeIds = recipeRows.map((r) => r.id);
 
-  const [catalogue, allergenRollups, bookIdsByRecipe] = await Promise.all([
+  const [catalogue, allergenRollups, bookIdsByRecipe, finishedWeights] = await Promise.all([
     loadActiveCatalogue(db, organizationId),
     loadRecipeAllergensByIds(db, organizationId, recipeIds),
     loadBookIdsByRecipe(db, organizationId, recipeIds),
+    loadRecipeFinishedWeights(db, organizationId, recipeRows),
   ]);
   const catalogueById = new Map(catalogue.recipes.map((r) => [r.id, r]));
   const needsPricingIngredients = new Set(
@@ -177,13 +183,14 @@ export async function listRecipesForLibrary(
           !cat ||
           cat.lines.some((l) => !profiledIngredients.has(l.ingredientId)),
         noBook: bookIds.length === 0,
-        missingFinishedWeight: recipe.yieldWeightGrams == null || recipe.yieldWeightGrams <= 0,
+        missingFinishedWeight: finishedWeights.get(recipe.id) == null,
+        yieldReviewNeeded: recipe.yieldReviewNeeded,
       },
       money: {
         costPerPortionCents,
         costPerKgCents:
           totalCostCents !== null && !needsPricing
-            ? costPerKgCents(totalCostCents, recipe.yieldWeightGrams)
+            ? costPerKgCents(totalCostCents, finishedWeights.get(recipe.id) ?? null)
             : null,
         sellingPriceCents,
         marginPercent:
@@ -193,6 +200,7 @@ export async function listRecipesForLibrary(
             ? marginPercent(costPerPortionCents, sellingPriceCents)
             : null,
         needsPricing,
+        legacyLabourOrEnergy: recipe.laborCostCents > 0 || recipe.energyCostCents > 0,
       },
     };
   });

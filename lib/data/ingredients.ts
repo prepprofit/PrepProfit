@@ -271,11 +271,64 @@ export async function softDeleteIngredient(
   return row ?? null;
 }
 
+/** What still uses an ingredient: counts plus a few names to show the user. */
+export type IngredientUsage = {
+  recipeCount: number;
+  recipeNames: string[];
+  menuCount: number;
+  menuNames: string[];
+};
+
 /** Outcome of {@link trashIngredient}. */
 export type TrashIngredientOutcome =
   | { status: 'done' }
-  | { status: 'in_use'; inUse: number }
+  | { status: 'in_use'; inUse: number; usage: IngredientUsage }
   | { status: 'not_found' };
+
+const USAGE_NAME_LIMIT = 5;
+
+/** Active recipes and dishes that use an ingredient (names A→Z, first few only). */
+export async function loadIngredientUsage(
+  db: TenantClient,
+  organizationId: string,
+  ingredientId: string,
+): Promise<IngredientUsage> {
+  const [recipeRows, menuRows] = await Promise.all([
+    db
+      .selectDistinct({ id: recipes.id, name: recipes.name })
+      .from(recipeIngredients)
+      .innerJoin(recipes, and(eq(recipes.organizationId, organizationId), eq(recipes.id, recipeIngredients.recipeId)))
+      .where(
+        and(
+          eq(recipeIngredients.organizationId, organizationId),
+          eq(recipeIngredients.ingredientId, ingredientId),
+          isNull(recipes.deletedAt),
+        ),
+      ),
+    db
+      .selectDistinct({ id: menus.id, name: menus.name })
+      .from(menuIngredientItems)
+      .innerJoin(menus, and(eq(menus.organizationId, organizationId), eq(menus.id, menuIngredientItems.menuId)))
+      .where(
+        and(
+          eq(menuIngredientItems.organizationId, organizationId),
+          eq(menuIngredientItems.ingredientId, ingredientId),
+          isNull(menus.deletedAt),
+        ),
+      ),
+  ]);
+  const names = (rows: { name: string }[]) =>
+    rows
+      .map((r) => r.name)
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, USAGE_NAME_LIMIT);
+  return {
+    recipeCount: recipeRows.length,
+    recipeNames: names(recipeRows),
+    menuCount: menuRows.length,
+    menuNames: names(menuRows),
+  };
+}
 
 /**
  * The full "move an ingredient to the trash" transaction, as a data-layer service
@@ -297,7 +350,9 @@ export async function trashIngredient(
   const inUse =
     (await countActiveRecipesUsingIngredient(db, organizationId, id)) +
     (await countActiveMenusUsingIngredient(db, organizationId, id));
-  if (inUse > 0) return { status: 'in_use', inUse };
+  if (inUse > 0) {
+    return { status: 'in_use', inUse, usage: await loadIngredientUsage(db, organizationId, id) };
+  }
   const row = await softDeleteIngredient(db, organizationId, id);
   return row ? { status: 'done' } : { status: 'not_found' };
 }

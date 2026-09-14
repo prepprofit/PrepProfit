@@ -141,13 +141,15 @@ describe('listRecipesForLibrary', () => {
       allergensUnreviewed: false,
       nutritionIncomplete: false,
       noBook: false,
-      missingFinishedWeight: true,
+      // 1000 g of flour at 100% yield → a calculated 1000 g finished weight.
+      missingFinishedWeight: false,
+      yieldReviewNeeded: false,
     });
     // Dual-read: the default portion option price wins; cost from the line.
     expect(bread.money).toEqual({
       costPerPortionCents: 20,
-      // No finished weight on this fixture → cost per kg can't be calculated.
-      costPerKgCents: null,
+      costPerKgCents: 200, // 200c for a calculated 1000 g
+      legacyLabourOrEnergy: false,
       sellingPriceCents: 100,
       marginPercent: 80,
       needsPricing: false,
@@ -158,7 +160,8 @@ describe('listRecipesForLibrary', () => {
       allergensUnreviewed: true,
       nutritionIncomplete: true,
       noBook: true,
-      missingFinishedWeight: true,
+      missingFinishedWeight: false,
+      yieldReviewNeeded: false,
     });
     expect(rough.money).toMatchObject({
       costPerKgCents: null,

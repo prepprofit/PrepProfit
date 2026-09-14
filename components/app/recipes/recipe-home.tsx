@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { AddRecipeButton } from './add-recipe-button';
+import { readRecipeListReturn, rememberRecipeListReturn, scrollContainer } from './recipe-list-return';
 
 /** What the home search needs per recipe — operational fields only, never money. */
 export type RecipeSearchItem = {
@@ -41,19 +42,15 @@ export type RecipeSearchItem = {
   recentActivityAt: Date;
 };
 
-/** How many recent recipes the home shows (the rest are one click away in "All"). */
-const RECENT_LIMIT = 8;
-
 type FolderDialog =
   | { mode: 'create' }
   | { mode: 'rename'; id: string; name: string; icon: string | null };
 
 /**
  * Recipes home: a large search across every folder with a compact "Add recipe"
- * beside it, then the folders as tiles — "All" first, "Unfiled" last — and a short
- * "Recent recipes" list (latest edit or open first) for jumping straight back in.
- * Typing swaps tiles and recents for matching recipes — best match first, recent
- * activity breaking ties — and clearing brings them back. Folder management stays
+ * beside it, then ONLY the folders as tiles — "All" first, "Unfiled" last. Typing
+ * swaps the tiles for matching recipes — best match first, recent activity breaking
+ * ties — and clearing brings the folders back. Recipe lists live inside folders. Folder management stays
  * available but quiet: a "New folder" tile and a small menu on each folder tile.
  */
 export function RecipeHome({
@@ -71,6 +68,11 @@ export function RecipeHome({
   const router = useRouter();
 
   const [query, setQuery] = React.useState('');
+  // Returning from a recipe opened from the search results brings the search back.
+  React.useEffect(() => {
+    const saved = readRecipeListReturn();
+    if (saved?.href === '/recipes' && saved.query) setQuery(saved.query);
+  }, []);
   const results = React.useMemo(() => searchLibrary(recipes, query), [recipes, query]);
   const showResults = query.trim() !== '';
   const folderName = React.useMemo(() => new Map(listing.folders.map((f) => [f.id, f.name])), [listing.folders]);
@@ -176,6 +178,9 @@ export function RecipeHome({
                   <li key={recipe.id}>
                     <Link
                       href={`/recipes/${recipe.id}`}
+                      onClick={() =>
+                        rememberRecipeListReturn({ href: '/recipes', query, sort: 'recent', scrollTop: scrollContainer()?.scrollTop ?? 0 })
+                      }
                       className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
                     >
                       <BookOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -266,33 +271,6 @@ export function RecipeHome({
           )}
         </section>
 
-        {recipes.length > 0 && (
-          <section aria-labelledby="recent-recipes" className="flex flex-col gap-2">
-            <div className="flex items-baseline justify-between gap-3 px-1">
-              <h2 id="recent-recipes" className="text-sm font-semibold text-foreground">
-                {t('recent')}
-              </h2>
-              <Link href="/recipes?folder=all" className="text-sm text-accent-700 hover:underline dark:text-accent-300">
-                {t('viewAll')}
-              </Link>
-            </div>
-            <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-              {recipes.slice(0, RECENT_LIMIT).map((recipe) => (
-                <li key={recipe.id}>
-                  <Link
-                    href={`/recipes/${recipe.id}`}
-                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-base font-medium text-foreground">{recipe.name}</span>
-                    <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">
-                      {recipe.folderId ? (folderName.get(recipe.folderId) ?? t('unfiled')) : t('unfiled')}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
         </>
       )}
 

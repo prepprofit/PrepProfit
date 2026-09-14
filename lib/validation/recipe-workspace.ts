@@ -26,6 +26,17 @@ export const workspaceHeaderSchema = z.object({
   yieldQuantity: z.number().finite().positive().max(QUANTITY_MAX).nullish(),
   yieldUnit: z.string().trim().max(40).nullish(),
   coverMediaId: refSchema.nullish(),
+  /**
+   * Yield calculator. `percentage` = output yield after production loss (whole %,
+   * 1–100). `measuredGrams` = a weighed finished batch (wins over the calculation);
+   * null = calculate finished weight = input weight × percentage ÷ 100 on the server.
+   */
+  yield: z
+    .object({
+      percentage: z.number().int().min(1).max(100),
+      measuredGrams: z.number().finite().positive().max(QUANTITY_MAX).nullable(),
+    })
+    .optional(),
 });
 
 export const workspaceSectionSchema = z

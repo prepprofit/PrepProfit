@@ -2,8 +2,9 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { GripVertical, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { formatMoney } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { roundCanonical } from '@/lib/calculations/recipeScale';
@@ -108,12 +109,19 @@ export function RecipeInputListView({
   lines,
   factor,
   onAnchorScale,
+  lineCosts,
+  currency,
+  noPriceLabel,
 }: {
   sections: DraftSection[];
   lines: DraftLine[];
   factor: number;
   /** Called when the user pins one line to a new amount (plan §7.1). */
   onAnchorScale: (baseQuantity: number, target: number) => void;
+  /** Manager only: line key → batch line cost in cents (null = no price yet). */
+  lineCosts?: Record<string, number | null>;
+  currency?: string;
+  noPriceLabel?: string;
 }) {
   const t = useTranslations('recipes.workspace');
   const [editingKey, setEditingKey] = React.useState<string | null>(null);
@@ -159,7 +167,7 @@ export function RecipeInputListView({
                     }
                   : null;
               return (
-                <li key={line.key} className="flex items-start gap-3 py-2">
+                <li key={line.key} className="flex items-start gap-3 py-2.5">
                   {editingKey === line.key ? (
                     <Input
                       autoFocus
@@ -195,7 +203,7 @@ export function RecipeInputListView({
                     </button>
                   )}
                   <div className="min-w-0">
-                    <p className="truncate text-sm">
+                    <p className="text-base leading-snug">
                       {line.name}
                       {line.kind === 'ingredient' && line.prepName ? (
                         <span className="ml-1 text-muted-foreground">
@@ -212,6 +220,17 @@ export function RecipeInputListView({
                       <p className="text-xs text-muted-foreground">{line.note}</p>
                     ) : null}
                   </div>
+                  {lineCosts && currency ? (
+                    <span className="ml-auto shrink-0 pl-3 text-right text-sm tabular-nums">
+                      {lineCosts[line.id ?? line.key] != null ? (
+                        <span className="text-foreground">
+                          {formatMoney(Math.round((lineCosts[line.id ?? line.key] as number) * factor), currency)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-amber-700 dark:text-amber-300">{noPriceLabel}</span>
+                      )}
+                    </span>
+                  ) : null}
                 </li>
               );
             })}
@@ -222,23 +241,24 @@ export function RecipeInputListView({
   );
 }
 
-/** Editable merged list: quantities, notes, reorder, add/remove. */
+/**
+ * Editable ingredient list: one flat list in saved order — quantity, unit, prep,
+ * remove — reordered with the dotted handle (drag, touch, or arrow keys). Line notes
+ * and section assignments aren't edited here; the values already stored are kept
+ * untouched on save.
+ */
 export function RecipeInputListEdit({
-  sections,
   lines,
   ingredientOptions,
   componentOptions,
   lineUom,
-  onSectionsChange,
   onLinesChange,
 }: {
-  sections: DraftSection[];
   lines: DraftLine[];
   ingredientOptions: PickerOption[];
   componentOptions: PickerOption[];
   /** UoM context per ingredient id (anchors + prep picker). Missing = none. */
   lineUom: Record<string, LineUom>;
-  onSectionsChange: (sections: DraftSection[]) => void;
   onLinesChange: (lines: DraftLine[]) => void;
 }) {
   const t = useTranslations('recipes.workspace');
@@ -267,13 +287,37 @@ export function RecipeInputListEdit({
     );
   };
 
-  const moveLine = (index: number, delta: -1 | 1) => {
-    const next = [...lines];
-    const target = index + delta;
-    if (target < 0 || target >= next.length) return;
-    const [line] = next.splice(index, 1);
-    next.splice(target, 0, line!);
-    onLinesChange(next);
+  const moveLineTo = React.useCallback(
+    (from: number, to: number) => {
+      if (from === to || from < 0 || to < 0 || from >= lines.length || to >= lines.length) return;
+      const next = [...lines];
+      const [line] = next.splice(from, 1);
+      next.splice(to, 0, line!);
+      onLinesChange(next);
+    },
+    [lines, onLinesChange],
+  );
+
+  // Drag to reorder with a pointer (mouse, pen or touch) on the handle; the arrow
+  // keys do the same from the focused handle. Order = array position = saved order.
+  const [draggingKey, setDraggingKey] = React.useState<string | null>(null);
+  const handleRefs = React.useRef(new Map<string, HTMLButtonElement>());
+  const focusAfterMove = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const key = focusAfterMove.current;
+    if (!key) return;
+    focusAfterMove.current = null;
+    handleRefs.current.get(key)?.focus();
+  });
+  const onHandlePointerMove = (e: React.PointerEvent) => {
+    if (!draggingKey) return;
+    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-line-key]');
+    const overKey = over?.dataset.lineKey;
+    if (!overKey || overKey === draggingKey) return;
+    moveLineTo(
+      lines.findIndex((l) => l.key === draggingKey),
+      lines.findIndex((l) => l.key === overKey),
+    );
   };
 
   const updateLine = (key: string, patch: Partial<DraftLine>) => {
@@ -328,61 +372,48 @@ export function RecipeInputListEdit({
     ]);
   };
 
-  const addSection = () => {
-    onSectionsChange([
-      ...sections,
-      { ref: `tmp-${crypto.randomUUID()}`, title: '' },
-    ]);
-  };
-
-  const removeSection = (ref: string) => {
-    onSectionsChange(sections.filter((s) => s.ref !== ref));
-    onLinesChange(
-      lines.map((l) => (l.sectionRef === ref ? { ...l, sectionRef: null } : l)),
-    );
-  };
-
-  const sectionSelectOptions = [
-    { value: '', label: t('defaultSection') },
-    ...sections.map((s) => ({ value: s.ref, label: s.title || '…' })),
-  ];
-
   return (
     <div className="flex flex-col gap-4">
-      {sections.map((section) => (
-        <div key={section.ref} className="flex items-center gap-2">
-          <Input
-            value={section.title}
-            onChange={(e) =>
-              onSectionsChange(
-                sections.map((s) =>
-                  s.ref === section.ref ? { ...s, title: e.target.value } : s,
-                ),
-              )
-            }
-            placeholder={t('sectionTitlePlaceholder')}
-            className="h-8 max-w-xs"
-            aria-label={t('sectionTitlePlaceholder')}
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => removeSection(section.ref)}
-            aria-label={t('removeSection')}
-          >
-            <Trash2 />
-          </Button>
-        </div>
-      ))}
-
       <ul className="flex flex-col gap-2">
         {lines.map((line, index) => (
           <li
             key={line.key}
-            className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-2"
+            data-line-key={line.key}
+            className={
+              draggingKey === line.key
+                ? 'flex flex-wrap items-center gap-2 rounded-lg border border-accent-400 bg-accent-50 p-2 shadow-md dark:bg-accent-500/10'
+                : 'flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-2'
+            }
           >
-            <span className="min-w-32 flex-1 truncate text-sm">
+            <button
+              type="button"
+              ref={(el) => {
+                if (el) handleRefs.current.set(line.key, el);
+                else handleRefs.current.delete(line.key);
+              }}
+              aria-label={t('reorderHandle', { name: line.name })}
+              aria-describedby="reorder-help"
+              title={t('reorderTitle')}
+              className="inline-flex h-9 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                setDraggingKey(line.key);
+              }}
+              onPointerMove={onHandlePointerMove}
+              onPointerUp={() => setDraggingKey(null)}
+              onPointerCancel={() => setDraggingKey(null)}
+              onKeyDown={(e) => {
+                const to =
+                  e.key === 'ArrowUp' ? index - 1 : e.key === 'ArrowDown' ? index + 1 : e.key === 'Home' ? 0 : e.key === 'End' ? lines.length - 1 : null;
+                if (to === null) return;
+                e.preventDefault();
+                focusAfterMove.current = line.key;
+                moveLineTo(index, to);
+              }}
+            >
+              <GripVertical className="size-4" aria-hidden />
+            </button>
+            <span className="min-w-32 flex-1 truncate text-sm font-medium">
               {line.name}
               {line.kind === 'component' ? (
                 <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted-foreground">
@@ -483,50 +514,7 @@ export function RecipeInputListEdit({
                 ))}
               </Select>
             ) : null}
-            <Input
-              value={line.note}
-              onChange={(e) => updateLine(line.key, { note: e.target.value })}
-              placeholder={t('notePlaceholder')}
-              className="h-8 w-40"
-              aria-label={t('note')}
-            />
-            <Select
-              value={line.sectionRef ?? ''}
-              onChange={(e) =>
-                updateLine(line.key, {
-                  sectionRef: e.target.value === '' ? null : e.target.value,
-                })
-              }
-              className="h-8 w-36"
-              aria-label={t('addSection')}
-            >
-              {sectionSelectOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
             <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => moveLine(index, -1)}
-                disabled={index === 0}
-                aria-label={t('moveUp')}
-              >
-                <ArrowUp />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => moveLine(index, 1)}
-                disabled={index === lines.length - 1}
-                aria-label={t('moveDown')}
-              >
-                <ArrowDown />
-              </Button>
               <Button
                 type="button"
                 size="sm"
@@ -547,7 +535,7 @@ export function RecipeInputListEdit({
         <Select
           value=""
           onChange={(e) => e.target.value && addIngredient(e.target.value)}
-          className="h-8 w-48"
+          className="h-10 w-full sm:w-56"
           aria-label={t('addIngredient')}
         >
           <option value="">{t('addIngredient')}</option>
@@ -560,7 +548,7 @@ export function RecipeInputListEdit({
         <Select
           value=""
           onChange={(e) => e.target.value && addComponent(e.target.value)}
-          className="h-8 w-48"
+          className="h-10 w-full sm:w-56"
           aria-label={t('addSubRecipe')}
         >
           <option value="">{t('addSubRecipe')}</option>
@@ -570,10 +558,10 @@ export function RecipeInputListEdit({
             </option>
           ))}
         </Select>
-        <Button type="button" size="sm" variant="outline" onClick={addSection}>
-          <Plus /> {t('addSection')}
-        </Button>
       </div>
+      <p id="reorder-help" className="sr-only">
+        {t('reorderHelp')}
+      </p>
     </div>
   );
 }

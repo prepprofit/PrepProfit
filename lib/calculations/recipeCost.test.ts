@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   costPerKgCents,
+  finishedWeightGrams,
+  impliedYieldPercentage,
+  recipeInputWeightGrams,
   lineCostCents,
   presetCostCents,
   recipeCost,
@@ -64,19 +67,36 @@ describe('recipeCost', () => {
     expect(cost.costPerPortionCents).toBe(117);
   });
 
-  it('applies loss adjustment and hidden costs', () => {
+  it('applies loss once — to the finished weight, never to the batch cost — plus hidden costs', () => {
     const cost = recipeCost({
       yieldPortions: 10,
-      yieldPercentage: 90, // 10% loss → ingredient cost / 0.9
+      yieldPercentage: 90, // 10% production loss: the batch MAKES less, it doesn't cost more
       laborCostCents: 500,
       energyCostCents: 100,
       packagingCostCents: 200,
       lines: FIVE_INGREDIENTS,
     });
-    expect(cost.ingredientCostCents).toBe(1300); // 1170 / 0.9
+    expect(cost.ingredientCostCents).toBe(1170);
     expect(cost.hiddenCostCents).toBe(800);
-    expect(cost.totalCostCents).toBe(2100);
-    expect(cost.costPerPortionCents).toBe(210);
+    expect(cost.totalCostCents).toBe(1970);
+    expect(cost.costPerPortionCents).toBe(197);
+  });
+
+  it('finished weight = input × yield% (or the measured weight); never grams from ml or pieces', () => {
+    const lines = [
+      { dimension: 'weight' as const, quantity: 1000 },
+      { dimension: 'weight' as const, quantity: 250 },
+    ];
+    expect(recipeInputWeightGrams(lines, [250])).toBe(1500);
+    expect(finishedWeightGrams({ measuredGrams: null, yieldPercentage: 80, lines, componentGrams: [250] })).toBe(1200);
+    expect(finishedWeightGrams({ measuredGrams: 1100, yieldPercentage: 80, lines, componentGrams: [250] })).toBe(1100);
+    expect(
+      finishedWeightGrams({ measuredGrams: null, yieldPercentage: 100, lines: [...lines, { dimension: 'volume', quantity: 200 }], componentGrams: [] }),
+    ).toBeNull();
+    expect(finishedWeightGrams({ measuredGrams: null, yieldPercentage: 0, lines, componentGrams: [] })).toBeNull();
+    expect(impliedYieldPercentage(1500, 1200)).toBe(80);
+    // Cost per kg divides the (un-inflated) batch cost by the finished weight: loss counted once.
+    expect(costPerKgCents(1970, 1200)).toBe(1642);
   });
 
   it('rounds sub-cent line costs to integer cents', () => {

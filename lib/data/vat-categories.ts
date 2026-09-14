@@ -74,7 +74,9 @@ export async function resolveVatRateBps(
   db: TenantClient,
   organizationId: string,
   vatCategoryId: string | null,
+  options: { fallbackToDefault?: boolean } = {},
 ): Promise<number | null> {
+  const fallbackToDefault = options.fallbackToDefault ?? true;
   if (vatCategoryId != null) {
     const [row] = await db
       .select({ rateBps: vatCategories.rateBps })
@@ -90,6 +92,7 @@ export async function resolveVatRateBps(
     // org default rather than pricing the quote at 0%.
     if (row) return row.rateBps;
   }
+  if (!fallbackToDefault) return null;
   const [fallback] = await db
     .select({ rateBps: vatCategories.rateBps })
     .from(vatCategories)

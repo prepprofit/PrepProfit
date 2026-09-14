@@ -19,6 +19,7 @@ import { bpsToRatePercent } from '@/lib/validation/vat-categories';
 import {
   createVatCategoryAction,
   deleteVatCategoryAction,
+  setDefaultPurchaseVatAction,
   updateVatCategoryAction,
 } from './vat-actions';
 
@@ -41,8 +42,11 @@ export type VatCategoryRow = {
  */
 export function VatCategoriesSection({
   categories,
+  defaultPurchaseVatBps,
 }: {
   categories: VatCategoryRow[];
+  /** The business default purchase VAT (bps); null = none configured. */
+  defaultPurchaseVatBps: number | null;
 }) {
   const t = useTranslations('settings.vatCategories');
   const actionError = useActionError();
@@ -56,6 +60,25 @@ export function VatCategoriesSection({
   const [ratePercent, setRatePercent] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
+  const [defaultText, setDefaultText] = React.useState(
+    defaultPurchaseVatBps == null ? '' : bpsToRatePercent(defaultPurchaseVatBps),
+  );
+  const [defaultSaved, setDefaultSaved] = React.useState(false);
+
+  const saveDefault = () => {
+    setError(null);
+    setDefaultSaved(false);
+    const text = defaultText.trim().replace(',', '.');
+    startTransition(async () => {
+      const result = await setDefaultPurchaseVatAction({ ratePercent: text === '' ? '' : text });
+      if (!result.ok) {
+        setError(actionError(result.code));
+        return;
+      }
+      setDefaultSaved(true);
+      router.refresh();
+    });
+  };
 
   const resetDraft = () => {
     setEditingId(null);
@@ -119,6 +142,33 @@ export function VatCategoriesSection({
             {error}
           </div>
         )}
+
+        <div className="flex flex-wrap items-end gap-2 rounded-lg bg-surface-2 p-3">
+          <div className="flex w-40 flex-col gap-1.5">
+            <Label htmlFor="default-purchase-vat">{t('defaultPurchase')}</Label>
+            <Input
+              id="default-purchase-vat"
+              inputMode="decimal"
+              placeholder={t('defaultPurchaseNone')}
+              className="bg-surface text-right tabular-nums"
+              value={defaultText}
+              disabled={pending}
+              onChange={(e) => {
+                setDefaultText(e.target.value);
+                setDefaultSaved(false);
+              }}
+            />
+          </div>
+          <Button type="button" variant="outline" disabled={pending} onClick={saveDefault}>
+            {t('save')}
+          </Button>
+          {defaultSaved && (
+            <span role="status" className="text-sm text-muted-foreground">
+              {t('defaultPurchaseSaved')}
+            </span>
+          )}
+          <p className="basis-full text-xs text-muted-foreground">{t('defaultPurchaseHint')}</p>
+        </div>
 
         <ul className="flex flex-col divide-y divide-border">
           {rows.length === 0 && (

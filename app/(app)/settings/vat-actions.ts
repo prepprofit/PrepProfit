@@ -9,7 +9,8 @@ import {
   deleteVatCategory,
   updateVatCategory,
 } from '@/lib/data/vat-categories';
-import { vatCategorySchema } from '@/lib/validation/vat-categories';
+import { defaultPurchaseVatSchema, vatCategorySchema } from '@/lib/validation/vat-categories';
+import { setDefaultPurchaseVat } from '@/lib/data/org-settings';
 import type { ActionResult } from '@/lib/action-result';
 
 /**
@@ -95,6 +96,32 @@ export async function deleteVatCategoryAction(id: string): Promise<ActionResult>
   if (outcome === 'not_found') return { ok: false, code: 'NOT_FOUND' };
   if (outcome === 'in_use') return { ok: false, code: 'VAT_CATEGORY_IN_USE' };
   if (outcome === 'is_default') return { ok: false, code: 'VAT_CATEGORY_IS_DEFAULT' };
+  revalidatePath('/settings');
+  revalidatePath('/ingredients');
+  return { ok: true, data: undefined };
+}
+
+/**
+ * The business's default PURCHASE VAT — suggested in the supplier editor when an
+ * ingredient has no VAT of its own. Separate from the sales rate on purpose.
+ */
+export async function setDefaultPurchaseVatAction(input: unknown): Promise<ActionResult> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+
+  const parsed = defaultPurchaseVatSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  await withOrg(organizationId, async (tx) => {
+    await setDefaultPurchaseVat(tx, organizationId, parsed.data.rateBps);
+    await writeAuditEvent(tx, organizationId, actor, {
+      action: 'settings.defaultPurchaseVat',
+      entityType: 'organizationSettings',
+      entityId: organizationId,
+      metadata: { rateBps: parsed.data.rateBps },
+    });
+  });
   revalidatePath('/settings');
   revalidatePath('/ingredients');
   return { ok: true, data: undefined };

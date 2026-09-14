@@ -7,6 +7,7 @@ import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import { createIngredient, getIngredientById } from '@/lib/data/ingredients';
 import { setDefaultSupplier } from '@/lib/data/ingredient-suppliers';
+import { setDefaultPurchaseVat } from '@/lib/data/org-settings';
 import {
   createVatCategory,
   deleteVatCategory,
@@ -200,6 +201,16 @@ describe('setDefaultSupplier converts with the ingredient’s band', () => {
         ...quote,
       }),
     );
+    // No band and no business default purchase VAT: the supplier saves, the gross
+    // price can't be read (nothing is invented) and no cost is raised.
+    const unknown = await runInOrg(db, ORG_A, (tx) =>
+      setDefaultSupplier(tx, ORG_A, flour, { supplierName: 'Mill Co', ...quote }),
+    );
+    expect(unknown).toMatchObject({ status: 'ok', priceStatus: 'needs_vat' });
+    expect((await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, flour)))?.pendingPriceCents).toBeNull();
+
+    // Once the business configures a default purchase VAT, the same quote prices.
+    await runInOrg(db, ORG_A, (tx) => setDefaultPurchaseVat(tx, ORG_A, 1400));
     await runInOrg(db, ORG_A, (tx) =>
       setDefaultSupplier(tx, ORG_A, flour, { supplierName: 'Mill Co', ...quote }),
     );
@@ -218,7 +229,7 @@ describe('setDefaultSupplier converts with the ingredient’s band', () => {
     expect(flourRow?.vatCategoryId).toBeNull();
   });
 
-  it('refuses a gross quote when the org has no band to strip', async () => {
+  it('saves the supplier but not a gross price when no VAT is known anywhere', async () => {
     const ingId = await newIngredient('org_empty', 'Salt');
     const result = await runInOrg(db, 'org_empty', (tx) =>
       setDefaultSupplier(tx, 'org_empty', ingId, {
@@ -229,7 +240,8 @@ describe('setDefaultSupplier converts with the ingredient’s band', () => {
         priceIncludesVat: true,
       }),
     );
-    expect(result.status).toBe('vat_rate_required');
+    expect(result).toMatchObject({ status: 'ok', priceStatus: 'needs_vat', vatRateBps: null });
+    if (result.status === 'ok') expect(result.link.packPriceCents).toBeNull();
   });
 });
 
@@ -260,7 +272,7 @@ describe('setDefaultSupplier with a typed VAT rate', () => {
     expect(row?.pendingPriceCents).toBe(10_000);
   });
 
-  it('treats 0% as a real rate, distinct from unset (which falls back to the default band)', async () => {
+  it('treats 0% as a real rate, distinct from unset (which falls back to the business default)', async () => {
     const zero = await newIngredient(ORG_A, 'Export sugar');
     const unset = await newIngredient(ORG_A, 'Local sugar');
     await runInOrg(db, ORG_A, (tx) =>
@@ -274,7 +286,7 @@ describe('setDefaultSupplier with a typed VAT rate', () => {
     expect(zeroRow?.vatRateBps).toBe(0);
     expect(zeroRow?.pendingPriceCents).toBe(10_000);
     expect(unsetRow?.vatRateBps).toBeNull();
-    expect(unsetRow?.pendingPriceCents).toBe(8772); // default Food band, 14%
+    expect(unsetRow?.pendingPriceCents).toBe(8772); // business default purchase VAT, 14%
   });
 
   it('rejects out-of-range rates at the database', async () => {

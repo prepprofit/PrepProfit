@@ -122,6 +122,7 @@ export default async function IngredientsPage({
         initialSupplierLinks={initialSupplierLinks}
         supplierPricePrefs={supplierPricePrefs}
         vatCategories={vatCategories}
+        businessPurchaseVatBps={settings.defaultPurchaseVatBps ?? null}
         typeLocks={typeLocks}
       />
     </div>
