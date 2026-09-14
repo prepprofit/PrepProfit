@@ -435,6 +435,22 @@ Acceptance criteria:
   `lib/calculations/profit-hour.ts`; audited (`profit.settingsUpdate`, `recipe.profitUpdate`);
   kitchen DTOs strip the new fields. The Menus module is unchanged (it is a working combos
   module, not the empty calculator the brief assumed).
+- **Menu redesign — folders + Dish Builder.** `/menus` is now a file-manager home: one
+  search across every dish (trigram, any folder) and a folder grid (`menu_folders`, create /
+  rename / delete → dishes move to Unfiled). `/menus/folders/[id]` lists a folder's dishes,
+  sortable by last modified / last opened / name / created. A dish (still a `menus` row, so
+  Sales, Menu Engineering, CFO report, profit leaks, cost impact and the prep planner keep
+  working) is built from recipe lines in portions, g or kg (`menu_items.quantity` numeric +
+  `unit`; g/kg convert via the recipe's batch weight) and direct ingredient lines
+  (`menu_ingredient_items`, canonical qty — fruit, garnish, boxes), making `portions`,
+  priced per portion excl. VAT with an optional per-dish VAT rate. The builder recomputes
+  cost, gross profit, margin and food cost live; price ↔ incl. VAT ↔ margin ↔ food cost is
+  bidirectional. Cost is complete-or-null and derived on read through ONE shared function
+  (`compositionCost`, `lib/calculations/dish.ts`) used by every consumer; `adjustments` is
+  the extension point for labour/energy/packaging/delivery/waste. Sales stock depletion
+  explodes fractional recipe portions + direct ingredients per sold portion. Kitchen gets a
+  money-free composition + allergens (incl. direct ingredients). An ingredient used by an
+  active dish can't be trashed. Migration 0048; export schema v15.
 
 ## Backlog - not scheduled until prioritized
 
