@@ -9,6 +9,7 @@ import {
   createDish,
   createMenuFolder,
   deleteMenuFolder,
+  duplicateDish,
   getMenuById,
   markDishOpened,
   renameMenuFolder,
@@ -19,7 +20,12 @@ import {
   type SaveDishOutcome,
 } from '@/lib/data/menus';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
-import { dishSchema, dishSearchSchema, menuFolderSchema } from '@/lib/validation/menus';
+import {
+  dishCopySchema,
+  dishSchema,
+  dishSearchSchema,
+  menuFolderSchema,
+} from '@/lib/validation/menus';
 import type { ActionErrorCode, ActionResult } from '@/lib/action-result';
 
 /**
@@ -62,6 +68,9 @@ export async function createDishAction(input: unknown): Promise<ActionResult<{ i
         metadata: {
           recipeLineCount: parsed.data.recipeLines.length,
           ingredientLineCount: parsed.data.ingredientLines.length,
+          extraCount: parsed.data.extras.length,
+          labourEntered: parsed.data.labour !== null,
+          outputUnit: parsed.data.output.unit,
           priceSet: parsed.data.sellingPriceCents !== null,
         },
       });
@@ -90,9 +99,15 @@ export async function updateDishAction(id: string, input: unknown): Promise<Acti
     const changedFields = [
       before.name !== next.name && 'name',
       before.folderId !== next.folderId && 'folder',
-      before.portions !== next.portions && 'portions',
+      (before.outputUnit !== next.output.unit ||
+        before.outputQuantity !== result.menu.outputQuantity) &&
+        'output',
       before.sellingPriceCents !== next.sellingPriceCents && 'sellingPrice',
+      before.priceBasis !== next.priceBasis && 'priceBasis',
       before.vatRateBps !== next.vatRateBps && 'vatRate',
+      (before.labourHours !== result.menu.labourHours ||
+        before.labourHourlyCents !== result.menu.labourHourlyCents) &&
+        'labour',
       (before.notes ?? null) !== (next.notes ?? null) && 'notes',
     ].filter((f): f is string => typeof f === 'string');
 
@@ -103,6 +118,8 @@ export async function updateDishAction(id: string, input: unknown): Promise<Acti
       metadata: {
         recipeLineCount: next.recipeLines.length,
         ingredientLineCount: next.ingredientLines.length,
+        extraCount: next.extras.length,
+        labourEntered: next.labour !== null,
         priceChanged: before.sellingPriceCents !== next.sellingPriceCents,
         changedFields,
       },
@@ -112,6 +129,39 @@ export async function updateDishAction(id: string, input: unknown): Promise<Acti
   if (outcome.status !== 'ok') return { ok: false, code: SAVE_ERRORS[outcome.status] };
   revalidateMenus(id);
   return { ok: true, data: undefined };
+}
+
+/**
+ * "Make a copy" — manager-only. Creates an independent product (composition, output,
+ * labour, extras, price) the chef then renames and reviews; the original is untouched.
+ */
+export async function duplicateDishAction(
+  id: string,
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const parsed = dishCopySchema.safeParse(input);
+  if (typeof id !== 'string' || id.trim() === '' || !parsed.success) {
+    return { ok: false, code: 'INVALID_INPUT' };
+  }
+
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const result = await duplicateDish(tx, organizationId, id, parsed.data.name);
+    if (result.status === 'ok') {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'menu.create',
+        entityType: 'menu',
+        entityId: result.menu.id,
+        metadata: { copiedFrom: id },
+      });
+    }
+    return result;
+  });
+  if (outcome.status !== 'ok') return { ok: false, code: 'NOT_FOUND' };
+  revalidateMenus(outcome.menu.id);
+  return { ok: true, data: { id: outcome.menu.id } };
 }
 
 /** Soft-delete (trash) an active dish — manager-only. */

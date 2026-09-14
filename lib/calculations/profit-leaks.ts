@@ -76,6 +76,11 @@ export type ProfitLeakRecipe = {
   costUnresolved?: boolean;
   /** Finished batch weight (g) — converts a dish's gram lines to portions. */
   yieldWeightGrams?: number | null;
+  /**
+   * Sub-recipe LABOUR inside `cost.componentMaterialCostsCents` — subtracted, with the
+   * recipe's own labour, when a Menu product has its own production labour.
+   */
+  componentLaborCostCents?: number;
 };
 
 /** A dish: recipe lines + direct ingredient lines; price per portion. */
@@ -129,6 +134,7 @@ export function detectProfitLeaks(input: ProfitLeakInput): ProfitLeakFinding[] {
 
   // Per-recipe derived state, reused by recipe margin findings AND menu costing.
   const recipeCostPerPortion = new Map<string, number | null>();
+  const recipeCostWithoutLabour = new Map<string, number | null>();
 
   for (const recipe of input.recipes) {
     const unpriced =
@@ -138,6 +144,13 @@ export function detectProfitLeaks(input: ProfitLeakInput): ProfitLeakFinding[] {
     // An unpriced line means the cost is understated → never trust the margin.
     const cost = recipeCost(recipe.cost);
     recipeCostPerPortion.set(recipe.id, unpriced ? null : cost.costPerPortionCents);
+    const componentMaterial = (recipe.cost.componentMaterialCostsCents ?? []).reduce((a, b) => a + b, 0);
+    const withoutLabour = recipeCost({
+      ...recipe.cost,
+      laborCostCents: 0,
+      componentMaterialCostsCents: [componentMaterial - (recipe.componentLaborCostCents ?? 0)],
+    });
+    recipeCostWithoutLabour.set(recipe.id, unpriced ? null : withoutLabour.costPerPortionCents);
 
     for (const id of recipe.ingredientIds) {
       const list = recipesByIngredient.get(id);
@@ -238,7 +251,8 @@ export function detectProfitLeaks(input: ProfitLeakInput): ProfitLeakFinding[] {
     if (price == null || price <= 0) continue;
 
     const cost = compositionCost(menu, {
-      recipeCostPerPortion: (id) => recipeCostPerPortion.get(id) ?? null,
+      recipeCostPerPortion: (id, { excludeLabour }) =>
+        (excludeLabour ? recipeCostWithoutLabour : recipeCostPerPortion).get(id) ?? null,
       recipeYield: (id) => {
         const recipe = recipeById.get(id);
         return recipe
@@ -252,14 +266,15 @@ export function detectProfitLeaks(input: ProfitLeakInput): ProfitLeakFinding[] {
           : null;
       },
     });
-    const costPerPortion = cost.costPerPortionCents;
-    if (costPerPortion === null) continue; // incomplete dish stays incomplete — never a fake margin
+    // Price is per sale unit (kg or piece/cake/portion), so compare like with like.
+    const costPerUnit = cost.costPerSaleUnitCents;
+    if (costPerUnit === null) continue; // incomplete product stays incomplete — never a fake margin
 
-    const margin = marginPercent(costPerPortion, price);
+    const margin = marginPercent(costPerUnit, price);
     if (margin >= target) continue;
 
     findings.push({
-      fingerprint: fingerprint(['MENU_MARGIN', menu.id, costPerPortion, price]),
+      fingerprint: fingerprint(['MENU_MARGIN', menu.id, costPerUnit, price]),
       type: 'MENU_BELOW_TARGET_MARGIN',
       severity: marginSeverity(margin),
       entityType: 'menu',
@@ -268,9 +283,9 @@ export function detectProfitLeaks(input: ProfitLeakInput): ProfitLeakFinding[] {
       affectedEntityIds: [],
       currentMarginPercent: margin,
       targetMarginPercent: target,
-      currentCostCents: costPerPortion,
+      currentCostCents: costPerUnit,
       pendingCostCents: null,
-      suggestedPriceCents: suggestedPriceCents(costPerPortion, target),
+      suggestedPriceCents: suggestedPriceCents(costPerUnit, target),
       reasonCode: 'BELOW_TARGET_MARGIN',
     });
   }

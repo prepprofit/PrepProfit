@@ -4,9 +4,12 @@ import { dishSchema, dishSearchSchema, menuFolderSchema } from '@/lib/validation
 const base = {
   name: 'Caesar salad',
   folderId: null,
-  portions: 1,
+  output: { quantity: 1, unit: 'portion', sizeDescription: null, finishedWeightGrams: null },
   sellingPriceCents: 1_200,
+  priceBasis: 'unit',
   vatRateBps: null,
+  labour: null,
+  extras: [],
   notes: '',
   recipeLines: [{ recipeId: 'r1', quantity: 150, unit: 'g' }],
   ingredientLines: [{ ingredientId: 'i1', quantity: 1, unit: 'piece' }],
@@ -52,8 +55,8 @@ describe('dishSchema', () => {
         ],
       }).success,
     ).toBe(false);
-    for (const portions of [0, 1.5, 100_001]) {
-      expect(dishSchema.safeParse({ ...base, portions }).success).toBe(false);
+    for (const quantity of [0, -1, Number.NaN, 100_000_000]) {
+      expect(dishSchema.safeParse({ ...base, output: { ...base.output, quantity } }).success).toBe(false);
     }
     expect(dishSchema.safeParse({ ...base, sellingPriceCents: -1 }).success).toBe(false);
     expect(dishSchema.safeParse({ ...base, sellingPriceCents: 1.5 }).success).toBe(false);

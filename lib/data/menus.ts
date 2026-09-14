@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
   ingredients,
+  menuExtras,
   menuFolders,
   menuIngredientItems,
   menuItems,
@@ -10,19 +11,27 @@ import {
 import type { Menu, MenuFolder } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import type { Dimension } from '@/lib/units';
-import { costPerKgCents, recipeCost } from '@/lib/calculations/recipeCost';
+import { costPerKgCents } from '@/lib/calculations/recipeCost';
 import {
   compositionCost,
   dishPricing,
   ingredientCanonicalQuantity,
   ingredientDisplayAmount,
   isIngredientUnitFor,
+  outputCanonicalQuantity,
+  outputDisplayAmount,
   type DishIngredientUnit,
+  type DishOutputUnit,
   type DishRecipeUnit,
+  type PriceBasis,
 } from '@/lib/calculations/dish';
 import { mergeMenuAllergens, type MenuAllergen } from '@/lib/calculations/menu';
 import type { RecipeAllergenRollup } from '@/lib/calculations/allergens';
-import { loadActiveCatalogue, type ActiveCatalogue } from '@/lib/data/active-catalogue';
+import {
+  catalogueDishLookups,
+  catalogueRecipeCosts,
+  loadActiveCatalogue,
+} from '@/lib/data/active-catalogue';
 import {
   loadIngredientAllergensByIngredient,
   loadRecipeAllergensByIds,
@@ -211,47 +220,24 @@ export async function searchDishes(
   return rows.map((r) => ({ id: r.id, name: r.name, folderName: r.folderName ?? null }));
 }
 
-// ── Catalogue-derived costs (manager only) ───────────────────────────────────
+// ── Shared shapes ────────────────────────────────────────────────────────────
 
-type RecipeCostView = {
-  costPerPortionCents: number | null;
-  costPerKgCents: number | null;
+/** "This batch makes": amount in `unit` (converted from canonical), plus size text. */
+export type DishOutputView = {
+  quantity: number;
+  unit: DishOutputUnit;
+  sizeDescription: string | null;
+  /** Count batches only; grams. */
+  finishedWeightGrams: number | null;
 };
 
-/**
- * Honest per-recipe costs from the catalogue: a recipe with an unpriced ingredient or
- * an unresolvable sub-recipe tree costs as UNKNOWN (null), never understated.
- */
-function recipeCostsFromCatalogue(catalogue: ActiveCatalogue): Map<string, RecipeCostView> {
-  const needsPricing = new Set(catalogue.ingredients.filter((i) => i.needsPricing).map((i) => i.id));
-  const out = new Map<string, RecipeCostView>();
-  for (const recipe of catalogue.recipes) {
-    const unpriced =
-      recipe.costUnresolved || recipe.lines.some((l) => needsPricing.has(l.ingredientId));
-    if (unpriced) {
-      out.set(recipe.id, { costPerPortionCents: null, costPerKgCents: null });
-      continue;
-    }
-    const cost = recipeCost({
-      yieldPortions: recipe.yieldPortions,
-      yieldPercentage: recipe.yieldPercentage,
-      laborCostCents: recipe.laborCostCents,
-      energyCostCents: recipe.energyCostCents,
-      packagingCostCents: recipe.packagingCostCents,
-      lines: recipe.lines.map((l) => ({
-        dimension: l.dimension,
-        priceCents: l.priceCents,
-        quantity: l.quantity,
-        prepYieldBps: l.prepYieldBps ?? undefined,
-      })),
-      componentMaterialCostsCents: [recipe.componentHiddenCostCents],
-    });
-    out.set(recipe.id, {
-      costPerPortionCents: cost.costPerPortionCents,
-      costPerKgCents: costPerKgCents(cost.totalCostCents, recipe.yieldWeightGrams),
-    });
-  }
-  return out;
+function outputView(row: Menu): DishOutputView {
+  return {
+    quantity: outputDisplayAmount(row.outputQuantity, row.outputUnit),
+    unit: row.outputUnit,
+    sizeDescription: row.sizeDescription,
+    finishedWeightGrams: row.finishedWeightGrams,
+  };
 }
 
 // ── Folder view: dish list ───────────────────────────────────────────────────
@@ -259,7 +245,7 @@ function recipeCostsFromCatalogue(catalogue: ActiveCatalogue): Map<string, Recip
 export type DishListItem = {
   id: string;
   name: string;
-  portions: number;
+  output: DishOutputView;
   componentCount: number;
   createdAt: Date;
   updatedAt: Date;
@@ -268,7 +254,9 @@ export type DishListItem = {
 
 export type ManagerDishListItem = DishListItem & {
   sellingPriceCents: number | null;
-  costPerPortionCents: number | null;
+  priceBasis: PriceBasis;
+  /** Per kg (weight) or per output unit (count). */
+  costPerSaleUnitCents: number | null;
   marginBps: number | null;
 };
 
@@ -335,6 +323,18 @@ async function listDishRows(
   return { rows, componentCount };
 }
 
+function listItem(row: Menu, componentCount: Map<string, number>): DishListItem {
+  return {
+    id: row.id,
+    name: row.name,
+    output: outputView(row),
+    componentCount: componentCount.get(row.id) ?? 0,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    lastOpenedAt: row.lastOpenedAt,
+  };
+}
+
 export async function listKitchenDishes(
   db: TenantClient,
   organizationId: string,
@@ -342,15 +342,7 @@ export async function listKitchenDishes(
   sort: DishSort,
 ): Promise<DishListItem[]> {
   const { rows, componentCount } = await listDishRows(db, organizationId, folderId, sort);
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    portions: r.portions,
-    componentCount: componentCount.get(r.id) ?? 0,
-    createdAt: r.createdAt,
-    updatedAt: r.updatedAt,
-    lastOpenedAt: r.lastOpenedAt,
-  }));
+  return rows.map((r) => listItem(r, componentCount));
 }
 
 export async function listManagerDishes(
@@ -363,32 +355,18 @@ export async function listManagerDishes(
     listDishRows(db, organizationId, folderId, sort),
     loadActiveCatalogue(db, organizationId),
   ]);
-  const recipeCosts = recipeCostsFromCatalogue(catalogue);
-  const recipeById = new Map(catalogue.recipes.map((r) => [r.id, r]));
-  const ingredientById = new Map(catalogue.ingredients.map((i) => [i.id, i]));
+  const lookups = catalogueDishLookups(catalogue);
   const menuById = new Map(catalogue.menus.map((m) => [m.id, m]));
 
   return rows.map((r) => {
     const composition = menuById.get(r.id);
-    const cost = composition
-      ? compositionCost(composition, {
-          recipeCostPerPortion: (id) => recipeCosts.get(id)?.costPerPortionCents ?? null,
-          recipeYield: (id) => recipeById.get(id) ?? null,
-          ingredient: (id) => ingredientById.get(id) ?? null,
-        })
-      : null;
-    const costPerPortion = cost?.costPerPortionCents ?? null;
+    const cost = composition ? compositionCost(composition, lookups) : null;
     return {
-      id: r.id,
-      name: r.name,
-      portions: r.portions,
-      componentCount: componentCount.get(r.id) ?? 0,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-      lastOpenedAt: r.lastOpenedAt,
+      ...listItem(r, componentCount),
       sellingPriceCents: r.sellingPriceCents,
-      costPerPortionCents: costPerPortion,
-      marginBps: dishPricing(costPerPortion, r.sellingPriceCents, 0).marginBps,
+      priceBasis: r.priceBasis,
+      costPerSaleUnitCents: cost?.costPerSaleUnitCents ?? null,
+      marginBps: cost ? dishPricing(cost, r.sellingPriceCents, 0).marginBps : null,
     };
   });
 }
@@ -399,7 +377,7 @@ type DishIdentity = {
   id: string;
   name: string;
   folderId: string | null;
-  portions: number;
+  output: DishOutputView;
   notes: string | null;
 };
 
@@ -420,6 +398,7 @@ export type KitchenDishIngredientLine = {
   available: boolean;
 };
 
+/** Money-free: no price, labour, hourly rates or expenses. */
 export type KitchenDishDetail = DishIdentity & {
   recipeLines: KitchenDishRecipeLine[];
   ingredientLines: KitchenDishIngredientLine[];
@@ -427,9 +406,16 @@ export type KitchenDishDetail = DishIdentity & {
   hasUnreviewedIngredient: boolean;
 };
 
+export type DishExtraView =
+  | { kind: 'work'; description: string; hours: number; hourlyCents: number }
+  | { kind: 'expense'; description: string; amountCents: number };
+
 export type ManagerDishDetail = DishIdentity & {
   sellingPriceCents: number | null;
+  priceBasis: PriceBasis;
   vatRateBps: number | null;
+  labour: { hours: number; hourlyCents: number } | null;
+  extras: DishExtraView[];
   recipeLines: KitchenDishRecipeLine[];
   ingredientLines: KitchenDishIngredientLine[];
 };
@@ -492,6 +478,27 @@ async function loadDishLines(db: TenantClient, organizationId: string, menuId: s
   return { recipeLines, ingredientLines };
 }
 
+async function loadDishExtras(
+  db: TenantClient,
+  organizationId: string,
+  menuId: string,
+): Promise<DishExtraView[]> {
+  const rows = await db
+    .select()
+    .from(menuExtras)
+    .where(and(eq(menuExtras.organizationId, organizationId), eq(menuExtras.menuId, menuId)))
+    .orderBy(asc(menuExtras.sortOrder));
+  const out: DishExtraView[] = [];
+  for (const r of rows) {
+    if (r.kind === 'work' && r.hours !== null && r.hourlyCents !== null) {
+      out.push({ kind: 'work', description: r.description, hours: r.hours, hourlyCents: r.hourlyCents });
+    } else if (r.kind === 'expense' && r.amountCents !== null) {
+      out.push({ kind: 'expense', description: r.description, amountCents: r.amountCents });
+    }
+  }
+  return out;
+}
+
 export async function getManagerDish(
   db: TenantClient,
   organizationId: string,
@@ -499,15 +506,24 @@ export async function getManagerDish(
 ): Promise<ManagerDishDetail | null> {
   const menu = await getMenuById(db, organizationId, id);
   if (!menu) return null;
-  const lines = await loadDishLines(db, organizationId, id);
+  const [lines, extras] = await Promise.all([
+    loadDishLines(db, organizationId, id),
+    loadDishExtras(db, organizationId, id),
+  ]);
   return {
     id: menu.id,
     name: menu.name,
     folderId: menu.folderId,
-    portions: menu.portions,
+    output: outputView(menu),
     notes: menu.notes,
     sellingPriceCents: menu.sellingPriceCents,
+    priceBasis: menu.priceBasis,
     vatRateBps: menu.vatRateBps,
+    labour:
+      menu.labourHours !== null && menu.labourHourlyCents !== null
+        ? { hours: menu.labourHours, hourlyCents: menu.labourHourlyCents }
+        : null,
+    extras,
     ...lines,
   };
 }
@@ -520,27 +536,16 @@ export async function getKitchenDish(
   const menu = await getMenuById(db, organizationId, id);
   if (!menu) return null;
   const lines = await loadDishLines(db, organizationId, id);
+  const ingredientIds = lines.ingredientLines.map((l) => l.ingredientId);
   const [recipeAllergens, ingredientAllergens, reviewRows] = await Promise.all([
     loadRecipeAllergensByIds(db, organizationId, lines.recipeLines.map((l) => l.recipeId)),
-    loadIngredientAllergensByIngredient(
-      db,
-      organizationId,
-      lines.ingredientLines.map((l) => l.ingredientId),
-    ),
-    lines.ingredientLines.length === 0
+    loadIngredientAllergensByIngredient(db, organizationId, ingredientIds),
+    ingredientIds.length === 0
       ? Promise.resolve([])
       : db
           .select({ id: ingredients.id, reviewedAt: ingredients.allergensReviewedAt })
           .from(ingredients)
-          .where(
-            and(
-              eq(ingredients.organizationId, organizationId),
-              inArray(
-                ingredients.id,
-                lines.ingredientLines.map((l) => l.ingredientId),
-              ),
-            ),
-          ),
+          .where(and(eq(ingredients.organizationId, organizationId), inArray(ingredients.id, ingredientIds))),
   ]);
   const reviewed = new Map(reviewRows.map((r) => [r.id, r.reviewedAt !== null]));
   const rollups: RecipeAllergenRollup[] = [
@@ -560,7 +565,7 @@ export async function getKitchenDish(
     id: menu.id,
     name: menu.name,
     folderId: menu.folderId,
-    portions: menu.portions,
+    output: outputView(menu),
     notes: menu.notes,
     ...lines,
     allergens: rollup.allergens,
@@ -577,7 +582,10 @@ export type DishRecipeOption = {
   yieldWeightGrams: number | null;
   /** Null when an ingredient needs pricing or the sub-recipe tree is unresolvable. */
   costPerPortionCents: number | null;
+  /** The same cost without the recipe's own and nested sub-recipe labour. */
+  costPerPortionWithoutLabourCents: number | null;
   costPerKgCents: number | null;
+  costPerKgWithoutLabourCents: number | null;
 };
 
 export type DishIngredientOption = {
@@ -594,17 +602,23 @@ export async function listDishBuilderOptions(
   organizationId: string,
 ): Promise<{ recipes: DishRecipeOption[]; ingredients: DishIngredientOption[] }> {
   const catalogue = await loadActiveCatalogue(db, organizationId);
-  const costs = recipeCostsFromCatalogue(catalogue);
+  const costs = catalogueRecipeCosts(catalogue);
   return {
     recipes: catalogue.recipes
-      .map((r) => ({
-        id: r.id,
-        name: r.name,
-        yieldPortions: r.yieldPortions,
-        yieldWeightGrams: r.yieldWeightGrams,
-        costPerPortionCents: costs.get(r.id)?.costPerPortionCents ?? null,
-        costPerKgCents: costs.get(r.id)?.costPerKgCents ?? null,
-      }))
+      .map((r) => {
+        const c = costs.get(r.id);
+        return {
+          id: r.id,
+          name: r.name,
+          yieldPortions: r.yieldPortions,
+          yieldWeightGrams: r.yieldWeightGrams,
+          costPerPortionCents: c?.withLabour ?? null,
+          costPerPortionWithoutLabourCents: c?.withoutLabour ?? null,
+          costPerKgCents: c?.totalWithLabour != null ? costPerKgCents(c.totalWithLabour, r.yieldWeightGrams) : null,
+          costPerKgWithoutLabourCents:
+            c?.totalWithoutLabour != null ? costPerKgCents(c.totalWithoutLabour, r.yieldWeightGrams) : null,
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name)),
     ingredients: catalogue.ingredients
       .map((i) => ({
@@ -684,11 +698,11 @@ async function validateDishReferences(
   return 'ok';
 }
 
-async function insertDishLines(
+async function insertDishChildren(
   db: TenantClient,
   organizationId: string,
   menuId: string,
-  input: DishFormInput,
+  input: Pick<DishFormInput, 'recipeLines' | 'ingredientLines' | 'extras'>,
 ): Promise<void> {
   if (input.recipeLines.length > 0) {
     await db.insert(menuItems).values(
@@ -714,15 +728,35 @@ async function insertDishLines(
       })),
     );
   }
+  if (input.extras.length > 0) {
+    await db.insert(menuExtras).values(
+      input.extras.map((extra, index) => ({
+        organizationId,
+        menuId,
+        kind: extra.kind,
+        description: extra.description,
+        hours: extra.kind === 'work' ? extra.hours : null,
+        hourlyCents: extra.kind === 'work' ? extra.hourlyCents : null,
+        amountCents: extra.kind === 'expense' ? extra.amountCents : null,
+        sortOrder: index,
+      })),
+    );
+  }
 }
 
 function dishFields(input: DishFormInput) {
   return {
     name: input.name,
     folderId: input.folderId,
-    portions: input.portions,
+    outputQuantity: outputCanonicalQuantity(input.output.quantity, input.output.unit),
+    outputUnit: input.output.unit,
+    sizeDescription: input.output.sizeDescription ?? null,
+    finishedWeightGrams: input.output.finishedWeightGrams,
     sellingPriceCents: input.sellingPriceCents,
+    priceBasis: input.priceBasis,
     vatRateBps: input.vatRateBps,
+    labourHours: input.labour?.hours ?? null,
+    labourHourlyCents: input.labour?.hourlyCents ?? null,
     notes: input.notes ?? null,
   };
 }
@@ -739,11 +773,11 @@ export async function createDish(
     .values({ organizationId, ...dishFields(input), lastOpenedAt: new Date() })
     .returning();
   if (!menu) throw new Error('Failed to create dish.');
-  await insertDishLines(db, organizationId, menu.id, input);
+  await insertDishChildren(db, organizationId, menu.id, input);
   return { status: 'ok', menu };
 }
 
-/** Replace an active dish's fields + full composition in one transaction. */
+/** Replace an active product's fields + full composition + extras in one transaction. */
 export async function updateDish(
   db: TenantClient,
   organizationId: string,
@@ -768,7 +802,69 @@ export async function updateDish(
     .where(
       and(eq(menuIngredientItems.organizationId, organizationId), eq(menuIngredientItems.menuId, id)),
     );
-  await insertDishLines(db, organizationId, id, input);
+  await db
+    .delete(menuExtras)
+    .where(and(eq(menuExtras.organizationId, organizationId), eq(menuExtras.menuId, id)));
+  await insertDishChildren(db, organizationId, id, input);
+  return { status: 'ok', menu };
+}
+
+/**
+ * "Make a copy": an independent product with the same composition, output, size,
+ * finished weight, labour, extras, price + basis, VAT, folder and notes. Children are
+ * copied row-for-row (canonical quantities stay exact); the original is untouched.
+ */
+export async function duplicateDish(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+  name: string,
+): Promise<{ status: 'ok'; menu: Menu } | { status: 'not_found' }> {
+  const source = await getMenuById(db, organizationId, id);
+  if (!source) return { status: 'not_found' };
+  const [menu] = await db
+    .insert(menus)
+    .values({
+      organizationId,
+      name,
+      folderId: source.folderId,
+      outputQuantity: source.outputQuantity,
+      outputUnit: source.outputUnit,
+      sizeDescription: source.sizeDescription,
+      finishedWeightGrams: source.finishedWeightGrams,
+      sellingPriceCents: source.sellingPriceCents,
+      priceBasis: source.priceBasis,
+      vatRateBps: source.vatRateBps,
+      labourHours: source.labourHours,
+      labourHourlyCents: source.labourHourlyCents,
+      notes: source.notes,
+      lastOpenedAt: new Date(),
+    })
+    .returning();
+  if (!menu) throw new Error('Failed to copy dish.');
+
+  const scopeItems = (table: typeof menuItems | typeof menuIngredientItems | typeof menuExtras) =>
+    and(eq(table.organizationId, organizationId), eq(table.menuId, id));
+  const [recipeRows, ingredientRows, extraRows] = await Promise.all([
+    db.select().from(menuItems).where(scopeItems(menuItems)),
+    db.select().from(menuIngredientItems).where(scopeItems(menuIngredientItems)),
+    db.select().from(menuExtras).where(scopeItems(menuExtras)),
+  ]);
+  if (recipeRows.length > 0) {
+    await db.insert(menuItems).values(
+      recipeRows.map(({ id: _id, menuId: _menuId, ...row }) => ({ ...row, menuId: menu.id })),
+    );
+  }
+  if (ingredientRows.length > 0) {
+    await db.insert(menuIngredientItems).values(
+      ingredientRows.map(({ id: _id, menuId: _menuId, ...row }) => ({ ...row, menuId: menu.id })),
+    );
+  }
+  if (extraRows.length > 0) {
+    await db.insert(menuExtras).values(
+      extraRows.map(({ id: _id, menuId: _menuId, ...row }) => ({ ...row, menuId: menu.id })),
+    );
+  }
   return { status: 'ok', menu };
 }
 
@@ -812,7 +908,7 @@ export async function restoreMenu(
   return row ?? null;
 }
 
-/** Permanently delete a trashed dish; both line tables cascade via composite FKs. */
+/** Permanently delete a trashed dish; lines and extras cascade via composite FKs. */
 export async function purgeMenu(db: TenantClient, organizationId: string, id: string): Promise<void> {
   await db
     .delete(menus)

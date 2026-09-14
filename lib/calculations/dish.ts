@@ -3,24 +3,85 @@ import { CANONICAL_PER_PRICE_UNIT } from '@/lib/calculations/recipeCost';
 import { lineTax, MAX_TAX_RATE_BPS } from '@/lib/calculations/tax';
 
 /**
- * Dish Builder maths — pure, no I/O. A dish (stored in `menus`) is what a customer
- * buys: recipe lines (by portion, g or kg) plus direct ingredient lines (fruit,
- * garnish, boxes…), making `portions` sellable portions. Money is integer cents in
- * and out; fractions survive internally and are rounded ONCE at the boundary.
+ * Menu product maths — pure, no I/O. A product (stored in `menus`) is one BATCH:
+ * recipe lines (by portion, g or kg) + direct ingredient lines (fruit, garnish,
+ * boxes…) that make a stated output ("This batch makes 20 kg" / "50 cakes"), plus
+ * optional production labour, extra work and expenses.
  *
- * Cost is complete-or-null (D5): one unpriced ingredient, trashed
- * recipe or unconvertible gram line makes the WHOLE dish cost null — never a
+ * Money is integer cents in and out; fractions survive internally (`exactTotalCents`)
+ * and every displayed figure is rounded ONCE from the exact value — never a batch
+ * total rebuilt from an already-rounded per-unit cost.
+ *
+ * Cost is complete-or-null: an unpriced ingredient, a trashed recipe, an
+ * unconvertible gram line or invalid labour makes the cost unknown — never a
  * flattering partial sum.
  *
- * Every consumer of dish cost — the builder, Menu Engineering, the CFO report,
- * profit leaks, cost impact — goes through `dishCost`, so they cannot disagree.
+ * Labour (no double counting): when the product has its own production labour, it
+ * is the COMPLETE labour estimate, so recipe labour (incl. nested sub-recipes) is
+ * excluded from component costs; energy and packaging stay. When labour is not
+ * entered, recipe costs are used exactly as before.
  *
- * Extension point: `adjustments` carries per-dish costs beyond components (labour,
- * energy, packaging, delivery, waste allowance). None are stored yet; adding one is
- * a new `DishCostAdjustmentKind` + a column, with no change to consumers.
+ * Every consumer — the builder, Menu lists, sales, Menu Engineering, CFO report,
+ * daily close, profit leaks, cost impact, prep planner — goes through
+ * `compositionCost`, so they cannot disagree.
  */
 
-// ── Units ─────────────────────────────────────────────────────────────────────
+// ── Batch output ─────────────────────────────────────────────────────────────
+
+export const DISH_OUTPUT_UNITS = ['g', 'kg', 'piece', 'cake', 'portion'] as const;
+export type DishOutputUnit = (typeof DISH_OUTPUT_UNITS)[number];
+export type DishOutputKind = 'weight' | 'count';
+
+/** What a selling price is per: a kilogram, or one output unit (piece/cake/portion). */
+export const PRICE_BASES = ['kg', 'unit'] as const;
+export type PriceBasis = (typeof PRICE_BASES)[number];
+
+export function outputKind(unit: DishOutputUnit): DishOutputKind {
+  return unit === 'g' || unit === 'kg' ? 'weight' : 'count';
+}
+
+export function priceBasisFor(unit: DishOutputUnit): PriceBasis {
+  return outputKind(unit) === 'weight' ? 'kg' : 'unit';
+}
+
+/** Entered amount → canonical (grams for weight, count for count units). */
+export function outputCanonicalQuantity(amount: number, unit: DishOutputUnit): number {
+  return unit === 'kg' ? amount * 1000 : amount;
+}
+
+/** Canonical → amount in the display unit (20000 g shown in kg → 20). */
+export function outputDisplayAmount(canonical: number, unit: DishOutputUnit): number {
+  return unit === 'kg' ? canonical / 1000 : canonical;
+}
+
+export type DishOutput = {
+  /** Canonical: grams (weight units) or a count (piece/cake/portion). */
+  quantity: number;
+  unit: DishOutputUnit;
+  /** Optional finished weight of a COUNT batch, grams. Never inferred. */
+  finishedWeightGrams: number | null;
+};
+
+const positiveFinite = (n: number | null | undefined): n is number =>
+  n != null && Number.isFinite(n) && n > 0;
+
+const nonNegativeFinite = (n: number) => Number.isFinite(n) && n >= 0;
+
+/** How many price-basis units the batch makes: kg for weight, units for count. */
+export function outputSaleUnits(output: DishOutput): number | null {
+  if (!positiveFinite(output.quantity)) return null;
+  return outputKind(output.unit) === 'weight' ? output.quantity / 1000 : output.quantity;
+}
+
+/** Finished batch weight in kg, when known (weight batches always; count batches if entered). */
+export function outputWeightKg(output: DishOutput): number | null {
+  if (outputKind(output.unit) === 'weight') {
+    return positiveFinite(output.quantity) ? output.quantity / 1000 : null;
+  }
+  return positiveFinite(output.finishedWeightGrams) ? output.finishedWeightGrams / 1000 : null;
+}
+
+// ── Component units ──────────────────────────────────────────────────────────
 
 export const DISH_RECIPE_UNITS = ['portion', 'g', 'kg'] as const;
 export type DishRecipeUnit = (typeof DISH_RECIPE_UNITS)[number];
@@ -35,15 +96,8 @@ const INGREDIENT_UNIT_DIMENSION: Record<DishIngredientUnit, Dimension> = {
   l: 'volume',
   piece: 'count',
 };
-const INGREDIENT_UNIT_FACTOR: Record<DishIngredientUnit, number> = {
-  g: 1,
-  kg: 1000,
-  ml: 1,
-  l: 1000,
-  piece: 1,
-};
+const INGREDIENT_UNIT_FACTOR: Record<DishIngredientUnit, number> = { g: 1, kg: 1000, ml: 1, l: 1000, piece: 1 };
 
-/** Units an ingredient of `dimension` may be entered in. */
 export function ingredientUnitsFor(dimension: Dimension): DishIngredientUnit[] {
   return DISH_INGREDIENT_UNITS.filter((u) => INGREDIENT_UNIT_DIMENSION[u] === dimension);
 }
@@ -52,151 +106,206 @@ export function isIngredientUnitFor(unit: DishIngredientUnit, dimension: Dimensi
   return INGREDIENT_UNIT_DIMENSION[unit] === dimension;
 }
 
-/** Entered amount → canonical g / ml / count. */
 export function ingredientCanonicalQuantity(amount: number, unit: DishIngredientUnit): number {
   return amount * INGREDIENT_UNIT_FACTOR[unit];
 }
 
-/** Canonical quantity → amount in the display unit. */
 export function ingredientDisplayAmount(canonical: number, unit: DishIngredientUnit): number {
   return canonical / INGREDIENT_UNIT_FACTOR[unit];
 }
 
-export type RecipeYield = {
-  yieldPortions: number;
-  /** Usable finished batch weight in grams; null = not set. */
-  yieldWeightGrams: number | null;
-};
+export type RecipeYield = { yieldPortions: number; yieldWeightGrams: number | null };
 
-/**
- * How many recipe PORTIONS a recipe line represents. Portion lines are 1:1; gram
- * lines need the recipe's finished batch weight (grams ÷ batch weight × batch
- * portions). Null when that can't be computed honestly.
- */
+/** Recipe PORTIONS a recipe line represents (g/kg need the recipe's batch weight). */
 export function recipePortionEquivalent(
   amount: number,
   unit: DishRecipeUnit,
   recipe: RecipeYield,
 ): number | null {
-  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (!positiveFinite(amount)) return null;
   if (unit === 'portion') return amount;
   const grams = unit === 'kg' ? amount * 1000 : amount;
-  const weight = recipe.yieldWeightGrams;
-  if (weight == null || !Number.isFinite(weight) || weight <= 0) return null;
-  if (!Number.isFinite(recipe.yieldPortions) || recipe.yieldPortions <= 0) return null;
-  return (grams / weight) * recipe.yieldPortions;
+  if (!positiveFinite(recipe.yieldWeightGrams) || !positiveFinite(recipe.yieldPortions)) return null;
+  return (grams / recipe.yieldWeightGrams) * recipe.yieldPortions;
+}
+
+// ── Labour & extras ──────────────────────────────────────────────────────────
+
+/** Production labour for the whole batch; null = not entered (recipe labour applies). */
+export type DishLabour = { hours: number; hourlyCents: number } | null;
+
+export type DishExtra =
+  | { kind: 'work'; hours: number; hourlyCents: number }
+  | { kind: 'expense'; amountCents: number };
+
+/**
+ * Hours are stored with 2 decimals. Round once, correcting binary float error
+ * (1.255 × 100 = 125.49999… would otherwise round down).
+ */
+export function roundHours(hours: number): number {
+  return Math.round(Number((hours * 100).toPrecision(12))) / 100;
+}
+
+function workCents(hours: number, hourlyCents: number): number | null {
+  return nonNegativeFinite(hours) && nonNegativeFinite(hourlyCents) ? hours * hourlyCents : null;
 }
 
 // ── Cost ─────────────────────────────────────────────────────────────────────
 
-export type DishRecipeLineCostInput = {
-  key: string;
-  /** The recipe's current cost per portion, cents; null = unavailable/unpriced. */
-  costPerPortionCents: number | null;
-  /** From {@link recipePortionEquivalent}; null = unconvertible. */
-  portionEquivalent: number | null;
+export type DishComposition = {
+  output: DishOutput;
+  labour: DishLabour;
+  extras: DishExtra[];
+  recipeLines: { recipeId: string; quantity: number; unit: DishRecipeUnit }[];
+  /** `quantity` is canonical (g / ml / count) for the whole batch. */
+  ingredientLines: { ingredientId: string; quantity: number; unit: DishIngredientUnit }[];
 };
 
-export type DishIngredientLineCostInput = {
-  key: string;
+export type DishIngredientPrice = {
   dimension: Dimension;
-  /** Current price per kg / litre / piece, cents; null = unpriced or unavailable. */
-  priceCents: number | null;
-  /** Canonical quantity for the whole dish (g / ml / count). */
-  quantity: number;
+  priceCents: number;
+  /** An ingredient still needing a price costs as UNKNOWN, never as its stale/0 price. */
+  needsPricing: boolean;
 };
 
-export const DISH_COST_ADJUSTMENT_KINDS = [
-  'labour',
-  'energy',
-  'packaging',
-  'delivery',
-  'waste',
-] as const;
-export type DishCostAdjustmentKind = (typeof DISH_COST_ADJUSTMENT_KINDS)[number];
-
-/** A whole-dish cost beyond its components (future: labour, energy, waste…). */
-export type DishCostAdjustment = { kind: DishCostAdjustmentKind; cents: number };
-
-export type DishCostInput = {
-  portions: number;
-  recipeLines: DishRecipeLineCostInput[];
-  ingredientLines: DishIngredientLineCostInput[];
-  adjustments?: DishCostAdjustment[];
+export type DishCostLookups = {
+  /**
+   * Current cost per portion of an active recipe; null = unavailable/unpriced.
+   * `excludeLabour` drops the recipe's own and nested sub-recipe labour.
+   */
+  recipeCostPerPortion: (recipeId: string, options: { excludeLabour: boolean }) => number | null;
+  recipeYield: (recipeId: string) => RecipeYield | null;
+  ingredient: (ingredientId: string) => DishIngredientPrice | null;
 };
+
+export const recipeLineKey = (recipeId: string) => `r:${recipeId}`;
+export const ingredientLineKey = (ingredientId: string) => `i:${ingredientId}`;
+export const LABOUR_KEY = 'labour';
+export const extraKey = (index: number) => `extra:${index}`;
 
 export type DishLineCost = { key: string; costCents: number | null };
 
 export type DishCost = {
   complete: boolean;
-  /** Whole-dish cost (all portions), cents; null when incomplete. */
+  /** 'menu' = the product's own labour replaces recipe labour. */
+  labourMode: 'menu' | 'inherited';
+  /** Blank labour AND at least one recipe cost carries recipe labour. */
+  inheritsRecipeLabour: boolean;
+  /** Recipes + ingredients + packaging; null while any component is unknown. */
+  componentsCents: number | null;
+  /** Null when labour is not entered or can't be calculated. */
+  productionLabourCents: number | null;
+  extraWorkCents: number | null;
+  expensesCents: number | null;
   totalCostCents: number | null;
-  costPerPortionCents: number | null;
-  /** Rounded contribution per line for display (null = that line is the gap). */
+  /** Unrounded total — the base for every derived figure. */
+  exactTotalCents: number | null;
+  /** kg (weight) or output units (count). */
+  saleUnits: number | null;
+  costPerSaleUnitCents: number | null;
+  /** Weight batches always; count batches only with a finished weight. */
+  costPerKgCents: number | null;
   lineCosts: DishLineCost[];
-  /** Keys of the lines that made the dish incomplete. */
   incompleteKeys: string[];
 };
 
-function recipeLineCost(line: DishRecipeLineCostInput): number | null {
-  const { costPerPortionCents: cost, portionEquivalent: eq } = line;
-  if (cost == null || !Number.isFinite(cost) || cost < 0) return null;
-  if (eq == null || !Number.isFinite(eq) || eq <= 0) return null;
-  return cost * eq;
-}
-
-function ingredientLineCost(line: DishIngredientLineCostInput): number | null {
-  if (line.priceCents == null || !Number.isFinite(line.priceCents) || line.priceCents < 0) {
-    return null;
-  }
-  if (!Number.isFinite(line.quantity) || line.quantity <= 0) return null;
-  return (line.priceCents * line.quantity) / CANONICAL_PER_PRICE_UNIT[line.dimension];
-}
-
-export function dishCost(input: DishCostInput): DishCost {
+export function compositionCost(dish: DishComposition, lookups: DishCostLookups): DishCost {
+  const labourMode = dish.labour === null ? 'inherited' : 'menu';
+  const excludeLabour = labourMode === 'menu';
   const lineCosts: DishLineCost[] = [];
   const incompleteKeys: string[] = [];
-  let total = 0;
+  let components = 0;
+  let componentsKnown = true;
+  let inheritsRecipeLabour = false;
 
-  for (const line of input.recipeLines) {
-    const cost = recipeLineCost(line);
-    lineCosts.push({ key: line.key, costCents: cost === null ? null : Math.round(cost) });
-    if (cost === null) incompleteKeys.push(line.key);
-    else total += cost;
-  }
-  for (const line of input.ingredientLines) {
-    const cost = ingredientLineCost(line);
-    lineCosts.push({ key: line.key, costCents: cost === null ? null : Math.round(cost) });
-    if (cost === null) incompleteKeys.push(line.key);
-    else total += cost;
-  }
-  let adjustmentsValid = true;
-  for (const adj of input.adjustments ?? []) {
-    if (!Number.isFinite(adj.cents) || adj.cents < 0) adjustmentsValid = false;
-    else total += adj.cents;
+  for (const line of dish.recipeLines) {
+    const key = recipeLineKey(line.recipeId);
+    const yieldInfo = lookups.recipeYield(line.recipeId);
+    const eq = yieldInfo ? recipePortionEquivalent(line.quantity, line.unit, yieldInfo) : null;
+    const perPortion = lookups.recipeCostPerPortion(line.recipeId, { excludeLabour });
+    if (!excludeLabour && perPortion !== null) {
+      const withoutLabour = lookups.recipeCostPerPortion(line.recipeId, { excludeLabour: true });
+      if (withoutLabour !== null && withoutLabour !== perPortion) inheritsRecipeLabour = true;
+    }
+    const cost =
+      eq !== null && perPortion !== null && nonNegativeFinite(perPortion) ? perPortion * eq : null;
+    lineCosts.push({ key, costCents: cost === null ? null : Math.round(cost) });
+    if (cost === null) {
+      componentsKnown = false;
+      incompleteKeys.push(key);
+    } else components += cost;
   }
 
-  const portions = input.portions;
-  const hasLines = input.recipeLines.length + input.ingredientLines.length > 0;
+  for (const line of dish.ingredientLines) {
+    const key = ingredientLineKey(line.ingredientId);
+    const ing = lookups.ingredient(line.ingredientId);
+    const cost =
+      ing && !ing.needsPricing && nonNegativeFinite(ing.priceCents) && positiveFinite(line.quantity)
+        ? (ing.priceCents * line.quantity) / CANONICAL_PER_PRICE_UNIT[ing.dimension]
+        : null;
+    lineCosts.push({ key, costCents: cost === null ? null : Math.round(cost) });
+    if (cost === null) {
+      componentsKnown = false;
+      incompleteKeys.push(key);
+    } else components += cost;
+  }
+
+  let labour: number | null = null;
+  if (dish.labour !== null) {
+    labour = workCents(dish.labour.hours, dish.labour.hourlyCents);
+    if (labour === null) incompleteKeys.push(LABOUR_KEY);
+  }
+
+  let extraWork = 0;
+  let expenses = 0;
+  let extrasValid = true;
+  dish.extras.forEach((extra, index) => {
+    const cents =
+      extra.kind === 'work'
+        ? workCents(extra.hours, extra.hourlyCents)
+        : nonNegativeFinite(extra.amountCents)
+          ? extra.amountCents
+          : null;
+    if (cents === null) {
+      extrasValid = false;
+      incompleteKeys.push(extraKey(index));
+    } else if (extra.kind === 'work') extraWork += cents;
+    else expenses += cents;
+  });
+
+  const saleUnits = outputSaleUnits(dish.output);
+  const hasComponents = dish.recipeLines.length + dish.ingredientLines.length > 0;
+  const labourValid = dish.labour === null || labour !== null;
+  const total = components + (labour ?? 0) + extraWork + expenses;
   const complete =
-    hasLines &&
-    incompleteKeys.length === 0 &&
-    adjustmentsValid &&
+    hasComponents &&
+    componentsKnown &&
+    labourValid &&
+    extrasValid &&
+    saleUnits !== null &&
     Number.isFinite(total) &&
-    Number.isInteger(portions) &&
-    portions >= 1 &&
     Number.isSafeInteger(Math.round(total));
 
+  const weightKg = outputWeightKg(dish.output);
   return {
     complete,
+    labourMode,
+    inheritsRecipeLabour,
+    componentsCents: hasComponents && componentsKnown ? Math.round(components) : null,
+    productionLabourCents: labour === null ? null : Math.round(labour),
+    extraWorkCents: extrasValid ? Math.round(extraWork) : null,
+    expensesCents: extrasValid ? Math.round(expenses) : null,
     totalCostCents: complete ? Math.round(total) : null,
-    costPerPortionCents: complete ? Math.round(total / portions) : null,
+    exactTotalCents: complete ? total : null,
+    saleUnits,
+    costPerSaleUnitCents: complete && saleUnits ? Math.round(total / saleUnits) : null,
+    costPerKgCents: complete && weightKg ? Math.round(total / weightKg) : null,
     lineCosts,
     incompleteKeys,
   };
 }
 
-// ── Pricing (bidirectional) ──────────────────────────────────────────────────
+// ── Pricing ──────────────────────────────────────────────────────────────────
 
 const BPS = 10_000;
 
@@ -216,111 +325,84 @@ export function priceExclVat(priceInclCents: number, vatBps: number): number {
 }
 
 /**
- * Net price that yields `marginBps` gross margin on `costCents`:
- * price = cost ÷ (1 − margin). Null when the cost is unknown/zero or the margin is
- * outside 0 ≤ m < 100%.
+ * Net price per sale unit that leaves `marginBps` of sales after costs:
+ * price = cost ÷ (1 − margin). Pass the EXACT cost per sale unit.
  */
-export function priceForMargin(costCents: number | null, marginBps: number): number | null {
-  if (costCents == null || !Number.isFinite(costCents) || costCents <= 0) return null;
+export function priceForMargin(costPerSaleUnitCents: number | null, marginBps: number): number | null {
+  if (!positiveFinite(costPerSaleUnitCents)) return null;
   if (!Number.isFinite(marginBps) || marginBps < 0 || marginBps >= BPS) return null;
-  return Math.round(costCents / (1 - marginBps / BPS));
+  return Math.round(costPerSaleUnitCents / (1 - marginBps / BPS));
 }
 
-/** Net price at which cost is `foodCostBps` of it: price = cost ÷ food cost. */
-export function priceForFoodCost(costCents: number | null, foodCostBps: number): number | null {
-  if (costCents == null || !Number.isFinite(costCents) || costCents <= 0) return null;
-  if (!Number.isFinite(foodCostBps) || foodCostBps <= 0 || foodCostBps > BPS) return null;
-  return Math.round(costCents / (foodCostBps / BPS));
+/** Net price per sale unit at which total cost is `shareBps` of sales. */
+export function priceForTotalCostShare(costPerSaleUnitCents: number | null, shareBps: number): number | null {
+  if (!positiveFinite(costPerSaleUnitCents)) return null;
+  if (!Number.isFinite(shareBps) || shareBps <= 0 || shareBps > BPS) return null;
+  return Math.round(costPerSaleUnitCents / (shareBps / BPS));
 }
 
 export type DishPricing = {
   priceExclCents: number | null;
   priceInclCents: number | null;
-  /** Per portion; null without a positive price or a complete cost. */
-  grossProfitCents: number | null;
+  /** Price × whole batch — assumes everything sells. */
+  estimatedSalesCents: number | null;
+  /** Estimated sales − total batch cost: left for overheads and profit (not net profit). */
+  amountLeftCents: number | null;
+  /** amountLeft ÷ sales. */
   marginBps: number | null;
-  foodCostBps: number | null;
+  /** Total cost ÷ sales ("Total cost %" — includes labour/packaging, so not food cost). */
+  totalCostBps: number | null;
 };
 
-/** KPIs for one portion at a net price. */
 export function dishPricing(
-  costPerPortionCents: number | null,
+  cost: Pick<DishCost, 'exactTotalCents' | 'saleUnits'>,
   priceExclCents: number | null,
   vatBps: number,
 ): DishPricing {
-  const price =
-    priceExclCents != null && Number.isFinite(priceExclCents) && priceExclCents >= 0
-      ? priceExclCents
-      : null;
+  const price = priceExclCents != null && nonNegativeFinite(priceExclCents) ? priceExclCents : null;
   const priceIncl = price === null ? null : priceInclVat(price, vatBps);
-  if (price === null || price <= 0 || costPerPortionCents == null || !Number.isFinite(costPerPortionCents)) {
+  const sales = price !== null && cost.saleUnits !== null ? price * cost.saleUnits : null;
+  if (sales === null || sales <= 0 || cost.exactTotalCents === null) {
     return {
       priceExclCents: price,
       priceInclCents: priceIncl,
-      grossProfitCents: null,
+      estimatedSalesCents: sales === null ? null : Math.round(sales),
+      amountLeftCents: null,
       marginBps: null,
-      foodCostBps: null,
+      totalCostBps: null,
     };
   }
+  const left = sales - cost.exactTotalCents;
   return {
     priceExclCents: price,
     priceInclCents: priceIncl,
-    grossProfitCents: price - costPerPortionCents,
-    marginBps: Math.round(((price - costPerPortionCents) / price) * BPS),
-    foodCostBps: Math.round((costPerPortionCents / price) * BPS),
+    estimatedSalesCents: Math.round(sales),
+    amountLeftCents: Math.round(left),
+    marginBps: Math.round((left / sales) * BPS),
+    totalCostBps: Math.round((cost.exactTotalCents / sales) * BPS),
   };
 }
 
-// ── Composition → cost (shared by every consumer) ────────────────────────────
+// ── Scaling production (distinct from correcting the yield) ─────────────────
 
-/** A dish's stored composition, as the catalogue and the data layer load it. */
-export type DishComposition = {
-  portions: number;
-  recipeLines: { recipeId: string; quantity: number; unit: DishRecipeUnit }[];
-  /** `quantity` is canonical (g / ml / count) for the whole dish. */
-  ingredientLines: { ingredientId: string; quantity: number; unit: DishIngredientUnit }[];
-};
-
-export type DishIngredientPrice = {
-  dimension: Dimension;
-  priceCents: number;
-  /** An ingredient still needing a price costs as UNKNOWN, never as its stale/0 price. */
-  needsPricing: boolean;
-};
-
-export type DishCostLookups = {
-  /** Current cost per portion of an active recipe; null = unavailable/unpriced. */
-  recipeCostPerPortion: (recipeId: string) => number | null;
-  recipeYield: (recipeId: string) => RecipeYield | null;
-  /** Null = the ingredient is trashed/missing. */
-  ingredient: (ingredientId: string) => DishIngredientPrice | null;
-};
-
-export const recipeLineKey = (recipeId: string) => `r:${recipeId}`;
-export const ingredientLineKey = (ingredientId: string) => `i:${ingredientId}`;
-
-/** Cost a stored composition with the caller's price lens (current or projected). */
-export function compositionCost(dish: DishComposition, lookups: DishCostLookups): DishCost {
-  return dishCost({
-    portions: dish.portions,
-    recipeLines: dish.recipeLines.map((line) => {
-      const yieldInfo = lookups.recipeYield(line.recipeId);
-      return {
-        key: recipeLineKey(line.recipeId),
-        costPerPortionCents: lookups.recipeCostPerPortion(line.recipeId),
-        portionEquivalent: yieldInfo
-          ? recipePortionEquivalent(line.quantity, line.unit, yieldInfo)
-          : null,
-      };
-    }),
-    ingredientLines: dish.ingredientLines.map((line) => {
-      const ing = lookups.ingredient(line.ingredientId);
-      return {
-        key: ingredientLineKey(line.ingredientId),
-        dimension: ing?.dimension ?? 'count',
-        priceCents: ing && !ing.needsPricing ? ing.priceCents : null,
-        quantity: line.quantity,
-      };
-    }),
-  });
+/**
+ * "Make a different quantity": scale every recipe and direct-ingredient quantity,
+ * the output and a known finished weight by `newOutputQuantity / current`. Labour,
+ * extra work and expenses are deliberately NOT scaled — the chef reviews them.
+ * Correcting the yield is simply editing `output.quantity` without calling this.
+ */
+export function scaleComposition<T extends DishComposition>(dish: T, newOutputQuantity: number): T | null {
+  if (!positiveFinite(dish.output.quantity) || !positiveFinite(newOutputQuantity)) return null;
+  const factor = newOutputQuantity / dish.output.quantity;
+  return {
+    ...dish,
+    output: {
+      ...dish.output,
+      quantity: newOutputQuantity,
+      finishedWeightGrams:
+        dish.output.finishedWeightGrams === null ? null : dish.output.finishedWeightGrams * factor,
+    },
+    recipeLines: dish.recipeLines.map((l) => ({ ...l, quantity: l.quantity * factor })),
+    ingredientLines: dish.ingredientLines.map((l) => ({ ...l, quantity: l.quantity * factor })),
+  };
 }

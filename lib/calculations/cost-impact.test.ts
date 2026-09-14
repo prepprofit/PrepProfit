@@ -56,7 +56,9 @@ function menu(
     id,
     name: `Menu ${id}`,
     sellingPriceCents,
-    portions: 1,
+    output: { quantity: 1, unit: 'portion', finishedWeightGrams: null },
+    labour: null,
+    extras: [],
     recipeLines: lines.map((l) => ({ ...l, unit: 'portion' as const })),
     ingredientLines: [],
   };

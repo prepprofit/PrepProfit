@@ -33,7 +33,7 @@ import {
 import { getOrgSettingsRow } from '@/lib/data/org-settings';
 import { postSaleTransaction, voidSaleTransaction } from '@/lib/data/transactions';
 import { movesStock } from '@/lib/finance/stock-control';
-import { recipePortionEquivalent, type DishRecipeUnit } from '@/lib/calculations/dish';
+import { outputSaleUnits, recipePortionEquivalent, type DishRecipeUnit } from '@/lib/calculations/dish';
 
 /**
  * Daily-close Sales data layer (Sprint 12a). Every function is org-scoped (RULE #1)
@@ -298,16 +298,28 @@ export async function listSaleRecipeOptions(
     .orderBy(asc(recipes.name));
 }
 
-/** Active menus as sale-line options (id + name). */
+/**
+ * A Menu product as a sale-line option. `saleUnit` says what the line's quantity
+ * counts — whole kg for weight batches (price per kg), otherwise one output unit —
+ * so a weight product is never mistaken for "1 portion".
+ */
+export type SaleMenuOption = SaleItemOption & { saleUnit: 'kg' | 'piece' | 'cake' | 'portion' };
+
+/** Active Menu products as sale-line options (id + name + what a unit sold means). */
 export async function listSaleMenuOptions(
   db: TenantClient,
   organizationId: string,
-): Promise<SaleItemOption[]> {
-  return db
-    .select({ id: menus.id, name: menus.name })
+): Promise<SaleMenuOption[]> {
+  const rows = await db
+    .select({ id: menus.id, name: menus.name, outputUnit: menus.outputUnit })
     .from(menus)
     .where(and(eq(menus.organizationId, organizationId), isNull(menus.deletedAt)))
     .orderBy(asc(menus.name));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    saleUnit: r.outputUnit === 'g' || r.outputUnit === 'kg' ? 'kg' : r.outputUnit,
+  }));
 }
 
 /** Active ingredients as sale-line options (id + name + dimension). */
@@ -1011,8 +1023,9 @@ async function buildConsumption(
   ]);
   const recipeNodes = await loadRecipeExplosionInfo(db, organizationId, referencedRecipeIds);
 
-  // Fold recipe portions across recipe lines + dish expansion. A sold unit of a dish
-  // is ONE portion, i.e. 1/portions of its composition.
+  // Fold recipe portions across recipe lines + product expansion. A sale line of a
+  // Menu product counts SALE UNITS (kg for weight batches, pieces/cakes/portions for
+  // count batches), so it draws quantity ÷ batch sale units of the composition.
   const portionsByRecipe = new Map<string, number>();
   const addPortions = (recipeId: string, portions: number) =>
     portionsByRecipe.set(recipeId, (portionsByRecipe.get(recipeId) ?? 0) + portions);
@@ -1026,7 +1039,11 @@ async function buildConsumption(
     const menuId = line.itemMenuId!;
     const dish = menuComponents.get(menuId);
     if (!dish) continue;
-    const share = line.quantity / dish.portions;
+    if (dish.saleUnits === null) {
+      unavailableSourceIds.push(menuId); // a batch without a usable output can't be exploded
+      continue;
+    }
+    const share = line.quantity / dish.saleUnits;
     for (const comp of dish.recipeLines) {
       const node = recipeNodes.get(comp.recipeId);
       const portions = node ? recipePortionEquivalent(comp.quantity, comp.unit, node) : null;
@@ -1041,7 +1058,7 @@ async function buildConsumption(
       dishIngredientLines.push({
         ingredientId: ing.ingredientId,
         units: line.quantity,
-        qtyCanonicalPerUnit: ing.quantity / dish.portions,
+        qtyCanonicalPerUnit: ing.quantity / dish.saleUnits,
         available: true, // resolved below with the direct ingredient lines
       });
     }
@@ -1183,7 +1200,8 @@ async function loadRecipeExplosionInfo(
 }
 
 type DishComponents = {
-  portions: number;
+  /** Sale units the whole batch makes (kg or count); null = unusable output. */
+  saleUnits: number | null;
   recipeLines: { recipeId: string; quantity: number; unit: DishRecipeUnit }[];
   /** Canonical quantity for the whole dish. */
   ingredientLines: { ingredientId: string; quantity: number }[];
@@ -1199,7 +1217,7 @@ async function loadMenuComponents(
   if (menuIds.length === 0) return map;
   const [menuRows, recipeRows, ingredientRows] = await Promise.all([
     db
-      .select({ id: menus.id, portions: menus.portions })
+      .select({ id: menus.id, outputQuantity: menus.outputQuantity, outputUnit: menus.outputUnit })
       .from(menus)
       .where(and(eq(menus.organizationId, organizationId), inArray(menus.id, menuIds))),
     db
@@ -1228,7 +1246,11 @@ async function loadMenuComponents(
       ),
   ]);
   for (const m of menuRows) {
-    map.set(m.id, { portions: m.portions, recipeLines: [], ingredientLines: [] });
+    map.set(m.id, {
+      saleUnits: outputSaleUnits({ quantity: m.outputQuantity, unit: m.outputUnit, finishedWeightGrams: null }),
+      recipeLines: [],
+      ingredientLines: [],
+    });
   }
   for (const r of recipeRows) {
     map.get(r.menuId)?.recipeLines.push({ recipeId: r.recipeId, quantity: r.quantity, unit: r.unit });

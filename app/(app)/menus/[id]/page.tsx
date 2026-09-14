@@ -16,8 +16,14 @@ import { DishKitchenView } from '@/components/app/menus/dish-kitchen-view';
  * read-only, money-free composition + allergens (F4: the kitchen branch loads the
  * money-free loader, so no price/cost reaches the client).
  */
-export default async function DishPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function DishPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ copied?: string }>;
+}) {
+  const [{ id }, { copied }] = await Promise.all([params, searchParams]);
   const organizationId = await getOrgId();
 
   if (!canSeeRecipeCosts(await getUserRole())) {
@@ -44,6 +50,7 @@ export default async function DishPage({ params }: { params: Promise<{ id: strin
       ingredientOptions={data.options.ingredients}
       currency={settings.currency}
       defaultVatBps={settings.defaultTaxRateBps}
+      justCopied={copied === '1'}
     />
   );
 }

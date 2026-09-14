@@ -18,6 +18,7 @@ import { numberToField } from './dish-format';
 export function DishKitchenView({ dish }: { dish: KitchenDishDetail }) {
   const t = useTranslations('menus.builder');
   const tUnits = useTranslations('menus.units');
+  const tBatch = useTranslations('menus.batch');
 
   React.useEffect(() => {
     void markDishOpenedAction(dish.id);
@@ -52,7 +53,15 @@ export function DishKitchenView({ dish }: { dish: KitchenDishDetail }) {
           {dish.name}
         </h2>
         <p className="text-sm text-muted-foreground">
-          {t('kitchenPortions', { count: dish.portions })}
+          {t('output.makes')}{' '}
+          <span className="font-medium text-foreground">
+            {tBatch('makes', {
+              unit: dish.output.unit,
+              count: dish.output.quantity,
+              amount: numberToField(dish.output.quantity),
+            })}
+          </span>
+          {dish.output.sizeDescription && ` · ${dish.output.sizeDescription}`}
         </p>
       </div>
 

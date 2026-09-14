@@ -3,7 +3,7 @@ import { ingredients, saleItems, sales } from '@/lib/db/schema';
 import type { Dimension } from '@/lib/units';
 import type { TenantClient } from '@/lib/db/tenant';
 import { recipeCost, lineCostCents } from '@/lib/calculations/recipeCost';
-import { catalogueDishCostPerPortion, loadActiveCatalogue } from '@/lib/data/active-catalogue';
+import { catalogueDishCostPerSaleUnit, loadActiveCatalogue } from '@/lib/data/active-catalogue';
 import {
   buildDailyCloseInsights,
   type DailyCloseInsights,
@@ -95,8 +95,8 @@ export async function loadDailyCloseInsights(
     );
   }
 
-  // Dish cost per portion — complete-or-null (gram lines + direct ingredients).
-  const menuCostById = catalogueDishCostPerPortion(catalogue, recipeCostPerPortion);
+  // Product cost per SALE UNIT (kg or piece/cake/portion) — complete-or-null.
+  const menuCostById = catalogueDishCostPerSaleUnit(catalogue);
 
   // ── Direct-ingredient lines: current per-unit cost from price × canonical qty. ──
   const directIngredientIds = [

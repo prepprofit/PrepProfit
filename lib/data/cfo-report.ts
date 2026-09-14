@@ -4,7 +4,7 @@ import type { Dimension } from '@/lib/units';
 import type { TenantClient } from '@/lib/db/tenant';
 import { recipeCost, lineCostCents } from '@/lib/calculations/recipeCost';
 import { listIngredients } from '@/lib/data/ingredients';
-import { catalogueDishCostPerPortion, loadActiveCatalogue } from '@/lib/data/active-catalogue';
+import { catalogueDishCostPerSaleUnit, loadActiveCatalogue } from '@/lib/data/active-catalogue';
 import {
   detectProfitLeaks,
   type ProfitLeakInput,
@@ -88,8 +88,8 @@ export async function loadCfoReport(
       unpriced || recipe.costUnresolved ? null : cost.costPerPortionCents,
     );
   }
-  // Dish cost per portion — complete-or-null (gram lines + direct ingredients).
-  const menuCostById = catalogueDishCostPerPortion(catalogue, recipeCostPerPortion);
+  // Product cost per SALE UNIT (kg or piece/cake/portion) — complete-or-null.
+  const menuCostById = catalogueDishCostPerSaleUnit(catalogue);
 
   // ── Deterministic catalogue findings (margin leaks + reprice candidates). ──
   const leakInput: ProfitLeakInput = {
@@ -115,6 +115,7 @@ export async function loadCfoReport(
       ingredientIds: [...new Set(recipe.lines.map((l) => l.ingredientId))],
       costUnresolved: recipe.costUnresolved,
       yieldWeightGrams: recipe.yieldWeightGrams,
+      componentLaborCostCents: recipe.componentLaborCostCents,
     })),
     menus: catalogue.menus,
   };

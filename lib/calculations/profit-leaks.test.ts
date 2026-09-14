@@ -7,6 +7,13 @@ import {
   type ProfitLeakRecipe,
 } from './profit-leaks';
 
+/** A legacy one-portion Menu product with no labour or extras. */
+const ONE_PORTION = {
+  output: { quantity: 1, unit: 'portion' as const, finishedWeightGrams: null },
+  labour: null,
+  extras: [],
+};
+
 /**
  * A recipe with a single 1 kg weight line priced per the given ingredient price.
  * With yieldPortions = 1 and no loss/hidden costs, costPerPortion == priceCents.
@@ -123,7 +130,7 @@ describe('detectProfitLeaks — unpriced ingredients (honesty)', () => {
       input({
         ingredients: [ingredient('ing-a', { needsPricing: true, priceCents: 0 })],
         recipes: [recipe('a', 2000, 0, ['ing-a'])],
-        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 3000, portions: 1, recipeLines: [{ recipeId: 'a', quantity: 1, unit: 'portion' }], ingredientLines: [] }],
+        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 3000, ...ONE_PORTION, recipeLines: [{ recipeId: 'a', quantity: 1, unit: 'portion' }], ingredientLines: [] }],
       }),
     );
     const menuLeak = findings.find((f) => f.type === 'UNPRICED_INGREDIENT_IN_ACTIVE_MENU');
@@ -149,7 +156,7 @@ describe('detectProfitLeaks — menu margin', () => {
       input({
         ingredients: ings,
         recipes: [recipe('a', null, 1000, ['ing-a'])],
-        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 1500, portions: 1, recipeLines: [{ recipeId: 'a', quantity: 1, unit: 'portion' }], ingredientLines: [] }],
+        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 1500, ...ONE_PORTION, recipeLines: [{ recipeId: 'a', quantity: 1, unit: 'portion' }], ingredientLines: [] }],
       }),
     );
     const menuFinding = findings.find((f) => f.type === 'MENU_BELOW_TARGET_MARGIN');
@@ -164,7 +171,9 @@ describe('detectProfitLeaks — menu margin', () => {
       id: 'm1',
       name: 'Combo',
       sellingPriceCents: 1500,
-      portions: 1, recipeLines: [{ recipeId: 'ghost', quantity: 1, unit: 'portion' }], ingredientLines: [],
+      ...ONE_PORTION,
+      recipeLines: [{ recipeId: 'ghost', quantity: 1, unit: 'portion' }],
+      ingredientLines: [],
     };
     expect(detectProfitLeaks(input({ menus: [menu] }))).toEqual([]);
   });
@@ -174,7 +183,7 @@ describe('detectProfitLeaks — menu margin', () => {
       input({
         ingredients: [ingredient('ing-a', { needsPricing: true, priceCents: 0 })],
         recipes: [recipe('a', null, 0, ['ing-a'])],
-        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 1500, portions: 1, recipeLines: [{ recipeId: 'a', quantity: 1, unit: 'portion' }], ingredientLines: [] }],
+        menus: [{ id: 'm1', name: 'Combo', sellingPriceCents: 1500, ...ONE_PORTION, recipeLines: [{ recipeId: 'a', quantity: 1, unit: 'portion' }], ingredientLines: [] }],
       }),
     );
     // No menu margin finding (cost untrue), but the unpriced ingredient still surfaces.

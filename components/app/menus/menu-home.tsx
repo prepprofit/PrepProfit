@@ -4,11 +4,12 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Folder, FolderPlus, Inbox, Search, UtensilsCrossed } from 'lucide-react';
+import { Folder, FolderPlus, Inbox, Plus, Search, UtensilsCrossed } from 'lucide-react';
 import type { DishSearchResult, MenuFolderSummary } from '@/lib/data/menus';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { createMenuFolderAction, searchDishesAction } from '@/app/(app)/menus/actions';
+import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -79,24 +80,34 @@ export function MenuHome({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <div className="relative">
-        <Search
-          className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
-          aria-hidden
-        />
-        <Input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && results && results[0]) router.push(`/menus/${results[0].id}`);
-            if (e.key === 'Escape') setQuery('');
-          }}
-          placeholder={t('searchPlaceholder')}
-          aria-label={t('searchPlaceholder')}
-          autoFocus
-          className="h-14 rounded-2xl pl-12 text-base shadow-sm"
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search
+            className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && results && results[0]) router.push(`/menus/${results[0].id}`);
+              if (e.key === 'Escape') setQuery('');
+            }}
+            placeholder={t('searchPlaceholder')}
+            aria-label={t('searchPlaceholder')}
+            autoFocus
+            className="h-14 rounded-2xl pl-12 text-base shadow-sm"
+          />
+        </div>
+        {canManage && (
+          <Button asChild size="lg" className="h-14 shrink-0 rounded-2xl">
+            <Link href="/menus/new">
+              <Plus />
+              {t('newProduct')}
+            </Link>
+          </Button>
+        )}
       </div>
 
       {showResults ? (

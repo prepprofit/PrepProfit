@@ -9,6 +9,7 @@ import type { SaleItemKind } from '@/lib/db/schema';
 import type {
   SaleIngredientOption,
   SaleItemOption,
+  SaleMenuOption,
 } from '@/lib/data/sales';
 import { saleLineTotals, saleTotals, bpsToPercent, percentToBps } from '@/lib/calculations/tax';
 import { formatMoney, parseMoneyToCents, centsToAmountInput } from '@/lib/format/money';
@@ -59,7 +60,7 @@ export type SaleEditorInitial = {
 
 export type SaleEditorOptions = {
   recipes: SaleItemOption[];
-  menus: SaleItemOption[];
+  menus: SaleMenuOption[];
   ingredients: SaleIngredientOption[];
 };
 
@@ -109,6 +110,9 @@ export function SaleEditor({
   const [pending, startTransition] = React.useTransition();
 
   const dirty = (): void => setSaved(false);
+
+  // Menu products are sold per whole kg (weight batches) or per piece/cake/portion.
+  const menuSaleUnit = (menuId: string) => options.menus.find((m) => m.id === menuId)?.saleUnit;
 
   const optionsFor = (kind: SaleItemKind): SaleItemOption[] =>
     kind === 'recipe' ? options.recipes : kind === 'menu' ? options.menus : options.ingredients;
@@ -355,21 +359,28 @@ export function SaleEditor({
                           )}
                         </td>
                         <td className="py-2 pr-2">
-                          <Input
-                            aria-label={t('lines.units')}
-                            type="number"
-                            min={1}
-                            max={100000}
-                            inputMode="numeric"
-                            className="w-20"
-                            value={String(line.quantity)}
-                            disabled={pending}
-                            onChange={(e) =>
-                              patchLine(line.key, {
-                                quantity: Math.min(100000, Math.max(1, Math.round(Number(e.target.value) || 1))),
-                              })
-                            }
-                          />
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              aria-label={t('lines.units')}
+                              type="number"
+                              min={1}
+                              max={100000}
+                              inputMode="numeric"
+                              className="w-20"
+                              value={String(line.quantity)}
+                              disabled={pending}
+                              onChange={(e) =>
+                                patchLine(line.key, {
+                                  quantity: Math.min(100000, Math.max(1, Math.round(Number(e.target.value) || 1))),
+                                })
+                              }
+                            />
+                            {line.itemKind === 'menu' && menuSaleUnit(line.itemId) && (
+                              <span className="text-xs text-muted-foreground">
+                                {t(`lines.saleUnit.${menuSaleUnit(line.itemId)}`)}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-2 pr-2">
                           <Input

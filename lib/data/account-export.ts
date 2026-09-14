@@ -9,6 +9,7 @@ import {
   ingredientAllergens,
   recipeAllergenOverrides,
   menus,
+  menuExtras,
   menuFolders,
   menuIngredientItems,
   menuItems,
@@ -83,7 +84,9 @@ import {
 // `inventoryMovements` rows now carry `storage_area_id` (flows through `select()`).
 // v15 (Menu redesign): added `menuFolders` + `menuIngredientItems`; `menus` rows now
 // carry folder_id/portions/vat_rate_bps/last_opened_at and `menuItems` a `unit`.
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 15;
+// v16 (Menu batches): added `menuExtras`; `menus` rows now carry output_quantity/
+// output_unit/size_description/finished_weight_grams/price_basis/labour_* fields.
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 16;
 
 export type OrgDataExport = {
   schemaVersion: number;
@@ -110,6 +113,7 @@ export async function buildOrgDataExport(
     ['menus', menus],
     ['menuItems', menuItems],
     ['menuIngredientItems', menuIngredientItems],
+    ['menuExtras', menuExtras],
     ['productions', productions],
     ['productionItems', productionItems],
     ['productionRecipeSnapshots', productionRecipeSnapshots],

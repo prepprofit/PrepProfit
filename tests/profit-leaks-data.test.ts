@@ -153,7 +153,10 @@ describe('loadProfitLeaks data loader', () => {
     const created = await createDish(db, ORG_A, {
       name: 'Combo',
       folderId: null,
-      portions: 1,
+      output: { quantity: 1, unit: 'portion', finishedWeightGrams: null },
+      priceBasis: 'unit',
+      labour: null,
+      extras: [],
       sellingPriceCents: 250,
       vatRateBps: null,
       recipeLines: [{ recipeId: recipeId, quantity: 1, unit: 'portion' }],

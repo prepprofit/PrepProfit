@@ -238,7 +238,10 @@ describe('loadMenuEngineering', () => {
     const outcome = await createDish(db, ORG_A, {
       name: 'Combo',
       folderId: null,
-      portions: 1,
+      output: { quantity: 1, unit: 'portion', finishedWeightGrams: null },
+      priceBasis: 'unit',
+      labour: null,
+      extras: [],
       sellingPriceCents: 3000,
       vatRateBps: null,
       recipeLines: [{ recipeId: recipe.id, quantity: 1, unit: 'portion' }],

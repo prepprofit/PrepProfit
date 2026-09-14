@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { formatPercentBps, marginVariant } from './dish-format';
+import { formatPercentBps, marginVariant, numberToField } from './dish-format';
 
 type Props = {
   /** null = the "Unfiled" pseudo-folder. */
@@ -35,6 +35,7 @@ type Props = {
 export function MenuFolderView(props: Props) {
   const { folder, sort, truncated } = props;
   const t = useTranslations('menus.folder');
+  const tBatch = useTranslations('menus.batch');
   const format = useFormatter();
   const router = useRouter();
   const actionError = useActionError();
@@ -175,7 +176,14 @@ export function MenuFolderView(props: Props) {
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate font-medium text-foreground">{dish.name}</span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {t('meta', { components: dish.componentCount, portions: dish.portions })}
+                      {t('meta', {
+                        components: dish.componentCount,
+                        batch: tBatch('makes', {
+                          unit: dish.output.unit,
+                          count: dish.output.quantity,
+                          amount: numberToField(dish.output.quantity),
+                        }),
+                      })}
                       {' · '}
                       {dateLabel}
                     </span>
@@ -185,14 +193,14 @@ export function MenuFolderView(props: Props) {
                       <span className="hidden text-xs text-muted-foreground sm:inline">
                         {t('costShort')}{' '}
                         <span className="tabular-nums text-foreground">
-                          {money.costPerPortionCents !== null
-                            ? formatMoney(money.costPerPortionCents, props.currency)
+                          {money.costPerSaleUnitCents !== null
+                            ? `${formatMoney(money.costPerSaleUnitCents, props.currency)} ${tBatch(`per.${money.priceBasis === 'kg' ? 'kg' : dish.output.unit}`)}`
                             : '—'}
                         </span>
                       </span>
                       <span className="text-sm font-medium tabular-nums text-foreground">
                         {money.sellingPriceCents !== null
-                          ? formatMoney(money.sellingPriceCents, props.currency)
+                          ? `${formatMoney(money.sellingPriceCents, props.currency)} ${tBatch(`per.${money.priceBasis === 'kg' ? 'kg' : dish.output.unit}`)}`
                           : t('noPrice')}
                       </span>
                       <Badge variant={marginVariant(money.marginBps)} className="tabular-nums">

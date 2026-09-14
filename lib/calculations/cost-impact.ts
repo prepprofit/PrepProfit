@@ -71,6 +71,8 @@ export type CostImpactRecipe = {
   costUnresolved?: boolean;
   /** Finished batch weight (g) — converts a dish's gram lines to portions. */
   yieldWeightGrams?: number | null;
+  /** Sub-recipe LABOUR inside `componentHiddenCostCents` (excluded for Menu labour). */
+  componentLaborCostCents?: number;
 };
 
 /** A dish: recipe lines + direct ingredient lines; price per portion. */
@@ -156,6 +158,7 @@ type PriceView = { priceCents: number; unpriced: boolean };
 function recipeCostPerPortion(
   recipe: CostImpactRecipe,
   priceOf: (ingredientId: string) => PriceView,
+  excludeLabour = false,
 ): number | null {
   if (recipe.costUnresolved === true) return null;
   let anyUnpriced = false;
@@ -169,11 +172,13 @@ function recipeCostPerPortion(
   const cost = recipeCost({
     yieldPortions: recipe.yieldPortions,
     yieldPercentage: recipe.yieldPercentage,
-    laborCostCents: recipe.laborCostCents,
+    laborCostCents: excludeLabour ? 0 : recipe.laborCostCents,
     energyCostCents: recipe.energyCostCents,
     packagingCostCents: recipe.packagingCostCents,
     lines,
-    componentMaterialCostsCents: [recipe.componentHiddenCostCents ?? 0],
+    componentMaterialCostsCents: [
+      (recipe.componentHiddenCostCents ?? 0) - (excludeLabour ? (recipe.componentLaborCostCents ?? 0) : 0),
+    ],
   });
   return Number.isFinite(cost.costPerPortionCents) ? cost.costPerPortionCents : null;
 }
@@ -277,13 +282,16 @@ export function projectPendingCostImpact(
 
   const affectedMenus: AffectedMenuImpact[] = [];
   const recipeById = new Map(input.recipes.map((r) => [r.id, r]));
+  // Product cost per SALE UNIT under a pricing lens (current or projected).
   const dishCostPerPortion = (
     menu: CostImpactMenu,
-    recipeCosts: Map<string, number | null>,
     priceOf: (ingredientId: string) => PriceView,
   ) =>
     compositionCost(menu, {
-      recipeCostPerPortion: (id) => recipeCosts.get(id) ?? null,
+      recipeCostPerPortion: (id, { excludeLabour }) => {
+        const recipe = recipeById.get(id);
+        return recipe ? recipeCostPerPortion(recipe, priceOf, excludeLabour) : null;
+      },
       recipeYield: (id) => {
         const recipe = recipeById.get(id);
         return recipe
@@ -296,7 +304,7 @@ export function projectPendingCostImpact(
         const view = priceOf(id);
         return { dimension, priceCents: view.priceCents, needsPricing: view.unpriced };
       },
-    }).costPerPortionCents;
+    }).costPerSaleUnitCents;
 
   for (const menu of input.menus) {
     // A dish is affected when a component recipe is, or it uses a changed ingredient directly.
@@ -307,8 +315,8 @@ export function projectPendingCostImpact(
       continue;
     }
 
-    const currentCost = dishCostPerPortion(menu, recipeCurrent, currentPrice);
-    const projectedCost = dishCostPerPortion(menu, recipeProjected, projectedPrice);
+    const currentCost = dishCostPerPortion(menu, currentPrice);
+    const projectedCost = dishCostPerPortion(menu, projectedPrice);
     const currentMargin = marginOrNull(currentCost, menu.sellingPriceCents);
     const projectedMargin = marginOrNull(projectedCost, menu.sellingPriceCents);
     const belowTarget = projectedMargin != null && projectedMargin < target;

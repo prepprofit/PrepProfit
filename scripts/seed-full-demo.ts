@@ -582,9 +582,12 @@ async function main() {
       const res = await createDish(tx, ORG, {
         name: m.name,
         folderId: null,
-        portions: 1,
+        output: { quantity: 1, unit: 'portion', sizeDescription: null, finishedWeightGrams: null },
         sellingPriceCents: m.sellingPriceCents,
+        priceBasis: 'unit',
         vatRateBps: null,
+        labour: null,
+        extras: [],
         notes: m.notes,
         recipeLines: m.items.map((it) => ({
           recipeId: recipeIdByName.get(it.recipe)!,

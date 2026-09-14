@@ -44,6 +44,7 @@ export async function loadProfitLeaks(
     ingredientIds: [...new Set(recipe.lines.map((l) => l.ingredientId))],
     costUnresolved: recipe.costUnresolved,
     yieldWeightGrams: recipe.yieldWeightGrams,
+    componentLaborCostCents: recipe.componentLaborCostCents,
   }));
 
   const menus: ProfitLeakInput['menus'] = catalogue.menus;

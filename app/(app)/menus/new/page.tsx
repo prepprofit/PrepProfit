@@ -33,9 +33,12 @@ export default async function NewDishPage({
         id: null,
         name: '',
         folderId,
-        portions: 1,
+        // New products default to a weight batch in grams; the chef enters the amount.
+        output: { quantity: 0, unit: 'g', sizeDescription: null, finishedWeightGrams: null },
         sellingPriceCents: null,
         vatRateBps: null,
+        labour: null,
+        extras: [],
         notes: null,
         recipeLines: [],
         ingredientLines: [],

@@ -101,7 +101,10 @@ describe('loadPrepReorderPlan', () => {
     const menu = await createDish(db, ORG_A, {
       name: 'Basket',
       folderId: null,
-      portions: 1,
+      output: { quantity: 1, unit: 'portion', finishedWeightGrams: null },
+      priceBasis: 'unit',
+      labour: null,
+      extras: [],
       sellingPriceCents: 500,
       vatRateBps: null,
       recipeLines: [{ recipeId: recipe.id, quantity: 2, unit: 'portion' }], // 2 rolls per cover

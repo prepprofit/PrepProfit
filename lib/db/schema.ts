@@ -1457,15 +1457,37 @@ export const menus = pgTable(
     id: id(),
     organizationId: orgId(),
     name: text('name').notNull(),
-    // Selling price per PORTION, EXCLUDING VAT (sales use exclusive pricing), integer
-    // cents. NULL/0 = no price → KPIs undefined.
+    // Selling price EXCLUDING VAT (sales use exclusive pricing), integer cents, per
+    // `price_basis` (per kg or per output unit). NULL/0 = no price → results undefined.
     sellingPriceCents: integer('selling_price_cents'),
     notes: text('notes'),
     // ---- Dish Builder (Menu redesign) ----
     // Folder the dish is filed under; NULL = "Unfiled".
     folderId: text('folder_id'),
-    // Sellable portions the composition makes; price and sales are per portion.
+    // DEPRECATED (superseded by output_quantity/output_unit in 0049). Kept only so the
+    // previous release keeps working during a deploy; not read or written. Drop later.
     portions: integer('portions').notNull().default(1),
+    // ---- Batch output (Menu batches) ----
+    // "This batch makes": CANONICAL quantity — grams for g/kg, a count for
+    // piece/cake/portion. Display unit is `output_unit` (g ↔ kg is display only).
+    outputQuantity: numeric('output_quantity', { precision: 14, scale: 4, mode: 'number' })
+      .notNull()
+      .default(1),
+    outputUnit: text('output_unit', { enum: ['g', 'kg', 'piece', 'cake', 'portion'] })
+      .notNull()
+      .default('portion'),
+    // Free text ("18 cm"); describes the item, never used to infer weight.
+    sizeDescription: text('size_description'),
+    // Optional finished batch weight (g) for COUNT batches; never inferred.
+    finishedWeightGrams: numeric('finished_weight_grams', { precision: 14, scale: 2, mode: 'number' }),
+    // What `selling_price_cents` is per — stored explicitly: 'kg' (weight batches) or
+    // 'unit' (one piece/cake/portion). Kept consistent with output_unit by a CHECK.
+    priceBasis: text('price_basis', { enum: ['kg', 'unit'] }).notNull().default('unit'),
+    // Production labour for the whole batch (total hands-on hours × cost per hour).
+    // Both NULL = not entered → recipe labour inside component costs applies as before.
+    // Both set (0 allowed) = the complete labour estimate → recipe labour excluded.
+    labourHours: numeric('labour_hours', { precision: 10, scale: 2, mode: 'number' }),
+    labourHourlyCents: integer('labour_hourly_cents'),
     // Sales VAT for this dish in basis points; NULL = the org default rate.
     vatRateBps: integer('vat_rate_bps'),
     // Last time someone opened the dish (the "Last opened" sort). Metadata only.
@@ -1480,6 +1502,22 @@ export const menus = pgTable(
     // Serves the folder view (active dishes in one folder, any sort).
     index('menus_org_folder_idx').on(t.organizationId, t.folderId),
     check('menus_portions_chk', sql`${t.portions} between 1 and 100000`),
+    check(
+      'menus_output_chk',
+      sql`${t.outputQuantity} > 0 and ${t.outputUnit} in ('g', 'kg', 'piece', 'cake', 'portion')`,
+    ),
+    check(
+      'menus_price_basis_chk',
+      sql`(${t.outputUnit} in ('g', 'kg')) = (${t.priceBasis} = 'kg')`,
+    ),
+    check(
+      'menus_finished_weight_chk',
+      sql`${t.finishedWeightGrams} is null or (${t.finishedWeightGrams} > 0 and ${t.outputUnit} not in ('g', 'kg'))`,
+    ),
+    check(
+      'menus_labour_chk',
+      sql`(${t.labourHours} is null and ${t.labourHourlyCents} is null) or (${t.labourHours} is not null and ${t.labourHourlyCents} is not null and ${t.labourHours} >= 0 and ${t.labourHours} <= 100000 and ${t.labourHourlyCents} >= 0 and ${t.labourHourlyCents} <= 10000000)`,
+    ),
     check(
       'menus_vat_rate_chk',
       sql`${t.vatRateBps} is null or (${t.vatRateBps} >= 0 and ${t.vatRateBps} <= 10000)`,
@@ -1609,6 +1647,40 @@ export const menuIngredientItems = pgTable(
       foreignColumns: [ingredients.organizationId, ingredients.id],
       name: 'menu_ingredient_items_ingredient_fk',
     }).onDelete('restrict'),
+  ],
+);
+
+/**
+ * Extra work and expenses on a Menu batch — e.g. driving (hours × hourly cost) or
+ * parking (an amount). They apply to the whole batch; work is added to production
+ * labour, expenses are listed separately. RULE #1: `organization_id` + standard RLS;
+ * cascades with the dish.
+ */
+export const menuExtras = pgTable(
+  'menu_extras',
+  {
+    id: id(),
+    organizationId: orgId(),
+    menuId: text('menu_id').notNull(),
+    kind: text('kind', { enum: ['work', 'expense'] }).notNull(),
+    description: text('description').notNull(),
+    hours: numeric('hours', { precision: 10, scale: 2, mode: 'number' }),
+    hourlyCents: integer('hourly_cents'),
+    amountCents: integer('amount_cents'),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [
+    index('menu_extras_org_menu_idx').on(t.organizationId, t.menuId),
+    check(
+      'menu_extras_shape_chk',
+      sql`(${t.kind} = 'work' and ${t.hours} is not null and ${t.hourlyCents} is not null and ${t.hours} >= 0 and ${t.hours} <= 100000 and ${t.hourlyCents} >= 0 and ${t.hourlyCents} <= 10000000 and ${t.amountCents} is null) or (${t.kind} = 'expense' and ${t.amountCents} is not null and ${t.amountCents} >= 0 and ${t.amountCents} <= 100000000 and ${t.hours} is null and ${t.hourlyCents} is null)`,
+    ),
+    check('menu_extras_sort_order_chk', sql`${t.sortOrder} >= 0`),
+    foreignKey({
+      columns: [t.organizationId, t.menuId],
+      foreignColumns: [menus.organizationId, menus.id],
+      name: 'menu_extras_menu_fk',
+    }).onDelete('cascade'),
   ],
 );
 
@@ -4092,6 +4164,7 @@ export type MenuItem = InferSelectModel<typeof menuItems>;
 export type NewMenuItem = InferInsertModel<typeof menuItems>;
 export type MenuFolder = InferSelectModel<typeof menuFolders>;
 export type MenuIngredientItem = InferSelectModel<typeof menuIngredientItems>;
+export type MenuExtra = InferSelectModel<typeof menuExtras>;
 export type Production = InferSelectModel<typeof productions>;
 export type NewProduction = InferInsertModel<typeof productions>;
 export type ProductionStatus = Production['status'];
@@ -4200,6 +4273,8 @@ export const businessTables = [
   // Dish Builder: folders + direct ingredient lines — standard org_isolation RLS.
   'menu_folders',
   'menu_ingredient_items',
+  // Menu batch extra work + expenses — standard org_isolation RLS.
+  'menu_extras',
   // Production plans + their lines (Sprint 11a) — standard org_isolation RLS.
   'productions',
   'production_items',
