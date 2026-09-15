@@ -5,7 +5,12 @@ import { createTestDb } from './helpers/db';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import { createIngredient, getIngredientById } from '@/lib/data/ingredients';
-import { loadDefaultLinksByIngredient, setDefaultSupplier } from '@/lib/data/ingredient-suppliers';
+import {
+  getSupplierProductIdentity,
+  loadDefaultLinksByIngredient,
+  setDefaultSupplier,
+} from '@/lib/data/ingredient-suppliers';
+import { ingredientSupplierSchema } from '@/lib/validation/suppliers';
 import { setDefaultPurchaseVat } from '@/lib/data/org-settings';
 
 /**
@@ -156,6 +161,50 @@ describe('prices entered per kg and incl. VAT', () => {
     await save(id, { supplierName: 'Mill Co', packSize: 1, packUnit: 'kg', packPriceCents: 100, priceIncludesVat: true, vatRateBps: 0 });
     expect(await linkOf(id)).toMatchObject({ vatRateBps: 0, packPriceCents: 100 });
     expect((await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, id)))?.vatRateBps).toBe(0);
+  });
+});
+
+describe("supplier's product name and code", () => {
+  const identity = (id: string, supplierName: string, org = ORG_A) =>
+    runInOrg(db, org, (tx) => getSupplierProductIdentity(tx, org, id, supplierName));
+
+  it('keeps codes exactly as typed — letters, leading zeros and punctuation', () => {
+    const parsed = ingredientSupplierSchema.parse({ supplierName: 'Mill Co', supplierSku: ' 000123-A/7.5 ' });
+    expect(parsed.supplierSku).toBe('000123-A/7.5');
+    expect(ingredientSupplierSchema.parse({ supplierName: 'Mill Co', supplierSku: '0042' }).supplierSku).toBe('0042');
+  });
+
+  it('stores a separate name and code per supplier for the same ingredient', async () => {
+    const id = await ingredient('Cream cheese');
+    await save(id, { supplierName: 'Valio', supplierProductName: 'Tuorejuusto 1,5kg', supplierSku: '00417' });
+    await save(id, { supplierName: 'Kespro', supplierProductName: 'Cream cheese natural', supplierSku: 'KS-0099' });
+
+    expect(await identity(id, 'Valio')).toEqual({ supplierProductName: 'Tuorejuusto 1,5kg', supplierSku: '00417' });
+    expect(await identity(id, 'kespro ')).toEqual({ supplierProductName: 'Cream cheese natural', supplierSku: 'KS-0099' });
+    expect(await linkOf(id)).toMatchObject({ supplierName: 'Kespro', supplierSku: 'KS-0099' });
+
+    // Switching back without touching name/code keeps that supplier's own ones.
+    await save(id, { supplierName: 'Valio' });
+    expect(await linkOf(id)).toMatchObject({ supplierProductName: 'Tuorejuusto 1,5kg', supplierSku: '00417' });
+    expect(await identity(id, 'Kespro')).toEqual({ supplierProductName: 'Cream cheese natural', supplierSku: 'KS-0099' });
+  });
+
+  it('saves a supplier without name, code or pricing, and never loses a stored pack', async () => {
+    const id = await ingredient('Yeast');
+    await save(id, { supplierName: 'Baker Co', packSize: 0.5, packUnit: 'kg', packPriceCents: 300 });
+    await save(id, { supplierName: 'Baker Co', supplierProductName: 'Hiiva 500g', supplierSku: '0001' });
+    expect(await linkOf(id)).toMatchObject({ packSize: 0.5, packPriceCents: 300, supplierSku: '0001' });
+    // Clearing the name/code stores unknown, the pack stays.
+    await save(id, ingredientSupplierSchema.parse({ supplierName: 'Baker Co', supplierProductName: '', supplierSku: '' }));
+    expect(await linkOf(id)).toMatchObject({ packPriceCents: 300, supplierProductName: null, supplierSku: null });
+  });
+
+  it('returns null for an unlinked or unknown supplier and hides other organisations', async () => {
+    const id = await ingredient('Salt');
+    await save(id, { supplierName: 'Salt Co', supplierSku: '007' });
+    expect(await identity(id, 'Nobody Ltd')).toBeNull();
+    expect(await identity(id, '   ')).toBeNull();
+    expect(await identity(id, 'Salt Co', ORG_B)).toBeNull();
   });
 });
 

@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { unexpected } from '@/lib/observability';
 import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
@@ -20,10 +21,12 @@ import {
 } from '@/lib/data/ingredient-pricing';
 import {
   clearDefaultSupplier,
+  getSupplierProductIdentity,
   hasIncompatiblePacks,
   setDefaultSupplier,
   type DefaultSupplierSummary,
   type SupplierPriceStatus,
+  type SupplierProductIdentity,
 } from '@/lib/data/ingredient-suppliers';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
@@ -365,6 +368,32 @@ export async function setIngredientSupplierAction(
       },
     },
   };
+}
+
+const supplierIdentityLookupSchema = z.object({
+  ingredientId: z.string().trim().min(1).max(64),
+  supplierName: z.string().trim().min(1).max(120),
+});
+
+/**
+ * The product name and code this ingredient already has with a given supplier, so
+ * the supplier editor shows that supplier's own identifiers when the chef switches
+ * supplier. Read-only; MANAGER-ONLY — FORBIDDEN before data. `null` = not linked yet.
+ */
+export async function getSupplierProductIdentityAction(
+  ingredientId: string,
+  supplierName: string,
+): Promise<ActionResult<SupplierProductIdentity | null>> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+
+  const parsed = supplierIdentityLookupSchema.safeParse({ ingredientId, supplierName });
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  const identity = await withOrg(organizationId, (tx) =>
+    getSupplierProductIdentity(tx, organizationId, parsed.data.ingredientId, parsed.data.supplierName),
+  );
+  return { ok: true, data: identity };
 }
 
 /**

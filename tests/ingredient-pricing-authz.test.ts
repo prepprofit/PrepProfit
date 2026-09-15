@@ -46,6 +46,8 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 import {
   acceptPendingCostAction,
+  getSupplierProductIdentityAction,
+  setIngredientSupplierAction,
   updateIngredientAction,
 } from '@/app/(app)/ingredients/actions';
 
@@ -210,5 +212,29 @@ describe('acceptPendingCostAction — manager-only + audit', () => {
     const res = await acceptPendingCostAction(id);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.code).toBe('INVALID_INPUT');
+  });
+});
+
+describe('getSupplierProductIdentityAction — manager-only', () => {
+  it('returns FORBIDDEN for a kitchen user', async () => {
+    h.manager = true;
+    const id = await newIngredient('Milk-identity', 100);
+    expect((await setIngredientSupplierAction(id, { supplierName: 'Dairy Co', supplierSku: '0012' })).ok).toBe(true);
+
+    h.manager = false;
+    const res = await getSupplierProductIdentityAction(id, 'Dairy Co');
+    expect(res).toEqual({ ok: false, code: 'FORBIDDEN' });
+  });
+
+  it("returns the supplier's stored name and code for a manager", async () => {
+    h.manager = true;
+    const id = await newIngredient('Oats-identity', 100);
+    await setIngredientSupplierAction(id, { supplierName: 'Grain Co', supplierProductName: 'Kaura 1kg', supplierSku: '00-77' });
+
+    expect(await getSupplierProductIdentityAction(id, 'Grain Co')).toEqual({
+      ok: true,
+      data: { supplierProductName: 'Kaura 1kg', supplierSku: '00-77' },
+    });
+    expect(await getSupplierProductIdentityAction(id, '')).toEqual({ ok: false, code: 'INVALID_INPUT' });
   });
 });

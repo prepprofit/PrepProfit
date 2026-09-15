@@ -9,6 +9,7 @@ import { findOrCreateSupplierByName } from '@/lib/data/suppliers';
 import { resolveVatRateBps } from '@/lib/data/vat-categories';
 import { isPackUnitCompatible } from '@/lib/suppliers/display-name';
 import { normalizeIngredientName } from '@/lib/import/resolveIngredient';
+import { normalizeSupplierName } from '@/lib/suppliers/normalize';
 import type { SupplierPackCandidate } from '@/lib/ai/supplier-pack-resolve';
 import type { Unit } from '@/lib/units';
 import type { IngredientSupplierInput } from '@/lib/validation/suppliers';
@@ -130,6 +131,50 @@ export async function getDefaultLink(
     )
     .limit(1);
   return rows[0] ?? null;
+}
+
+/** How one supplier names and codes an ingredient — purchasing-only identifiers. */
+export type SupplierProductIdentity = {
+  supplierProductName: string | null;
+  supplierSku: string | null;
+};
+
+/**
+ * The product name and code stored on the ingredient ⇄ supplier entry for the
+ * supplier with this name (matched on the normalized key, never created). NULL when
+ * the supplier is unknown or not linked to the ingredient yet. Lets the editor show
+ * each supplier's own name/code when the chef switches supplier.
+ */
+export async function getSupplierProductIdentity(
+  db: TenantClient,
+  organizationId: string,
+  ingredientId: string,
+  supplierName: string,
+): Promise<SupplierProductIdentity | null> {
+  const normalizedName = normalizeSupplierName(supplierName);
+  if (normalizedName === '') return null;
+  const [row] = await db
+    .select({
+      supplierProductName: ingredientSuppliers.supplierProductName,
+      supplierSku: ingredientSuppliers.supplierSku,
+    })
+    .from(ingredientSuppliers)
+    .innerJoin(
+      suppliers,
+      and(
+        eq(suppliers.organizationId, organizationId),
+        eq(suppliers.id, ingredientSuppliers.supplierId),
+      ),
+    )
+    .where(
+      and(
+        eq(ingredientSuppliers.organizationId, organizationId),
+        eq(ingredientSuppliers.ingredientId, ingredientId),
+        eq(suppliers.normalizedName, normalizedName),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 /**
