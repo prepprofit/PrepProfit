@@ -80,14 +80,19 @@ beforeAll(async () => {
     source: 'manual',
   });
 
-  // Profiles: flour 10 kcal/100 g; milk 61 kcal/100 g (sodium unknown).
+  // Profiles: flour 10 kcal/100 g; milk 61 kcal/100 g (potassium unknown).
+  // Both carry every CORE nutrient, so they are label-complete.
   await db.insert(ingredientNutritionProfiles).values([
     {
       organizationId: ORG,
       ingredientId: flourId,
       source: 'custom',
       caloriesKcal: 10,
+      totalFatG: 1,
+      totalCarbohydrateG: 76,
+      proteinG: 10,
       sodiumMg: 2,
+      potassiumMg: 100,
     },
     {
       organizationId: ORG,
@@ -96,6 +101,10 @@ beforeAll(async () => {
       fdcId: 111,
       sourceDescription: 'Milk, whole',
       caloriesKcal: 61,
+      totalFatG: 3.3,
+      totalCarbohydrateG: 4.8,
+      proteinG: 3.2,
+      sodiumMg: 43,
     },
   ]);
 
@@ -111,8 +120,8 @@ describe('direct lines', () => {
   it('weight + equivalency-converted volume lines roll up; serving from portion option', async () => {
     await db.execute(sql.raw('RESET ROLE;'));
     const recipeId = await makeRecipe('Batter', { yieldWeightGrams: 1000 });
-    await addLine(recipeId, flourId, 500); // 50 kcal, 10 mg sodium
-    await addLine(recipeId, milkId, 200); // 200 ml → 206 g → 125.66 kcal, sodium unknown
+    await addLine(recipeId, flourId, 500); // 50 kcal, 500 mg potassium
+    await addLine(recipeId, milkId, 200); // 200 ml → 206 g → 125.66 kcal, potassium unknown
     await db.insert(recipePortionOptions).values({
       organizationId: ORG,
       recipeId,
@@ -129,8 +138,8 @@ describe('direct lines', () => {
     const res = map.get(recipeId)!;
     expect(res.result.status).toBe('complete');
     expect(res.result.totals.caloriesKcal).toBeCloseTo(50 + 206 * 0.61, 5);
-    // Milk's unknown sodium poisons ONLY sodium.
-    expect(res.result.totals.sodiumMg).toBeNull();
+    // Milk's unknown (non-core) potassium poisons ONLY potassium.
+    expect(res.result.totals.potassiumMg).toBeNull();
     expect(res.servingGrams).toBe(100);
     expect(res.result.perServing!.caloriesKcal).toBeCloseTo((50 + 206 * 0.61) / 10, 5);
 
@@ -157,6 +166,43 @@ describe('direct lines', () => {
     expect(reasons).toContainEqual(['NO_PROFILE', mysteryId]);
     // No nutrition serving defined either.
     expect(res.result.issues.some((i) => i.reason === 'NO_NUTRITION_SERVING')).toBe(true);
+  });
+});
+
+describe('partial ingredient profiles', () => {
+  it('a profile missing a core nutrient contributes its known values but is PARTIAL_PROFILE', async () => {
+    await db.execute(sql.raw('RESET ROLE;'));
+    const [butter] = await db
+      .insert(ingredients)
+      .values({ organizationId: ORG, name: 'Butter', priceCents: 100 })
+      .returning();
+    // Autosaved manual entry: only calories + a deliberate zero so far.
+    await db.insert(ingredientNutritionProfiles).values({
+      organizationId: ORG,
+      ingredientId: butter!.id,
+      source: 'custom',
+      caloriesKcal: 717,
+      totalCarbohydrateG: 0,
+    });
+    const recipeId = await makeRecipe('Beurre', {
+      yieldWeightGrams: 100,
+      nutritionServingQuantity: 1,
+      nutritionServingUnit: 'serving',
+    });
+    await addLine(recipeId, butter!.id, 100);
+    await db.execute(sql.raw('SET ROLE tenant_app;'));
+
+    const map = await runInOrg(db, ORG, (tx) =>
+      resolveRecipeNutritionTree(tx, ORG, [recipeId]),
+    );
+    const res = map.get(recipeId)!;
+    expect(res.result.status).toBe('incomplete');
+    expect(res.result.issues).toEqual([
+      { reason: 'PARTIAL_PROFILE', refId: butter!.id, refName: 'Butter' },
+    ]);
+    expect(res.result.totals.caloriesKcal).toBeCloseTo(717, 5);
+    expect(res.result.totals.totalCarbohydrateG).toBe(0); // zero is known
+    expect(res.result.totals.proteinG).toBeNull(); // unknown is never 0
   });
 });
 

@@ -185,6 +185,90 @@ export async function upsertNutritionProfile(
   return { status: 'done', profile: row };
 }
 
+export type PatchManualNutritionResult =
+  | { status: 'done'; profile: IngredientNutritionProfile | null }
+  | { status: 'not_found' }
+  | { status: 'source_conflict' };
+
+/**
+ * Manual (autosaved) nutrition entry: MERGE a sparse patch of per-100 g values
+ * into the ingredient's manual profile. A key absent from the patch is left as
+ * stored; an explicit `null` is a deliberate clear (unknown), `0` a deliberate
+ * zero — so a field that is momentarily empty in the browser never deletes data.
+ *
+ * Never silently overwrites an external match: when the stored profile came from
+ * USDA / Open Food Facts the patch is refused (`source_conflict`) unless the user
+ * explicitly chose to edit those values manually (`convertExternal`), in which
+ * case the stored values are rescaled exactly to per 100 g and become manual.
+ * Runs under the active ingredient's FOR UPDATE lock (via the upsert), so
+ * concurrent autosaves serialize. No profile + nothing known = no row created.
+ */
+export async function patchManualNutritionValues(
+  db: TenantClient,
+  organizationId: string,
+  ingredientId: string,
+  patch: Partial<NutrientValuesInput>,
+  actor: AuditActor,
+  opts: { convertExternal?: boolean } = {},
+): Promise<PatchManualNutritionResult> {
+  if (!(await lockActiveIngredient(db, organizationId, ingredientId))) {
+    return { status: 'not_found' };
+  }
+  const existing =
+    (await getProfilesForIngredients(db, organizationId, [ingredientId])).get(ingredientId) ??
+    null;
+  if (existing && existing.source !== 'custom' && !opts.convertExternal) {
+    return { status: 'source_conflict' };
+  }
+
+  const merged = {} as Record<NutrientKey, number | null>;
+  for (const k of NUTRIENT_KEYS) {
+    const stored = existing ? existing[k] : null;
+    merged[k] =
+      stored == null || !existing || existing.basisGrams === 100
+        ? stored
+        : (stored * 100) / existing.basisGrams;
+  }
+  for (const k of NUTRIENT_KEYS) {
+    const next = patch[k];
+    if (next !== undefined) merged[k] = next;
+  }
+
+  if (!existing && NUTRIENT_KEYS.every((k) => merged[k] === null)) {
+    return { status: 'done', profile: null };
+  }
+
+  const result = await upsertNutritionProfile(
+    db,
+    organizationId,
+    ingredientId,
+    {
+      source: 'custom',
+      externalId: null,
+      externalSourceType: null,
+      barcode: null,
+      sourceCountry: null,
+      sourceLanguage: null,
+      sourceRevision: null,
+      normalizationVersion: null,
+      sourcePayloadHash: null,
+      qualityStatus: null,
+      qualityWarnings: null,
+      sourceDescription: null,
+      brandOwner: null,
+      sourceUpdatedAt: null,
+      basisGrams: 100,
+      saltG: null,
+      values: merged,
+      fdcId: null,
+      fdcDataType: null,
+    },
+    actor,
+  );
+  if (result.status !== 'done') return { status: 'not_found' };
+  return { status: 'done', profile: result.profile };
+}
+
 /**
  * Provider-neutral identity of an ingredient's profile, needed by `Refresh from
  * source` to dispatch to the right provider (plan §14). Returns null for

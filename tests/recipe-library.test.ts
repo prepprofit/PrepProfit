@@ -54,6 +54,10 @@ beforeAll(async () => {
     ingredientId: flour!.id,
     source: 'custom',
     caloriesKcal: 360,
+    totalFatG: 1,
+    totalCarbohydrateG: 76,
+    proteinG: 10,
+    sodiumMg: 2,
   });
 
   // Unreviewed, unpriced, unprofiled ingredient.
@@ -200,6 +204,28 @@ describe('listRecipesForLibrary', () => {
       };
       scan(row);
     }
+  });
+
+  it('a PARTIAL profile (missing a core nutrient) still counts as nutrition incomplete', async () => {
+    const [flourProfile] = await db
+      .select()
+      .from(ingredientNutritionProfiles)
+      .where(eq(ingredientNutritionProfiles.organizationId, ORG_A));
+    await db
+      .update(ingredientNutritionProfiles)
+      .set({ proteinG: null })
+      .where(eq(ingredientNutritionProfiles.id, flourProfile!.id));
+    try {
+      const rows = await listRecipesForLibrary(db, ORG_A);
+      expect(rows.find((r) => r.id === pricedRecipeId)!.status.nutritionIncomplete).toBe(true);
+    } finally {
+      await db
+        .update(ingredientNutritionProfiles)
+        .set({ proteinG: flourProfile!.proteinG })
+        .where(eq(ingredientNutritionProfiles.id, flourProfile!.id));
+    }
+    const rows = await listRecipesForLibrary(db, ORG_A);
+    expect(rows.find((r) => r.id === pricedRecipeId)!.status.nutritionIncomplete).toBe(false);
   });
 
   it('returns nothing for an org without recipes', async () => {

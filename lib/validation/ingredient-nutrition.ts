@@ -82,6 +82,22 @@ export const saveIngredientNutritionSchema = z.discriminatedUnion('source', [
   }),
 ]);
 
+/**
+ * Autosaved manual entry: a SPARSE patch of per-100 g values. An omitted key is
+ * untouched, `null` is an explicit clear (unknown), a number is a bounded value
+ * (0 allowed). `convertExternal` is the explicit "edit these values manually"
+ * step that turns an external match into a manual profile.
+ */
+export const patchIngredientNutritionValuesSchema = z.object({
+  ingredientId: z.string().min(1),
+  values: nutrientValuesSchema.partial().strict(),
+  convertExternal: z.boolean().optional(),
+});
+
+export const previewUsdaFoodSchema = z.object({
+  fdcId: z.number().int().positive(),
+});
+
 export const refreshIngredientNutritionSchema = z.object({
   ingredientId: z.string().min(1),
 });

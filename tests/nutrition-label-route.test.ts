@@ -86,7 +86,10 @@ beforeAll(async () => {
       ingredientId: flour!.id,
       source: 'custom',
       caloriesKcal: 364,
+      totalFatG: 1,
+      totalCarbohydrateG: 76,
       proteinG: 10,
+      sodiumMg: 2,
     });
 
     const mk = async (name: string, yieldWeightGrams: number | null) => {

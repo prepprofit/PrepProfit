@@ -288,6 +288,10 @@ export type ActionErrorCode =
   // A per-100 ml product was selected for an ingredient with no weight/volume
   // equivalency — add the density/equivalency first (100 ml is NEVER assumed 100 g).
   | 'NUTRITION_EQUIVALENCY_REQUIRED'
+  // A manual value edit reached a profile that is an external match (USDA / Open
+  // Food Facts). Manual edits never silently replace a match — the user must
+  // explicitly choose to edit those values manually first.
+  | 'NUTRITION_SOURCE_CONFLICT'
   | 'UNEXPECTED';
 
 export type ActionResult<T = undefined> =

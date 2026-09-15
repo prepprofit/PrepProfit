@@ -4,6 +4,7 @@ import type { TenantClient } from '@/lib/db/tenant';
 import type { AllergenSlug } from '@/lib/allergens/catalog';
 import { costPerKgCents, recipeCost } from '@/lib/calculations/recipeCost';
 import { marginPercent } from '@/lib/calculations/margin';
+import { CORE_NUTRIENT_KEYS } from '@/lib/calculations/nutrition';
 import { listRecipes } from '@/lib/data/recipes';
 import { loadActiveCatalogue } from '@/lib/data/active-catalogue';
 import { loadRecipeAllergensByIds } from '@/lib/data/allergens';
@@ -110,7 +111,7 @@ export async function listRecipesForLibrary(
   );
 
   // D4 nutrition proxy: which of the ingredients referenced anywhere in the
-  // flattened line sets HAVE a profile — one org-scoped query for all of them.
+  // flattened line sets HAVE a (core-complete) profile — one org-scoped query for all of them.
   const referencedIngredientIds = [
     ...new Set(
       catalogue.recipes.flatMap((r) => r.lines.map((l) => l.ingredientId)),
@@ -120,7 +121,14 @@ export async function listRecipesForLibrary(
     referencedIngredientIds.length === 0
       ? []
       : await db
-          .select({ ingredientId: ingredientNutritionProfiles.ingredientId })
+          .select({
+            ingredientId: ingredientNutritionProfiles.ingredientId,
+            caloriesKcal: ingredientNutritionProfiles.caloriesKcal,
+            totalFatG: ingredientNutritionProfiles.totalFatG,
+            totalCarbohydrateG: ingredientNutritionProfiles.totalCarbohydrateG,
+            proteinG: ingredientNutritionProfiles.proteinG,
+            sodiumMg: ingredientNutritionProfiles.sodiumMg,
+          })
           .from(ingredientNutritionProfiles)
           .where(
             and(
@@ -131,7 +139,13 @@ export async function listRecipesForLibrary(
               ),
             ),
           );
-  const profiledIngredients = new Set(profiledRows.map((r) => r.ingredientId));
+  // Only profiles carrying every CORE nutrient count — a partial profile keeps
+  // the recipe's label incomplete, exactly like the full rollup.
+  const profiledIngredients = new Set(
+    profiledRows
+      .filter((r) => CORE_NUTRIENT_KEYS.every((k) => r[k] != null))
+      .map((r) => r.ingredientId),
+  );
 
   const libraryRows = recipeRows.map((recipe): LibraryRecipeRow => {
     const cat = catalogueById.get(recipe.id);

@@ -10,11 +10,14 @@ import { auditActor, type AuditActor } from '@/lib/data/audit';
 import {
   getIngredientEquivalencyAnchors,
   getProfileIdentity,
+  patchManualNutritionValues,
   upsertNutritionProfile,
   type UpsertNutritionProfileInput,
 } from '@/lib/data/ingredient-nutrition';
 import {
   lookupExternalFoodByBarcodeSchema,
+  patchIngredientNutritionValuesSchema,
+  previewUsdaFoodSchema,
   refreshIngredientNutritionSchema,
   saveIngredientNutritionSchema,
   searchUsdaSchema,
@@ -30,6 +33,7 @@ import { convertQuantity } from '@/lib/calculations/uom';
 import type { NutrientKey } from '@/lib/calculations/nutrition';
 import type { ExternalFoodSnapshot, ExternalFoodQuality } from '@/lib/external-food/types';
 import type { IngredientNutritionProfile } from '@/lib/db/schema';
+import { toNutritionView, type IngredientNutritionView } from '@/lib/nutrition/profile-view';
 import type { ActionResult, ActionErrorCode } from '@/lib/action-result';
 
 /**
@@ -41,6 +45,16 @@ import type { ActionResult, ActionErrorCode } from '@/lib/action-result';
  * the client are only ever accepted on the `custom` path, where Zod bounds
  * them. All mutations are audited inside `withOrg`. RULE #1 throughout.
  */
+
+/** A saved profile plus its client-safe view (what the editor renders next). */
+export type SavedNutrition = {
+  profile: IngredientNutritionProfile;
+  view: IngredientNutritionView;
+};
+
+function saved(profile: IngredientNutritionProfile): { ok: true; data: SavedNutrition } {
+  return { ok: true, data: { profile, view: toNutritionView(profile) } };
+}
 
 function usdaErrorCode(
   reason: 'NOT_CONFIGURED' | 'UNAVAILABLE' | 'INVALID_RESPONSE' | 'NOT_FOUND',
@@ -71,6 +85,74 @@ export async function searchUsdaFoodsAction(
     return { ok: true, data: { foods: result.value } };
   } catch (error) {
     return unexpected('searchUsdaFoodsAction', error);
+  }
+}
+
+/**
+ * Fetch ONE USDA food for review (the catalogue's suggested match) — a preview
+ * only, it never writes. Same RBAC + rate limit as search.
+ */
+export async function previewUsdaFoodAction(
+  input: unknown,
+): Promise<ActionResult<{ food: UsdaFood }>> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const parsed = previewUsdaFoodSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+  try {
+    const organizationId = await getOrgId();
+    const userId = await getUserId();
+    const limit = await enforceRateLimit(
+      getDb(),
+      'usdaSearch',
+      `${organizationId}:${userId}`,
+    );
+    if (!limit.allowed) return { ok: false, code: 'RATE_LIMITED' };
+
+    const food = await getUsdaFood(parsed.data.fdcId);
+    if (!food.ok) return { ok: false, code: usdaErrorCode(food.reason) };
+    return { ok: true, data: { food: food.value } };
+  } catch (error) {
+    return unexpected('previewUsdaFoodAction', error);
+  }
+}
+
+/**
+ * Autosave for manual nutrition entry: merges a sparse patch of Zod-bounded
+ * per-100 g values into the ingredient's manual profile (omitted = untouched,
+ * `null` = explicit clear, `0` = deliberate zero). Refuses to overwrite an
+ * external match unless `convertExternal` is the explicit user choice.
+ * `view` is null only when nothing was known and no profile existed.
+ */
+export async function updateIngredientNutritionValuesAction(
+  input: unknown,
+): Promise<ActionResult<{ view: IngredientNutritionView | null }>> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const parsed = patchIngredientNutritionValuesSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+  try {
+    const organizationId = await getOrgId();
+    const actor = await auditActor();
+    const result = await withOrg(organizationId, (tx) =>
+      patchManualNutritionValues(
+        tx,
+        organizationId,
+        parsed.data.ingredientId,
+        parsed.data.values,
+        actor,
+        { convertExternal: parsed.data.convertExternal ?? false },
+      ),
+    );
+    if (result.status === 'not_found') return { ok: false, code: 'NOT_FOUND' };
+    if (result.status === 'source_conflict') {
+      return { ok: false, code: 'NUTRITION_SOURCE_CONFLICT' };
+    }
+    if (result.profile) revalidateNutritionSurfaces();
+    return {
+      ok: true,
+      data: { view: result.profile ? toNutritionView(result.profile) : null },
+    };
+  } catch (error) {
+    return unexpected('updateIngredientNutritionValuesAction', error);
   }
 }
 
@@ -306,7 +388,7 @@ async function saveOffProfile(
   rawBarcode: string,
   confirmPartial: boolean,
   opts: { refreshed?: boolean } = {},
-): Promise<ActionResult<{ profile: IngredientNutritionProfile }>> {
+): Promise<ActionResult<SavedNutrition>> {
   const barcode = normalizeBarcode(rawBarcode);
   if (!barcode.ok) return { ok: false, code: 'INVALID_BARCODE' };
   if (!(await enforceOffRateLimits(organizationId, userId))) {
@@ -347,12 +429,12 @@ async function saveOffProfile(
   }
   if (result.status !== 'done') return { ok: false, code: 'NOT_FOUND' };
   revalidateNutritionSurfaces();
-  return { ok: true, data: { profile: result.profile } };
+  return saved(result.profile);
 }
 
 export async function saveIngredientNutritionAction(
   input: unknown,
-): Promise<ActionResult<{ profile: IngredientNutritionProfile }>> {
+): Promise<ActionResult<SavedNutrition>> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const parsed = saveIngredientNutritionSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -415,7 +497,7 @@ export async function saveIngredientNutritionAction(
     );
     if (result.status !== 'done') return { ok: false, code: 'NOT_FOUND' };
     revalidateNutritionSurfaces();
-    return { ok: true, data: { profile: result.profile } };
+    return saved(result.profile);
   } catch (error) {
     return unexpected('saveIngredientNutritionAction', error);
   }
@@ -423,7 +505,7 @@ export async function saveIngredientNutritionAction(
 
 export async function refreshIngredientNutritionAction(
   input: unknown,
-): Promise<ActionResult<{ profile: IngredientNutritionProfile }>> {
+): Promise<ActionResult<SavedNutrition>> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const parsed = refreshIngredientNutritionSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -476,7 +558,7 @@ export async function refreshIngredientNutritionAction(
     );
     if (result.status !== 'done') return { ok: false, code: 'NOT_FOUND' };
     revalidateNutritionSurfaces();
-    return { ok: true, data: { profile: result.profile } };
+    return saved(result.profile);
   } catch (error) {
     return unexpected('refreshIngredientNutritionAction', error);
   }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ingredientNutritionStatus,
+  missingCoreNutrients,
   NUTRIENT_KEYS,
   nutrientForLine,
   nutritionServingFraction,
@@ -80,16 +82,38 @@ describe('recipeNutrition — direct lines', () => {
 
   it('an unknown nutrient poisons ONLY that nutrient, never becomes 0', () => {
     const partial = flatProfile(10);
-    partial.values.sodiumMg = null;
+    partial.values.potassiumMg = null;
     const r = recipeNutrition({
       lines: [line({ profile: partial }), line({ ingredientId: 'ing-2' })],
       servingFraction: 1,
     });
-    expect(r.totals.sodiumMg).toBeNull();
+    expect(r.totals.potassiumMg).toBeNull();
     expect(r.totals.caloriesKcal).toBe(40); // 10*200/100 twice
-    // A null nutrient inside an existing profile is NOT a completeness issue.
+    // A null NON-core nutrient inside an existing profile is not a completeness issue.
     expect(r.status).toBe('complete');
-    expect(r.perServing?.sodiumMg).toBeNull();
+    expect(r.perServing?.potassiumMg).toBeNull();
+  });
+
+  it('a profile missing a CORE nutrient → incomplete with PARTIAL_PROFILE', () => {
+    const partial = flatProfile(10);
+    partial.values.sodiumMg = null;
+    const r = recipeNutrition({
+      lines: [line({ profile: partial, ingredientName: 'Butter' }), line({ ingredientId: 'ing-2' })],
+      servingFraction: 1,
+    });
+    expect(r.status).toBe('incomplete');
+    expect(r.issues).toEqual([
+      { reason: 'PARTIAL_PROFILE', refId: 'ing-1', refName: 'Butter' },
+    ]);
+    // Known values still contribute; the unknown one stays unknown.
+    expect(r.totals.caloriesKcal).toBe(40);
+    expect(r.totals.sodiumMg).toBeNull();
+  });
+
+  it('a deliberately entered zero is known, not partial', () => {
+    const r = recipeNutrition({ lines: [line({ profile: flatProfile(0) })], servingFraction: 1 });
+    expect(r.status).toBe('complete');
+    expect(r.totals.sodiumMg).toBe(0);
   });
 
   it('null poisoning is order-independent', () => {
@@ -305,5 +329,40 @@ describe('nutritionServingFraction', () => {
     expect(nutritionServingFraction({ ...base, quantity: null, unit: 'g' })).toBeNull();
     expect(nutritionServingFraction({ ...base, quantity: Number.NaN, unit: 'g' })).toBeNull();
     expect(nutritionServingFraction({ ...base, quantity: 1, unit: '' })).toBeNull();
+  });
+});
+
+describe('ingredientNutritionStatus', () => {
+  it('no profile → not_added', () => {
+    expect(ingredientNutritionStatus(null)).toBe('not_added');
+  });
+  it('all core known (zeros included) → added', () => {
+    expect(ingredientNutritionStatus(flatProfile(0).values)).toBe('added');
+    const p = flatProfile(null);
+    p.values.caloriesKcal = 120;
+    p.values.totalFatG = 0;
+    p.values.totalCarbohydrateG = 3;
+    p.values.proteinG = 1;
+    p.values.sodiumMg = 0;
+    expect(ingredientNutritionStatus(p.values)).toBe('added');
+  });
+  it('any core unknown → incomplete, listing the missing keys', () => {
+    const p = flatProfile(null);
+    p.values.caloriesKcal = 120;
+    expect(ingredientNutritionStatus(p.values)).toBe('incomplete');
+    expect(missingCoreNutrients(p.values)).toEqual([
+      'totalFatG',
+      'totalCarbohydrateG',
+      'proteinG',
+      'sodiumMg',
+    ]);
+    expect(ingredientNutritionStatus(flatProfile(null).values)).toBe('incomplete');
+  });
+  it('NaN / Infinity / negative core values count as unknown', () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      const p = flatProfile(1);
+      p.values.proteinG = bad;
+      expect(ingredientNutritionStatus(p.values)).toBe('incomplete');
+    }
   });
 });

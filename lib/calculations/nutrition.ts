@@ -35,6 +35,40 @@ export const NUTRIENT_KEYS = [
 
 export type NutrientKey = (typeof NUTRIENT_KEYS)[number];
 
+/**
+ * Core nutrients a profile must carry before it can feed a final label — the
+ * same set the Open Food Facts quality classification treats as core (energy,
+ * fat, carbohydrate, protein, sodium/salt). A profile missing any of them is
+ * PARTIAL: saved and usable for estimates, but never label-complete.
+ */
+export const CORE_NUTRIENT_KEYS = [
+  'caloriesKcal',
+  'totalFatG',
+  'totalCarbohydrateG',
+  'proteinG',
+  'sodiumMg',
+] as const satisfies readonly NutrientKey[];
+
+/** Core nutrients still unknown (null/invalid) in a profile's values. */
+export function missingCoreNutrients(
+  values: Record<NutrientKey, number | null>,
+): NutrientKey[] {
+  return CORE_NUTRIENT_KEYS.filter((k) => {
+    const v = values[k];
+    return v == null || !Number.isFinite(v) || v < 0;
+  });
+}
+
+/** Compact per-ingredient status shown on the Nutrition action. */
+export type IngredientNutritionStatus = 'not_added' | 'incomplete' | 'added';
+
+export function ingredientNutritionStatus(
+  values: Record<NutrientKey, number | null> | null,
+): IngredientNutritionStatus {
+  if (values === null) return 'not_added';
+  return missingCoreNutrients(values).length > 0 ? 'incomplete' : 'added';
+}
+
 /** Nutrient amounts per `basisGrams` of edible weight; null = unknown. */
 export type NutritionProfile = {
   /** Reference mass the nutrient values describe (schema default 100 g). */
@@ -48,6 +82,7 @@ export type NutrientTotals = Record<NutrientKey, number | null>;
 /** Why a line/component keeps the calc incomplete — actionable in the UI. */
 export type NutritionIssueReason =
   | 'NO_PROFILE'
+  | 'PARTIAL_PROFILE'
   | 'NO_WEIGHT_EQUIVALENCY'
   | 'SUBRECIPE_INCOMPLETE'
   | 'NO_NUTRITION_SERVING';
@@ -180,6 +215,15 @@ export function recipeNutrition(input: {
         refName: line.ingredientName,
       });
       continue;
+    }
+    // A partial profile still contributes its known values, but a label built on
+    // it would show unknown core nutrients — never label-complete.
+    if (missingCoreNutrients(line.profile.values).length > 0) {
+      pushIssue(issues, {
+        reason: 'PARTIAL_PROFILE',
+        refId: line.ingredientId,
+        refName: line.ingredientName,
+      });
     }
     contributed = true;
     for (const k of NUTRIENT_KEYS) {
