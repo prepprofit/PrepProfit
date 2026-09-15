@@ -1016,7 +1016,11 @@
       "view": "View ingredient"
     },
     "sort": {
-      "by": "Sort by {column}"
+      "by": "Sort by {column}",
+      "label": "Sort",
+      "option": "{column} ({direction})",
+      "asc": "ascending",
+      "desc": "descending"
     },
     "addDialog": {
       "title": "Add ingredient",

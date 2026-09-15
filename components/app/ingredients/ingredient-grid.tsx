@@ -6,14 +6,11 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  Droplet,
+  ChevronDown,
   Eye,
-  Hash,
   Pencil,
   Plus,
-  Scale,
   Trash2,
-  Truck,
 } from 'lucide-react';
 import {
   type ColumnDef,
@@ -109,27 +106,18 @@ const PER_UNIT_SUFFIX: Record<Dimension, string> = {
 };
 
 /**
- * The READ-state type chip. Each unit system gets its own equally readable tint so
- * weighed, poured and counted ingredients scan apart — none is greyed out, and none
- * uses the accent (primary actions) or the leaf green (profit). Clicking it opens
- * the row's editor on the Type field; sorting lives in the column heading.
+ * Per-column cell layout. Desktop: the name takes ~60% of the row and every other
+ * column shrinks to its content, grouped on the right. In a list narrower than 48rem each row becomes a
+ * compact card — name, date and price on top; type / supplier / actions below —
+ * so nothing is clipped or needs sideways scrolling.
  */
-const DIMENSION_PILL: Record<
-  Dimension,
-  { icon: React.ComponentType<{ className?: string }>; className: string }
-> = {
-  weight: {
-    icon: Scale,
-    className: 'border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-500/30 dark:bg-indigo-500/15 dark:text-indigo-200',
-  },
-  volume: {
-    icon: Droplet,
-    className: 'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-200',
-  },
-  count: {
-    icon: Hash,
-    className: 'border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/15 dark:text-violet-200',
-  },
+const CELL_CLASS: Record<string, string> = {
+  name: '@3xl:w-[60%] @max-3xl:col-span-2 @max-3xl:col-start-1 @max-3xl:row-start-1',
+  updated: '@3xl:w-px @3xl:px-2 @3xl:whitespace-nowrap @max-3xl:col-span-2 @max-3xl:col-start-1 @max-3xl:row-start-2',
+  price: '@3xl:w-px @3xl:px-2 @3xl:whitespace-nowrap @3xl:text-right @max-3xl:col-start-3 @max-3xl:row-span-2 @max-3xl:row-start-1 @max-3xl:self-start',
+  dimension: '@3xl:w-px @3xl:px-2 @3xl:whitespace-nowrap @max-3xl:col-start-1 @max-3xl:row-start-3 @max-3xl:mt-1',
+  supplier: '@3xl:w-px @3xl:pl-5 @3xl:pr-2 @max-3xl:col-start-2 @max-3xl:row-start-3 @max-3xl:mt-1 @max-3xl:min-w-0',
+  actions: '@3xl:w-px @3xl:pl-2 @3xl:whitespace-nowrap @max-3xl:col-start-3 @max-3xl:row-start-3 @max-3xl:mt-1 @max-3xl:justify-self-end',
 };
 
 function draftFromRow(row: IngredientRow): Draft {
@@ -534,7 +522,7 @@ export function IngredientGrid({
           if (!draft) return null;
           const editing = meta.editingId === row.original.id;
           return (
-            <div className="flex min-w-48 max-w-[24rem] flex-col gap-1">
+            <div className="flex min-w-0 flex-col gap-0.5 @3xl:min-w-[10rem]">
               {editing ? (
                 <Input
                   autoFocus
@@ -550,12 +538,9 @@ export function IngredientGrid({
                   {row.original.name}
                 </span>
               )}
-              {row.original.needsPricing && (
-                <span
-                  className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-sm font-medium text-amber-900 dark:bg-amber-500/15 dark:text-amber-300"
-                >
-                  {meta.needsPricingLabel}
-                </span>
+              {/* Managers see pricing status under the price; kitchen has no price column. */}
+              {row.original.needsPricing && !meta.canSeeCosts && (
+                <span className="text-xs text-muted-foreground">{meta.needsPricingLabel}</span>
               )}
             </div>
           );
@@ -569,8 +554,6 @@ export function IngredientGrid({
           const draft = meta.drafts[row.original.id];
           if (!draft) return null;
           if (meta.editingId !== row.original.id) {
-            const pill = DIMENSION_PILL[row.original.dimension];
-            const Icon = pill.icon;
             return (
               <button
                 type="button"
@@ -578,12 +561,9 @@ export function IngredientGrid({
                 onClick={() => meta.onEdit(row.original.id)}
                 aria-label={`${meta.changeTypeLabel}: ${row.original.name} — ${meta.dimensionLabel(row.original.dimension)}`}
                 title={meta.changeTypeLabel}
-                className={cn(
-                  'inline-flex min-h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-base font-medium transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default',
-                  pill.className,
-                )}
+                // Small and neutral; the invisible ::after pad keeps a ~40 px click target.
+                className="relative inline-flex h-6 min-w-8 cursor-pointer items-center justify-center whitespace-nowrap rounded-md border border-border bg-surface-2 px-1.5 text-[13px] font-medium text-muted-foreground after:absolute after:-inset-x-1.5 after:-inset-y-2 hover:border-foreground/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
               >
-                <Icon className="size-4" aria-hidden />
                 {meta.dimensionPillLabel(row.original.dimension)}
               </button>
             );
@@ -637,18 +617,24 @@ export function IngredientGrid({
                   const priceCents = displayPriceCents(row.original);
                   if (priceCents === null) {
                     return (
-                      <div className="flex justify-end text-base text-muted-foreground">
-                        <span aria-hidden>—</span>
-                        <span className="sr-only">{meta.missingPriceLabel}</span>
+                      <div className="flex flex-col items-end leading-tight">
+                        <span aria-hidden className="text-lg text-muted-foreground">—</span>
+                        {row.original.needsPricing ? (
+                          <span className="whitespace-nowrap text-xs font-medium text-amber-800 dark:text-amber-300">
+                            {meta.needsPricingLabel}
+                          </span>
+                        ) : (
+                          <span className="sr-only">{meta.missingPriceLabel}</span>
+                        )}
                       </div>
                     );
                   }
                   return (
-                    <div className="flex items-baseline justify-end gap-1 whitespace-nowrap tabular-nums">
-                      <span className="text-base text-foreground">
+                    <div className="flex items-baseline justify-end gap-0.5 whitespace-nowrap tabular-nums">
+                      <span className="text-lg font-medium leading-tight text-foreground">
                         {formatMoney(priceCents, meta.currency)}
                       </span>
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {PER_UNIT_SUFFIX[row.original.dimension]}
                       </span>
                     </div>
@@ -686,34 +672,38 @@ export function IngredientGrid({
           // Suppliers are MANAGER-ONLY (Sprint 7): a manager edits the default
           // supplier + pack via the dialog; kitchen sees the name read-only.
           if (!meta.canManageSuppliers) {
-            return <span className="text-base text-foreground">{name ?? '—'}</span>;
+            return (
+              <span className="block truncate text-[13px] text-muted-foreground @3xl:max-w-[9rem]" title={name ?? undefined}>
+                {name ?? '—'}
+              </span>
+            );
           }
           // Stays a TOGGLE in both row states: supplier editing is its own flow
           // (product name, case pack, VAT), never an inline field.
           return (
-            <div className="flex items-center gap-2">
-              <Button
+            <div className="flex min-w-0 flex-col items-start gap-0.5">
+              <button
                 type="button"
-                variant="outline"
                 disabled={meta.pending}
-                title={name ?? undefined}
+                title={`${meta.supplierLabel}: ${name ?? meta.noSupplierLabel}`}
+                aria-haspopup="dialog"
                 onClick={() => meta.onEditSupplier(row.original.id)}
-                className="h-10 px-4 text-base font-normal"
+                // Compact text + caret; the invisible ::after pad keeps a comfortable target.
+                className={cn(
+                  'relative inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded text-[13px] after:absolute after:-inset-x-1.5 after:-inset-y-2.5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default @3xl:max-w-[9rem]',
+                  name ? 'text-foreground/80' : 'text-muted-foreground',
+                )}
               >
-                <Truck className="size-4" />
-                <span className="max-w-[12rem] truncate">
-                  {name ?? meta.noSupplierLabel}
-                </span>
-              </Button>
+                <span className="truncate">{name ?? meta.noSupplierLabel}</span>
+                <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              </button>
               {!hasPending && meta.pricingIncomplete(row.original.id) && (
-                <span className="text-sm text-muted-foreground">
+                <span className="text-xs text-muted-foreground @3xl:whitespace-nowrap">
                   {meta.pricingIncompleteLabel}
                 </span>
               )}
               {hasPending && (
-                <span
-                  className="inline-flex w-fit items-center whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-sm font-medium text-amber-900 dark:bg-amber-500/15 dark:text-amber-300"
-                >
+                <span className="text-xs font-medium text-amber-800 @3xl:whitespace-nowrap dark:text-amber-300">
                   {meta.pendingCostLabel}
                 </span>
               )}
@@ -727,7 +717,7 @@ export function IngredientGrid({
         // System-set, never editable — it is the audit trail of the row, not a field.
         cell: ({ row }) => (
           <span
-            className="whitespace-nowrap text-sm text-muted-foreground"
+            className="whitespace-nowrap text-xs text-muted-foreground"
             suppressHydrationWarning
           >
             {formatUpdated(row.original.updatedAt)}
@@ -764,7 +754,7 @@ export function IngredientGrid({
             );
           }
           return (
-            <div className="flex items-center justify-end gap-1">
+            <div className="-my-1 -mr-1.5 flex items-center justify-end">
               {meta.canReorder(id) && (
                 <AddToTaskListMenu kind="reorder" sourceId={id} />
               )}
@@ -882,109 +872,141 @@ export function IngredientGrid({
         </div>
       </div>
 
-      <Card className="overflow-x-auto">
-        <table className="w-full border-collapse text-base">
-          <thead>
-            {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id} className="border-b border-border">
-                {hg.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    aria-sort={
-                      sort.column === header.column.id
-                        ? sort.direction === 'asc'
-                          ? 'ascending'
-                          : 'descending'
+      {/*
+        Layout follows the LIST's own width (container query), not the viewport: the
+        sidebar appears at lg, so a narrow list can sit on a wide screen.
+      */}
+      <div className="@container flex flex-col gap-3">
+        {/* Column headings sort on wide lists; narrow lists get the same sort as one select. */}
+        <label className="flex items-center gap-2 text-sm text-muted-foreground @3xl:hidden">
+          <span className="shrink-0">{t('sort.label')}</span>
+          <Select
+            className="h-9 flex-1 text-sm"
+            value={`${sort.column}:${sort.direction}`}
+            onChange={(e) => {
+              const [column, direction] = e.target.value.split(':') as [IngredientSortColumn, SortDirection];
+              setSort({ column, direction });
+            }}
+          >
+            {INGREDIENT_SORT_COLUMNS.filter((c) => canSeeCosts || c !== 'price').flatMap((c) =>
+              (['asc', 'desc'] as const).map((d) => (
+                <option key={`${c}:${d}`} value={`${c}:${d}`}>
+                  {t('sort.option', { column: t(`columns.${c}`), direction: t(`sort.${d}`) })}
+                </option>
+              )),
+            )}
+          </Select>
+        </label>
+
+        <Card className="overflow-x-auto">
+          <table className="w-full border-collapse text-base">
+            <thead>
+              {table.getHeaderGroups().map((hg) => (
+                <tr key={hg.id} className="border-b border-border @max-3xl:hidden">
+                  {hg.headers.map((header) => (
+                    <th
+                      key={header.id}
+                      aria-sort={
+                        sort.column === header.column.id
+                          ? sort.direction === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : undefined
+                      }
+                      className={cn(
+                        'px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground first:pl-4 last:pr-4',
+                        CELL_CLASS[header.column.id],
+                        header.column.id === 'price' && 'text-right',
+                      )}
+                    >
+                      {isSortColumn(header.column.id) ? (
+                        <SortHeading
+                          label={flexRender(header.column.columnDef.header, header.getContext())}
+                          active={sort.column === header.column.id}
+                          direction={sort.direction}
+                          alignRight={header.column.id === 'price'}
+                          ariaLabel={t('sort.by', { column: String(header.column.columnDef.header) })}
+                          onClick={() =>
+                            setSort((current) => nextSort(current, header.column.id as IngredientSortColumn))
+                          }
+                        />
+                      ) : (
+                        flexRender(header.column.columnDef.header, header.getContext())
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            </thead>
+            <tbody>
+              {table.getRowModel().rows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={columns.length}
+                    className="px-4 py-8 text-center text-base text-muted-foreground"
+                  >
+                    {query ? t('noMatches') : t('empty')}
+                  </td>
+                </tr>
+              )}
+              {table.getRowModel().rows.map((row) => {
+                const editing = editingId === row.original.id;
+                return (
+                  <tr
+                    key={row.id}
+                    id={`ingredient-row-${row.original.id}`}
+                    // Enter saves, Esc cancels — the keyboard mirror of the two buttons.
+                    onKeyDown={
+                      editing
+                        ? (e) => {
+                            if (e.key === 'Enter') {
+                              // A focused button (Save/Cancel/supplier) already acts on
+                              // Enter; saving again here would double-fire.
+                              if (
+                                e.target instanceof HTMLElement &&
+                                e.target.closest('button')
+                              ) {
+                                return;
+                              }
+                              e.preventDefault();
+                              onSave(row.original.id);
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              onCancel(row.original.id);
+                            }
+                          }
                         : undefined
                     }
                     className={cn(
-                      'px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground first:pl-4 last:pr-4',
-                      header.column.id === 'updated' && 'hidden md:table-cell',
-                      header.column.id === 'price' && 'text-right',
+                      // Hairline dividers only — no borders around individual cells.
+                      'border-b border-border/60 align-middle transition-colors duration-700 last:border-0',
+                      // Phones: a compact card (grid) — or a plain stack while editing.
+                      editing
+                        ? '@max-3xl:flex @max-3xl:flex-col @max-3xl:gap-2 @max-3xl:px-4 @max-3xl:py-3'
+                        : '@max-3xl:grid @max-3xl:grid-cols-[auto_minmax(0,1fr)_auto] @max-3xl:items-center @max-3xl:gap-x-3 @max-3xl:gap-y-0.5 @max-3xl:px-4 @max-3xl:py-3',
+                      editing && 'bg-accent-500/5',
+                      flashId === row.original.id && 'bg-accent-500/10',
                     )}
                   >
-                    {isSortColumn(header.column.id) ? (
-                      <SortHeading
-                        label={flexRender(header.column.columnDef.header, header.getContext())}
-                        active={sort.column === header.column.id}
-                        direction={sort.direction}
-                        alignRight={header.column.id === 'price'}
-                        ariaLabel={t('sort.by', { column: String(header.column.columnDef.header) })}
-                        onClick={() =>
-                          setSort((current) => nextSort(current, header.column.id as IngredientSortColumn))
-                        }
-                      />
-                    ) : (
-                      flexRender(header.column.columnDef.header, header.getContext())
-                    )}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={columns.length}
-                  className="px-4 py-8 text-center text-base text-muted-foreground"
-                >
-                  {query ? t('noMatches') : t('empty')}
-                </td>
-              </tr>
-            )}
-            {table.getRowModel().rows.map((row) => {
-              const editing = editingId === row.original.id;
-              return (
-                <tr
-                  key={row.id}
-                  id={`ingredient-row-${row.original.id}`}
-                  // Enter saves, Esc cancels — the keyboard mirror of the two buttons.
-                  onKeyDown={
-                    editing
-                      ? (e) => {
-                          if (e.key === 'Enter') {
-                            // A focused button (Save/Cancel/supplier) already acts on
-                            // Enter; saving again here would double-fire.
-                            if (
-                              e.target instanceof HTMLElement &&
-                              e.target.closest('button')
-                            ) {
-                              return;
-                            }
-                            e.preventDefault();
-                            onSave(row.original.id);
-                          } else if (e.key === 'Escape') {
-                            e.preventDefault();
-                            onCancel(row.original.id);
-                          }
-                        }
-                      : undefined
-                  }
-                  className={cn(
-                    // Hairline dividers only — no borders around individual cells.
-                    'border-b border-border/60 align-middle transition-colors duration-700 last:border-0',
-                    editing && 'bg-accent-500/5',
-                    flashId === row.original.id && 'bg-accent-500/10',
-                  )}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      className={cn(
-                        'px-3 py-3 first:pl-4 last:pr-4',
-                        cell.column.id === 'updated' && 'hidden md:table-cell',
-                      )}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className={cn(
+                          '@3xl:px-3 @3xl:py-2.5 @3xl:first:pl-4 @3xl:last:pr-4',
+                          CELL_CLASS[cell.column.id],
+                          (cell.column.id === 'name' || cell.column.id === 'updated') && !canSeeCosts && '@max-3xl:col-span-3',
+                        )}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      </div>
 
       <ConfirmDialog
         open={confirmId !== null}
@@ -1246,7 +1268,7 @@ function IconAction({
         aria-label={label}
         disabled={disabled}
         onClick={onClick}
-        className="size-10 p-0 [&_svg]:size-5"
+        className="size-9 p-0 hover:bg-transparent hover:text-foreground [&_svg]:size-4"
       >
         {children}
       </Button>
