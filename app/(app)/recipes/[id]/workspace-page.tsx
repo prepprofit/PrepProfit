@@ -14,6 +14,8 @@ import { listRecipePresets } from '@/lib/data/recipe-presets';
 import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 import { loadRecipeAllergenRollup } from '@/lib/data/allergens';
 import { resolveRecipeNutritionTree } from '@/lib/data/recipe-nutrition-tree';
+import { getProfilesForIngredients } from '@/lib/data/ingredient-nutrition';
+import { toNutritionView } from '@/lib/nutrition/profile-view';
 import { nutritionLabelRows } from '@/lib/calculations/nutritionLabel';
 import type { NutritionTabData } from '@/components/app/recipes/workspace/recipe-nutrition-tab';
 import { loadIngredientUomByIngredient } from '@/lib/data/ingredient-uom';
@@ -309,6 +311,10 @@ export async function RecipeWorkspacePage({
   const suggestedByIngredient = new Map(
     suggestedRows.map((r) => [r.id, r.suggestedFdcId]),
   );
+  // The ingredient-owned profiles, as the shared editor's view (one batch read).
+  const profileRows = await withOrg(organizationId, (tx) =>
+    getProfilesForIngredients(tx, organizationId, lineIngredientIds),
+  );
   const nutrition: NutritionTabData = {
     status: nutritionRes?.result.status ?? 'incomplete',
     issues: nutritionRes?.result.issues ?? [],
@@ -321,21 +327,16 @@ export async function RecipeWorkspacePage({
         }))
       : null,
     servingGrams: nutritionRes?.servingGrams ?? null,
-    lines: (nutritionRes?.lines ?? []).map((l) => ({
-      ingredientId: l.ingredientId,
-      ingredientName: l.ingredientName,
-      edibleWeightGrams: l.edibleWeightGrams,
-      suggestedFdcId: suggestedByIngredient.get(l.ingredientId) ?? null,
-      profile: l.profile
-        ? {
-            source: l.profile.source,
-            sourceDescription: l.profile.sourceDescription,
-            brandOwner: l.profile.brandOwner,
-            fdcId: l.profile.fdcId,
-            values: l.profile.values,
-          }
-        : null,
-    })),
+    lines: (nutritionRes?.lines ?? []).map((l) => {
+      const profile = profileRows.get(l.ingredientId);
+      return {
+        ingredientId: l.ingredientId,
+        ingredientName: l.ingredientName,
+        edibleWeightGrams: l.edibleWeightGrams,
+        suggestedFdcId: suggestedByIngredient.get(l.ingredientId) ?? null,
+        profile: profile ? toNutritionView(profile) : null,
+      };
+    }),
     allergens: {
       contains: allergenRollup.allergens
         .filter((a) => a.effectivePresence === 'contains')

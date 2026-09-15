@@ -72,3 +72,25 @@ Secções relevantes do plano `docs/recipes-meez-parity-senior-plan.md`:
   `unknown`, nunca 0.
 - Commits pequenos por slice; `npm run lint && npm run typecheck && npm test`
   antes de cada commit; `npm run build` antes do push.
+
+## 5. Nutrição passou para Ingredients (2026-09-15)
+
+- O perfil nutricional é do **ingrediente** (um por ingrediente). Edita-se na ação
+  compacta **Nutrition** de cada linha em Ingredients (estado: Not added / Added /
+  Incomplete dentro da ação — sem colunas nem avisos na lista).
+- Editor partilhado `components/app/ingredients/ingredient-nutrition-dialog.tsx`:
+  Search for a food (USDA), Barcode lookup (Open Food Facts), Enter values manually.
+  Sem botão Save: um resultado só é **selecionado**; "Use this match" é a única ação que
+  grava. Valores manuais fazem autosave (pausa curta / blur) via
+  `updateIngredientNutritionValuesAction` — patch esparso: chave omitida = intacta,
+  `null` = limpar explícito, `0` = zero deliberado. Nunca substitui um match externo em
+  silêncio (`NUTRITION_SOURCE_CONFLICT`); "Edit values manually" converte e reescala
+  exatamente para 100 g.
+- O tab Nutrition da receita só mostra o resultado; "Add nutrition" abre o mesmo
+  editor sobre a receita e recalcula ao fechar. O hint "Use suggested USDA" passou a
+  ser um match sugerido para rever dentro do editor.
+- **Completude do rótulo mais estrita:** um perfil sem algum nutriente CORE (energia,
+  gordura, hidratos, proteína, sódio — o mesmo core da qualidade OFF) gera
+  `PARTIAL_PROFILE` → receita `incomplete` (print = rascunho). Receitas cujos
+  ingredientes só tinham p.ex. calorias deixam de aparecer como completas — intencional.
+- Sem migração.

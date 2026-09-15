@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import {
+  Apple,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
@@ -50,6 +51,12 @@ import { IngredientAddDialog } from '@/components/app/ingredients/ingredient-add
 import { IngredientAllergenDialog } from '@/components/app/ingredients/ingredient-allergen-dialog';
 import { IngredientCatalogDialog } from '@/components/app/ingredients/ingredient-catalog-dialog';
 import { IngredientSupplierDialog } from '@/components/app/ingredients/ingredient-supplier-dialog';
+import { IngredientNutritionDialog } from '@/components/app/ingredients/ingredient-nutrition-dialog';
+import {
+  nutritionViewStatus,
+  type IngredientNutritionView,
+} from '@/lib/nutrition/profile-view';
+import type { IngredientNutritionStatus } from '@/lib/calculations/nutrition';
 import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 import type { AllergenTag } from '@/lib/data/allergens';
 import type { SupplierPriceBasis } from '@/lib/calculations/purchasePrice';
@@ -175,6 +182,10 @@ type GridMeta = {
   onEditAllergens: (id: string) => void;
   /** True when the ingredient's allergens have NOT been reviewed yet. */
   unreviewedAllergens: (id: string) => boolean;
+  // Nutrition (optional, ingredient-owned): status lives inside the action only.
+  onEditNutrition: (id: string) => void;
+  nutritionStatus: (id: string) => IngredientNutritionStatus;
+  nutritionActionLabel: (status: IngredientNutritionStatus) => string;
   /**
    * Manager-only (Sprint 6 D7): true when a "reorder from ingredient" task may be
    * offered for this row — i.e. the viewer sees costs AND the row is at/below its
@@ -218,6 +229,8 @@ export function IngredientGrid({
   vatCategories = [],
   businessPurchaseVatBps = null,
   typeLocks = {},
+  initialNutrition = {},
+  canEditNutrition = false,
 }: {
   initialIngredients: IngredientRow[];
   /** Manager only: render + edit the Price column. Kitchen rows carry no price. */
@@ -241,6 +254,10 @@ export function IngredientGrid({
   businessPurchaseVatBps?: number | null;
   /** Ingredients whose type is locked because quantities use the current unit. */
   typeLocks?: Record<string, IngredientTypeLock>;
+  /** Each ingredient's own nutrition profile (absent = not added). */
+  initialNutrition?: Record<string, IngredientNutritionView>;
+  /** Manager-only editing; kitchen opens the nutrition view read-only. */
+  canEditNutrition?: boolean;
 }) {
   const t = useTranslations('ingredients');
   const flashId = useRowHighlight(highlightId, 'ingredient-row-');
@@ -248,6 +265,7 @@ export function IngredientGrid({
   const tCommon = useTranslations('common');
   const tAllergens = useTranslations('allergens');
   const tSuppliers = useTranslations('suppliers.ingredientEditor');
+  const tNutrition = useTranslations('ingredients.nutrition');
   const actionError = useActionError();
   const [rows, setRows] = React.useState<IngredientRow[]>(initialIngredients);
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>(() =>
@@ -284,6 +302,9 @@ export function IngredientGrid({
   const [reviewed, setReviewed] =
     React.useState<Record<string, boolean>>(initialReviewed);
   const [allergenEditId, setAllergenEditId] = React.useState<string | null>(null);
+  const [nutrition, setNutrition] =
+    React.useState<Record<string, IngredientNutritionView>>(initialNutrition);
+  const [nutritionEditId, setNutritionEditId] = React.useState<string | null>(null);
   // Suppliers (Sprint 7, manager-only): the default link per ingredient + which
   // row's supplier editor is open.
   const [supplierLinks, setSupplierLinks] = React.useState<
@@ -304,6 +325,7 @@ export function IngredientGrid({
   const confirmTarget = rows.find((r) => r.id === confirmId) ?? null;
   const allergenTarget = rows.find((r) => r.id === allergenEditId) ?? null;
   const supplierTarget = rows.find((r) => r.id === supplierEditId) ?? null;
+  const nutritionTarget = rows.find((r) => r.id === nutritionEditId) ?? null;
 
   const dimensionLabel = React.useCallback((d: Dimension) => tDim(d), [tDim]);
   const dimensionPillLabel = React.useCallback(
@@ -413,6 +435,16 @@ export function IngredientGrid({
   }, []);
   const editAllergens = React.useCallback((id: string) => setAllergenEditId(id), []);
   const editSupplier = React.useCallback((id: string) => setSupplierEditId(id), []);
+  const editNutrition = React.useCallback((id: string) => setNutritionEditId(id), []);
+  const nutritionStatus = React.useCallback(
+    (id: string) => nutritionViewStatus(nutrition[id] ?? null),
+    [nutrition],
+  );
+  const nutritionActionLabel = React.useCallback(
+    (status: IngredientNutritionStatus) =>
+      tNutrition('actionLabel', { status: tNutrition(`status.${status}`) }),
+    [tNutrition],
+  );
   const unreviewedAllergens = React.useCallback(
     (id: string) => reviewed[id] !== true,
     [reviewed],
@@ -729,6 +761,12 @@ export function IngredientGrid({
               {meta.canReorder(id) && (
                 <AddToTaskListMenu kind="reorder" sourceId={id} />
               )}
+              <NutritionActionButton
+                status={meta.nutritionStatus(id)}
+                label={meta.nutritionActionLabel(meta.nutritionStatus(id))}
+                disabled={meta.pending}
+                onClick={() => meta.onEditNutrition(id)}
+              />
               <Button
                 type="button"
                 variant="ghost"
@@ -796,6 +834,9 @@ export function IngredientGrid({
       onDelete: requestDelete,
       onEditAllergens: editAllergens,
       unreviewedAllergens,
+      onEditNutrition: editNutrition,
+      nutritionStatus,
+      nutritionActionLabel,
       canReorder,
       dimensionLabel,
       dimensionPillLabel,
@@ -1084,6 +1125,27 @@ export function IngredientGrid({
         />
       )}
 
+      {nutritionTarget && (
+        <IngredientNutritionDialog
+          key={nutritionTarget.id}
+          ingredientId={nutritionTarget.id}
+          ingredientName={nutritionTarget.name}
+          suggestedFdcId={nutritionTarget.suggestedFdcId ?? null}
+          profile={nutrition[nutritionTarget.id] ?? null}
+          canEdit={canEditNutrition}
+          onChange={(view) => {
+            const id = nutritionTarget.id;
+            setNutrition((prev) => {
+              const next = { ...prev };
+              if (view) next[id] = view;
+              else delete next[id];
+              return next;
+            });
+          }}
+          onClose={() => setNutritionEditId(null)}
+        />
+      )}
+
       {canSeeCosts && supplierTarget && (
         <IngredientSupplierDialog
           open={supplierEditId !== null}
@@ -1138,6 +1200,49 @@ export function IngredientGrid({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The row's Nutrition action. Nutrition is optional, so the status stays inside
+ * this one compact icon (tooltip + a small dot) — never a column or a warning.
+ */
+function NutritionActionButton({
+  status,
+  label,
+  disabled,
+  onClick,
+}: {
+  status: IngredientNutritionStatus;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="relative"
+    >
+      <Apple
+        className={cn('size-4', status === 'not_added' && 'text-muted-foreground/60')}
+        aria-hidden
+      />
+      {status !== 'not_added' ? (
+        <span
+          aria-hidden
+          className={cn(
+            'absolute right-1.5 top-1.5 size-1.5 rounded-full',
+            status === 'added' ? 'bg-emerald-500' : 'border border-amber-500 bg-surface',
+          )}
+        />
+      ) : null}
+    </Button>
   );
 }
 

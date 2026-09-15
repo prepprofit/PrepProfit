@@ -77,6 +77,7 @@
     "EXTERNAL_PRODUCT_PARTIAL": "This product is missing some values — confirm to save it as-is.",
     "NUTRITION_BASIS_UNSUPPORTED": "This product's nutrition basis isn't supported (not per 100 g or 100 ml).",
     "NUTRITION_EQUIVALENCY_REQUIRED": "This product is measured per 100 ml. Add a weight equivalency (density) for this ingredient first.",
+    "NUTRITION_SOURCE_CONFLICT": "This ingredient's nutrition now comes from a matched food. Choose “Edit values manually” to change it by hand.",
     "INVALID_INPUT": "Please check the values and try again.",
     "NOT_FOUND": "That item could not be found. It may have been removed.",
     "DUPLICATE_NAME": "Something with that name already exists.",
@@ -1062,6 +1063,127 @@
       "help": "Remove it from those recipes and dishes (or replace it), then try again.",
       "tryAgain": "Try again",
       "close": "Close"
+    },
+    "nutrition": {
+      "open": "Nutrition",
+      "actionLabel": "Nutrition: {status}",
+      "title": "Nutrition",
+      "status": {
+        "not_added": "Not added",
+        "added": "Added",
+        "incomplete": "Incomplete"
+      },
+      "readOnly": "Only managers can change nutrition.",
+      "empty": "No nutrition added yet. Recipes and costing work without it — add it when you need a label.",
+      "current": {
+        "source": {
+          "usda": "USDA FoodData Central",
+          "open_food_facts": "Open Food Facts",
+          "custom": "Entered manually"
+        },
+        "per100g": "Values per 100 g",
+        "per100ml": "Values per 100 ml (≈ {grams} g of this ingredient)",
+        "updated": "Updated {date}",
+        "missingCore": "Still unknown: {list}",
+        "refresh": "Refresh from source",
+        "refreshing": "Refreshing…",
+        "refreshTitle": "Fetch the latest values from the source and replace these values",
+        "showAll": "Show all values",
+        "hideAll": "Show fewer values",
+        "unknown": "Unknown"
+      },
+      "tabs": {
+        "search": "Search for a food",
+        "barcode": "Barcode lookup",
+        "manual": "Enter values manually"
+      },
+      "search": {
+        "label": "Food name",
+        "placeholder": "e.g. whole milk, unsalted butter",
+        "submit": "Search",
+        "searching": "Searching…",
+        "everyday": "Everyday foods",
+        "brands": "Branded products",
+        "hint": "Select a result to check it. Nothing is saved until you choose “Use this match”.",
+        "noResults": "No foods found. Try other words, look up a barcode, or enter values manually.",
+        "notConfigured": "Food search isn't available on this server. Use barcode lookup or enter values manually.",
+        "suggested": "Suggested match from the ingredient catalogue",
+        "showSuggested": "Check suggested match",
+        "loadingSuggested": "Loading…",
+        "attribution": "Food data from USDA FoodData Central (public domain, CC0)."
+      },
+      "match": {
+        "per100g": "Per 100 g",
+        "notProvided": "Not provided: {list}",
+        "use": "Use this match",
+        "usePartial": "Use this match (missing values stay unknown)",
+        "replace": "Replace current nutrition with this match",
+        "replaceHint": "This replaces the current nutrition ({source}).",
+        "saving": "Saving…"
+      },
+      "barcode": {
+        "hint": "Enter the barcode (EAN / GTIN) from the packaging, then check the product before using it.",
+        "disabled": "Barcode lookup isn't available on this server. Search for a food or enter values manually.",
+        "label": "Barcode (EAN / GTIN)",
+        "placeholder": "e.g. 3017620422003",
+        "submit": "Look up",
+        "searching": "Looking up…",
+        "preview": {
+          "brand": "Brand",
+          "packageQuantity": "Package size",
+          "barcode": "Barcode",
+          "language": "Product language",
+          "countries": "Sold in",
+          "basis": "Values per",
+          "basisG": "100 g",
+          "basisMl": "100 ml",
+          "missing": "Missing values",
+          "warnings": "Notes",
+          "updated": "Source updated {date}",
+          "stale": "Showing cached data — the provider was unavailable.",
+          "none": "None",
+          "equivalencyRequired": "This product is measured per 100 ml. Add a weight equivalency (density) for this ingredient before saving — 100 ml is never assumed to weigh 100 g."
+        },
+        "attribution": "Data from Open Food Facts",
+        "license": "Open Database License (ODbL)",
+        "viewOnOff": "View on Open Food Facts",
+        "warning": {
+          "ENERGY_DERIVED_FROM_KJ": "Calories were converted from kJ.",
+          "SODIUM_DERIVED_FROM_SALT": "Sodium was estimated from salt.",
+          "MISSING_ENERGY": "No energy value on the label.",
+          "MISSING_CORE_NUTRIENT": "Some core nutrients are missing.",
+          "VALUE_OUT_OF_RANGE": "An implausible value was dropped.",
+          "SALT_SODIUM_MISMATCH": "Salt and sodium don't match exactly.",
+          "BASIS_VOLUME": "Measured per 100 ml (a liquid)."
+        }
+      },
+      "manual": {
+        "hint": "Values per 100 g of edible ingredient — from a supplier specification or the packaging. Leave a value empty when it isn't known: empty means unknown, 0 means zero.",
+        "liquidHint": "Packaging shows values per 100 ml? Use barcode lookup, or convert with this ingredient's weight first — 100 ml is never assumed to weigh 100 g.",
+        "unknown": "Unknown",
+        "clear": "Clear {nutrient}",
+        "invalid": "Enter a number from 0 to {max}.",
+        "emptyNotSaved": "Not saved while empty — use Clear to remove this value.",
+        "core": "Needed for a complete label",
+        "externalTitle": "These values come from {source}.",
+        "externalBody": "Editing them by hand replaces the match with your own values, and refreshing from the source will no longer be available.",
+        "convert": "Edit values manually",
+        "converting": "Switching…"
+      },
+      "save": {
+        "saving": "Saving…",
+        "saved": "Saved",
+        "failed": "Couldn't save: {message}",
+        "retry": "Retry",
+        "invalid": "Fix the highlighted values — they aren't saved"
+      },
+      "close": "Close",
+      "pending": {
+        "title": "Some changes haven't been saved yet.",
+        "keepEditing": "Keep editing",
+        "retry": "Try saving again",
+        "discard": "Discard and close"
+      }
     }
   },
   "recipes": {
@@ -1220,12 +1342,14 @@
         "statusIncomplete": "Nutrition is incomplete (estimated). Fix these to finish the label:",
         "issue": {
           "NO_PROFILE": "{name} has no nutrition profile yet.",
+          "PARTIAL_PROFILE": "{name} is missing core nutrition values (energy, fat, carbohydrate, protein or sodium).",
           "NO_WEIGHT_EQUIVALENCY": "{name} has no weight equivalency — its amount can't be converted to grams.",
           "SUBRECIPE_INCOMPLETE": "Sub-recipe {name} has incomplete nutrition.",
           "NO_NUTRITION_SERVING": "No nutrition serving is set for {name}."
         },
         "issueGeneric": {
           "NO_PROFILE": "An ingredient has no nutrition profile yet.",
+          "PARTIAL_PROFILE": "An ingredient is missing core nutrition values.",
           "NO_WEIGHT_EQUIVALENCY": "A line can't be converted to grams.",
           "SUBRECIPE_INCOMPLETE": "A sub-recipe has incomplete nutrition.",
           "NO_NUTRITION_SERVING": "No nutrition serving is set. Mark a portion option as \"Use for nutrition\" on the Cost tab, or set a serving on the recipe."
@@ -1250,11 +1374,7 @@
           "source": "Source",
           "custom": "Custom",
           "missing": "No profile",
-          "edit": "Edit",
-          "add": "Add",
-          "useSuggested": "Use suggested USDA",
-          "useSuggestedTitle": "Import the USDA profile suggested by the ingredient catalog (fetched from USDA on save)",
-          "useSuggestedBusy": "Importing…"
+          "incomplete": "Incomplete"
         },
         "nutrients": {
           "caloriesKcal": "Calories",
@@ -1274,64 +1394,8 @@
           "potassiumMg": "Potassium",
           "caffeineMg": "Caffeine"
         },
-        "editor": {
-          "title": "Update ingredient nutrition — {name}",
-          "modeGeneric": "Generic",
-          "modePackaged": "Packaged",
-          "modeManual": "Manual",
-          "usdaTab": "USDA search",
-          "customTab": "Custom",
-          "refresh": "Refresh from source",
-          "usdaNotConfigured": "USDA search is not configured on this server — enter values manually.",
-          "common": "Common",
-          "branded": "Branded",
-          "searchPlaceholder": "Search foods…",
-          "search": "Search",
-          "searching": "Searching…",
-          "noResults": "No foods found. Try a different search or enter values manually.",
-          "attribution": "Food data from USDA FoodData Central (public domain, CC0).",
-          "customHint": "Values per 100 g of edible ingredient. Leave a field empty when unknown — empty means unknown, never zero.",
-          "invalidValue": "Nutrient values must be non-negative numbers.",
-          "cancel": "Cancel",
-          "save": "Save",
-          "saving": "Saving…",
-          "packagedHint": "Enter a product barcode (EAN / GTIN), then review the product before saving.",
-          "offDisabled": "Barcode lookup isn't enabled on this server. Use USDA search or manual entry.",
-          "barcodeLabel": "Barcode (EAN / GTIN)",
-          "barcodePlaceholder": "e.g. 3017620422003",
-          "barcodeSearch": "Look up",
-          "barcodeSearching": "Looking up…",
-          "preview": {
-            "brand": "Brand",
-            "packageQuantity": "Package size",
-            "barcode": "Barcode",
-            "language": "Product language",
-            "countries": "Sold in",
-            "basis": "Values per",
-            "basisG": "100 g",
-            "basisMl": "100 ml",
-            "missing": "Missing values",
-            "warnings": "Notes",
-            "updated": "Source updated {date}",
-            "stale": "Showing cached data — the provider was unavailable.",
-            "none": "None",
-            "confirm": "Save this product",
-            "confirmPartial": "Save anyway (missing values stay unknown)",
-            "equivalencyRequired": "This product is measured per 100 ml. Add a weight equivalency (density) for this ingredient before saving — 100 ml is never assumed to weigh 100 g."
-          },
-          "attributionOff": "Data from Open Food Facts",
-          "attributionOffLicense": "Open Database License (ODbL)",
-          "viewOnOff": "View on Open Food Facts",
-          "warning": {
-            "ENERGY_DERIVED_FROM_KJ": "Calories were converted from kJ.",
-            "SODIUM_DERIVED_FROM_SALT": "Sodium was estimated from salt.",
-            "MISSING_ENERGY": "No energy value on the label.",
-            "MISSING_CORE_NUTRIENT": "Some core nutrients are missing.",
-            "VALUE_OUT_OF_RANGE": "An implausible value was dropped.",
-            "SALT_SODIUM_MISMATCH": "Salt and sodium don't match exactly.",
-            "BASIS_VOLUME": "Measured per 100 ml (a liquid)."
-          }
-        }
+        "addNutrition": "Add nutrition",
+        "completeNutrition": "Complete nutrition"
       },
       "saveRecipe": "Save recipe",
       "editRecipe": "Edit recipe {name}",
@@ -1765,7 +1829,7 @@
       },
       "nutritionIncomplete": {
         "label": "Nutrition incomplete",
-        "help": "Some ingredients have no nutrition data, so the label can't be completed."
+        "help": "Some ingredients have no or incomplete nutrition data, so the label can't be completed. Add it from the Ingredients page."
       },
       "needsPricing": {
         "label": "Missing ingredient prices",

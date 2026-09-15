@@ -17,6 +17,8 @@ import {
   type DefaultSupplierSummary,
 } from '@/lib/data/ingredient-suppliers';
 import { getOrgSettings } from '@/lib/data/org-settings';
+import { getProfilesForIngredients } from '@/lib/data/ingredient-nutrition';
+import { toNutritionView, type IngredientNutritionView } from '@/lib/nutrition/profile-view';
 import { listVatCategories } from '@/lib/data/vat-categories';
 import {
   IngredientGrid,
@@ -60,6 +62,18 @@ export default async function IngredientsPage({
     initialAllergens[row.id] = allergenMap.get(row.id) ?? [];
     initialReviewed[row.id] = row.allergensReviewedAt !== null;
   }
+
+  // Nutrition is owned by the ingredient: one batch read of every profile. It is
+  // operational and money-free — kitchen views it, only managers edit (D5).
+  const profileMap = await withOrg(organizationId, (tx) =>
+    getProfilesForIngredients(
+      tx,
+      organizationId,
+      ingredientRows.map((r) => r.id),
+    ),
+  );
+  const initialNutrition: Record<string, IngredientNutritionView> = {};
+  for (const [id, profile] of profileMap) initialNutrition[id] = toNutritionView(profile);
 
   // Suppliers (Sprint 7) are MANAGER-ONLY: only managers (who see costs) get the
   // active supplier list for the picker + the per-ingredient default link to
@@ -124,6 +138,8 @@ export default async function IngredientsPage({
         vatCategories={vatCategories}
         businessPurchaseVatBps={settings.defaultPurchaseVatBps ?? null}
         typeLocks={typeLocks}
+        initialNutrition={initialNutrition}
+        canEditNutrition={role === 'manager'}
       />
     </div>
   );
