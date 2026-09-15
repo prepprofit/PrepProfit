@@ -1012,7 +1012,8 @@
       "delete": "Delete ingredient",
       "edit": "Edit ingredient",
       "save": "Save",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "view": "View ingredient"
     },
     "sort": {
       "by": "Sort by {column}"
@@ -1183,6 +1184,52 @@
         "keepEditing": "Keep editing",
         "retry": "Try saving again",
         "discard": "Discard and close"
+      }
+    },
+    "missingPrice": "No price added yet",
+    "details": {
+      "close": "Close",
+      "notAdded": "Not added",
+      "notReviewed": "Not reviewed",
+      "measurement": "Measured by: {type} ({unit})",
+      "price": {
+        "title": "Current price",
+        "perUnit": "per {unit}",
+        "vatExclRate": "Excl. VAT · purchase VAT {rate}%",
+        "vatExclNoRate": "Excl. VAT · purchase VAT rate not added",
+        "pending": "Pending cost: {amount} per {unit} (not accepted yet)"
+      },
+      "supplier": {
+        "title": "Supplier",
+        "name": "Supplier",
+        "productName": "Supplier’s product name",
+        "sku": "Supplier’s product code",
+        "packSize": "Pack size",
+        "packMulti": "{units} × {size}",
+        "packPrice": "Pack price",
+        "packPriceValue": "{amount} excl. VAT",
+        "edit": "Edit supplier",
+        "add": "Set supplier"
+      },
+      "nutrition": {
+        "title": "Nutrition",
+        "source": "Source",
+        "reference": "Values per",
+        "perGrams": "{grams} g",
+        "per100ml": "100 ml (≈ {grams} g)",
+        "edit": "Edit nutrition",
+        "add": "Add nutrition"
+      },
+      "allergens": {
+        "title": "Allergens",
+        "status": "Review status",
+        "reviewed": "Reviewed",
+        "noneRecorded": "Reviewed — no allergens recorded",
+        "count": "Reviewed · {count, plural, one {# allergen} other {# allergens}}",
+        "mayBeIncomplete": "Not reviewed yet — this list may be incomplete.",
+        "disclaimer": "Kitchen aid only — always check packaging and supplier information. Never a claim that the ingredient is allergen-free.",
+        "edit": "Edit allergens",
+        "review": "Review allergens"
       }
     }
   },

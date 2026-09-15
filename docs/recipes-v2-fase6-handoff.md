@@ -75,9 +75,10 @@ Secções relevantes do plano `docs/recipes-meez-parity-senior-plan.md`:
 
 ## 5. Nutrição passou para Ingredients (2026-09-15)
 
-- O perfil nutricional é do **ingrediente** (um por ingrediente). Edita-se na ação
-  compacta **Nutrition** de cada linha em Ingredients (estado: Not added / Added /
-  Incomplete dentro da ação — sem colunas nem avisos na lista).
+- O perfil nutricional é do **ingrediente** (um por ingrediente). Edita-se a partir do
+  popup **View ingredient** (ícone olho em cada linha): secção Nutrition → "Add/Edit
+  nutrition" abre o editor (estado Not added / Added / Incomplete no resumo da secção —
+  sem colunas nem ícones extra na lista).
 - Editor partilhado `components/app/ingredients/ingredient-nutrition-dialog.tsx`:
   Search for a food (USDA), Barcode lookup (Open Food Facts), Enter values manually.
   Sem botão Save: um resultado só é **selecionado**; "Use this match" é a única ação que
@@ -94,3 +95,20 @@ Secções relevantes do plano `docs/recipes-meez-parity-senior-plan.md`:
   `PARTIAL_PROFILE` → receita `incomplete` (print = rascunho). Receitas cujos
   ingredientes só tinham p.ex. calorias deixam de aparecer como completas — intencional.
 - Sem migração.
+
+## 6. Popup de detalhes do ingrediente (2026-09-15)
+
+- `components/app/ingredients/ingredient-details-dialog.tsx`: o ícone olho substitui o
+  antigo ícone de alergénios (e a ação Nutrition) na linha. Mostra nome + tipo, preço
+  atual por kg/l/pc (excl. VAT + taxa de VAT resolvida por `suggestPurchaseVat`), e
+  secções recolhíveis Supplier (nome, nome/código do produto, pack, preço do pack),
+  Nutrition (valores, base, fonte) e Allergens (tags + estado de revisão).
+- Só leitura: os botões de edição trocam o popup pelo editor autorizado existente
+  (supplier / nutrition / allergens) e voltam ao popup ao fechar — nunca popups
+  empilhados. Fechar devolve o foco ao botão da linha sem mexer em pesquisa/ordenação.
+- Kitchen: sem preço/pack/código (não vêm no payload); vê nome do fornecedor,
+  nutrição (só leitura) e alergénios (pode rever).
+- Dados em falta: "Not added" / "Not reviewed", nunca 0 nem "allergen-free".
+- Preço em falta: `displayPriceCents` (`lib/ingredients/incomplete.ts`) → "—" quando
+  `needsPricing`; €0.00 só para um zero registado. Criar como manager sem preço de
+  abertura passa a marcar `needsPricing = true`.

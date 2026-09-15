@@ -3,16 +3,15 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import {
-  Apple,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   Droplet,
+  Eye,
   Hash,
   Pencil,
   Plus,
   Scale,
-  ShieldAlert,
   Trash2,
   Truck,
 } from 'lucide-react';
@@ -25,6 +24,7 @@ import {
 import type { Ingredient } from '@/lib/db/schema';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
 import { isLowStock } from '@/lib/calculations/inventory';
+import { displayPriceCents } from '@/lib/ingredients/incomplete';
 import {
   compareIngredients,
   DEFAULT_INGREDIENT_SORT,
@@ -52,11 +52,8 @@ import { IngredientAllergenDialog } from '@/components/app/ingredients/ingredien
 import { IngredientCatalogDialog } from '@/components/app/ingredients/ingredient-catalog-dialog';
 import { IngredientSupplierDialog } from '@/components/app/ingredients/ingredient-supplier-dialog';
 import { IngredientNutritionDialog } from '@/components/app/ingredients/ingredient-nutrition-dialog';
-import {
-  nutritionViewStatus,
-  type IngredientNutritionView,
-} from '@/lib/nutrition/profile-view';
-import type { IngredientNutritionStatus } from '@/lib/calculations/nutrition';
+import { IngredientDetailsDialog } from '@/components/app/ingredients/ingredient-details-dialog';
+import type { IngredientNutritionView } from '@/lib/nutrition/profile-view';
 import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 import type { AllergenTag } from '@/lib/data/allergens';
 import type { SupplierPriceBasis } from '@/lib/calculations/purchasePrice';
@@ -139,7 +136,9 @@ function draftFromRow(row: IngredientRow): Draft {
   return {
     name: row.name,
     dimension: row.dimension,
-    priceText: row.priceCents != null ? centsToAmountInput(row.priceCents) : '',
+    // An unpriced ingredient opens with an empty price, never a pre-filled "0.00".
+    priceText:
+      row.priceCents != null && !row.needsPricing ? centsToAmountInput(row.priceCents) : '',
   };
 }
 
@@ -179,13 +178,8 @@ type GridMeta = {
   onSave: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
-  onEditAllergens: (id: string) => void;
-  /** True when the ingredient's allergens have NOT been reviewed yet. */
-  unreviewedAllergens: (id: string) => boolean;
-  // Nutrition (optional, ingredient-owned): status lives inside the action only.
-  onEditNutrition: (id: string) => void;
-  nutritionStatus: (id: string) => IngredientNutritionStatus;
-  nutritionActionLabel: (status: IngredientNutritionStatus) => string;
+  /** Opens the read-only details popup (price, supplier, nutrition, allergens). */
+  onView: (id: string) => void;
   /**
    * Manager-only (Sprint 6 D7): true when a "reorder from ingredient" task may be
    * offered for this row — i.e. the viewer sees costs AND the row is at/below its
@@ -201,9 +195,9 @@ type GridMeta = {
   saveLabel: string;
   cancelLabel: string;
   deleteLabel: string;
+  viewLabel: string;
   needsPricingLabel: string;
-  allergensLabel: string;
-  allergensUnreviewedLabel: string;
+  missingPriceLabel: string;
   // Suppliers (Sprint 7, manager-only).
   canManageSuppliers: boolean;
   onEditSupplier: (id: string) => void;
@@ -263,9 +257,7 @@ export function IngredientGrid({
   const flashId = useRowHighlight(highlightId, 'ingredient-row-');
   const tDim = useTranslations('dimensions');
   const tCommon = useTranslations('common');
-  const tAllergens = useTranslations('allergens');
   const tSuppliers = useTranslations('suppliers.ingredientEditor');
-  const tNutrition = useTranslations('ingredients.nutrition');
   const actionError = useActionError();
   const [rows, setRows] = React.useState<IngredientRow[]>(initialIngredients);
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>(() =>
@@ -305,6 +297,9 @@ export function IngredientGrid({
   const [nutrition, setNutrition] =
     React.useState<Record<string, IngredientNutritionView>>(initialNutrition);
   const [nutritionEditId, setNutritionEditId] = React.useState<string | null>(null);
+  // The details popup. Its editors (supplier / nutrition / allergens) REPLACE it while
+  // open and hand back to it on close, so popups never stack.
+  const [detailsId, setDetailsId] = React.useState<string | null>(null);
   // Suppliers (Sprint 7, manager-only): the default link per ingredient + which
   // row's supplier editor is open.
   const [supplierLinks, setSupplierLinks] = React.useState<
@@ -326,6 +321,9 @@ export function IngredientGrid({
   const allergenTarget = rows.find((r) => r.id === allergenEditId) ?? null;
   const supplierTarget = rows.find((r) => r.id === supplierEditId) ?? null;
   const nutritionTarget = rows.find((r) => r.id === nutritionEditId) ?? null;
+  const detailsTarget = rows.find((r) => r.id === detailsId) ?? null;
+  const editorOpen =
+    allergenEditId !== null || nutritionEditId !== null || supplierEditId !== null;
 
   const dimensionLabel = React.useCallback((d: Dimension) => tDim(d), [tDim]);
   const dimensionPillLabel = React.useCallback(
@@ -433,22 +431,19 @@ export function IngredientGrid({
     setDeleteProblem(null);
     setConfirmId(id);
   }, []);
-  const editAllergens = React.useCallback((id: string) => setAllergenEditId(id), []);
   const editSupplier = React.useCallback((id: string) => setSupplierEditId(id), []);
-  const editNutrition = React.useCallback((id: string) => setNutritionEditId(id), []);
-  const nutritionStatus = React.useCallback(
-    (id: string) => nutritionViewStatus(nutrition[id] ?? null),
-    [nutrition],
-  );
-  const nutritionActionLabel = React.useCallback(
-    (status: IngredientNutritionStatus) =>
-      tNutrition('actionLabel', { status: tNutrition(`status.${status}`) }),
-    [tNutrition],
-  );
-  const unreviewedAllergens = React.useCallback(
-    (id: string) => reviewed[id] !== true,
-    [reviewed],
-  );
+  const viewDetails = React.useCallback((id: string) => setDetailsId(id), []);
+  const closeDetails = React.useCallback(() => {
+    const id = detailsId;
+    setDetailsId(null);
+    // Hand focus back to the row's View button without moving the list: search,
+    // sort and scroll position all live in this component and are untouched.
+    if (id) {
+      window.requestAnimationFrame(() =>
+        document.getElementById(`ingredient-view-${id}`)?.focus({ preventScroll: true }),
+      );
+    }
+  }, [detailsId]);
   const supplierName = React.useCallback(
     (id: string) => rows.find((r) => r.id === id)?.supplier ?? null,
     [rows],
@@ -493,6 +488,7 @@ export function IngredientGrid({
         return next;
       });
       setEditingId((prev) => (prev === id ? null : prev));
+      setDetailsId((prev) => (prev === id ? null : prev));
       setConfirmId(null);
       setNotice({ message: t('deleted', { name: row?.name ?? '' }), undo: row ?? null });
     });
@@ -538,7 +534,7 @@ export function IngredientGrid({
           if (!draft) return null;
           const editing = meta.editingId === row.original.id;
           return (
-            <div className="flex min-w-44 flex-col gap-1">
+            <div className="flex min-w-48 max-w-[24rem] flex-col gap-1">
               {editing ? (
                 <Input
                   autoFocus
@@ -550,12 +546,13 @@ export function IngredientGrid({
                   }
                 />
               ) : (
-                <span className="font-medium text-foreground">{row.original.name}</span>
+                <span className="break-words text-lg font-semibold leading-snug text-foreground">
+                  {row.original.name}
+                </span>
               )}
               {row.original.needsPricing && (
                 <span
-                  className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
-                  title={meta.needsPricingLabel}
+                  className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-sm font-medium text-amber-900 dark:bg-amber-500/15 dark:text-amber-300"
                 >
                   {meta.needsPricingLabel}
                 </span>
@@ -582,11 +579,11 @@ export function IngredientGrid({
                 aria-label={`${meta.changeTypeLabel}: ${row.original.name} — ${meta.dimensionLabel(row.original.dimension)}`}
                 title={meta.changeTypeLabel}
                 className={cn(
-                  'inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default',
+                  'inline-flex min-h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-base font-medium transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default',
                   pill.className,
                 )}
               >
-                <Icon className="size-3.5" aria-hidden />
+                <Icon className="size-4" aria-hidden />
                 {meta.dimensionPillLabel(row.original.dimension)}
               </button>
             );
@@ -613,11 +610,11 @@ export function IngredientGrid({
                 ))}
               </Select>
               {lockReason ? (
-                <span id={`type-lock-${row.original.id}`} className="text-[11px] leading-snug text-muted-foreground">
+                <span id={`type-lock-${row.original.id}`} className="text-sm leading-snug text-muted-foreground">
                   {lockReason}
                 </span>
               ) : draft.dimension !== row.original.dimension && meta.canSeeCosts ? (
-                <span className="text-[11px] leading-snug text-amber-700 dark:text-amber-300">
+                <span className="text-sm leading-snug text-amber-800 dark:text-amber-300">
                   {t('typeLock.checkPrice', { unit: meta.dimensionPillLabel(draft.dimension) })}
                 </span>
               ) : null}
@@ -636,12 +633,22 @@ export function IngredientGrid({
                 const draft = meta.drafts[row.original.id];
                 if (!draft) return null;
                 if (meta.editingId !== row.original.id) {
+                  // Unpriced reads "—", never €0.00; a real recorded zero still shows €0.00.
+                  const priceCents = displayPriceCents(row.original);
+                  if (priceCents === null) {
+                    return (
+                      <div className="flex justify-end text-base text-muted-foreground">
+                        <span aria-hidden>—</span>
+                        <span className="sr-only">{meta.missingPriceLabel}</span>
+                      </div>
+                    );
+                  }
                   return (
-                    <div className="flex items-baseline justify-end gap-1 tabular-nums">
-                      <span className="text-foreground">
-                        {formatMoney(row.original.priceCents ?? 0, meta.currency)}
+                    <div className="flex items-baseline justify-end gap-1 whitespace-nowrap tabular-nums">
+                      <span className="text-base text-foreground">
+                        {formatMoney(priceCents, meta.currency)}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-sm text-muted-foreground">
                         {PER_UNIT_SUFFIX[row.original.dimension]}
                       </span>
                     </div>
@@ -659,7 +666,7 @@ export function IngredientGrid({
                         meta.onField(row.original.id, { priceText: e.target.value })
                       }
                     />
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-sm text-muted-foreground">
                       {PER_UNIT_SUFFIX[draft.dimension]}
                     </span>
                   </div>
@@ -679,7 +686,7 @@ export function IngredientGrid({
           // Suppliers are MANAGER-ONLY (Sprint 7): a manager edits the default
           // supplier + pack via the dialog; kitchen sees the name read-only.
           if (!meta.canManageSuppliers) {
-            return <span className="text-sm text-muted-foreground">{name ?? '—'}</span>;
+            return <span className="text-base text-foreground">{name ?? '—'}</span>;
           }
           // Stays a TOGGLE in both row states: supplier editing is its own flow
           // (product name, case pack, VAT), never an inline field.
@@ -688,24 +695,24 @@ export function IngredientGrid({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
                 disabled={meta.pending}
+                title={name ?? undefined}
                 onClick={() => meta.onEditSupplier(row.original.id)}
+                className="h-10 px-4 text-base font-normal"
               >
                 <Truck className="size-4" />
-                <span className="max-w-[10rem] truncate">
+                <span className="max-w-[12rem] truncate">
                   {name ?? meta.noSupplierLabel}
                 </span>
               </Button>
               {!hasPending && meta.pricingIncomplete(row.original.id) && (
-                <span className="text-[11px] text-muted-foreground" title={meta.pricingIncompleteLabel}>
+                <span className="text-sm text-muted-foreground">
                   {meta.pricingIncompleteLabel}
                 </span>
               )}
               {hasPending && (
                 <span
-                  className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
-                  title={meta.pendingCostLabel}
+                  className="inline-flex w-fit items-center whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-sm font-medium text-amber-900 dark:bg-amber-500/15 dark:text-amber-300"
                 >
                   {meta.pendingCostLabel}
                 </span>
@@ -720,7 +727,7 @@ export function IngredientGrid({
         // System-set, never editable — it is the audit trail of the row, not a field.
         cell: ({ row }) => (
           <span
-            className="whitespace-nowrap text-xs text-muted-foreground"
+            className="whitespace-nowrap text-sm text-muted-foreground"
             suppressHydrationWarning
           >
             {formatUpdated(row.original.updatedAt)}
@@ -739,17 +746,17 @@ export function IngredientGrid({
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
                   disabled={meta.pending}
                   onClick={() => meta.onCancel(id)}
+                  className="text-base"
                 >
                   {meta.cancelLabel}
                 </Button>
                 <Button
                   type="button"
-                  size="sm"
                   disabled={meta.pending}
                   onClick={() => meta.onSave(id)}
+                  className="text-base"
                 >
                   {meta.saveLabel}
                 </Button>
@@ -761,54 +768,28 @@ export function IngredientGrid({
               {meta.canReorder(id) && (
                 <AddToTaskListMenu kind="reorder" sourceId={id} />
               )}
-              <NutritionActionButton
-                status={meta.nutritionStatus(id)}
-                label={meta.nutritionActionLabel(meta.nutritionStatus(id))}
+              <IconAction
+                id={`ingredient-view-${id}`}
+                label={meta.viewLabel}
                 disabled={meta.pending}
-                onClick={() => meta.onEditNutrition(id)}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label={meta.allergensLabel}
-                title={
-                  meta.unreviewedAllergens(id)
-                    ? meta.allergensUnreviewedLabel
-                    : meta.allergensLabel
-                }
-                disabled={meta.pending}
-                onClick={() => meta.onEditAllergens(id)}
+                onClick={() => meta.onView(id)}
               >
-                <ShieldAlert
-                  className={cn(
-                    'size-4',
-                    meta.unreviewedAllergens(id) && 'text-amber-600 dark:text-amber-400',
-                  )}
-                />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label={meta.editLabel}
-                title={meta.editLabel}
+                <Eye />
+              </IconAction>
+              <IconAction
+                label={meta.editLabel}
                 disabled={meta.pending}
                 onClick={() => meta.onEdit(id)}
               >
-                <Pencil className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label={meta.deleteLabel}
-                title={meta.deleteLabel}
+                <Pencil />
+              </IconAction>
+              <IconAction
+                label={meta.deleteLabel}
                 disabled={meta.pending}
                 onClick={() => meta.onDelete(id)}
               >
-                <Trash2 className="size-4" />
-              </Button>
+                <Trash2 />
+              </IconAction>
             </div>
           );
         },
@@ -832,11 +813,7 @@ export function IngredientGrid({
       onSave,
       onCancel,
       onDelete: requestDelete,
-      onEditAllergens: editAllergens,
-      unreviewedAllergens,
-      onEditNutrition: editNutrition,
-      nutritionStatus,
-      nutritionActionLabel,
+      onView: viewDetails,
       canReorder,
       dimensionLabel,
       dimensionPillLabel,
@@ -846,9 +823,9 @@ export function IngredientGrid({
       saveLabel: t('actions.save'),
       cancelLabel: t('actions.cancel'),
       deleteLabel: t('actions.delete'),
+      viewLabel: t('actions.view'),
       needsPricingLabel: t('needsPricing'),
-      allergensLabel: tAllergens('editor.open'),
-      allergensUnreviewedLabel: tAllergens('editor.unreviewed'),
+      missingPriceLabel: t('missingPrice'),
       canManageSuppliers: canSeeCosts,
       onEditSupplier: editSupplier,
       supplierName,
@@ -906,7 +883,7 @@ export function IngredientGrid({
       </div>
 
       <Card className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
+        <table className="w-full border-collapse text-base">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b border-border">
@@ -921,7 +898,8 @@ export function IngredientGrid({
                         : undefined
                     }
                     className={cn(
-                      'px-2.5 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground first:pl-4 last:pr-4',
+                      'px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground first:pl-4 last:pr-4',
+                      header.column.id === 'updated' && 'hidden md:table-cell',
                       header.column.id === 'price' && 'text-right',
                     )}
                   >
@@ -949,7 +927,7 @@ export function IngredientGrid({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-4 py-8 text-center text-sm text-muted-foreground"
+                  className="px-4 py-8 text-center text-base text-muted-foreground"
                 >
                   {query ? t('noMatches') : t('empty')}
                 </td>
@@ -993,7 +971,10 @@ export function IngredientGrid({
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className="px-2.5 py-3.5 first:pl-4 last:pr-4"
+                      className={cn(
+                        'px-3 py-3 first:pl-4 last:pr-4',
+                        cell.column.id === 'updated' && 'hidden md:table-cell',
+                      )}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
@@ -1109,6 +1090,27 @@ export function IngredientGrid({
         }}
       />
 
+      {detailsTarget && (
+        <IngredientDetailsDialog
+          key={detailsTarget.id}
+          open={!editorOpen}
+          row={detailsTarget}
+          canSeeCosts={canSeeCosts}
+          currency={currency}
+          supplierLink={canSeeCosts ? (supplierLinks[detailsTarget.id] ?? null) : null}
+          vatCategories={vatCategories}
+          businessPurchaseVatBps={businessPurchaseVatBps}
+          nutrition={nutrition[detailsTarget.id] ?? null}
+          allergens={allergens[detailsTarget.id] ?? []}
+          allergensReviewed={reviewed[detailsTarget.id] === true}
+          canEditNutrition={canEditNutrition}
+          onEditSupplier={() => setSupplierEditId(detailsTarget.id)}
+          onEditNutrition={() => setNutritionEditId(detailsTarget.id)}
+          onEditAllergens={() => setAllergenEditId(detailsTarget.id)}
+          onClose={closeDetails}
+        />
+      )}
+
       {allergenTarget && (
         <IngredientAllergenDialog
           open={allergenEditId !== null}
@@ -1187,13 +1189,28 @@ export function IngredientGrid({
             const id = supplierTarget.id;
             setRows((prev) =>
               prev.map((r) =>
-                r.id === id ? { ...r, priceCents, pendingPriceCents: null } : r,
+                r.id === id
+                  ? {
+                      ...r,
+                      priceCents,
+                      pendingPriceCents: null,
+                      // Mirrors the server: an accepted real cost clears "needs pricing".
+                      needsPricing: priceCents > 0 ? false : r.needsPricing,
+                    }
+                  : r,
               ),
             );
             setDrafts((prev) => {
               const row = rows.find((r) => r.id === id);
               return row
-                ? { ...prev, [id]: draftFromRow({ ...row, priceCents }) }
+                ? {
+                    ...prev,
+                    [id]: draftFromRow({
+                      ...row,
+                      priceCents,
+                      needsPricing: priceCents > 0 ? false : row.needsPricing,
+                    }),
+                  }
                 : prev;
             });
           }}
@@ -1204,45 +1221,42 @@ export function IngredientGrid({
 }
 
 /**
- * The row's Nutrition action. Nutrition is optional, so the status stays inside
- * this one compact icon (tooltip + a small dot) — never a column or a warning.
+ * A row icon action: accessible name, a visible tooltip on hover AND keyboard focus
+ * (a bare `title` never shows on focus), and a 40 px click target.
  */
-function NutritionActionButton({
-  status,
+function IconAction({
+  id,
   label,
   disabled,
   onClick,
+  children,
 }: {
-  status: IngredientNutritionStatus;
+  id?: string;
   label: string;
   disabled: boolean;
   onClick: () => void;
+  children: React.ReactNode;
 }) {
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="relative"
-    >
-      <Apple
-        className={cn('size-4', status === 'not_added' && 'text-muted-foreground/60')}
+    <span className="group relative inline-flex">
+      <Button
+        id={id}
+        type="button"
+        variant="ghost"
+        aria-label={label}
+        disabled={disabled}
+        onClick={onClick}
+        className="size-10 p-0 [&_svg]:size-5"
+      >
+        {children}
+      </Button>
+      <span
         aria-hidden
-      />
-      {status !== 'not_added' ? (
-        <span
-          aria-hidden
-          className={cn(
-            'absolute right-1.5 top-1.5 size-1.5 rounded-full',
-            status === 'added' ? 'bg-emerald-500' : 'border border-amber-500 bg-surface',
-          )}
-        />
-      ) : null}
-    </Button>
+        className="pointer-events-none absolute bottom-full right-0 z-20 mb-1 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-sm text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
+      >
+        {label}
+      </span>
+    </span>
   );
 }
 
