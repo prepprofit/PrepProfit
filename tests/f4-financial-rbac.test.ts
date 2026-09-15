@@ -273,6 +273,21 @@ describe('createIngredientAction — kitchen cannot forge a price', () => {
     expect('priceCents' in result.data).toBe(true);
     const row = await readIngredient(result.data.id);
     expect(row?.priceCents).toBe(5000);
+    expect(row?.needsPricing).toBe(false);
+  });
+
+  it('manager create without an opening price is flagged as needing pricing', async () => {
+    h.manager = true;
+    const result = await createIngredientAction({
+      name: 'Manager Unpriced',
+      dimension: 'weight',
+      priceCents: 0,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const row = await readIngredient(result.data.id);
+    expect(row?.priceCents).toBe(0);
+    expect(row?.needsPricing).toBe(true);
   });
 });
 

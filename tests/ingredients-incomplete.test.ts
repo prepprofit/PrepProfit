@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isIncomplete, type IncompleteCandidate } from '@/lib/ingredients/incomplete';
+import { displayPriceCents, isIncomplete, type IncompleteCandidate } from '@/lib/ingredients/incomplete';
 
 /**
  * Decision D2 (`docs/supplier-dialog-ux-plan.md`): "incomplete" means the COST is
@@ -92,5 +92,32 @@ describe('two-tier ordering', () => {
     // No price key anywhere, no needsPricing → nothing is pinned.
     const kitchen: Row[] = rows.map(({ name }) => ({ name, needsPricing: false }));
     expect(sorted(kitchen, false)).toEqual(['Almonds', 'Butter', 'Cocoa', 'Dates']);
+  });
+});
+
+describe('displayPriceCents', () => {
+  it('hides the placeholder zero of an ingredient that needs pricing', () => {
+    expect(displayPriceCents(row({ needsPricing: true, priceCents: 0 }))).toBeNull();
+  });
+
+  it('hides any stored price while the row still needs pricing', () => {
+    expect(displayPriceCents(row({ needsPricing: true, priceCents: 450 }))).toBeNull();
+  });
+
+  it('keeps a deliberately recorded zero price', () => {
+    expect(displayPriceCents(row({ priceCents: 0 }))).toBe(0);
+  });
+
+  it('shows a normal price', () => {
+    expect(displayPriceCents(row())).toBe(1200);
+  });
+
+  it('returns null for a kitchen payload with no price key', () => {
+    expect(displayPriceCents({ needsPricing: false })).toBeNull();
+  });
+
+  it('returns null for a non-finite price', () => {
+    expect(displayPriceCents(row({ priceCents: Number.NaN }))).toBeNull();
+    expect(displayPriceCents(row({ priceCents: Number.POSITIVE_INFINITY }))).toBeNull();
   });
 });

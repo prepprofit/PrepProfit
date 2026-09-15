@@ -89,7 +89,11 @@ export async function createIngredientAction(
   const parsed = ingredientSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
   const row = await withOrg(organizationId, async (tx) => {
-    const created = await createIngredient(tx, organizationId, parsed.data);
+    // No opening price = not priced yet: flag it so the list shows "—", not €0.00.
+    const created = await createIngredient(tx, organizationId, {
+      ...parsed.data,
+      needsPricing: parsed.data.priceCents === 0,
+    });
     // A real opening price gets a `source='manual'` history row (the price trail,
     // Sprint F2).
     if (created.priceCents > 0) {

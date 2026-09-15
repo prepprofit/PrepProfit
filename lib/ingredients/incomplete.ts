@@ -32,3 +32,15 @@ export type IncompleteCandidate = {
 export function isIncomplete(row: IncompleteCandidate, canSeeCosts: boolean): boolean {
   return row.needsPricing || (canSeeCosts && (row.priceCents ?? 0) === 0);
 }
+
+/**
+ * The price to DISPLAY for a row, or null when there is none to show ("—"). An
+ * ingredient still flagged `needsPricing` has no real price, so its stored 0 must
+ * never read as €0.00; a deliberately recorded zero (flag cleared) still shows.
+ * A kitchen payload has no price key at all → null.
+ */
+export function displayPriceCents(row: IncompleteCandidate): number | null {
+  if (row.needsPricing) return null;
+  const cents = row.priceCents;
+  return cents != null && Number.isFinite(cents) ? cents : null;
+}
