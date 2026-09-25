@@ -1046,6 +1046,7 @@
     "actions": {
       "add": "Add",
       "addIngredient": "Add ingredient",
+      "addPrice": "Add price",
       "delete": "Delete ingredient",
       "edit": "Edit ingredient",
       "save": "Save",
@@ -1053,11 +1054,18 @@
       "view": "View ingredient"
     },
     "sort": {
-      "by": "Sort by {column}",
-      "label": "Sort",
-      "option": "{column} ({direction})",
-      "asc": "ascending",
-      "desc": "descending"
+      "label": "Sort by",
+      "column": {
+        "name": "Ingredient name",
+        "supplier": "Supplier",
+        "updated": "Last updated"
+      },
+      "direction": {
+        "alphaAsc": "A to Z",
+        "alphaDesc": "Z to A",
+        "dateAsc": "Oldest first",
+        "dateDesc": "Newest first"
+      }
     },
     "addDialog": {
       "title": "Add ingredient",
@@ -1227,12 +1235,12 @@
         "discard": "Discard and close"
       }
     },
-    "missingPrice": "No price added yet",
     "details": {
       "close": "Close",
       "notAdded": "Not added",
       "notReviewed": "Not reviewed",
       "measurement": "Measured by: {type} ({unit})",
+      "updated": "Updated {date}",
       "price": {
         "title": "Current price",
         "perUnit": "per {unit}",

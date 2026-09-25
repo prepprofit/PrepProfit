@@ -2,22 +2,7 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ChevronDown,
-  Eye,
-  Pencil,
-  Plus,
-  Trash2,
-} from 'lucide-react';
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from '@tanstack/react-table';
+import { ArrowDown, ArrowUp, ChevronDown, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Ingredient } from '@/lib/db/schema';
 import { DIMENSIONS } from '@/lib/validation/ingredients';
 import { isLowStock } from '@/lib/calculations/inventory';
@@ -25,12 +10,11 @@ import { displayPriceCents } from '@/lib/ingredients/incomplete';
 import {
   compareIngredients,
   DEFAULT_INGREDIENT_SORT,
-  INGREDIENT_SORT_COLUMNS,
-  nextSort,
+  firstDirection,
   type IngredientSort,
   type IngredientSortColumn,
-  type SortDirection,
 } from '@/lib/ingredients/sort';
+import { ingredientMatchesQuery } from '@/lib/ingredients/search';
 import { centsToAmountInput, formatMoney, parseMoneyToCents } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -105,21 +89,6 @@ const PER_UNIT_SUFFIX: Record<Dimension, string> = {
   count: '/pc',
 };
 
-/**
- * Per-column cell layout. Desktop: the name takes ~60% of the row and every other
- * column shrinks to its content, grouped on the right. In a list narrower than 48rem each row becomes a
- * compact card — name, date and price on top; type / supplier / actions below —
- * so nothing is clipped or needs sideways scrolling.
- */
-const CELL_CLASS: Record<string, string> = {
-  name: '@3xl:w-[60%] @max-3xl:col-span-2 @max-3xl:col-start-1 @max-3xl:row-start-1',
-  updated: '@3xl:w-px @3xl:px-2 @3xl:whitespace-nowrap @max-3xl:col-span-2 @max-3xl:col-start-1 @max-3xl:row-start-2',
-  price: '@3xl:w-px @3xl:px-2 @3xl:whitespace-nowrap @3xl:text-right @max-3xl:col-start-3 @max-3xl:row-span-2 @max-3xl:row-start-1 @max-3xl:self-start',
-  dimension: '@3xl:w-px @3xl:px-2 @3xl:whitespace-nowrap @max-3xl:col-start-1 @max-3xl:row-start-3 @max-3xl:mt-1',
-  supplier: '@3xl:w-px @3xl:pl-5 @3xl:pr-2 @max-3xl:col-start-2 @max-3xl:row-start-3 @max-3xl:mt-1 @max-3xl:min-w-0',
-  actions: '@3xl:w-px @3xl:pl-2 @3xl:whitespace-nowrap @max-3xl:col-start-3 @max-3xl:row-start-3 @max-3xl:mt-1 @max-3xl:justify-self-end',
-};
-
 function draftFromRow(row: IngredientRow): Draft {
   return {
     name: row.name,
@@ -143,7 +112,7 @@ function operationalInput(draft: Draft) {
  * because the server formats in UTC and the browser in the viewer's zone, which can
  * disagree by a day at the boundary — a cosmetic diff, never a data one.
  */
-function formatUpdated(value: Date | string | null | undefined): string {
+export function formatUpdated(value: Date | string | null | undefined): string {
   if (!value) return '—';
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
@@ -154,20 +123,21 @@ function formatUpdated(value: Date | string | null | undefined): string {
   });
 }
 
-type GridMeta = {
+/** Everything a row needs to render itself, shared across the whole list. */
+type RowContext = {
   drafts: Record<string, Draft>;
   currency: string;
   canSeeCosts: boolean;
+  canManageSuppliers: boolean;
   pending: boolean;
-  /** The one row currently in EDIT state; every other row renders as plain text. */
   editingId: string | null;
   onField: (id: string, patch: Partial<Draft>) => void;
   onEdit: (id: string) => void;
   onSave: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
-  /** Opens the read-only details popup (price, supplier, nutrition, allergens). */
   onView: (id: string) => void;
+  onEditSupplier: (id: string) => void;
   /**
    * Manager-only (Sprint 6 D7): true when a "reorder from ingredient" task may be
    * offered for this row — i.e. the viewer sees costs AND the row is at/below its
@@ -178,24 +148,9 @@ type GridMeta = {
   dimensionPillLabel: (d: Dimension) => string;
   /** Why this row's type can't change (null = it can). */
   typeLockReason: (id: string) => string | null;
-  changeTypeLabel: string;
-  editLabel: string;
-  saveLabel: string;
-  cancelLabel: string;
-  deleteLabel: string;
-  viewLabel: string;
-  needsPricingLabel: string;
-  missingPriceLabel: string;
-  // Suppliers (Sprint 7, manager-only).
-  canManageSuppliers: boolean;
-  onEditSupplier: (id: string) => void;
   supplierName: (id: string) => string | null;
-  /** True when the supplier entry has no usable price yet (shown quietly, never blocking). */
-  pricingIncomplete: (id: string) => boolean;
-  pricingIncompleteLabel: string;
-  supplierLabel: string;
-  noSupplierLabel: string;
-  pendingCostLabel: string;
+  t: ReturnType<typeof useTranslations>;
+  tSuppliers: ReturnType<typeof useTranslations>;
 };
 
 export function IngredientGrid({
@@ -253,17 +208,22 @@ export function IngredientGrid({
   );
   const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState<IngredientSort>(DEFAULT_INGREDIENT_SORT);
+  // Suppliers (Sprint 7, manager-only): the default link per ingredient + which
+  // row's supplier editor is open. Declared before `visibleRows` — search reads it.
+  const [supplierLinks, setSupplierLinks] = React.useState<
+    Record<string, DefaultSupplierSummary | null>
+  >(() => ({ ...initialSupplierLinks }));
   /**
-   * Client-side sort over the loaded list, driven by the column headings (click to
-   * sort, click again to reverse). Rows whose COST can't be trusted stay pinned on
-   * top whatever the column (decision D2) — see `compareIngredients`.
+   * Search + sort over the COMPLETE loaded list (there is no pagination — the page
+   * loads every active ingredient up front), driven by the compact "Sort by"
+   * control. Rows whose COST can't be trusted stay pinned on top at the DEFAULT sort
+   * (decision D2) — see `compareIngredients`; picking a column clears that pin.
    */
   const visibleRows = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
     return rows
-      .filter((r) => !q || r.name.toLowerCase().includes(q))
+      .filter((r) => ingredientMatchesQuery(r, supplierLinks[r.id] ?? null, query))
       .sort((a, b) => compareIngredients(a, b, sort, canSeeCosts));
-  }, [rows, query, sort, canSeeCosts]);
+  }, [rows, query, sort, canSeeCosts, supplierLinks]);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [deleteProblem, setDeleteProblem] = React.useState<
@@ -288,11 +248,6 @@ export function IngredientGrid({
   // The details popup. Its editors (supplier / nutrition / allergens) REPLACE it while
   // open and hand back to it on close, so popups never stack.
   const [detailsId, setDetailsId] = React.useState<string | null>(null);
-  // Suppliers (Sprint 7, manager-only): the default link per ingredient + which
-  // row's supplier editor is open.
-  const [supplierLinks, setSupplierLinks] = React.useState<
-    Record<string, DefaultSupplierSummary | null>
-  >(() => ({ ...initialSupplierLinks }));
   const [supplierEditId, setSupplierEditId] = React.useState<string | null>(null);
   // Price-entry preferences per supplier name, updated in place as packs are saved
   // so a second ingredient from the same supplier prefills without a round-trip.
@@ -511,324 +466,33 @@ export function IngredientGrid({
     setDrafts((prev) => ({ ...prev, [row.id]: draftFromRow(row) }));
   }, []);
 
-  const columns = React.useMemo<ColumnDef<IngredientRow>[]>(
-    () => [
-      {
-        id: 'name',
-        header: t('columns.name'),
-        cell: ({ row, table }) => {
-          const meta = table.options.meta as GridMeta;
-          const draft = meta.drafts[row.original.id];
-          if (!draft) return null;
-          const editing = meta.editingId === row.original.id;
-          return (
-            <div className="flex min-w-0 flex-col gap-0.5 @3xl:min-w-[10rem]">
-              {editing ? (
-                <Input
-                  autoFocus
-                  aria-label={t('columns.name')}
-                  value={draft.name}
-                  disabled={meta.pending}
-                  onChange={(e) =>
-                    meta.onField(row.original.id, { name: e.target.value })
-                  }
-                />
-              ) : (
-                <span className="break-words text-lg font-semibold leading-snug text-foreground">
-                  {row.original.name}
-                </span>
-              )}
-              {/* Managers see pricing status under the price; kitchen has no price column. */}
-              {row.original.needsPricing && !meta.canSeeCosts && (
-                <span className="text-xs text-muted-foreground">{meta.needsPricingLabel}</span>
-              )}
-            </div>
-          );
-        },
-      },
-      {
-        id: 'dimension',
-        header: t('columns.dimension'),
-        cell: ({ row, table }) => {
-          const meta = table.options.meta as GridMeta;
-          const draft = meta.drafts[row.original.id];
-          if (!draft) return null;
-          if (meta.editingId !== row.original.id) {
-            return (
-              <button
-                type="button"
-                disabled={meta.pending}
-                onClick={() => meta.onEdit(row.original.id)}
-                aria-label={`${meta.changeTypeLabel}: ${row.original.name} — ${meta.dimensionLabel(row.original.dimension)}`}
-                title={meta.changeTypeLabel}
-                // Small and neutral; the invisible ::after pad keeps a ~40 px click target.
-                className="relative inline-flex h-6 min-w-8 cursor-pointer items-center justify-center whitespace-nowrap rounded-md border border-border bg-surface-2 px-1.5 text-[13px] font-medium text-muted-foreground after:absolute after:-inset-x-1.5 after:-inset-y-2 hover:border-foreground/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-              >
-                {meta.dimensionPillLabel(row.original.dimension)}
-              </button>
-            );
-          }
-          const lockReason = meta.typeLockReason(row.original.id);
-          return (
-            <div className="flex w-40 flex-col gap-1">
-              <Select
-                aria-label={t('columns.dimension')}
-                aria-describedby={lockReason ? `type-lock-${row.original.id}` : undefined}
-                className="w-32"
-                value={draft.dimension}
-                disabled={meta.pending || lockReason !== null}
-                onChange={(e) =>
-                  meta.onField(row.original.id, {
-                    dimension: e.target.value as Dimension,
-                  })
-                }
-              >
-                {DIMENSIONS.map((d) => (
-                  <option key={d} value={d}>
-                    {meta.dimensionLabel(d)} ({meta.dimensionPillLabel(d)})
-                  </option>
-                ))}
-              </Select>
-              {lockReason ? (
-                <span id={`type-lock-${row.original.id}`} className="text-sm leading-snug text-muted-foreground">
-                  {lockReason}
-                </span>
-              ) : draft.dimension !== row.original.dimension && meta.canSeeCosts ? (
-                <span className="text-sm leading-snug text-amber-800 dark:text-amber-300">
-                  {t('typeLock.checkPrice', { unit: meta.dimensionPillLabel(draft.dimension) })}
-                </span>
-              ) : null}
-            </div>
-          );
-        },
-      },
-      // Price is manager-only (Sprint F4) — kitchen rows have no price at all.
-      ...(canSeeCosts
-        ? [
-            {
-              id: 'price',
-              header: t('columns.price'),
-              cell: ({ row, table }) => {
-                const meta = table.options.meta as GridMeta;
-                const draft = meta.drafts[row.original.id];
-                if (!draft) return null;
-                if (meta.editingId !== row.original.id) {
-                  // Unpriced reads "—", never €0.00; a real recorded zero still shows €0.00.
-                  const priceCents = displayPriceCents(row.original);
-                  if (priceCents === null) {
-                    return (
-                      <div className="flex flex-col items-end leading-tight">
-                        <span aria-hidden className="text-lg text-muted-foreground">—</span>
-                        {row.original.needsPricing ? (
-                          <span className="whitespace-nowrap text-xs font-medium text-amber-800 dark:text-amber-300">
-                            {meta.needsPricingLabel}
-                          </span>
-                        ) : (
-                          <span className="sr-only">{meta.missingPriceLabel}</span>
-                        )}
-                      </div>
-                    );
-                  }
-                  return (
-                    <div className="flex items-baseline justify-end gap-0.5 whitespace-nowrap tabular-nums">
-                      <span className="text-lg font-medium leading-tight text-foreground">
-                        {formatMoney(priceCents, meta.currency)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {PER_UNIT_SUFFIX[row.original.dimension]}
-                      </span>
-                    </div>
-                  );
-                }
-                return (
-                  <div className="flex items-center justify-end gap-1.5">
-                    <Input
-                      aria-label={t('columns.price')}
-                      inputMode="decimal"
-                      className="w-28 text-right tabular-nums"
-                      value={draft.priceText}
-                      disabled={meta.pending}
-                      onChange={(e) =>
-                        meta.onField(row.original.id, { priceText: e.target.value })
-                      }
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      {PER_UNIT_SUFFIX[draft.dimension]}
-                    </span>
-                  </div>
-                );
-              },
-            } satisfies ColumnDef<IngredientRow>,
-          ]
-        : []),
-      {
-        id: 'supplier',
-        header: t('columns.supplier'),
-        cell: ({ row, table }) => {
-          const meta = table.options.meta as GridMeta;
-          const name = meta.supplierName(row.original.id);
-          const hasPending =
-            meta.canManageSuppliers && row.original.pendingPriceCents != null;
-          // Suppliers are MANAGER-ONLY (Sprint 7): a manager edits the default
-          // supplier + pack via the dialog; kitchen sees the name read-only.
-          if (!meta.canManageSuppliers) {
-            return (
-              <span className="block truncate text-[13px] text-muted-foreground @3xl:max-w-[9rem]" title={name ?? undefined}>
-                {name ?? '—'}
-              </span>
-            );
-          }
-          // Stays a TOGGLE in both row states: supplier editing is its own flow
-          // (product name, case pack, VAT), never an inline field.
-          return (
-            <div className="flex min-w-0 flex-col items-start gap-0.5">
-              <button
-                type="button"
-                disabled={meta.pending}
-                title={`${meta.supplierLabel}: ${name ?? meta.noSupplierLabel}`}
-                aria-haspopup="dialog"
-                onClick={() => meta.onEditSupplier(row.original.id)}
-                // Compact text + caret; the invisible ::after pad keeps a comfortable target.
-                className={cn(
-                  'relative inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded text-[13px] after:absolute after:-inset-x-1.5 after:-inset-y-2.5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default @3xl:max-w-[9rem]',
-                  name ? 'text-foreground/80' : 'text-muted-foreground',
-                )}
-              >
-                <span className="truncate">{name ?? meta.noSupplierLabel}</span>
-                <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-              </button>
-              {!hasPending && meta.pricingIncomplete(row.original.id) && (
-                <span className="text-xs text-muted-foreground @3xl:whitespace-nowrap">
-                  {meta.pricingIncompleteLabel}
-                </span>
-              )}
-              {hasPending && (
-                <span className="text-xs font-medium text-amber-800 @3xl:whitespace-nowrap dark:text-amber-300">
-                  {meta.pendingCostLabel}
-                </span>
-              )}
-            </div>
-          );
-        },
-      },
-      {
-        id: 'updated',
-        header: t('columns.updated'),
-        // System-set, never editable — it is the audit trail of the row, not a field.
-        cell: ({ row }) => (
-          <span
-            className="whitespace-nowrap text-xs text-muted-foreground"
-            suppressHydrationWarning
-          >
-            {formatUpdated(row.original.updatedAt)}
-          </span>
-        ),
-      },
-      {
-        id: 'actions',
-        header: '',
-        cell: ({ row, table }) => {
-          const meta = table.options.meta as GridMeta;
-          const id = row.original.id;
-          if (meta.editingId === id) {
-            return (
-              <div className="flex items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={meta.pending}
-                  onClick={() => meta.onCancel(id)}
-                  className="text-base"
-                >
-                  {meta.cancelLabel}
-                </Button>
-                <Button
-                  type="button"
-                  disabled={meta.pending}
-                  onClick={() => meta.onSave(id)}
-                  className="text-base"
-                >
-                  {meta.saveLabel}
-                </Button>
-              </div>
-            );
-          }
-          return (
-            <div className="-my-1 -mr-1.5 flex items-center justify-end">
-              {meta.canReorder(id) && (
-                <AddToTaskListMenu kind="reorder" sourceId={id} />
-              )}
-              <IconAction
-                id={`ingredient-view-${id}`}
-                label={meta.viewLabel}
-                disabled={meta.pending}
-                onClick={() => meta.onView(id)}
-              >
-                <Eye />
-              </IconAction>
-              <IconAction
-                label={meta.editLabel}
-                disabled={meta.pending}
-                onClick={() => meta.onEdit(id)}
-              >
-                <Pencil />
-              </IconAction>
-              <IconAction
-                label={meta.deleteLabel}
-                disabled={meta.pending}
-                onClick={() => meta.onDelete(id)}
-              >
-                <Trash2 />
-              </IconAction>
-            </div>
-          );
-        },
-      },
-    ],
-    [t, canSeeCosts],
-  );
+  const ctx: RowContext = {
+    drafts,
+    currency,
+    canSeeCosts,
+    canManageSuppliers: canSeeCosts,
+    pending,
+    editingId,
+    onField,
+    onEdit,
+    onSave,
+    onCancel,
+    onDelete: requestDelete,
+    onView: viewDetails,
+    onEditSupplier: editSupplier,
+    canReorder,
+    dimensionLabel,
+    dimensionPillLabel,
+    typeLockReason,
+    supplierName,
+    t,
+    tSuppliers,
+  };
 
-  const table = useReactTable({
-    data: visibleRows,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    meta: {
-      drafts,
-      currency,
-      canSeeCosts,
-      pending,
-      editingId,
-      onField,
-      onEdit,
-      onSave,
-      onCancel,
-      onDelete: requestDelete,
-      onView: viewDetails,
-      canReorder,
-      dimensionLabel,
-      dimensionPillLabel,
-      typeLockReason,
-      changeTypeLabel: t('typeLock.change'),
-      editLabel: t('actions.edit'),
-      saveLabel: t('actions.save'),
-      cancelLabel: t('actions.cancel'),
-      deleteLabel: t('actions.delete'),
-      viewLabel: t('actions.view'),
-      needsPricingLabel: t('needsPricing'),
-      missingPriceLabel: t('missingPrice'),
-      canManageSuppliers: canSeeCosts,
-      onEditSupplier: editSupplier,
-      supplierName,
-      pricingIncomplete: (id: string) => {
-        const link = supplierLinks[id];
-        return link != null && link.packPriceCents == null;
-      },
-      pricingIncompleteLabel: tSuppliers('noPriceYet'),
-      supplierLabel: t('columns.supplier'),
-      noSupplierLabel: tSuppliers('none'),
-      pendingCostLabel: tSuppliers('pendingBadge'),
-    } satisfies GridMeta,
-  });
+  const isDateSort = sort.column === 'updated';
+  const directionLabel = isDateSort
+    ? t(sort.direction === 'asc' ? 'sort.direction.dateAsc' : 'sort.direction.dateDesc')
+    : t(sort.direction === 'asc' ? 'sort.direction.alphaAsc' : 'sort.direction.alphaDesc');
 
   return (
     <div className="flex flex-col gap-4">
@@ -843,8 +507,9 @@ export function IngredientGrid({
 
       {/*
         Search-first: the page's frequent tasks are search / browse / select, so the
-        search field owns the row and the two add paths sit to the right. Adding is
-        occasional — one click away, never cluttering the everyday workspace.
+        search field owns the row. The compact "Sort by" control and the two add
+        paths sit beside it — sorting is occasional, adding is occasional, neither
+        should crowd the everyday search.
       */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Input
@@ -855,7 +520,40 @@ export function IngredientGrid({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <div className="flex items-center gap-2 sm:justify-end">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <div className="flex items-center gap-1.5">
+            <Select
+              aria-label={t('sort.label')}
+              className="w-auto min-w-[9.5rem] text-sm"
+              value={sort.column}
+              onChange={(e) => {
+                const column = e.target.value as IngredientSortColumn;
+                setSort({ column, direction: firstDirection(column) });
+              }}
+            >
+              <option value="name">{t('sort.column.name')}</option>
+              <option value="supplier">{t('sort.column.supplier')}</option>
+              <option value="updated">{t('sort.column.updated')}</option>
+            </Select>
+            <button
+              type="button"
+              onClick={() =>
+                setSort((current) => ({
+                  column: current.column,
+                  direction: current.direction === 'asc' ? 'desc' : 'asc',
+                }))
+              }
+              aria-label={directionLabel}
+              title={directionLabel}
+              className="inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors hover:border-muted-foreground/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              {sort.direction === 'asc' ? (
+                <ArrowUp className="size-4" aria-hidden />
+              ) : (
+                <ArrowDown className="size-4" aria-hidden />
+              )}
+            </button>
+          </div>
           <Button
             type="button"
             variant="outline"
@@ -872,141 +570,24 @@ export function IngredientGrid({
         </div>
       </div>
 
-      {/*
-        Layout follows the LIST's own width (container query), not the viewport: the
-        sidebar appears at lg, so a narrow list can sit on a wide screen.
-      */}
-      <div className="@container flex flex-col gap-3">
-        {/* Column headings sort on wide lists; narrow lists get the same sort as one select. */}
-        <label className="flex items-center gap-2 text-sm text-muted-foreground @3xl:hidden">
-          <span className="shrink-0">{t('sort.label')}</span>
-          <Select
-            className="h-9 flex-1 text-sm"
-            value={`${sort.column}:${sort.direction}`}
-            onChange={(e) => {
-              const [column, direction] = e.target.value.split(':') as [IngredientSortColumn, SortDirection];
-              setSort({ column, direction });
-            }}
-          >
-            {INGREDIENT_SORT_COLUMNS.filter((c) => canSeeCosts || c !== 'price').flatMap((c) =>
-              (['asc', 'desc'] as const).map((d) => (
-                <option key={`${c}:${d}`} value={`${c}:${d}`}>
-                  {t('sort.option', { column: t(`columns.${c}`), direction: t(`sort.${d}`) })}
-                </option>
-              )),
-            )}
-          </Select>
-        </label>
-
-        <Card className="overflow-x-auto">
-          <table className="w-full border-collapse text-base">
-            <thead>
-              {table.getHeaderGroups().map((hg) => (
-                <tr key={hg.id} className="border-b border-border @max-3xl:hidden">
-                  {hg.headers.map((header) => (
-                    <th
-                      key={header.id}
-                      aria-sort={
-                        sort.column === header.column.id
-                          ? sort.direction === 'asc'
-                            ? 'ascending'
-                            : 'descending'
-                          : undefined
-                      }
-                      className={cn(
-                        'px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground first:pl-4 last:pr-4',
-                        CELL_CLASS[header.column.id],
-                        header.column.id === 'price' && 'text-right',
-                      )}
-                    >
-                      {isSortColumn(header.column.id) ? (
-                        <SortHeading
-                          label={flexRender(header.column.columnDef.header, header.getContext())}
-                          active={sort.column === header.column.id}
-                          direction={sort.direction}
-                          alignRight={header.column.id === 'price'}
-                          ariaLabel={t('sort.by', { column: String(header.column.columnDef.header) })}
-                          onClick={() =>
-                            setSort((current) => nextSort(current, header.column.id as IngredientSortColumn))
-                          }
-                        />
-                      ) : (
-                        flexRender(header.column.columnDef.header, header.getContext())
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={columns.length}
-                    className="px-4 py-8 text-center text-base text-muted-foreground"
-                  >
-                    {query ? t('noMatches') : t('empty')}
-                  </td>
-                </tr>
-              )}
-              {table.getRowModel().rows.map((row) => {
-                const editing = editingId === row.original.id;
-                return (
-                  <tr
-                    key={row.id}
-                    id={`ingredient-row-${row.original.id}`}
-                    // Enter saves, Esc cancels — the keyboard mirror of the two buttons.
-                    onKeyDown={
-                      editing
-                        ? (e) => {
-                            if (e.key === 'Enter') {
-                              // A focused button (Save/Cancel/supplier) already acts on
-                              // Enter; saving again here would double-fire.
-                              if (
-                                e.target instanceof HTMLElement &&
-                                e.target.closest('button')
-                              ) {
-                                return;
-                              }
-                              e.preventDefault();
-                              onSave(row.original.id);
-                            } else if (e.key === 'Escape') {
-                              e.preventDefault();
-                              onCancel(row.original.id);
-                            }
-                          }
-                        : undefined
-                    }
-                    className={cn(
-                      // Hairline dividers only — no borders around individual cells.
-                      'border-b border-border/60 align-middle transition-colors duration-700 last:border-0',
-                      // Phones: a compact card (grid) — or a plain stack while editing.
-                      editing
-                        ? '@max-3xl:flex @max-3xl:flex-col @max-3xl:gap-2 @max-3xl:px-4 @max-3xl:py-3'
-                        : '@max-3xl:grid @max-3xl:grid-cols-[auto_minmax(0,1fr)_auto] @max-3xl:items-center @max-3xl:gap-x-3 @max-3xl:gap-y-0.5 @max-3xl:px-4 @max-3xl:py-3',
-                      editing && 'bg-accent-500/5',
-                      flashId === row.original.id && 'bg-accent-500/10',
-                    )}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td
-                        key={cell.id}
-                        className={cn(
-                          '@3xl:px-3 @3xl:py-2.5 @3xl:first:pl-4 @3xl:last:pr-4',
-                          CELL_CLASS[cell.column.id],
-                          (cell.column.id === 'name' || cell.column.id === 'updated') && !canSeeCosts && '@max-3xl:col-span-3',
-                        )}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
-      </div>
+      <Card className="overflow-hidden">
+        {visibleRows.length === 0 ? (
+          <div className="px-4 py-8 text-center text-base text-muted-foreground">
+            {query ? t('noMatches') : t('empty')}
+          </div>
+        ) : (
+          <div className="divide-y divide-border/60">
+            {visibleRows.map((row) => (
+              <IngredientRowItem
+                key={row.id}
+                row={row}
+                flash={flashId === row.id}
+                ctx={ctx}
+              />
+            ))}
+          </div>
+        )}
+      </Card>
 
       <ConfirmDialog
         open={confirmId !== null}
@@ -1243,6 +824,236 @@ export function IngredientGrid({
 }
 
 /**
+ * One ingredient row: name + supplier grouped on the left (the name takes most of
+ * the width and wraps freely), price + row actions grouped on the right. The same
+ * two-zone layout holds at every width — only the name's wrapping and the right
+ * zone's own wrapping (price above icons, if it ever gets tight) respond to space.
+ */
+function IngredientRowItem({
+  row,
+  flash,
+  ctx,
+}: {
+  row: IngredientRow;
+  flash: boolean;
+  ctx: RowContext;
+}) {
+  const { t, tSuppliers } = ctx;
+  const draft = ctx.drafts[row.id];
+  if (!draft) return null;
+  const editing = ctx.editingId === row.id;
+  const lockReason = ctx.typeLockReason(row.id);
+  const supplier = ctx.supplierName(row.id);
+  const noSupplierLabel = tSuppliers('none');
+  const hasPending = ctx.canManageSuppliers && row.pendingPriceCents != null;
+  const priceCents = ctx.canSeeCosts ? displayPriceCents(row) : null;
+
+  return (
+    <div
+      id={`ingredient-row-${row.id}`}
+      // Enter saves, Esc cancels — the keyboard mirror of the Save/Cancel buttons.
+      onKeyDown={
+        editing
+          ? (e) => {
+              if (e.key === 'Enter') {
+                // A focused button (Save/Cancel/supplier) already acts on Enter;
+                // saving again here would double-fire.
+                if (e.target instanceof HTMLElement && e.target.closest('button')) return;
+                e.preventDefault();
+                ctx.onSave(row.id);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                ctx.onCancel(row.id);
+              }
+            }
+          : undefined
+      }
+      className={cn(
+        'flex items-start justify-between gap-3 px-4 py-3 transition-colors duration-700',
+        editing && 'bg-accent-500/5',
+        flash && 'bg-accent-500/10',
+      )}
+    >
+      {/* Left: identity — name, then supplier (or the type editor while editing). */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        {editing ? (
+          <Input
+            autoFocus
+            aria-label={t('columns.name')}
+            value={draft.name}
+            disabled={ctx.pending}
+            onChange={(e) => ctx.onField(row.id, { name: e.target.value })}
+          />
+        ) : (
+          <span className="break-words text-lg font-semibold leading-snug text-foreground">
+            {row.name}
+          </span>
+        )}
+
+        {editing ? (
+          <div className="flex flex-col gap-1">
+            <Select
+              aria-label={t('columns.dimension')}
+              aria-describedby={lockReason ? `type-lock-${row.id}` : undefined}
+              className="w-40"
+              value={draft.dimension}
+              disabled={ctx.pending || lockReason !== null}
+              onChange={(e) =>
+                ctx.onField(row.id, { dimension: e.target.value as Dimension })
+              }
+            >
+              {DIMENSIONS.map((d) => (
+                <option key={d} value={d}>
+                  {ctx.dimensionLabel(d)} ({ctx.dimensionPillLabel(d)})
+                </option>
+              ))}
+            </Select>
+            {lockReason ? (
+              <span id={`type-lock-${row.id}`} className="text-sm leading-snug text-muted-foreground">
+                {lockReason}
+              </span>
+            ) : draft.dimension !== row.dimension && ctx.canSeeCosts ? (
+              <span className="text-sm leading-snug text-amber-800 dark:text-amber-300">
+                {t('typeLock.checkPrice', { unit: ctx.dimensionPillLabel(draft.dimension) })}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              {ctx.canManageSuppliers ? (
+                <button
+                  type="button"
+                  disabled={ctx.pending}
+                  title={`${t('columns.supplier')}: ${supplier ?? noSupplierLabel}`}
+                  aria-haspopup="dialog"
+                  onClick={() => ctx.onEditSupplier(row.id)}
+                  // Compact text + caret; the invisible ::after pad keeps a comfortable target.
+                  className={cn(
+                    'relative inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded text-[13px] after:absolute after:-inset-x-1.5 after:-inset-y-2.5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default',
+                    supplier ? 'text-foreground/80' : 'text-muted-foreground',
+                  )}
+                >
+                  <span className="truncate">{supplier ?? noSupplierLabel}</span>
+                  <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                </button>
+              ) : (
+                supplier && (
+                  <span className="truncate text-[13px] text-muted-foreground">{supplier}</span>
+                )
+              )}
+              {hasPending && (
+                <span className="whitespace-nowrap text-xs font-medium text-amber-800 dark:text-amber-300">
+                  {tSuppliers('pendingBadge')}
+                </span>
+              )}
+            </div>
+            {row.needsPricing && !ctx.canSeeCosts && (
+              <span className="text-xs text-muted-foreground">{t('needsPricing')}</span>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Right: price, then the row's actions — Save/Cancel while editing. */}
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        {editing ? (
+          <>
+            {ctx.canSeeCosts && (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  aria-label={t('columns.price')}
+                  inputMode="decimal"
+                  className="w-24 text-right tabular-nums"
+                  value={draft.priceText}
+                  disabled={ctx.pending}
+                  onChange={(e) => ctx.onField(row.id, { priceText: e.target.value })}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {PER_UNIT_SUFFIX[draft.dimension]}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={ctx.pending}
+                onClick={() => ctx.onCancel(row.id)}
+                className="text-base"
+              >
+                {t('actions.cancel')}
+              </Button>
+              <Button
+                type="button"
+                disabled={ctx.pending}
+                onClick={() => ctx.onSave(row.id)}
+                className="text-base"
+              >
+                {t('actions.save')}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            {ctx.canSeeCosts &&
+              (priceCents === null ? (
+                // Unpriced reads "—" plus one small, neutral action — never a red flag
+                // repeated on the row; the "why" lives in the editor/details.
+                <div className="flex items-baseline gap-1.5 whitespace-nowrap">
+                  <span aria-hidden className="text-base text-muted-foreground">—</span>
+                  <button
+                    type="button"
+                    disabled={ctx.pending}
+                    onClick={() => ctx.onEdit(row.id)}
+                    className="cursor-pointer text-xs font-medium text-accent-700 hover:underline disabled:cursor-default disabled:no-underline dark:text-accent-300"
+                  >
+                    {t('actions.addPrice')}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
+                  <span className="text-base font-normal text-foreground">
+                    {formatMoney(priceCents, ctx.currency)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {PER_UNIT_SUFFIX[row.dimension]}
+                  </span>
+                </div>
+              ))}
+            <div className="-my-1 -mr-1.5 flex items-center">
+              {ctx.canReorder(row.id) && <AddToTaskListMenu kind="reorder" sourceId={row.id} />}
+              <IconAction
+                id={`ingredient-view-${row.id}`}
+                label={t('actions.view')}
+                disabled={ctx.pending}
+                onClick={() => ctx.onView(row.id)}
+              >
+                <Eye />
+              </IconAction>
+              <IconAction
+                label={t('actions.edit')}
+                disabled={ctx.pending}
+                onClick={() => ctx.onEdit(row.id)}
+              >
+                <Pencil />
+              </IconAction>
+              <IconAction
+                label={t('actions.delete')}
+                disabled={ctx.pending}
+                onClick={() => ctx.onDelete(row.id)}
+              >
+                <Trash2 />
+              </IconAction>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * A row icon action: accessible name, a visible tooltip on hover AND keyboard focus
  * (a bare `title` never shows on focus), and a 40 px click target.
  */
@@ -1279,42 +1090,5 @@ function IconAction({
         {label}
       </span>
     </span>
-  );
-}
-
-const isSortColumn = (id: string): id is IngredientSortColumn =>
-  (INGREDIENT_SORT_COLUMNS as readonly string[]).includes(id);
-
-/** A column heading that sorts its column: the label plus a small up/down arrow. */
-function SortHeading({
-  label,
-  active,
-  direction,
-  alignRight,
-  ariaLabel,
-  onClick,
-}: {
-  label: React.ReactNode;
-  active: boolean;
-  direction: SortDirection;
-  alignRight: boolean;
-  ariaLabel: string;
-  onClick: () => void;
-}) {
-  const Icon = !active ? ArrowUpDown : direction === 'asc' ? ArrowUp : ArrowDown;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={ariaLabel}
-      className={cn(
-        'inline-flex cursor-pointer items-center gap-1 rounded uppercase tracking-wider hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        active && 'text-foreground',
-        alignRight && 'flex-row-reverse',
-      )}
-    >
-      {label}
-      <Icon className={cn('size-3.5', !active && 'opacity-40')} aria-hidden />
-    </button>
   );
 }

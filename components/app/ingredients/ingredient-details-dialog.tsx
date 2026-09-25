@@ -16,7 +16,11 @@ import { Button } from '@/components/ui/button';
 import { NUTRIENT_UNIT } from '@/components/app/ingredients/ingredient-nutrition-dialog';
 import type { AllergenTag } from '@/lib/data/allergens';
 import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
-import type { IngredientRow, VatCategoryOption } from '@/components/app/ingredients/ingredient-grid';
+import {
+  formatUpdated,
+  type IngredientRow,
+  type VatCategoryOption,
+} from '@/components/app/ingredients/ingredient-grid';
 
 type Section = 'supplier' | 'nutrition' | 'allergens';
 
@@ -158,6 +162,9 @@ export function IngredientDetailsDialog({
             </h2>
             <p className="text-sm text-muted-foreground">
               {t('measurement', { type: tDim(row.dimension), unit: tIngredients(`typePill.${row.dimension}`) })}
+            </p>
+            <p className="text-sm text-muted-foreground" suppressHydrationWarning>
+              {t('updated', { date: formatUpdated(row.updatedAt) })}
             </p>
           </div>
           <button
