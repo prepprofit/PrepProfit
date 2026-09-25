@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { validateFolderMove, folderLabel, type FolderMoveRejection } from '@/lib/folders/tree';
 import {
   ingredients,
   menuExtras,
@@ -85,16 +86,21 @@ export async function listTrashedMenus(db: TenantClient, organizationId: string)
 
 // ── Folders ──────────────────────────────────────────────────────────────────
 
-export type MenuFolderSummary = { id: string; name: string; dishCount: number };
+export type MenuFolderSummary = { id: string; name: string; parentId: string | null; dishCount: number };
 
-/** Every folder with its active-dish count, plus how many active dishes are unfiled. */
+/**
+ * Every folder in the org (any level, name order) with its DIRECT active-dish
+ * count, plus how many active dishes are unfiled. Returns the FULL flat org
+ * tree — callers use lib/folders/tree.ts to derive one level's children, an
+ * ancestor breadcrumb, or the valid move targets.
+ */
 export async function listMenuFolders(
   db: TenantClient,
   organizationId: string,
 ): Promise<{ folders: MenuFolderSummary[]; unfiledCount: number }> {
   const [folderRows, countRows] = await Promise.all([
     db
-      .select({ id: menuFolders.id, name: menuFolders.name })
+      .select({ id: menuFolders.id, name: menuFolders.name, parentId: menuFolders.parentId })
       .from(menuFolders)
       .where(eq(menuFolders.organizationId, organizationId))
       .orderBy(asc(menuFolders.name)),
@@ -106,7 +112,12 @@ export async function listMenuFolders(
   ]);
   const counts = new Map(countRows.map((r) => [r.folderId, r.value]));
   return {
-    folders: folderRows.map((f) => ({ id: f.id, name: f.name, dishCount: counts.get(f.id) ?? 0 })),
+    folders: folderRows.map((f) => ({
+      id: f.id,
+      name: f.name,
+      parentId: f.parentId,
+      dishCount: counts.get(f.id) ?? 0,
+    })),
     unfiledCount: counts.get(null) ?? 0,
   };
 }
@@ -127,21 +138,22 @@ export async function getMenuFolder(
 export async function listMenuFolderOptions(
   db: TenantClient,
   organizationId: string,
-): Promise<{ id: string; name: string }[]> {
+): Promise<{ id: string; name: string; parentId: string | null }[]> {
   return db
-    .select({ id: menuFolders.id, name: menuFolders.name })
+    .select({ id: menuFolders.id, name: menuFolders.name, parentId: menuFolders.parentId })
     .from(menuFolders)
     .where(eq(menuFolders.organizationId, organizationId))
     .orderBy(asc(menuFolders.name));
 }
 
-/** Throws a unique violation on a duplicate name (the action maps it). */
+/** Throws a unique violation on a duplicate name within the same parent (the action maps it). */
 export async function createMenuFolder(
   db: TenantClient,
   organizationId: string,
   name: string,
+  parentId: string | null = null,
 ): Promise<MenuFolder> {
-  const [row] = await db.insert(menuFolders).values({ organizationId, name }).returning();
+  const [row] = await db.insert(menuFolders).values({ organizationId, name, parentId }).returning();
   if (!row) throw new Error('Failed to create menu folder.');
   return row;
 }
@@ -160,15 +172,61 @@ export async function renameMenuFolder(
   return row ?? null;
 }
 
+export type MoveMenuFolderResult =
+  | { ok: true; previousParentId: string | null }
+  | { ok: false; reason: FolderMoveRejection };
+
 /**
- * Delete a folder; its dishes (active AND trashed) move to Unfiled first, so the
- * restrict FK never blocks and a later restore lands somewhere visible.
+ * Reparents a folder. Locks every folder row of the org FOR UPDATE (id order,
+ * deadlock-free) so two concurrent moves in the same org serialize instead of
+ * racing into a cycle. Rejects a self-move or a move into one of the folder's
+ * own descendants (lib/folders/tree.ts, checked against the just-locked
+ * snapshot). A same-name collision at the destination surfaces as the DB's
+ * existing partial-unique-index violation, same as create/rename.
+ */
+export async function moveMenuFolder(
+  db: TenantClient,
+  organizationId: string,
+  id: string,
+  newParentId: string | null,
+): Promise<MoveMenuFolderResult> {
+  const rows = await db
+    .select({ id: menuFolders.id, name: menuFolders.name, parentId: menuFolders.parentId })
+    .from(menuFolders)
+    .where(eq(menuFolders.organizationId, organizationId))
+    .orderBy(asc(menuFolders.id))
+    .for('update');
+
+  const rejection = validateFolderMove(rows, id, newParentId);
+  if (rejection) return { ok: false, reason: rejection };
+
+  const previousParentId = rows.find((f) => f.id === id)!.parentId;
+  await db
+    .update(menuFolders)
+    .set({ parentId: newParentId })
+    .where(and(eq(menuFolders.organizationId, organizationId), eq(menuFolders.id, id)));
+
+  return { ok: true, previousParentId };
+}
+
+/**
+ * Delete a folder; its DIRECT dishes (active AND trashed) move to Unfiled first,
+ * so the restrict FK never blocks and a later restore lands somewhere visible.
+ * Blocked (no write happens) while the folder still has subfolders — never
+ * silently drops a nested subtree.
  */
 export async function deleteMenuFolder(
   db: TenantClient,
   organizationId: string,
   id: string,
-): Promise<{ deleted: boolean; movedDishes: number }> {
+): Promise<{ deleted: boolean; movedDishes: number; blockedBySubfolders: boolean }> {
+  const [child] = await db
+    .select({ id: menuFolders.id })
+    .from(menuFolders)
+    .where(and(eq(menuFolders.organizationId, organizationId), eq(menuFolders.parentId, id)))
+    .limit(1);
+  if (child) return { deleted: false, movedDishes: 0, blockedBySubfolders: true };
+
   const moved = await db
     .update(menus)
     .set({ folderId: null })
@@ -178,18 +236,23 @@ export async function deleteMenuFolder(
     .delete(menuFolders)
     .where(and(eq(menuFolders.organizationId, organizationId), eq(menuFolders.id, id)))
     .returning({ id: menuFolders.id });
-  return { deleted: deleted.length > 0, movedDishes: moved.length };
+  return { deleted: deleted.length > 0, movedDishes: moved.length, blockedBySubfolders: false };
 }
 
 // ── Search (money-free; both roles) ──────────────────────────────────────────
 
-export type DishSearchResult = { id: string; name: string; folderName: string | null };
+export type DishSearchResult = { id: string; name: string; folderPath: string | null };
 
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
-/** Every active dish in the org by name — typo tolerant, regardless of folder. */
+/**
+ * Every active dish in the org by name — typo tolerant, regardless of folder
+ * depth. `folderPath` is the FULL "Wibox › Linda" breadcrumb (not just the
+ * immediate folder), built in-memory from the small per-org folder list so
+ * nesting needs no recursive SQL here either.
+ */
 export async function searchDishes(
   db: TenantClient,
   organizationId: string,
@@ -197,27 +260,33 @@ export async function searchDishes(
   limit = 20,
 ): Promise<DishSearchResult[]> {
   const like = `%${escapeLike(query)}%`;
-  const rows = await db
-    .select({ id: menus.id, name: menus.name, folderName: menuFolders.name })
-    .from(menus)
-    .leftJoin(
-      menuFolders,
-      and(eq(menuFolders.organizationId, organizationId), eq(menuFolders.id, menus.folderId)),
-    )
-    .where(
-      and(
-        eq(menus.organizationId, organizationId),
-        isNull(menus.deletedAt),
-        sql`(${menus.name} % ${query} OR ${menus.name} ILIKE ${like})`,
-      ),
-    )
-    .orderBy(
-      sql`(${menus.name} ILIKE ${`${escapeLike(query)}%`}) DESC`,
-      sql`similarity(${menus.name}, ${query}) DESC`,
-      asc(menus.name),
-    )
-    .limit(limit);
-  return rows.map((r) => ({ id: r.id, name: r.name, folderName: r.folderName ?? null }));
+  const [rows, folders] = await Promise.all([
+    db
+      .select({ id: menus.id, name: menus.name, folderId: menus.folderId })
+      .from(menus)
+      .where(
+        and(
+          eq(menus.organizationId, organizationId),
+          isNull(menus.deletedAt),
+          sql`(${menus.name} % ${query} OR ${menus.name} ILIKE ${like})`,
+        ),
+      )
+      .orderBy(
+        sql`(${menus.name} ILIKE ${`${escapeLike(query)}%`}) DESC`,
+        sql`similarity(${menus.name}, ${query}) DESC`,
+        asc(menus.name),
+      )
+      .limit(limit),
+    db
+      .select({ id: menuFolders.id, name: menuFolders.name, parentId: menuFolders.parentId })
+      .from(menuFolders)
+      .where(eq(menuFolders.organizationId, organizationId)),
+  ]);
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    folderPath: r.folderId ? folderLabel(folders, r.folderId) || null : null,
+  }));
 }
 
 // ── Shared shapes ────────────────────────────────────────────────────────────

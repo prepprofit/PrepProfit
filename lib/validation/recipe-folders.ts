@@ -38,9 +38,11 @@ export const FOLDER_ICONS = [
 
 export const folderIconSchema = z.enum(FOLDER_ICONS).nullable();
 
+/** `parentId` is the folder to create/find this folder inside; omitted/null = top level. */
 export const folderCreateSchema = z.object({
   name: folderNameSchema,
   icon: folderIconSchema.optional(),
+  parentId: z.string().min(1).nullable().optional(),
 });
 
 /** Editing an existing folder: name plus its (possibly cleared) icon. */
@@ -49,9 +51,14 @@ export const folderUpdateSchema = z.object({
   icon: folderIconSchema.optional(),
 });
 
-/** Manual reordering moves a folder one slot up or down the rail. */
+/** Manual reordering moves a folder one slot up or down among its siblings. */
 export const folderReorderSchema = z.object({
   direction: z.enum(['up', 'down']),
+});
+
+/** Move a folder to a new parent, or to "Top level" (null). */
+export const folderMoveSchema = z.object({
+  parentId: z.string().min(1).nullable(),
 });
 
 /** Move a recipe into a folder, or to "No folder" (null). */
@@ -63,4 +70,5 @@ export type FolderCreateInput = z.infer<typeof folderCreateSchema>;
 export type FolderUpdateInput = z.infer<typeof folderUpdateSchema>;
 export type FolderIcon = (typeof FOLDER_ICONS)[number];
 export type FolderReorderInput = z.infer<typeof folderReorderSchema>;
+export type FolderMoveInput = z.infer<typeof folderMoveSchema>;
 export type MoveRecipeInput = z.infer<typeof moveRecipeSchema>;

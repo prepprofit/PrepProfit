@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronRight, Search, Trash2 } from 'lucide-react';
 import type { Recipe } from '@/lib/db/schema';
+import { folderAncestorLabel } from '@/lib/folders/tree';
 import { Input } from '@/components/ui/input';
 // The list never shows money — accept only the operational fields, so a recipe's
 // cost/selling price is not even part of this client component's props (Sprint F4).
@@ -17,7 +18,7 @@ import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { rememberRecipeListReturn, scrollContainer } from './recipe-list-return';
 
-export type FolderOption = { id: string; name: string };
+export type FolderOption = { id: string; name: string; parentId: string | null };
 
 /** Operational recipe fields the list renders — deliberately no money (Sprint F4). */
 export type RecipeListItem = Pick<
@@ -145,11 +146,14 @@ export function RecipeList({
                   onChange={(e) => move(recipe.id, e.target.value)}
                 >
                   <option value="">{tFolders('noFolder')}</option>
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
+                  {folders.map((f) => {
+                    const path = folderAncestorLabel(folders, f.id);
+                    return (
+                      <option key={f.id} value={f.id}>
+                        {path ? `${path} › ${f.name}` : f.name}
+                      </option>
+                    );
+                  })}
                 </Select>
                 <Button
                   type="button"

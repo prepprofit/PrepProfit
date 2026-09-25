@@ -127,6 +127,11 @@ export type ActionErrorCode =
   | 'MENU_INGREDIENT_INVALID'
   // A dish was filed into a folder that no longer exists (Dish Builder).
   | 'MENU_FOLDER_INVALID'
+  // A folder move targeted itself or one of its own descendants (nested folders).
+  | 'FOLDER_CYCLE'
+  // A folder delete was attempted while it still has subfolders — move or delete
+  // them first; contents are never silently dropped (nested folders).
+  | 'FOLDER_HAS_SUBFOLDERS'
   // A new or changed Menu recipe component was not entered in grams (recipe
   // portions are no longer an entry unit; unchanged legacy lines are kept).
   | 'MENU_RECIPE_GRAMS_REQUIRED'

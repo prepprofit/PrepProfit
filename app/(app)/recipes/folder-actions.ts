@@ -9,12 +9,14 @@ import {
   deleteFolder,
   updateFolder,
   reorderFolder,
+  moveFolder,
 } from '@/lib/data/recipe-folders';
 import { moveRecipeToFolder } from '@/lib/data/recipes';
 import {
   folderCreateSchema,
   folderUpdateSchema,
   folderReorderSchema,
+  folderMoveSchema,
   moveRecipeSchema,
 } from '@/lib/validation/recipe-folders';
 import { unexpected } from '@/lib/observability';
@@ -35,12 +37,19 @@ export async function createFolderAction(
   const organizationId = await getOrgId();
   try {
     const row = await withOrg(organizationId, (tx) =>
-      createFolder(tx, organizationId, parsed.data.name, parsed.data.icon ?? null),
+      createFolder(
+        tx,
+        organizationId,
+        parsed.data.name,
+        parsed.data.icon ?? null,
+        parsed.data.parentId ?? null,
+      ),
     );
     revalidatePath('/recipes');
     return { ok: true, data: { id: row.id } };
   } catch (err) {
     if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
+    if (isForeignKeyViolation(err)) return { ok: false, code: 'NOT_FOUND' };
     return unexpected('createFolderAction', err, organizationId);
   }
 }
@@ -82,15 +91,47 @@ export async function reorderFolderAction(
   return { ok: true, data: undefined };
 }
 
-/** Hard-deletes a folder; its recipes fall back to "No folder" (never trashed). */
+/**
+ * Hard-deletes a folder; its DIRECT recipes fall back to "No folder" (never
+ * trashed). Blocked with `FOLDER_HAS_SUBFOLDERS` while the folder still has
+ * subfolders — move or delete them first.
+ */
 export async function deleteFolderAction(id: string): Promise<ActionResult> {
   const organizationId = await getOrgId();
-  const deleted = await withOrg(organizationId, (tx) =>
+  const result = await withOrg(organizationId, (tx) =>
     deleteFolder(tx, organizationId, id),
   );
-  if (!deleted) return { ok: false, code: 'NOT_FOUND' };
+  if (result.blockedBySubfolders) return { ok: false, code: 'FOLDER_HAS_SUBFOLDERS' };
+  if (!result.deleted) return { ok: false, code: 'NOT_FOUND' };
   revalidatePath('/recipes');
   return { ok: true, data: undefined };
+}
+
+/** Moves a folder to a new parent, or to "Top level" (parentId = null). */
+export async function moveFolderAction(
+  id: string,
+  input: unknown,
+): Promise<ActionResult<{ previousParentId: string | null }>> {
+  const parsed = folderMoveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  try {
+    const result = await withOrg(organizationId, (tx) =>
+      moveFolder(tx, organizationId, id, parsed.data.parentId),
+    );
+    if (!result.ok) {
+      return {
+        ok: false,
+        code: result.reason === 'NOT_FOUND' ? 'NOT_FOUND' : 'FOLDER_CYCLE',
+      };
+    }
+    revalidatePath('/recipes');
+    return { ok: true, data: { previousParentId: result.previousParentId } };
+  } catch (err) {
+    if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
+    return unexpected('moveFolderAction', err, organizationId);
+  }
 }
 
 /** Files a recipe into a folder, or to "No folder" (folderId = null). */

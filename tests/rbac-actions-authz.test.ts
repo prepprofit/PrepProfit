@@ -55,6 +55,7 @@ import {
   createMenuFolderAction,
   renameMenuFolderAction,
   deleteMenuFolderAction,
+  moveMenuFolderAction,
 } from '@/app/(app)/menus/actions';
 import { updateOrgSettingsAction } from '@/app/(app)/settings/actions';
 import {
@@ -132,6 +133,7 @@ describe('manager-only actions reject kitchen before touching data', () => {
       createMenuFolderAction({ name: 'Bakery' }),
       renameMenuFolderAction('f1', { name: 'Pastry' }),
       deleteMenuFolderAction('f1'),
+      moveMenuFolderAction('f1', { parentId: null }),
     ]);
     for (const result of results) expect(result).toEqual(FORBIDDEN);
   });

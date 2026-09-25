@@ -18,6 +18,7 @@ export function ConfirmDialog({
   cancelLabel,
   destructive = false,
   pending = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
   children,
@@ -29,6 +30,8 @@ export function ConfirmDialog({
   cancelLabel: string;
   destructive?: boolean;
   pending?: boolean;
+  /** Disables ONLY the confirm button (e.g. no destination picked yet) — Cancel stays available. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   /** Optional extra content (e.g. a small input) shown above the buttons. */
@@ -84,7 +87,7 @@ export function ConfirmDialog({
             type="button"
             variant={destructive ? 'destructive' : 'default'}
             onClick={onConfirm}
-            disabled={pending}
+            disabled={pending || confirmDisabled}
           >
             {confirmLabel}
           </Button>

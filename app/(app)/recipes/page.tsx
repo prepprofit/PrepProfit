@@ -28,6 +28,7 @@ import { RecipeList } from '@/components/app/recipes/recipe-list';
 import { LibraryTable } from '@/components/app/recipes/library-table';
 import { AddRecipeButton } from '@/components/app/recipes/add-recipe-button';
 import { RecipeHome } from '@/components/app/recipes/recipe-home';
+import { RecipeSubfolders } from '@/components/app/recipes/recipe-subfolders';
 import { cn } from '@/lib/utils';
 
 /**
@@ -64,7 +65,7 @@ export default async function RecipesPage({
   const role = await getUserRole();
   const showMoney = canSeeRecipeCosts(role);
   const canImportPhoto = canAccessFinancials(role);
-  const folderOptions = listing.folders.map((f) => ({ id: f.id, name: f.name }));
+  const folderOptions = listing.folders.map((f) => ({ id: f.id, name: f.name, parentId: f.parentId }));
 
   const activeFolder =
     folder && folder !== 'none'
@@ -133,13 +134,17 @@ export default async function RecipesPage({
   return (
     <div className="flex w-full flex-col gap-5">
       <div className="flex flex-col gap-3">
-        <Link
-          href="/recipes"
-          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" />
-          {t('home.back')}
-        </Link>
+        {activeFolder ? (
+          <RecipeSubfolders listing={listing} parentId={activeFolder.id} />
+        ) : (
+          <Link
+            href="/recipes"
+            className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" />
+            {t('home.back')}
+          </Link>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span

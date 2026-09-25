@@ -7,8 +7,9 @@ import { useTranslations } from 'next-intl';
 import { ChevronRight, Folder, Inbox, Layers, Search } from 'lucide-react';
 import type { FolderListing } from '@/lib/data/recipe-folders';
 import { searchLibrary } from '@/lib/recipes/library-order';
+import { folderChildren, folderLabel } from '@/lib/folders/tree';
 import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
+import { FolderTile } from '@/components/app/shared/folders/folder-tile';
 import { readKitchenScaleListReturn, rememberKitchenScaleListReturn } from './kitchen-scale-list-return';
 
 /** What the home search needs per recipe — operational fields only, never money. */
@@ -46,10 +47,7 @@ export function KitchenScaleHome({
   }, []);
   const results = React.useMemo(() => searchLibrary(recipes, query), [recipes, query]);
   const showResults = query.trim() !== '';
-  const folderName = React.useMemo(
-    () => new Map(listing.folders.map((f) => [f.id, f.name])),
-    [listing.folders],
-  );
+  const rootFolders = React.useMemo(() => folderChildren(listing.folders, null), [listing.folders]);
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -91,7 +89,7 @@ export function KitchenScaleHome({
                         {recipe.name}
                       </span>
                       <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">
-                        {recipe.folderId ? (folderName.get(recipe.folderId) ?? t('unfiled')) : t('unfiled')}
+                        {recipe.folderId ? (folderLabel(listing.folders, recipe.folderId) || t('unfiled')) : t('unfiled')}
                       </span>
                       <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                     </Link>
@@ -112,7 +110,7 @@ export function KitchenScaleHome({
             caption={t('allCaption', { count: listing.totalCount })}
             icon={<Layers className="size-5" aria-hidden />}
           />
-          {listing.folders.map((folder) => (
+          {rootFolders.map((folder) => (
             <FolderTile
               key={folder.id}
               href={`/kitchen-scale?folder=${folder.id}`}
@@ -142,44 +140,5 @@ export function KitchenScaleHome({
         </section>
       )}
     </div>
-  );
-}
-
-function FolderTile({
-  href,
-  name,
-  caption,
-  icon,
-  muted = false,
-}: {
-  href: string;
-  name: string;
-  caption: string;
-  icon: React.ReactNode;
-  muted?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        'flex min-h-28 flex-col justify-between gap-3 rounded-2xl border border-border bg-surface p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-accent-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        muted && 'bg-surface-2/60 shadow-none',
-      )}
-    >
-      <span
-        className={cn(
-          'flex size-10 items-center justify-center rounded-xl',
-          muted
-            ? 'bg-surface-2 text-muted-foreground'
-            : 'bg-accent-50 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300',
-        )}
-      >
-        {icon}
-      </span>
-      <span className="flex min-w-0 flex-col pr-6">
-        <span className="truncate font-medium text-foreground">{name}</span>
-        <span className="text-xs text-muted-foreground">{caption}</span>
-      </span>
-    </Link>
   );
 }

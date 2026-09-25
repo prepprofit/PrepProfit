@@ -34,6 +34,7 @@ import {
   listManagerDishes,
   listMenuFolders,
   markDishOpened,
+  moveMenuFolder,
   purgeMenu,
   searchDishes,
   softDeleteMenu,
@@ -438,10 +439,60 @@ describe('menu product data layer', () => {
     await softDeleteMenu(db, ORG_A, trashed.menu.id);
     await createDish(db, ORG_A, cake(ids, { name: 'Loose tart' }));
 
-    expect((await listMenuFolders(db, ORG_A)).folders).toEqual([{ id: bakery.id, name: 'Bakery', dishCount: 1 }]);
+    expect((await listMenuFolders(db, ORG_A)).folders).toEqual([
+      { id: bakery.id, name: 'Bakery', parentId: null, dishCount: 1 },
+    ]);
     await expect(createMenuFolder(db, ORG_A, 'Bakery')).rejects.toThrow();
-    expect(await deleteMenuFolder(db, ORG_A, bakery.id)).toEqual({ deleted: true, movedDishes: 2 });
+    expect(await deleteMenuFolder(db, ORG_A, bakery.id)).toEqual({
+      deleted: true,
+      movedDishes: 2,
+      blockedBySubfolders: false,
+    });
     expect((await listMenuFolders(db, ORG_A)).unfiledCount).toBe(2);
+  });
+
+  it('nests a menu folder inside another, preserving its subfolders and dishes', async () => {
+    const wibox = await createMenuFolder(db, ORG_A, 'Wibox');
+    const linda = await createMenuFolder(db, ORG_A, 'Linda');
+    const cakesSub = await createMenuFolder(db, ORG_A, 'Cakes', linda.id);
+    const dish = await createDish(db, ORG_A, cake(ids, { folderId: linda.id }));
+    if (dish.status !== 'ok') throw new Error('create failed');
+
+    expect(await moveMenuFolder(db, ORG_A, linda.id, wibox.id)).toEqual({
+      ok: true,
+      previousParentId: null,
+    });
+
+    const all = (await listMenuFolders(db, ORG_A)).folders;
+    const byId = new Map(all.map((f) => [f.id, f]));
+    expect(byId.get(linda.id)?.parentId).toBe(wibox.id);
+    expect(byId.get(cakesSub.id)?.parentId).toBe(linda.id);
+    const stillFiled = await getManagerDish(db, ORG_A, dish.menu.id);
+    expect(stillFiled?.folderId).toBe(linda.id);
+  });
+
+  it('rejects self and descendant moves, and blocks deleting a folder with subfolders', async () => {
+    const wibox = await createMenuFolder(db, ORG_A, 'Wibox');
+    const linda = await createMenuFolder(db, ORG_A, 'Linda', wibox.id);
+
+    expect(await moveMenuFolder(db, ORG_A, wibox.id, wibox.id)).toEqual({ ok: false, reason: 'SELF' });
+    expect(await moveMenuFolder(db, ORG_A, wibox.id, linda.id)).toEqual({
+      ok: false,
+      reason: 'DESCENDANT',
+    });
+    expect(await deleteMenuFolder(db, ORG_A, wibox.id)).toEqual({
+      deleted: false,
+      movedDishes: 0,
+      blockedBySubfolders: true,
+    });
+  });
+
+  it('allows the same menu folder name under different parents', async () => {
+    const wibox = await createMenuFolder(db, ORG_A, 'Wibox');
+    const other = await createMenuFolder(db, ORG_A, 'Other');
+    await createMenuFolder(db, ORG_A, 'Cakes', wibox.id);
+    await expect(createMenuFolder(db, ORG_A, 'Cakes', other.id)).resolves.toBeTruthy();
+    await expect(createMenuFolder(db, ORG_A, 'Cakes', wibox.id)).rejects.toThrow();
   });
 
   it('searches every product in the org, typo-tolerant, excluding trash', async () => {

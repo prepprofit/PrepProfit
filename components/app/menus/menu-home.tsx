@@ -4,20 +4,33 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Folder, FolderPlus, Inbox, Plus, Search, UtensilsCrossed } from 'lucide-react';
+import { Folder, FolderPlus, Inbox, Move, Plus, Search, UtensilsCrossed } from 'lucide-react';
 import type { DishSearchResult, MenuFolderSummary } from '@/lib/data/menus';
+import { folderChildren } from '@/lib/folders/tree';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useActionError } from '@/lib/i18n/use-action-error';
-import { createMenuFolderAction, searchDishesAction } from '@/app/(app)/menus/actions';
+import {
+  createMenuFolderAction,
+  moveMenuFolderAction,
+  searchDishesAction,
+} from '@/app/(app)/menus/actions';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Toast } from '@/components/ui/toast';
 import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
+import { FolderTile } from '@/components/app/shared/folders/folder-tile';
+import { FolderMenu } from '@/components/app/shared/folders/folder-menu';
+import { MoveToFolderDialog } from '@/components/app/shared/folders/move-to-folder-dialog';
+import { useFolderDragAndDrop } from '@/components/app/shared/folders/use-folder-drag';
+
+type Notice = { message: string; undo: (() => void) | null; isError?: boolean };
 
 /**
  * Menu home (Menu redesign) — deliberately minimal, file-manager style: one big
- * search across EVERY dish, a grid of folders, and a New folder tile. Typing
- * replaces the grid with results; clearing brings the folders back.
+ * search across EVERY dish, a grid of TOP-LEVEL folders, and a New folder tile.
+ * Typing replaces the grid with results; clearing brings the folders back. A
+ * folder can be dragged onto another to nest it (manager-only, matching every
+ * other folder mutation here), or moved via its menu's "Move to…".
  */
 export function MenuHome({
   folders,
@@ -30,6 +43,7 @@ export function MenuHome({
 }) {
   const t = useTranslations('menus.home');
   const tFolder = useTranslations('menus.folder');
+  const tCommon = useTranslations('common');
   const actionError = useActionError();
   const router = useRouter();
 
@@ -58,7 +72,17 @@ export function MenuHome({
   const [creating, setCreating] = React.useState(false);
   const [folderName, setFolderName] = React.useState('');
   const [createError, setCreateError] = React.useState<string | null>(null);
+  const [moveTarget, setMoveTarget] = React.useState<{ id: string; name: string } | null>(null);
+  const [notice, setNotice] = React.useState<Notice | null>(null);
   const [pending, startTransition] = React.useTransition();
+
+  React.useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), notice.undo ? 8000 : 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  const rootFolders = React.useMemo(() => folderChildren(folders, null), [folders]);
 
   function createFolder() {
     const name = folderName.trim();
@@ -75,6 +99,32 @@ export function MenuHome({
       router.push(`/menus/folders/${result.data.id}`);
     });
   }
+
+  function performMove(id: string, newParentId: string | null) {
+    const folder = folders.find((f) => f.id === id);
+    startTransition(async () => {
+      const result = await moveMenuFolderAction(id, { parentId: newParentId });
+      if (!result.ok) {
+        setNotice({ message: actionError(result.code), undo: null, isError: true });
+        return;
+      }
+      const previousParentId = result.data.previousParentId;
+      const destination = newParentId ? folders.find((f) => f.id === newParentId)?.name : null;
+      setNotice({
+        message: destination
+          ? tFolder('moved', { name: folder?.name ?? '', parent: destination })
+          : tFolder('movedTopLevel', { name: folder?.name ?? '' }),
+        undo: () => performMove(id, previousParentId),
+      });
+      router.refresh();
+    });
+  }
+
+  const drag = useFolderDragAndDrop({
+    folders,
+    onMove: (id, newParentId) => performMove(id, newParentId),
+    disabled: !canManage,
+  });
 
   const showResults = query.trim() !== '';
 
@@ -127,7 +177,7 @@ export function MenuHome({
                     <UtensilsCrossed className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                     <span className="min-w-0 flex-1 truncate font-medium text-foreground">{dish.name}</span>
                     <span className="shrink-0 truncate text-xs text-muted-foreground">
-                      {dish.folderName ?? tFolder('unfiled')}
+                      {dish.folderPath ?? tFolder('unfiled')}
                     </span>
                   </Link>
                 </li>
@@ -140,14 +190,31 @@ export function MenuHome({
           aria-label={t('foldersLabel')}
           className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
         >
-          {folders.map((folder) => (
-            <FolderTile
-              key={folder.id}
-              href={`/menus/folders/${folder.id}`}
-              name={folder.name}
-              caption={t('dishCount', { count: folder.dishCount })}
-              icon={<Folder className="size-6" aria-hidden />}
-            />
+          {rootFolders.map((folder) => (
+            <div key={folder.id} className="relative focus-within:z-30">
+              <FolderTile
+                href={`/menus/folders/${folder.id}`}
+                name={folder.name}
+                caption={t('dishCount', { count: folder.dishCount })}
+                icon={<Folder className="size-6" aria-hidden />}
+                dragProps={canManage ? drag.getTileProps(folder.id) : undefined}
+                isDragSource={drag.draggingId === folder.id}
+                dropState={drag.overId === folder.id ? (drag.committing ? 'commit' : 'candidate') : null}
+              />
+              {canManage && (
+                <FolderMenu
+                  label={t('folderActions', { name: folder.name })}
+                  disabled={pending}
+                  items={[
+                    {
+                      label: tFolder('moveToFolder'),
+                      icon: <Move className="size-4" />,
+                      onSelect: () => setMoveTarget({ id: folder.id, name: folder.name }),
+                    },
+                  ]}
+                />
+              )}
+            </div>
           ))}
           {unfiledCount > 0 && (
             <FolderTile
@@ -171,7 +238,7 @@ export function MenuHome({
               {t('newFolder')}
             </button>
           )}
-          {folders.length === 0 && unfiledCount === 0 && (
+          {rootFolders.length === 0 && unfiledCount === 0 && (
             <p className="col-span-full text-sm text-muted-foreground">
               {canManage ? t('emptyManager') : t('emptyKitchen')}
             </p>
@@ -211,45 +278,42 @@ export function MenuHome({
           )}
         </div>
       </ConfirmDialog>
-    </div>
-  );
-}
 
-function FolderTile({
-  href,
-  name,
-  caption,
-  icon,
-  muted = false,
-}: {
-  href: string;
-  name: string;
-  caption: string;
-  icon: React.ReactNode;
-  muted?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        'group flex min-h-28 flex-col justify-between gap-3 rounded-2xl border border-border bg-surface p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-accent-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        muted && 'bg-surface-2/60',
+      {moveTarget && (
+        <MoveToFolderDialog
+          open
+          folders={folders}
+          folderId={moveTarget.id}
+          pending={pending}
+          labels={{
+            title: tFolder('moveDialog.title'),
+            description: tFolder('moveDialog.description', { name: moveTarget.name }),
+            searchPlaceholder: tFolder('moveDialog.search'),
+            topLevel: tCommon('topLevel'),
+            moveLabel: tFolder('moveDialog.move'),
+            cancelLabel: tCommon('cancel'),
+            noResults: tCommon('noMatches'),
+            empty: tFolder('moveDialog.empty'),
+          }}
+          onMove={(newParentId) => {
+            performMove(moveTarget.id, newParentId);
+            setMoveTarget(null);
+          }}
+          onCancel={() => setMoveTarget(null)}
+        />
       )}
-    >
-      <span
-        className={cn(
-          'flex size-10 items-center justify-center rounded-xl',
-          muted
-            ? 'bg-surface-2 text-muted-foreground'
-            : 'bg-accent-50 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300',
-        )}
-      >
-        {icon}
-      </span>
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate font-medium text-foreground">{name}</span>
-        <span className="text-xs text-muted-foreground">{caption}</span>
-      </span>
-    </Link>
+
+      {notice && (
+        <Toast
+          message={notice.message}
+          isError={notice.isError}
+          undoLabel={notice.undo ? tCommon('undo') : undefined}
+          onUndo={notice.undo ?? undefined}
+          undoDisabled={pending}
+          dismissLabel={tCommon('close')}
+          onDismiss={() => setNotice(null)}
+        />
+      )}
+    </div>
   );
 }

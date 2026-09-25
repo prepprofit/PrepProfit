@@ -125,8 +125,11 @@ export type DishFormPayload = z.input<typeof dishSchema>;
 /** "Make a copy": the new product's name (the UI proposes "<name> (copy)"). */
 export const dishCopySchema = z.object({ name: z.string().trim().min(1).max(200) });
 
-/** A folder name: trimmed, 1–80 chars. Uniqueness per org is enforced by the DB. */
+/** A folder name: trimmed, 1–80 chars. Uniqueness per org+parent is enforced by the DB. */
 export const menuFolderSchema = z.object({ name: z.string().trim().min(1).max(80) });
+
+/** Move a folder to a new parent, or to "Top level" (null). */
+export const menuFolderMoveSchema = z.object({ parentId: z.string().min(1).nullable() });
 
 export const DISH_SORTS = ['modified', 'opened', 'name', 'created'] as const;
 export type DishSort = (typeof DISH_SORTS)[number];

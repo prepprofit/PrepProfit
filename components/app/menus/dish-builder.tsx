@@ -33,6 +33,7 @@ import type {
   KitchenDishRecipeLine,
 } from '@/lib/data/menus';
 import { centsToAmountInput, formatMoney, parseMoneyToCents } from '@/lib/format/money';
+import { folderAncestorLabel } from '@/lib/folders/tree';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import {
   createDishAction,
@@ -134,7 +135,7 @@ export function DishBuilder({
   justCopied = false,
 }: {
   initial: DishBuilderInitial;
-  folders: { id: string; name: string }[];
+  folders: { id: string; name: string; parentId: string | null }[];
   recipeOptions: DishRecipeOption[];
   ingredientOptions: DishIngredientOption[];
   currency: string;
@@ -629,11 +630,14 @@ export function DishBuilder({
                 className="h-12 text-base"
               >
                 <option value="">{t('fields.unfiled')}</option>
-                {folders.map((f) => (
+                {folders.map((f) => {
+                  const path = folderAncestorLabel(folders, f.id);
+                  return (
                   <option key={f.id} value={f.id}>
-                    {f.name}
+                    {path ? `${path} › ${f.name}` : f.name}
                   </option>
-                ))}
+                  );
+                })}
               </Select>
             </Field>
             <Field id="portions" label={t('portions.label')}>

@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { startWorkflow } from '@flows/react';
 import { Plus } from 'lucide-react';
 import { createRecipeAction } from '@/app/(app)/recipes/actions';
+import { folderAncestorLabel } from '@/lib/folders/tree';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -23,7 +24,7 @@ export function AddRecipeButton({
   defaultFolderId,
   className,
 }: {
-  folders: { id: string; name: string }[];
+  folders: { id: string; name: string; parentId: string | null }[];
   /** The folder the new recipe is filed into unless the user picks another. */
   defaultFolderId: string | null;
   className?: string;
@@ -119,11 +120,14 @@ export function AddRecipeButton({
                 onChange={(e) => setFolderId(e.target.value === '' ? null : e.target.value)}
               >
                 <option value="">{tFolders('noFolder')}</option>
-                {folders.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
+                {folders.map((f) => {
+                  const path = folderAncestorLabel(folders, f.id);
+                  return (
+                    <option key={f.id} value={f.id}>
+                      {path ? `${path} › ${f.name}` : f.name}
+                    </option>
+                  );
+                })}
               </Select>
             </div>
           )}

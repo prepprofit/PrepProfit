@@ -6,6 +6,7 @@ import {
   getMenuFolder,
   listKitchenDishes,
   listManagerDishes,
+  listMenuFolders,
 } from '@/lib/data/menus';
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { DISH_SORTS, type DishSort } from '@/lib/validation/menus';
@@ -33,17 +34,19 @@ export default async function MenuFolderPage({
     : await withOrg(organizationId, (tx) => getMenuFolder(tx, organizationId, id));
   if (!unfiled && !folder) notFound();
   const folderId = folder?.id ?? null;
-  const folderProp = folder ? { id: folder.id, name: folder.name } : null;
+  const folderProp = folder ? { id: folder.id, name: folder.name, parentId: folder.parentId } : null;
 
   if (canManage) {
-    const [dishes, settings] = await Promise.all([
+    const [dishes, settings, listing] = await Promise.all([
       withOrg(organizationId, (tx) => listManagerDishes(tx, organizationId, folderId, sort)),
       getOrgSettings(),
+      withOrg(organizationId, (tx) => listMenuFolders(tx, organizationId)),
     ]);
     return (
       <MenuFolderView
         canManage
         folder={folderProp}
+        folders={listing.folders}
         sort={sort}
         dishes={dishes}
         currency={settings.currency}
@@ -52,13 +55,15 @@ export default async function MenuFolderPage({
     );
   }
 
-  const dishes = await withOrg(organizationId, (tx) =>
-    listKitchenDishes(tx, organizationId, folderId, sort),
-  );
+  const [dishes, listing] = await Promise.all([
+    withOrg(organizationId, (tx) => listKitchenDishes(tx, organizationId, folderId, sort)),
+    withOrg(organizationId, (tx) => listMenuFolders(tx, organizationId)),
+  ]);
   return (
     <MenuFolderView
       canManage={false}
       folder={folderProp}
+      folders={listing.folders}
       sort={sort}
       dishes={dishes}
       truncated={dishes.length >= DISH_LIST_LIMIT}

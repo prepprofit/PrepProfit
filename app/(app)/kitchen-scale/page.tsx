@@ -5,8 +5,11 @@ import { getOrgId } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
 import { listKitchenScaleRecipes } from '@/lib/data/recipes';
 import { listFoldersWithCounts } from '@/lib/data/recipe-folders';
+import { folderChildren, folderPath } from '@/lib/folders/tree';
 import { KitchenScaleHome } from '@/components/app/kitchen-scale/kitchen-scale-home';
 import { KitchenScaleFolderList } from '@/components/app/kitchen-scale/kitchen-scale-folder-list';
+import { FolderTile } from '@/components/app/shared/folders/folder-tile';
+import { FolderBreadcrumb, type BreadcrumbCrumb } from '@/components/app/shared/folders/folder-breadcrumb';
 import { cn } from '@/lib/utils';
 
 /**
@@ -67,17 +70,32 @@ export default async function KitchenScalePage({
         activeFolder ? r.folderId === activeFolder.id : r.folderId === null,
       );
   const href = `/kitchen-scale?folder=${activeKey}`;
+  const subfolders = activeFolder ? folderChildren(listing.folders, activeFolder.id) : [];
+  const crumbs: BreadcrumbCrumb[] = activeFolder
+    ? [
+        { key: 'root', label: tHome('back'), href: '/kitchen-scale' },
+        ...folderPath(listing.folders, activeFolder.id).map((f) => ({
+          key: f.id,
+          label: f.name,
+          href: `/kitchen-scale?folder=${f.id}`,
+        })),
+      ]
+    : [];
 
   return (
     <div className="flex w-full flex-col gap-5">
       <div className="flex flex-col gap-3">
-        <Link
-          href="/kitchen-scale"
-          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" />
-          {tHome('back')}
-        </Link>
+        {activeFolder ? (
+          <FolderBreadcrumb crumbs={crumbs} />
+        ) : (
+          <Link
+            href="/kitchen-scale"
+            className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" />
+            {tHome('back')}
+          </Link>
+        )}
         <div className="flex items-center gap-3">
           <span
             className={cn(
@@ -109,6 +127,31 @@ export default async function KitchenScalePage({
           </div>
         </div>
       </div>
+
+      {subfolders.length > 0 && (
+        <section aria-label={tHome('subfolders')} className="flex flex-col gap-2">
+          <h3 className="px-1 text-xs font-medium text-muted-foreground">{tHome('subfolders')}</h3>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+            {subfolders.map((folder) => (
+              <FolderTile
+                key={folder.id}
+                href={`/kitchen-scale?folder=${folder.id}`}
+                name={folder.name}
+                caption={tHome('recipeCount', { count: folder.recipeCount })}
+                icon={
+                  folder.icon ? (
+                    <span aria-hidden className="text-xl leading-none">
+                      {folder.icon}
+                    </span>
+                  ) : (
+                    <Folder className="size-5" aria-hidden />
+                  )
+                }
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <KitchenScaleFolderList recipes={visibleRecipes} href={href} />
     </div>

@@ -12,6 +12,7 @@ import {
   listFoldersWithCounts,
   updateFolder,
   reorderFolder,
+  moveFolder,
 } from '@/lib/data/recipe-folders';
 import {
   createRecipe,
@@ -180,7 +181,7 @@ describe('recipe folders data layer', () => {
     });
     await createRecipe(db, ORG_A, { name: 'Croissant', folderId: pastries.id });
 
-    expect(await deleteFolder(db, ORG_A, breads.id)).toBe(true);
+    expect(await deleteFolder(db, ORG_A, breads.id)).toEqual({ deleted: true, blockedBySubfolders: false });
 
     // Folder gone, the other folder untouched.
     expect(folderNames(await listFolders(db, ORG_A))).toEqual(['Pastries']);
@@ -204,8 +205,92 @@ describe('recipe folders data layer', () => {
 
     // The restrict FK would block the delete if the trashed recipe still pinned
     // the folder; deleteFolder nulls ALL referencing rows first.
-    expect(await deleteFolder(db, ORG_A, breads.id)).toBe(true);
+    expect(await deleteFolder(db, ORG_A, breads.id)).toEqual({ deleted: true, blockedBySubfolders: false });
     expect(await listFolders(db, ORG_A)).toHaveLength(0);
+  });
+
+  it('nests a folder inside another, preserving its subfolders, recipes and ids', async () => {
+    const wibox = await createFolder(db, ORG_A, 'Wibox');
+    const linda = await createFolder(db, ORG_A, 'Linda');
+    const cakes = await createFolder(db, ORG_A, 'Cakes', null, linda.id); // Linda's own subfolder
+    const recipe = await createRecipe(db, ORG_A, { name: 'Sourdough', folderId: linda.id });
+
+    const result = await moveFolder(db, ORG_A, linda.id, wibox.id);
+    expect(result).toEqual({ ok: true, previousParentId: null });
+
+    const all = await listFolders(db, ORG_A);
+    const byId = new Map(all.map((f) => [f.id, f]));
+    expect(byId.get(linda.id)?.parentId).toBe(wibox.id);
+    // Linda's own subfolder and recipe are untouched — same ids, same parent/folder.
+    expect(byId.get(cakes.id)?.parentId).toBe(linda.id);
+    const stillFiled = (await listRecipes(db, ORG_A, { kind: 'all' })).find((r) => r.id === recipe.id);
+    expect(stillFiled?.folderId).toBe(linda.id);
+  });
+
+  it('moves a folder back to the top level', async () => {
+    const wibox = await createFolder(db, ORG_A, 'Wibox');
+    const linda = await createFolder(db, ORG_A, 'Linda', null, wibox.id);
+
+    const result = await moveFolder(db, ORG_A, linda.id, null);
+    expect(result).toEqual({ ok: true, previousParentId: wibox.id });
+    expect((await listFolders(db, ORG_A)).find((f) => f.id === linda.id)?.parentId).toBeNull();
+  });
+
+  it('rejects moving a folder into itself', async () => {
+    const wibox = await createFolder(db, ORG_A, 'Wibox');
+    expect(await moveFolder(db, ORG_A, wibox.id, wibox.id)).toEqual({ ok: false, reason: 'SELF' });
+  });
+
+  it('rejects moving a folder into one of its own descendants, at any depth', async () => {
+    const wibox = await createFolder(db, ORG_A, 'Wibox');
+    const linda = await createFolder(db, ORG_A, 'Linda', null, wibox.id);
+    const cakes = await createFolder(db, ORG_A, 'Cakes', null, linda.id);
+
+    // Direct: Wibox into its own child Linda.
+    expect(await moveFolder(db, ORG_A, wibox.id, linda.id)).toEqual({ ok: false, reason: 'DESCENDANT' });
+    // Deeper: Wibox into its grandchild Cakes.
+    expect(await moveFolder(db, ORG_A, wibox.id, cakes.id)).toEqual({ ok: false, reason: 'DESCENDANT' });
+    // Nothing moved.
+    expect((await listFolders(db, ORG_A)).find((f) => f.id === wibox.id)?.parentId).toBeNull();
+  });
+
+  it('rejects moving into a folder that does not exist', async () => {
+    const wibox = await createFolder(db, ORG_A, 'Wibox');
+    expect(await moveFolder(db, ORG_A, wibox.id, 'nonexistent-id')).toEqual({
+      ok: false,
+      reason: 'NOT_FOUND',
+    });
+  });
+
+  it('blocks deleting a folder that still has subfolders, without touching its direct recipes', async () => {
+    const wibox = await createFolder(db, ORG_A, 'Wibox');
+    await createFolder(db, ORG_A, 'Linda', null, wibox.id);
+    await createRecipe(db, ORG_A, { name: 'Baguette', folderId: wibox.id });
+
+    expect(await deleteFolder(db, ORG_A, wibox.id)).toEqual({ deleted: false, blockedBySubfolders: true });
+    expect(await listFolders(db, ORG_A)).toHaveLength(2);
+    const recipe = (await listRecipes(db, ORG_A, { kind: 'all' })).find((r) => r.name === 'Baguette');
+    expect(recipe?.folderId).toBe(wibox.id); // untouched — the delete never ran
+  });
+
+  it('allows the same folder name under different parents, and again after a move frees it up', async () => {
+    const wibox = await createFolder(db, ORG_A, 'Wibox');
+    const other = await createFolder(db, ORG_A, 'Other');
+    const cakesInWibox = await createFolder(db, ORG_A, 'Cakes', null, wibox.id);
+    // Same name "Cakes" under a different parent — allowed.
+    await createFolder(db, ORG_A, 'Cakes', null, other.id);
+    // Same name at the SAME level — rejected.
+    await expect(createFolder(db, ORG_A, 'Cakes', null, wibox.id)).rejects.toThrow();
+
+    // Free up the name by moving it out, then reuse it at that level.
+    await moveFolder(db, ORG_A, cakesInWibox.id, null);
+    await expect(createFolder(db, ORG_A, 'Cakes', null, wibox.id)).resolves.toBeTruthy();
+  });
+
+  it('rejects moving into another organization\'s folder', async () => {
+    const mine = await createFolder(db, ORG_A, 'Wibox');
+    const theirs = await createFolder(db, ORG_B, 'Not mine');
+    expect(await moveFolder(db, ORG_A, mine.id, theirs.id)).toEqual({ ok: false, reason: 'NOT_FOUND' });
   });
 
   it('keeps folders org-isolated under RLS', async () => {

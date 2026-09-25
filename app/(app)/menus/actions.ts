@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { getOrgId, isManager } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
-import { isUniqueViolation } from '@/lib/db/errors';
+import { isForeignKeyViolation, isUniqueViolation } from '@/lib/db/errors';
 import { unexpected } from '@/lib/observability';
 import {
   createDish,
@@ -13,6 +13,7 @@ import {
   getMenuById,
   loadStoredRecipeLines,
   markDishOpened,
+  moveMenuFolder,
   renameMenuFolder,
   searchDishes,
   softDeleteMenu,
@@ -26,6 +27,7 @@ import {
   dishSchema,
   dishSearchSchema,
   menuFolderSchema,
+  menuFolderMoveSchema,
   recipeLinesUseGrams,
 } from '@/lib/validation/menus';
 import type { ActionErrorCode, ActionResult } from '@/lib/action-result';
@@ -197,7 +199,10 @@ export async function deleteMenuAction(id: string): Promise<ActionResult> {
 
 // ── Folders (manager-only) ───────────────────────────────────────────────────
 
-export async function createMenuFolderAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+export async function createMenuFolderAction(
+  input: unknown,
+  parentId: string | null = null,
+): Promise<ActionResult<{ id: string }>> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const parsed = menuFolderSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
@@ -205,12 +210,13 @@ export async function createMenuFolderAction(input: unknown): Promise<ActionResu
   const organizationId = await getOrgId();
   try {
     const row = await withOrg(organizationId, (tx) =>
-      createMenuFolder(tx, organizationId, parsed.data.name),
+      createMenuFolder(tx, organizationId, parsed.data.name, parentId),
     );
     revalidateMenus();
     return { ok: true, data: { id: row.id } };
   } catch (err) {
     if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
+    if (isForeignKeyViolation(err)) return { ok: false, code: 'NOT_FOUND' };
     return unexpected('createMenuFolderAction', err, organizationId);
   }
 }
@@ -234,14 +240,47 @@ export async function renameMenuFolderAction(id: string, input: unknown): Promis
   }
 }
 
-/** Delete a folder; its dishes move to Unfiled (never deleted). */
+/**
+ * Delete a folder; its DIRECT dishes move to Unfiled (never deleted). Blocked
+ * with `FOLDER_HAS_SUBFOLDERS` while the folder still has subfolders — move or
+ * delete them first.
+ */
 export async function deleteMenuFolderAction(id: string): Promise<ActionResult> {
   if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
   const organizationId = await getOrgId();
   const result = await withOrg(organizationId, (tx) => deleteMenuFolder(tx, organizationId, id));
+  if (result.blockedBySubfolders) return { ok: false, code: 'FOLDER_HAS_SUBFOLDERS' };
   if (!result.deleted) return { ok: false, code: 'NOT_FOUND' };
   revalidateMenus();
   return { ok: true, data: undefined };
+}
+
+/** Moves a folder to a new parent, or to "Top level" (parentId = null). Manager-only. */
+export async function moveMenuFolderAction(
+  id: string,
+  input: unknown,
+): Promise<ActionResult<{ previousParentId: string | null }>> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+  const parsed = menuFolderMoveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  try {
+    const result = await withOrg(organizationId, (tx) =>
+      moveMenuFolder(tx, organizationId, id, parsed.data.parentId),
+    );
+    if (!result.ok) {
+      return {
+        ok: false,
+        code: result.reason === 'NOT_FOUND' ? 'NOT_FOUND' : 'FOLDER_CYCLE',
+      };
+    }
+    revalidateMenus();
+    return { ok: true, data: { previousParentId: result.previousParentId } };
+  } catch (err) {
+    if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
+    return unexpected('moveMenuFolderAction', err, organizationId);
+  }
 }
 
 // ── Money-free (both roles) ──────────────────────────────────────────────────

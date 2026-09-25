@@ -128,6 +128,8 @@
     "MENU_RECIPE_INVALID": "One of the dish's recipes is missing or in the trash. Remove or replace that line, then save again.",
     "MENU_INGREDIENT_INVALID": "One of the dish's ingredients is missing, in the trash, or uses a unit that doesn't fit it. Fix that line, then save again.",
     "MENU_FOLDER_INVALID": "That folder no longer exists. Choose another folder, then save again.",
+    "FOLDER_CYCLE": "A folder can't be moved into itself or one of its own subfolders.",
+    "FOLDER_HAS_SUBFOLDERS": "This folder still has subfolders. Move or delete them first.",
     "RECIPE_IN_MENU": "This recipe is used in a menu, so it can't be deleted forever yet. Remove it from the menu (or delete the menu) first.",
     "PRODUCTION_RECIPE_INVALID": "One of the production's recipes is missing or in the trash. Remove or replace that line, then save again.",
     "PRODUCTION_NOT_EDITABLE": "This production is planned and read-only. Reopen it to draft before editing.",
@@ -227,7 +229,8 @@
       "allCaption": "{count, plural, =0 {No recipes} one {# recipe} other {# recipes}} · every folder",
       "allTitle": "All recipes",
       "empty": "No recipes yet. Add one on the Recipes page first.",
-      "back": "Kitchen Scale"
+      "back": "Kitchen Scale",
+      "subfolders": "Subfolders"
     },
     "list": {
       "empty": "This folder has no recipes yet."
@@ -444,7 +447,8 @@
       "cancel": "Cancel",
       "emptyManager": "No folders yet. Create your first folder to start organising dishes.",
       "emptyKitchen": "No dishes yet.",
-      "newProduct": "New dish / product"
+      "newProduct": "New dish / product",
+      "folderActions": "Folder options for {name}"
     },
     "folder": {
       "back": "Menus",
@@ -456,6 +460,18 @@
       "deleteBody": "“{name}” will be removed. Its dishes are kept and move to Unfiled.",
       "save": "Save",
       "cancel": "Cancel",
+      "moveToFolder": "Move to another folder…",
+      "moveDialog": {
+        "title": "Move folder",
+        "description": "Choose where to move “{name}”.",
+        "search": "Search folders…",
+        "move": "Move",
+        "empty": "No other folders to move into yet."
+      },
+      "moved": "“{name}” moved into “{parent}”.",
+      "movedTopLevel": "“{name}” moved to Top level.",
+      "newSubfolder": "New subfolder",
+      "subfolders": "Subfolders",
       "sortLabel": "Sort dishes",
       "sort": {
         "modified": "Last modified",
@@ -1013,7 +1029,9 @@
     "deleteForever": "Delete permanently",
     "searchPlaceholder": "Search…",
     "noMatches": "Nothing matches your search.",
-    "close": "Close"
+    "close": "Close",
+    "undo": "Undo",
+    "topLevel": "Top level"
   },
   "dimensions": {
     "weight": "Weight",
@@ -1767,6 +1785,18 @@
       "moveUp": "Move folder up",
       "moveDown": "Move folder down",
       "moveTo": "Move to folder",
+      "moveToFolder": "Move to another folder…",
+      "moveDialog": {
+        "title": "Move folder",
+        "description": "Choose where to move “{name}”.",
+        "search": "Search folders…",
+        "move": "Move",
+        "empty": "No other folders to move into yet."
+      },
+      "moved": "“{name}” moved into “{parent}”.",
+      "movedTopLevel": "“{name}” moved to Top level.",
+      "newSubfolder": "New subfolder",
+      "subfolders": "Subfolders",
       "icon": "Choose folder icon",
       "noIcon": "Default",
       "emptyFolder": "No recipes in this folder yet. Use Add recipe or move recipes here.",

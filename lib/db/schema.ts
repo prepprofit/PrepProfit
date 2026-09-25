@@ -588,13 +588,15 @@ export const ingredientNutritionProfiles = pgTable(
 );
 
 /**
- * Folders for filing recipes — a flat, per-organization namespace (no nesting).
- * A recipe belongs to at most one folder (`recipes.folder_id`, nullable = "No
- * folder"). Folders are HARD-deleted (never trashed): deleting one reassigns its
- * recipes to NULL in the same transaction (see lib/data/recipe-folders.ts), so
- * this table needs no `deleted_at`. The reusable template for later modules
- * (ingredient_folders, transaction_folders, …) is this exact shape + a nullable
- * `folder_id` on the owning table.
+ * Folders for filing recipes — a per-organization namespace that CAN nest
+ * (`parent_id`, NULL = top level). A recipe belongs to at most one folder
+ * (`recipes.folder_id`, nullable = "No folder"). Folders are HARD-deleted (never
+ * trashed): deleting one reassigns its recipes to NULL in the same transaction
+ * (see lib/data/recipe-folders.ts), so this table needs no `deleted_at`. The app
+ * blocks deleting a folder that still has subfolders, so the self-FK's `restrict`
+ * never actually fires. The reusable template for later modules (ingredient_folders,
+ * transaction_folders, …) is this exact shape + a nullable `folder_id` on the
+ * owning table.
  */
 export const recipeFolders = pgTable(
   'recipe_folders',
@@ -605,18 +607,37 @@ export const recipeFolders = pgTable(
     // Optional chef/kitchen emoji shown in the rail; NULL = default Folder glyph.
     // Constrained to the curated FOLDER_ICONS set server-side (validation layer).
     icon: text('icon'),
-    // Manual ordering in the folder rail (move up / down). Lower sorts first.
+    // Manual ordering among SIBLINGS (folders sharing the same parent). Lower
+    // sorts first.
     sortOrder: integer('sort_order').notNull().default(0),
+    // Parent folder; NULL = top level. Composite self-FK below keeps a folder's
+    // parent in the same organization; NULL skips the FK (MATCH SIMPLE).
+    parentId: text('parent_id'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     index('recipe_folders_org_idx').on(t.organizationId),
     index('recipe_folders_org_sort_idx').on(t.organizationId, t.sortOrder),
-    // One folder name per organization (rename/create surface the violation).
-    unique('recipe_folders_org_name_key').on(t.organizationId, t.name),
+    index('recipe_folders_org_parent_idx').on(t.organizationId, t.parentId),
+    // One folder name per level. Two PARTIAL indexes rather than one plain
+    // (org, parent_id, name) unique constraint: Postgres treats every NULL
+    // parent_id as distinct, so a plain constraint would stop catching duplicate
+    // root-level names.
+    uniqueIndex('recipe_folders_org_root_name_key')
+      .on(t.organizationId, t.name)
+      .where(sql`${t.parentId} is null`),
+    uniqueIndex('recipe_folders_org_parent_name_key')
+      .on(t.organizationId, t.parentId, t.name)
+      .where(sql`${t.parentId} is not null`),
     // FK target for the composite (organization_id, folder_id) reference.
     unique('recipe_folders_org_id_key').on(t.organizationId, t.id),
+    // A folder's parent must be the same organization's own folder.
+    foreignKey({
+      columns: [t.organizationId, t.parentId],
+      foreignColumns: [t.organizationId, t.id],
+      name: 'recipe_folders_parent_fk',
+    }).onDelete('restrict'),
   ],
 );
 
@@ -1438,10 +1459,12 @@ export const recipeAllergenOverrides = pgTable(
 );
 
 /**
- * Dish folders (Menu redesign). A flat, user-defined set of folders ("Bakery",
- * "Catering"…) the Menu home shows as a grid. RULE #1: carries `organization_id`,
- * in `businessTables` → standard org_isolation RLS. Deleting a folder moves its
- * dishes to "Unfiled" (the app nulls `menus.folder_id` first; the FK is restrict).
+ * Dish folders (Menu redesign). A user-defined set of folders ("Bakery",
+ * "Catering"…) the Menu home shows as a grid; they CAN nest (`parent_id`, NULL =
+ * top level). RULE #1: carries `organization_id`, in `businessTables` → standard
+ * org_isolation RLS. Deleting a folder moves its dishes to "Unfiled" (the app
+ * nulls `menus.folder_id` first; the FK is restrict) and is blocked while
+ * subfolders exist, so the self-FK's `restrict` never actually fires.
  */
 export const menuFolders = pgTable(
   'menu_folders',
@@ -1449,15 +1472,33 @@ export const menuFolders = pgTable(
     id: id(),
     organizationId: orgId(),
     name: text('name').notNull(),
+    // Parent folder; NULL = top level. Composite self-FK below keeps a folder's
+    // parent in the same organization; NULL skips the FK (MATCH SIMPLE).
+    parentId: text('parent_id'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     index('menu_folders_org_idx').on(t.organizationId),
-    // One folder name per organization (create/rename surface the violation).
-    unique('menu_folders_org_name_key').on(t.organizationId, t.name),
+    index('menu_folders_org_parent_idx').on(t.organizationId, t.parentId),
+    // One folder name per level. Two PARTIAL indexes rather than one plain
+    // (org, parent_id, name) unique constraint: Postgres treats every NULL
+    // parent_id as distinct, so a plain constraint would stop catching duplicate
+    // root-level names.
+    uniqueIndex('menu_folders_org_root_name_key')
+      .on(t.organizationId, t.name)
+      .where(sql`${t.parentId} is null`),
+    uniqueIndex('menu_folders_org_parent_name_key')
+      .on(t.organizationId, t.parentId, t.name)
+      .where(sql`${t.parentId} is not null`),
     // FK target for menus' composite (organization_id, folder_id).
     unique('menu_folders_org_id_key').on(t.organizationId, t.id),
+    // A folder's parent must be the same organization's own folder.
+    foreignKey({
+      columns: [t.organizationId, t.parentId],
+      foreignColumns: [t.organizationId, t.id],
+      name: 'menu_folders_parent_fk',
+    }).onDelete('restrict'),
   ],
 );
 

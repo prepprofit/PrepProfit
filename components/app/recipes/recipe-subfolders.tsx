@@ -1,25 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import {
-  ArrowDown,
-  ArrowUp,
-  BookOpen,
-  Folder,
-  FolderPlus,
-  Inbox,
-  Layers,
-  Move,
-  Pencil,
-  Search,
-  Trash2,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, Folder, FolderPlus, Move, Pencil, Trash2 } from 'lucide-react';
 import type { FolderListing } from '@/lib/data/recipe-folders';
-import { searchLibrary } from '@/lib/recipes/library-order';
-import { folderChildren, folderLabel } from '@/lib/folders/tree';
+import { folderChildren, folderPath } from '@/lib/folders/tree';
 import { FOLDER_ICONS } from '@/lib/validation/recipe-folders';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import {
@@ -35,19 +21,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { FolderTile } from '@/components/app/shared/folders/folder-tile';
 import { FolderMenu } from '@/components/app/shared/folders/folder-menu';
+import { FolderBreadcrumb, type BreadcrumbCrumb } from '@/components/app/shared/folders/folder-breadcrumb';
 import { MoveToFolderDialog } from '@/components/app/shared/folders/move-to-folder-dialog';
 import { useFolderDragAndDrop } from '@/components/app/shared/folders/use-folder-drag';
 import { cn } from '@/lib/utils';
-import { AddRecipeButton } from './add-recipe-button';
-import { readRecipeListReturn, rememberRecipeListReturn, scrollContainer } from './recipe-list-return';
-
-/** What the home search needs per recipe — operational fields only, never money. */
-export type RecipeSearchItem = {
-  id: string;
-  name: string;
-  folderId: string | null;
-  recentActivityAt: Date;
-};
 
 type FolderDialog =
   | { mode: 'create' }
@@ -56,21 +33,17 @@ type FolderDialog =
 type Notice = { message: string; undo: (() => void) | null; isError?: boolean };
 
 /**
- * Recipes home: a large search across every folder with a compact "Add recipe"
- * beside it, then ONLY the TOP-LEVEL folders as tiles — "All" first, "Unfiled"
- * last. Typing swaps the tiles for matching recipes — best match first, recent
- * activity breaking ties — and clearing brings the folders back. Recipe lists
- * live inside folders. Folder management stays available but quiet: a "New
- * folder" tile and a small menu on each folder tile. A folder can be dragged
- * onto another to nest it, or moved via each tile's "Move to another folder…".
+ * Immediate subfolders of the folder currently open, shown ABOVE the recipe
+ * table (app/(app)/recipes/page.tsx's folder-view branch) — never the full
+ * descendant tree flattened together. Same folder CRUD + drag + "Move to…" as
+ * RecipeHome's root grid, scoped to this parent, plus the breadcrumb trail.
  */
-export function RecipeHome({
+export function RecipeSubfolders({
   listing,
-  recipes,
+  parentId,
 }: {
   listing: FolderListing;
-  /** Every active recipe, in recent-activity order. */
-  recipes: RecipeSearchItem[];
+  parentId: string;
 }) {
   const t = useTranslations('recipes.home');
   const tFolders = useTranslations('recipes.folders');
@@ -78,16 +51,8 @@ export function RecipeHome({
   const actionError = useActionError();
   const router = useRouter();
 
-  const [query, setQuery] = React.useState('');
-  // Returning from a recipe opened from the search results brings the search back.
-  React.useEffect(() => {
-    const saved = readRecipeListReturn();
-    if (saved?.href === '/recipes' && saved.query) setQuery(saved.query);
-  }, []);
-  const results = React.useMemo(() => searchLibrary(recipes, query), [recipes, query]);
-  const showResults = query.trim() !== '';
-  const rootFolders = React.useMemo(() => folderChildren(listing.folders, null), [listing.folders]);
-  const folderOptions = listing.folders.map((f) => ({ id: f.id, name: f.name, parentId: f.parentId }));
+  const children = React.useMemo(() => folderChildren(listing.folders, parentId), [listing.folders, parentId]);
+  const path = React.useMemo(() => folderPath(listing.folders, parentId), [listing.folders, parentId]);
 
   const [dialog, setDialog] = React.useState<FolderDialog | null>(null);
   const [dialogName, setDialogName] = React.useState('');
@@ -121,7 +86,7 @@ export function RecipeHome({
     setError(null);
     startTransition(async () => {
       if (dialog.mode === 'create') {
-        const result = await createFolderAction({ name, icon: dialogIcon });
+        const result = await createFolderAction({ name, icon: dialogIcon, parentId });
         if (!result.ok) return setError(actionError(result.code));
         setDialog(null);
         router.push(`/recipes?folder=${result.data.id}`);
@@ -180,157 +145,97 @@ export function RecipeHome({
     onMove: (id, newParentId) => performMove(id, newParentId),
   });
 
-  return (
-    <div className="flex w-full flex-col gap-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search
-            className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && results[0]) router.push(`/recipes/${results[0].id}`);
-              if (e.key === 'Escape') setQuery('');
-            }}
-            placeholder={t('searchPlaceholder')}
-            aria-label={t('searchPlaceholder')}
-            className="h-14 rounded-2xl pl-12 text-base shadow-sm"
-          />
-        </div>
-        <AddRecipeButton folders={folderOptions} defaultFolderId={null} className="shrink-0 self-end sm:self-auto" />
-      </div>
+  const crumbs: BreadcrumbCrumb[] = [
+    { key: 'root', label: t('back'), href: '/recipes' },
+    ...path.map((f) => ({ key: f.id, label: f.name, href: `/recipes?folder=${f.id}` })),
+  ];
 
-      {error && !dialog && (
+  return (
+    <div className="flex flex-col gap-4">
+      <FolderBreadcrumb crumbs={crumbs} />
+
+      <section aria-label={tFolders('subfolders')} className="flex flex-col gap-2">
+        {children.length > 0 && (
+          <h3 className="px-1 text-xs font-medium text-muted-foreground">{tFolders('subfolders')}</h3>
+        )}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+          {children.map((folder, index) => (
+              <div key={folder.id} className="relative focus-within:z-30">
+                <FolderTile
+                  href={`/recipes?folder=${folder.id}`}
+                  name={folder.name}
+                  caption={t('recipeCount', { count: folder.recipeCount })}
+                  icon={
+                    folder.icon ? (
+                      <span aria-hidden className="text-xl leading-none">
+                        {folder.icon}
+                      </span>
+                    ) : (
+                      <Folder className="size-5" aria-hidden />
+                    )
+                  }
+                  dragProps={drag.getTileProps(folder.id)}
+                  isDragSource={drag.draggingId === folder.id}
+                  dropState={drag.overId === folder.id ? (drag.committing ? 'commit' : 'candidate') : null}
+                />
+                <FolderMenu
+                  label={t('folderActions', { name: folder.name })}
+                  disabled={pending}
+                  items={[
+                    {
+                      label: tFolders('rename'),
+                      icon: <Pencil className="size-4" />,
+                      onSelect: () => openDialog({ mode: 'rename', id: folder.id, name: folder.name, icon: folder.icon }),
+                    },
+                    {
+                      label: tFolders('moveToFolder'),
+                      icon: <Move className="size-4" />,
+                      onSelect: () => setMoveTarget({ id: folder.id, name: folder.name }),
+                    },
+                    {
+                      label: tFolders('moveUp'),
+                      icon: <ArrowUp className="size-4" />,
+                      disabled: index === 0,
+                      onSelect: () => reorder(folder.id, 'up'),
+                    },
+                    {
+                      label: tFolders('moveDown'),
+                      icon: <ArrowDown className="size-4" />,
+                      disabled: index === children.length - 1,
+                      onSelect: () => reorder(folder.id, 'down'),
+                    },
+                    {
+                      label: tFolders('delete'),
+                      icon: <Trash2 className="size-4" />,
+                      destructive: true,
+                      onSelect: () => setDeleteTarget({ id: folder.id, name: folder.name }),
+                    },
+                  ]}
+                />
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => openDialog({ mode: 'create' })}
+              className={cn(
+                'flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground transition-colors hover:border-accent-300 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              )}
+            >
+              <FolderPlus className="size-5" aria-hidden />
+              {tFolders('newSubfolder')}
+            </button>
+        </div>
+      </section>
+
+      {error && !dialog && !deleteTarget && (
         <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/15 dark:text-red-300">
           {error}
         </p>
       )}
 
-      {showResults ? (
-        <section aria-live="polite" aria-label={t('resultsLabel')} className="flex flex-col gap-2">
-          {results.length === 0 ? (
-            <p className="px-1 text-sm text-muted-foreground">{t('noResults', { query: query.trim() })}</p>
-          ) : (
-            <>
-              <p className="px-1 text-xs text-muted-foreground">{t('resultCount', { count: results.length })}</p>
-              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-                {results.map((recipe) => (
-                  <li key={recipe.id}>
-                    <Link
-                      href={`/recipes/${recipe.id}`}
-                      onClick={() =>
-                        rememberRecipeListReturn({ href: '/recipes', query, sort: 'recent', scrollTop: scrollContainer()?.scrollTop ?? 0 })
-                      }
-                      className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
-                    >
-                      <BookOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate text-base font-medium text-foreground">{recipe.name}</span>
-                      <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">
-                        {recipe.folderId ? (folderLabel(listing.folders, recipe.folderId) || t('unfiled')) : t('unfiled')}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
-      ) : (
-        <>
-        <section aria-label={tFolders('title')} className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-          <FolderTile
-            href="/recipes?folder=all"
-            name={t('all')}
-            caption={t('allCaption', { count: listing.totalCount })}
-            icon={<Layers className="size-5" aria-hidden />}
-          />
-          {rootFolders.map((folder, index) => (
-            <div key={folder.id} className="relative focus-within:z-30">
-              <FolderTile
-                href={`/recipes?folder=${folder.id}`}
-                name={folder.name}
-                caption={t('recipeCount', { count: folder.recipeCount })}
-                icon={
-                  folder.icon ? (
-                    <span aria-hidden className="text-xl leading-none">
-                      {folder.icon}
-                    </span>
-                  ) : (
-                    <Folder className="size-5" aria-hidden />
-                  )
-                }
-                dragProps={drag.getTileProps(folder.id)}
-                isDragSource={drag.draggingId === folder.id}
-                dropState={
-                  drag.overId === folder.id ? (drag.committing ? 'commit' : 'candidate') : null
-                }
-              />
-              <FolderMenu
-                label={t('folderActions', { name: folder.name })}
-                disabled={pending}
-                items={[
-                  {
-                    label: tFolders('rename'),
-                    icon: <Pencil className="size-4" />,
-                    onSelect: () => openDialog({ mode: 'rename', id: folder.id, name: folder.name, icon: folder.icon }),
-                  },
-                  {
-                    label: tFolders('moveToFolder'),
-                    icon: <Move className="size-4" />,
-                    onSelect: () => setMoveTarget({ id: folder.id, name: folder.name }),
-                  },
-                  {
-                    label: tFolders('moveUp'),
-                    icon: <ArrowUp className="size-4" />,
-                    disabled: index === 0,
-                    onSelect: () => reorder(folder.id, 'up'),
-                  },
-                  {
-                    label: tFolders('moveDown'),
-                    icon: <ArrowDown className="size-4" />,
-                    disabled: index === rootFolders.length - 1,
-                    onSelect: () => reorder(folder.id, 'down'),
-                  },
-                  {
-                    label: tFolders('delete'),
-                    icon: <Trash2 className="size-4" />,
-                    destructive: true,
-                    onSelect: () => setDeleteTarget({ id: folder.id, name: folder.name }),
-                  },
-                ]}
-              />
-            </div>
-          ))}
-          <FolderTile
-            href="/recipes?folder=none"
-            name={t('unfiled')}
-            caption={t('recipeCount', { count: listing.uncategorizedCount })}
-            icon={<Inbox className="size-5" aria-hidden />}
-            muted
-          />
-          <button
-            type="button"
-            onClick={() => openDialog({ mode: 'create' })}
-            className="flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground transition-colors hover:border-accent-300 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <FolderPlus className="size-5" aria-hidden />
-            {t('newFolder')}
-          </button>
-          {listing.totalCount === 0 && (
-            <p className="col-span-full px-1 text-sm text-muted-foreground">{t('empty')}</p>
-          )}
-        </section>
-
-        </>
-      )}
-
       <ConfirmDialog
         open={dialog !== null}
-        title={dialog?.mode === 'rename' ? tFolders('rename') : t('newFolder')}
+        title={dialog?.mode === 'rename' ? tFolders('rename') : tFolders('newSubfolder')}
         description={t('folderDialogDescription')}
         confirmLabel={dialog?.mode === 'rename' ? tFolders('renameSave') : tFolders('create')}
         cancelLabel={tCommon('cancel')}
@@ -340,9 +245,9 @@ export function RecipeHome({
       >
         <div className="flex flex-col gap-3 pt-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="folder-name">{t('folderName')}</Label>
+            <Label htmlFor="subfolder-name">{t('folderName')}</Label>
             <Input
-              id="folder-name"
+              id="subfolder-name"
               autoFocus
               value={dialogName}
               maxLength={80}
@@ -370,7 +275,7 @@ export function RecipeHome({
               ))}
             </div>
           </fieldset>
-          {error && (
+          {error && dialog && (
             <p role="alert" className="text-sm text-red-700 dark:text-red-300">
               {error}
             </p>
