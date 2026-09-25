@@ -26,7 +26,14 @@ export type RecipeScaleMode =
    *  parity): `factor = targetWeightGrams / baseWeightGrams`. Both are canonical
    *  grams; `baseWeightGrams` is the recipe's `yield_weight_grams` and must be set
    *  (a recipe with no batch yield weight has nothing to scale from → invalid_yield). */
-  | { kind: 'yieldWeight'; baseWeightGrams: number; targetWeightGrams: number };
+  | { kind: 'yieldWeight'; baseWeightGrams: number; targetWeightGrams: number }
+  /** The multiplier itself is already known (Kitchen Scale redesign print/PDF
+   *  contract): the client derived `factor` from whichever of the three
+   *  calculation methods it used, and the server re-applies the SAME factor to
+   *  the SAME original line quantities — never a value reconstructed from a
+   *  rounded intermediate (e.g. a portions count), so printed/downloaded
+   *  quantities always match the on-screen calculation exactly. */
+  | { kind: 'factor'; factor: number };
 
 export type RecipeScaleResult =
   | { ok: true; factor: number; scaledPortions: number }
@@ -117,7 +124,7 @@ export function deriveScale(
       return { ok: false, reason: 'invalid_anchor' };
     }
     factor = mode.targetCanonical / mode.anchorLineQuantity;
-  } else {
+  } else if (mode.kind === 'yieldWeight') {
     // yieldWeight: a missing/zero base weight means the recipe has no usable batch
     // size to scale from (invalid_yield); a bad target is invalid_target.
     if (!isPositiveFinite(mode.baseWeightGrams)) {
@@ -127,6 +134,11 @@ export function deriveScale(
       return { ok: false, reason: 'invalid_target' };
     }
     factor = mode.targetWeightGrams / mode.baseWeightGrams;
+  } else {
+    if (!isPositiveFinite(mode.factor)) {
+      return { ok: false, reason: 'invalid_factor' };
+    }
+    factor = mode.factor;
   }
 
   if (!isPositiveFinite(factor)) {
@@ -175,4 +187,18 @@ export function parseScaleFactor(text: string): ScaleFactorParse {
 /** A factor back into the field's text, trimmed of float noise ("0.75", "3"). */
 export function formatScaleFactor(factor: number): string {
   return String(Math.round(factor * 10_000) / 10_000);
+}
+
+/**
+ * Parse chef-entered decimal text for Kitchen Scale's calculation inputs (target
+ * weight, ingredient amount, preset quantity). Accepts a decimal COMMA or POINT
+ * ("44,5" or "44.5"). Returns `NaN` for blank, garbage, or a thousands-separated
+ * value, so callers can feed the result straight into `deriveScale`'s
+ * `isPositiveFinite` guards — never a silently coerced/clamped number.
+ */
+export function parseDecimalInput(text: string): number {
+  const trimmed = text.trim();
+  if (trimmed === '') return Number.NaN;
+  if (!/^[-+]?(\d+([.,]\d*)?|[.,]\d+)$/.test(trimmed)) return Number.NaN;
+  return Number(trimmed.replace(',', '.'));
 }

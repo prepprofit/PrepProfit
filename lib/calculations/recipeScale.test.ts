@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   RECIPE_SCALE_QUANTITY_MAX,
   deriveScale,
+  parseDecimalInput,
   roundCanonical,
   scaleLineQuantity,
   scaleMoneyCents,
@@ -250,6 +251,39 @@ describe('deriveScale — yield-weight (preset) mode', () => {
   });
 });
 
+describe('deriveScale — factor mode (Kitchen Scale print/PDF contract)', () => {
+  it('applies the factor directly', () => {
+    const r = deriveScale(4, { kind: 'factor', factor: 2.5 }, [500, 200]);
+    expect(r).toEqual({ ok: true, factor: 2.5, scaledPortions: 10 });
+  });
+
+  it('factor of exactly 1 is identity', () => {
+    expect(deriveScale(8, { kind: 'factor', factor: 1 })).toEqual({
+      ok: true,
+      factor: 1,
+      scaledPortions: 8,
+    });
+  });
+
+  it('rejects zero, negative and non-finite factors', () => {
+    for (const factor of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(deriveScale(4, { kind: 'factor', factor })).toEqual({
+        ok: false,
+        reason: 'invalid_factor',
+      });
+    }
+  });
+
+  it('still applies the overflow guard on scaled lines', () => {
+    const r = deriveScale(
+      4,
+      { kind: 'factor', factor: 2 },
+      [RECIPE_SCALE_QUANTITY_MAX],
+    );
+    expect(r).toEqual({ ok: false, reason: 'overflow' });
+  });
+});
+
 describe('deriveScale — overflow guard', () => {
   it('rejects a scaled line above RECIPE_SCALE_QUANTITY_MAX', () => {
     const r = deriveScale(
@@ -267,6 +301,40 @@ describe('deriveScale — overflow guard', () => {
       [RECIPE_SCALE_QUANTITY_MAX],
     );
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('parseDecimalInput — Kitchen Scale calculation inputs', () => {
+  it('accepts a decimal point', () => {
+    expect(parseDecimalInput('44.5')).toBe(44.5);
+  });
+
+  it('accepts a decimal comma', () => {
+    expect(parseDecimalInput('44,5')).toBe(44.5);
+  });
+
+  it('accepts a bare integer', () => {
+    expect(parseDecimalInput('900')).toBe(900);
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(parseDecimalInput('  12.5  ')).toBe(12.5);
+  });
+
+  it('returns NaN for blank text', () => {
+    expect(parseDecimalInput('')).toBeNaN();
+    expect(parseDecimalInput('   ')).toBeNaN();
+  });
+
+  it('returns NaN for garbage and thousands separators', () => {
+    expect(parseDecimalInput('abc')).toBeNaN();
+    expect(parseDecimalInput('1,234.5')).toBeNaN();
+    expect(parseDecimalInput('1.234,5')).toBeNaN();
+  });
+
+  it('parses zero and negatives as numbers (positivity is the caller\'s job)', () => {
+    expect(parseDecimalInput('0')).toBe(0);
+    expect(parseDecimalInput('-5')).toBe(-5);
   });
 });
 
