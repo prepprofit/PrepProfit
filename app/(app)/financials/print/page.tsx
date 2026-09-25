@@ -99,7 +99,7 @@ export default async function PlPrintPage({
               )}
             </div>
             <div className="flex flex-col items-end gap-0.5">
-              <span className="text-xl font-bold tracking-wide text-[#2c7466]">
+              <span className="text-xl font-bold tracking-wide text-[#096567]">
                 {labels.title}
               </span>
               <span className="font-semibold text-neutral-900">

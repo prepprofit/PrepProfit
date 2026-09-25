@@ -8,31 +8,31 @@ import type { CSSProperties } from 'react';
  * deliberately avoid the `<Tailwind>` runtime and complex selectors the React
  * Email docs warn about; the "Barebone" visual language (quiet boxed layout,
  * clear header, simple cards/tables, restrained footer) is expressed here,
- * rethemed to PrepProfit's accent (the app's mint scale: deep `accent-700` for text,
- * light mint with dark text for the CTA).
+ * rethemed to PrepProfit's accent (the app's teal scale: deep `accent-700` for
+ * text, deep teal with white text for the CTA).
  */
 
 export const palette = {
   /** Page background behind the boxed container. */
-  background: '#f8fafc',
+  background: '#f5f7fa',
   /** Card / container surface. */
   surface: '#ffffff',
   /** Hairline borders and table rules. */
-  border: '#e2e8f0',
+  border: '#dfe6eb',
   /** Primary body text. */
-  text: '#0f172a',
+  text: '#292f3a',
   /** Secondary / supporting text. */
-  muted: '#64748b',
+  muted: '#40516a',
   /** Faintest supporting text (footer, fine print). */
   faint: '#94a3b8',
   /** Brand accent TEXT (app `--color-accent-700`) — headers, bullets, links. */
-  accent: '#2c7466',
-  /** CTA fill (app `--color-primary`) — light mint. */
-  accentFill: '#9cd5c8',
-  /** Text on the mint fill (app `--color-primary-foreground`), 7.8:1. */
-  accentForeground: '#123831',
+  accent: '#096567',
+  /** CTA fill (app `--color-primary`) — deep teal. */
+  accentFill: '#0f7d7e',
+  /** Text on the teal fill (app `--color-primary-foreground`), ≈4.9:1. */
+  accentForeground: '#ffffff',
   /** A soft accent tint for subtle highlights. */
-  accentSoft: '#f1f8f6',
+  accentSoft: '#edfafb',
   /** Positive tone (good trend) — the leaf green, distinct from the mint accent. */
   positive: '#15803d',
   /** Negative / warning tone (bad trend, partial-data note). */

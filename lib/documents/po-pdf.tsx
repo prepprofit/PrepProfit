@@ -20,7 +20,7 @@ import { formatMoney, formatDocDate, safeText } from './format';
  * watermark; sent/cancelled render the frozen snapshot. Brand accent matches the app.
  */
 
-const ACCENT = '#2c7466'; // accent-700, the app's deep mint for text
+const ACCENT = '#096567'; // accent-700, the app's deep teal for text
 const INK = '#1f2937';
 const MUTED = '#6b7280';
 const BORDER = '#e5e7eb';

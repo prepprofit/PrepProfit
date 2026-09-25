@@ -8,7 +8,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Light mint with dark text: 7.8:1 (white on mint would be 1.6:1).
+        // Deep teal with white text: ≈4.9:1 (dark text on this teal is unreadable).
         default: 'bg-primary text-primary-foreground shadow-sm hover:bg-primary-hover',
         outline:
           'border border-border bg-surface text-foreground hover:bg-surface-2',

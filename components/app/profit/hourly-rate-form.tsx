@@ -300,15 +300,15 @@ export function HourlyRateForm({
         </div>
 
         <div className="flex flex-col gap-4 lg:sticky lg:top-20 lg:self-start">
-          <Card className="border-transparent bg-gradient-to-br from-accent-100 to-accent-300 text-primary-foreground shadow-lg shadow-accent-500/20">
+          <Card className="border-transparent bg-gradient-to-br from-accent-100 to-accent-300 text-primary-soft-foreground shadow-lg shadow-accent-500/20">
             <CardContent className="flex flex-col gap-2 pt-6">
-              <span className="text-sm font-medium text-primary-foreground/80">{t('trueRate')}</span>
+              <span className="text-sm font-medium text-primary-soft-foreground/80">{t('trueRate')}</span>
               {rate ? (
                 <>
                   <p className="font-display text-2xl font-semibold leading-tight">
                     {t('headline', { amount: money(rate.trueHourlyRateCents) })}
                   </p>
-                  <p className="text-sm text-primary-foreground/80">
+                  <p className="text-sm text-primary-soft-foreground/80">
                     {t('breakdown', {
                       fixed: money(rate.fixedCostPerHourCents),
                       owner: money(rate.ownerTargetIncomePerHourCents),
@@ -316,7 +316,7 @@ export function HourlyRateForm({
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-primary-foreground/80">{t('needsHours')}</p>
+                <p className="text-sm text-primary-soft-foreground/80">{t('needsHours')}</p>
               )}
             </CardContent>
           </Card>

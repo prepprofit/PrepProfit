@@ -24,7 +24,7 @@ export type RecipePrintLabels = {
 const INK = '#1f2937';
 const MUTED = '#6b7280';
 const BORDER = '#e5e7eb';
-const ACCENT = '#2c7466';
+const ACCENT = '#096567';
 
 const styles = StyleSheet.create({
   page: { paddingTop: 44, paddingBottom: 56, paddingHorizontal: 48, fontSize: 11, color: INK, fontFamily: 'Helvetica', lineHeight: 1.45 },

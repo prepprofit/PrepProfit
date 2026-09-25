@@ -29,25 +29,29 @@ the reference's information architecture: it maps onto PrepProfit's own modules
 
 ### Brand & accent scales (theme-independent)
 
-`accent` = **Mint** (a green with a blue undertone, hue ~161°) — primary actions,
-active nav, selected controls, links, focus. Adopted 2026-09-14, replacing orange,
-so the product feels calm and positive; it is used sparingly so it keeps meaning.
+`accent` = **Blue-leaning teal** (hue ~185°) — primary actions, active nav,
+selected controls, links, focus. Adopted 2026-09-25, replacing the mint/green
+teal, following a Holvi-referenced restyle: pale cyan highlights, deep teal
+primary, quiet neutral surfaces.
 
 ```
---color-accent-50:#f1f8f6 --color-accent-100:#dcefe9 --color-accent-200:#c4e7de
---color-accent-300:#9cd5c8 --color-accent-400:#85c9ba --color-accent-500:#4fa895
---color-accent-600:#3a8e7d --color-accent-700:#2c7466 --color-accent-800:#245f54
---color-accent-900:#1f4e46 --color-accent-950:#123831
+--color-accent-50:#edfafb --color-accent-100:#d7f1f4 --color-accent-200:#bfe8f2
+--color-accent-300:#8ad3de --color-accent-400:#4fb8c4 --color-accent-500:#1d98a0
+--color-accent-600:#0f7d7e --color-accent-700:#096567 --color-accent-800:#0a4f50
+--color-accent-900:#0b3b3c --color-accent-950:#062627
 ```
-**Filled controls use the light mint with DARK text** — white on mint is 1.6:1 and
-unreadable. Tokens: `--color-primary:#9cd5c8`, `--color-primary-hover:#85c9ba`,
-`--color-primary-soft:#c4e7de` (selected nav), `--color-primary-foreground:#123831`
-(7.8:1 on primary, 9.6:1 on soft). Use `bg-primary text-primary-foreground`, never
-`bg-accent-* text-white`. **Accent text** (links, active labels) uses `accent-700` on
-light grounds (5.9:1) and `accent-300`/`400` on dark grounds. Switch tracks use
-`accent-600` so the white thumb stays visible. Exceptions that need a deep accent
-under white or on white: Clerk (`colorPrimary` 700, it derives link colours from it),
-PDFs and email text (700).
+**Filled controls use the deep teal with WHITE text** — dark text on this teal
+fails contrast. Tokens: `--color-primary:#0f7d7e`, `--color-primary-hover:#096567`,
+`--color-primary-soft:#bfe8f2` (pale cyan — selected nav in light mode, soft
+secondary surfaces), `--color-primary-foreground:#ffffff` (≈4.9:1 on primary),
+`--color-primary-soft-foreground:#07566a` (≈8:1 on the soft chip). Use
+`bg-primary text-primary-foreground` for solid fills and `bg-primary-soft
+text-primary-soft-foreground` for pale chips — never mix the two foregrounds
+with the other background. **Accent text** (links, active labels) uses
+`accent-700` on light grounds (≈6.8:1) and `accent-300`/`400` on dark grounds.
+Switch tracks use `accent-600` so the white thumb stays visible. Exceptions that
+need a deep accent under white or on white: Clerk (`colorPrimary`, it derives
+link colours from it), PDFs and email text (`accent-700`).
 
 `brand` = **Leaf green** (hue ~142°) — reserved for **profit / positive / success**.
 It is deliberately yellower than the mint accent so an ordinary green button never
@@ -77,13 +81,18 @@ Semantic: red `#ef4444` (negative/loss), amber `#f59e0b` (warning/low stock).
 
 | Token | Light | Dark | Use |
 |-------|-------|------|-----|
-| `--background` | `#f8fafc` | `#0a0a0b` | app background |
+| `--background` | `#f5f7fa` | `#0a0a0b` | app / sidebar background |
 | `--surface` | `#ffffff` | `#161618` | cards / panels |
-| `--surface-2` | `#f1f5f9` | `#1f1f23` | insets, chart bg, hover |
-| `--border` | `#e2e8f0` | `#262629` | borders / dividers |
-| `--foreground` | `#0f172a` | `#fafafa` | primary text / numbers |
-| `--muted-foreground` | `#64748b` | `#a1a1aa` | secondary text |
-| `--ring` | `#3a8e7d` | `#85c9ba` | focus ring (accent) |
+| `--surface-2` | `#eef2f6` | `#1f1f23` | insets, chart bg, hover |
+| `--border` | `#dfe6eb` | `#262629` | borders / dividers |
+| `--foreground` | `#292f3a` | `#fafafa` | primary text / numbers |
+| `--muted-foreground` | `#40516a` | `#a1a1aa` | secondary text, nav icons |
+| `--ring` | `#0f7d7e` | `#4fb8c4` | focus ring (accent) |
+
+Dark mode keeps its own neutral scale rather than reusing the light values —
+only the accent-derived tokens (`--ring`, `--color-primary*`) shift with the
+rebrand; `--background`/`--surface`/`--border`/`--foreground` stay the existing
+near-black palette so dark mode stays legible on its own terms.
 
 ---
 
@@ -94,19 +103,19 @@ Semantic: red `#ef4444` (negative/loss), amber `#f59e0b` (warning/low stock).
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
 
-  /* accent (mint) + primary + brand (leaf green) + chart-* scales here (see section 2) */
+  /* accent (teal) + primary + brand (leaf green) + chart-* scales here (see section 2) */
 }
 
 :root {
-  --background:#f8fafc; --surface:#ffffff; --surface-2:#f1f5f9;
-  --border:#e2e8f0; --foreground:#0f172a; --muted-foreground:#64748b; --ring:#f97316;
+  --background:#f5f7fa; --surface:#ffffff; --surface-2:#eef2f6;
+  --border:#dfe6eb; --foreground:#292f3a; --muted-foreground:#40516a; --ring:#0f7d7e;
 }
 .dark {
   --background:#0a0a0b; --surface:#161618; --surface-2:#1f1f23;
-  --border:#262629; --foreground:#fafafa; --muted-foreground:#a1a1aa; --ring:#f97316;
+  --border:#262629; --foreground:#fafafa; --muted-foreground:#a1a1aa; --ring:#4fb8c4;
 }
 
 /* Expose semantic vars as Tailwind color utilities (bg-background, text-foreground, …) */
@@ -131,13 +140,13 @@ components will be migrated to these tokens.)
 
 ## 4. Color usage rules
 
-- **Mint (`accent` / `primary`)**: primary buttons/CTAs (mint fill, dark text),
-  active sidebar item (soft mint), selected chips/tabs, step badges, links, focus.
-  One primary action per screen.
+- **Teal (`accent` / `primary`)**: primary buttons/CTAs (deep teal fill, white
+  text), active sidebar item (pale cyan chip, dark teal text), selected
+  chips/tabs, step badges, links, focus. One primary action per screen.
 - **Leaf green (`brand`)**: positive deltas, profit/margin in the green, completed
-  badges, success. Never use the mint accent to signal "good number".
+  badges, success. Never use the teal accent to signal "good number".
 - **Charts**: follow the categorical palette order. Rings use chart-1..3; area/step
-  charts use a mint gradient fill over `surface-2`.
+  charts use a teal gradient fill over `surface-2`.
 - **Badges**: positive → `bg-brand-50 text-brand-600` (light) / tinted in dark;
   warning → amber; negative → red.
 
@@ -169,7 +178,8 @@ components will be migrated to these tokens.)
   *Operations* (Dashboard, Recipes, Ingredients, Inventory) ·
   *Finance* (Break-even, Invoices) · *Team* (Payroll). Logo + product name at
   top; OrganizationSwitcher (workspace) pinned at the bottom. Active item:
-  soft mint chip + dark mint text/icon.
+  pale cyan chip + dark teal text/icon (light); solid teal pill + white
+  text/icon (dark).
 - **Top bar**: page title/context on the left; on the right: theme toggle,
   notifications, and the Clerk `UserButton`. (A timer/project selector like the
   reference is out of scope — it's HorizonHub-specific.)
@@ -181,7 +191,7 @@ components will be migrated to these tokens.)
   overflow. Tables scroll horizontally inside their card on small screens.
 
 **Cards & surfaces**
-- `rounded-xl`, `bg-surface`, `border border-border`, `shadow-sm`. Floating
+- `rounded-2xl`, `bg-surface`, `border border-border`, `shadow-sm`. Floating
   elements (toasts, popovers) get `shadow-xl`. Generous padding (`p-5/p-6`).
 - **Glass** card variant (frosted: `bg-glass` + `border-glass-border` +
   `backdrop-blur`) for floating / highlighted tiles; light mode keeps a high
@@ -190,15 +200,17 @@ components will be migrated to these tokens.)
 
 **Data viz (built with real data in Sprint 2; mock visually now)**
 - Bar chart (Time-tracked style): rounded-top bars, one highlighted series in
-  mint, rest muted.
-- Area/step chart (KPI style): mint gradient fill on `surface-2`.
+  teal, rest muted.
+- Area/step chart (KPI style): teal gradient fill on `surface-2`.
 - Concentric **activity rings** (Work-activity style): chart-1..3.
 - **Segmented progress bar** (Task-overview style): multi-color segments.
 - **Completion ring + %** (Project-progress style).
 
 **Controls**
-- Buttons: pill (`rounded-full`); primary = mint fill + dark text, plus `outline` and `ghost`.
-- Inputs/selects: `surface-2` bg, `border`, focus `ring` (mint 600 / 400 dark).
+- Buttons: pill (`rounded-full`, ~36–40px tall); primary = deep teal fill + white
+  text, plus `outline` (neutral secondary) and `ghost`.
+- Inputs/selects: white `surface` bg, visible `border`, ~6–8px radius, focus
+  `ring` (teal 600 / 400 dark).
 
 ---
 

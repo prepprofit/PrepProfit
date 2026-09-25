@@ -17,7 +17,7 @@ import { formatMoney, formatDocDate, safeText } from './format';
  * the DB or the i18n runtime. Brand accent matches the app (deep mint).
  */
 
-const ACCENT = '#2c7466'; // accent-700, the app's deep mint for text
+const ACCENT = '#096567'; // accent-700, the app's deep teal for text
 const INK = '#1f2937'; // neutral-800
 const MUTED = '#6b7280'; // neutral-500
 const BORDER = '#e5e7eb'; // neutral-200

@@ -13,9 +13,9 @@ export interface StatCardProps {
   caption?: string;
   icon?: LucideIcon;
   /**
-   * Highlights the tile as the primary KPI: a light mint accent surface (dark text) with
-   * a tinted glow, matching the "hero" card in the dashboard reference. Purely
-   * cosmetic — the data and layout are unchanged.
+   * Highlights the tile as the primary KPI: a pale cyan accent surface (dark teal
+   * text) with a tinted glow, matching the "hero" card in the dashboard reference.
+   * Purely cosmetic — the data and layout are unchanged.
    */
   featured?: boolean;
   className?: string;
@@ -39,7 +39,7 @@ export function StatCard({
       className={cn(
         'flex flex-col gap-3 p-5',
         featured &&
-          'border-transparent bg-gradient-to-br from-accent-100 to-accent-300 text-primary-foreground shadow-lg shadow-accent-500/20',
+          'border-transparent bg-gradient-to-br from-accent-100 to-accent-300 text-primary-soft-foreground shadow-lg shadow-accent-500/20',
         className,
       )}
     >
@@ -47,7 +47,7 @@ export function StatCard({
         <span
           className={cn(
             'text-sm font-medium',
-            featured ? 'text-primary-foreground/80' : 'text-muted-foreground',
+            featured ? 'text-primary-soft-foreground/80' : 'text-muted-foreground',
           )}
         >
           {label}
@@ -57,7 +57,7 @@ export function StatCard({
             className={cn(
               'flex size-8 items-center justify-center rounded-lg',
               featured
-                ? 'bg-white/50 text-primary-foreground'
+                ? 'bg-white/50 text-primary-soft-foreground'
                 : 'bg-surface-2 text-accent-600 dark:text-accent-400',
             )}
           >
@@ -69,7 +69,7 @@ export function StatCard({
       <p
         className={cn(
           'font-display text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl',
-          featured ? 'text-primary-foreground' : 'text-foreground',
+          featured ? 'text-primary-soft-foreground' : 'text-foreground',
         )}
       >
         {value}
@@ -87,7 +87,7 @@ export function StatCard({
             <span
               className={cn(
                 'truncate text-xs',
-                featured ? 'text-primary-foreground/75' : 'text-muted-foreground',
+                featured ? 'text-primary-soft-foreground/75' : 'text-muted-foreground',
               )}
             >
               {caption}

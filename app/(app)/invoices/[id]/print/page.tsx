@@ -104,7 +104,7 @@ export default async function InvoicePrintPage({
               )}
             </div>
             <div className="flex flex-col items-end gap-1">
-              <span className="text-2xl font-bold tracking-wide text-[#2c7466]">
+              <span className="text-2xl font-bold tracking-wide text-[#096567]">
                 {labels.title}
               </span>
               {data.number && (
@@ -112,7 +112,7 @@ export default async function InvoicePrintPage({
                   {labels.invoiceNo} {data.number}
                 </span>
               )}
-              <span className="mt-1 rounded border border-[#2c7466] px-2 py-0.5 text-xs font-semibold uppercase text-[#2c7466]">
+              <span className="mt-1 rounded border border-[#096567] px-2 py-0.5 text-xs font-semibold uppercase text-[#096567]">
                 {labels.status[data.status]}
               </span>
             </div>

@@ -79,7 +79,7 @@ const CommandItem = React.forwardRef<
       'group relative flex cursor-pointer select-none items-center gap-3 rounded-xl px-2.5 py-2 text-sm outline-none',
       'transition-colors duration-100',
       'data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50',
-      'data-[selected=true]:bg-surface-2 data-[selected=true]:text-foreground',
+      'data-[selected=true]:bg-primary-soft data-[selected=true]:text-primary-soft-foreground',
       className,
     )}
     {...props}

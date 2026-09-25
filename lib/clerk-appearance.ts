@@ -9,9 +9,9 @@ type ClerkAppearance = NonNullable<
  * Theme Clerk's prebuilt components (UserButton, OrganizationSwitcher, auth
  * pages) with PrepProfit's tokens — without pulling in `@clerk/themes`. Values
  * mirror the semantic tokens in `app/globals.css`; pass the resolved theme so it
- * tracks the light/dark toggle. Clerk also derives LINK colours from
- * `colorPrimary`, so it uses the deep mint accent-700 with white (6.1:1) rather than
- * the pale app button fill, which would make Clerk's links unreadable.
+ * tracks the light/dark toggle. `colorPrimary` is the app's deep teal
+ * `--color-primary` — Clerk also derives LINK colours from it, and white text
+ * on this teal is ≈4.9:1, readable for both the button fill and links.
  */
 export function clerkAppearance(isDark: boolean): ClerkAppearance {
   return {
@@ -25,16 +25,16 @@ export function clerkAppearance(isDark: boolean): ClerkAppearance {
       },
     },
     variables: {
-      colorPrimary: '#2c7466',
+      colorPrimary: '#0f7d7e',
       colorPrimaryForeground: '#ffffff',
       colorBackground: isDark ? '#161618' : '#ffffff',
-      colorForeground: isDark ? '#fafafa' : '#0f172a',
-      colorMutedForeground: isDark ? '#a1a1aa' : '#64748b',
+      colorForeground: isDark ? '#fafafa' : '#292f3a',
+      colorMutedForeground: isDark ? '#a1a1aa' : '#40516a',
       colorInput: isDark ? '#1f1f23' : '#ffffff',
-      colorInputForeground: isDark ? '#fafafa' : '#0f172a',
-      colorBorder: isDark ? '#262629' : '#e2e8f0',
-      colorNeutral: isDark ? '#fafafa' : '#0f172a',
-      colorRing: '#3a8e7d',
+      colorInputForeground: isDark ? '#fafafa' : '#292f3a',
+      colorBorder: isDark ? '#262629' : '#dfe6eb',
+      colorNeutral: isDark ? '#fafafa' : '#292f3a',
+      colorRing: isDark ? '#4fb8c4' : '#0f7d7e',
       borderRadius: '0.625rem',
       fontFamily: 'var(--font-roboto), ui-sans-serif, system-ui, sans-serif',
     },

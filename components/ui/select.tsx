@@ -7,8 +7,7 @@ import { cn } from '@/lib/utils';
  * works without extra dependencies, stays accessible by default, and behaves well
  * inside forms and editable grids. Pass <option> children.
  *
- * Rest state matches {@link Input}: filled, borderless; the hairline appears on
- * hover/focus only.
+ * Rest state matches {@link Input}: white surface, thin pale border.
  */
 const Select = React.forwardRef<
   HTMLSelectElement,
@@ -18,7 +17,7 @@ const Select = React.forwardRef<
     <select
       ref={ref}
       className={cn(
-        'h-10 w-full cursor-pointer appearance-none rounded-lg border border-transparent bg-surface-2 px-3.5 pr-9 text-sm text-foreground transition-colors hover:border-border/60 focus-visible:border-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50',
+        'h-10 w-full cursor-pointer appearance-none rounded-lg border border-border bg-surface px-3.5 pr-9 text-sm text-foreground transition-colors hover:border-muted-foreground/40 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
       {...props}
