@@ -1,18 +1,17 @@
 import { notFound } from 'next/navigation';
 import { getOrgId } from '@/lib/auth';
 import { withOrg } from '@/lib/db';
-import {
-  getRecipeWithIngredients,
-  toKitchenRecipeWithIngredients,
-} from '@/lib/data/recipes';
+import { getRecipeWorkspace } from '@/lib/data/recipe-workspace';
 import { listRecipePresets } from '@/lib/data/recipe-presets';
 import { getOrgSettings } from '@/lib/data/org-settings';
-import { ScaleWorkbench } from '@/components/app/kitchen-scale/scale-workbench';
+import { buildKitchenScaleDocument } from '@/lib/kitchen-scale/prep-document';
+import { KitchenScaleWorkspace } from '@/components/app/kitchen-scale/kitchen-scale-workspace';
 
 /**
- * Kitchen Scale workbench page. ALWAYS maps through
- * `toKitchenRecipeWithIngredients` — even for managers — because Kitchen Scale is
- * not a financial surface: no money key ever reaches the client from here.
+ * Kitchen Scale calculator page (Kitchen Scale redesign §2). ALWAYS loads via
+ * the literal `'kitchen'` workspace role — even for a manager — because Kitchen
+ * Scale is not a financial surface: no money key ever reaches the client from
+ * here. Full-width; the app sidebar auto-collapses on entry (`AppShell`).
  */
 export default async function KitchenScaleRecipePage({
   params,
@@ -22,9 +21,9 @@ export default async function KitchenScaleRecipePage({
   const { recipeId } = await params;
   const organizationId = await getOrgId();
 
-  const [data, presets, settings] = await Promise.all([
+  const [dto, presets, settings] = await Promise.all([
     withOrg(organizationId, (tx) =>
-      getRecipeWithIngredients(tx, organizationId, recipeId),
+      getRecipeWorkspace(tx, organizationId, recipeId, 'kitchen'),
     ),
     withOrg(organizationId, (tx) =>
       listRecipePresets(tx, organizationId, recipeId),
@@ -33,33 +32,24 @@ export default async function KitchenScaleRecipePage({
   ]);
 
   // Missing, trashed, or cross-org recipes all read as null under the org scope.
-  if (!data) notFound();
+  if (!dto) notFound();
 
-  const view = toKitchenRecipeWithIngredients(data);
+  const doc = buildKitchenScaleDocument(dto);
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6">
-      <ScaleWorkbench
-        recipeId={view.recipe.id}
-        recipeName={view.recipe.name}
-        recipe={{
-          yieldPortions: view.recipe.yieldPortions,
-          yieldWeightGrams: view.recipe.yieldWeightGrams,
-        }}
-        lines={view.lines.map((l) => ({
-          id: l.id,
-          ingredientId: l.ingredientId,
-          name: l.ingredient.name,
-          dimension: l.ingredient.dimension,
-          quantity: l.quantity,
-        }))}
-        presets={presets.map((p) => ({
-          id: p.id,
-          name: p.name,
-          targetWeightGrams: p.targetWeightGrams,
-        }))}
-        measurementSystem={settings.measurementSystem}
-      />
-    </div>
+    <KitchenScaleWorkspace
+      recipeId={recipeId}
+      recipeName={doc.name}
+      recipe={{ yieldPortions: doc.yieldPortions, yieldWeightGrams: doc.yieldWeightGrams }}
+      lines={doc.lines}
+      presets={presets.map((p) => ({
+        id: p.id,
+        name: p.name,
+        targetWeightGrams: p.targetWeightGrams,
+      }))}
+      method={doc.method}
+      legacyNotes={doc.legacyNotes}
+      measurementSystem={settings.measurementSystem}
+    />
   );
 }

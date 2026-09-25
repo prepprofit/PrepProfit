@@ -215,43 +215,80 @@
     "purchaseOrders": "Purchase orders"
   },
   "kitchenScale": {
-    "subtitle": "Pick a recipe and scale it for today's batch. Nothing is saved — it's just a working view.",
-    "searchPlaceholder": "Search recipes…",
-    "folderFilter": "Folder",
-    "allFolders": "All folders",
-    "noFolder": "No folder",
-    "empty": "No recipes yet. Create one on the Recipes page first.",
-    "noMatches": "No recipes match your search.",
-    "cardPortions": "{count, plural, one {# portion} other {# portions}}",
-    "cardLines": "{count, plural, one {# ingredient} other {# ingredients}}",
-    "cardPresets": "{count, plural, one {# preset} other {# presets}}",
-    "cardYieldWeight": "{weight} batch",
-    "back": "Back to Kitchen Scale",
-    "basketTitle": "Target batch",
-    "presetBasketHint": "Enter quantity for one or more sizes, then click Calculate.",
-    "presetQuantity": "Quantity",
-    "eachWeight": "{weight} each",
-    "noPresets": "No presets for this recipe — use the custom weight below, or add presets on the recipe page.",
-    "customWeight": "Custom total weight",
-    "customWeightUnit": "Custom weight unit",
-    "targetTotalWeight": "Target total weight",
-    "needsYieldWeight": "This recipe has no batch yield weight, so it can't scale by target weight. Set one on the recipe page, or edit an ingredient amount on the right.",
-    "calculate": "Calculate",
-    "reset": "Reset to ×1",
-    "tableTitle": "Scaled ingredients",
-    "noLines": "This recipe has no ingredients yet.",
-    "result": "{from} → {to} portions (×{factor})",
-    "anchorAmount": "New amount for {name}",
-    "anchorUnit": "Unit",
-    "editToReAnchor": "Click any amount to edit it — the whole recipe rescales around it.",
-    "printPrep": "Print prep card",
-    "downloadPrep": "Download prep card",
-    "errors": {
-      "invalid_target": "Enter a target greater than zero.",
-      "invalid_anchor": "Enter an amount greater than zero.",
-      "invalid_yield": "This recipe has no usable batch size to scale from.",
-      "invalid_factor": "That scale isn't valid.",
-      "overflow": "That batch is too large — try a smaller target."
+    "subtitle": "Pick a recipe and calculate today's batch. Nothing here is saved — it's a working view.",
+    "home": {
+      "searchPlaceholder": "Search all recipes…",
+      "resultsLabel": "Matching recipes",
+      "resultCount": "{count, plural, one {# recipe found} other {# recipes found}}",
+      "noResults": "No recipe matches “{query}”.",
+      "unfiled": "Unfiled",
+      "recipeCount": "{count, plural, =0 {No recipes} one {# recipe} other {# recipes}}",
+      "all": "All",
+      "allCaption": "{count, plural, =0 {No recipes} one {# recipe} other {# recipes}} · every folder",
+      "allTitle": "All recipes",
+      "empty": "No recipes yet. Add one on the Recipes page first.",
+      "back": "Kitchen Scale"
+    },
+    "list": {
+      "empty": "This folder has no recipes yet."
+    },
+    "workspace": {
+      "backToRecipes": "Back to recipes",
+      "print": "Print",
+      "download": "Download PDF",
+      "originalWeight": "Original: {weight}",
+      "originalPortionsOnly": "Makes {count, plural, one {# portion} other {# portions}}",
+      "resetToOriginal": "Reset",
+      "targetWeight": {
+        "label": "Target weight",
+        "unit": "Unit",
+        "apply": "Calculate",
+        "needsYieldWeight": "This recipe has no batch yield weight, so it can't scale by target weight. Set one on the recipe page, or use an ingredient amount below."
+      },
+      "ingredientAmount": {
+        "hint": "Changing one amount scales the whole recipe.",
+        "editTitle": "New amount for {name}",
+        "apply": "Apply",
+        "cancel": "Cancel"
+      },
+      "presets": {
+        "toggle": "Use presets",
+        "panelTitle": "Use presets",
+        "eachWeight": "{weight} each",
+        "quantityLabel": "Quantity",
+        "combinedTotal": "Combined total",
+        "apply": "Use this quantity",
+        "none": "No presets for this recipe. Add them on the recipe page.",
+        "summaryPrefix": "Using presets:",
+        "adjust": "Adjust",
+        "itemText": "{quantity} × {name}"
+      },
+      "basis": {
+        "original": "Original recipe / ×1",
+        "weight": "Target weight: {amount}",
+        "line": "Based on {name}: {amount}",
+        "preset": "{summary} — total {total}"
+      },
+      "ingredientsTitle": "Ingredients",
+      "noLines": "This recipe has no ingredients yet.",
+      "subRecipe": "(sub-recipe)",
+      "methodTitle": "Preparation",
+      "methodExpand": "Show preparation method",
+      "methodCollapse": "Hide preparation method",
+      "noMethod": "No preparation method saved yet.",
+      "unresolvedEdit": {
+        "title": "Unapplied change",
+        "body": "You've typed a new amount but haven't calculated it yet. It won't be included unless you continue anyway.",
+        "continueAnyway": "Continue anyway",
+        "cancel": "Go back"
+      },
+      "errors": {
+        "invalid_target": "Enter a target greater than zero.",
+        "invalid_anchor": "Enter an amount greater than zero.",
+        "invalid_yield": "This recipe has no usable batch size to scale from.",
+        "invalid_factor": "That scale isn't valid.",
+        "overflow": "That batch is too large — try a smaller target."
+      }
     }
   },
   "navGroups": {
@@ -2945,15 +2982,21 @@
     }
   },
   "recipePrepCardDocument": {
-    "title": "PREP CARD",
-    "yield": "Yield",
-    "portions": "portions",
-    "usableYield": "usable",
-    "scaledTo": "Scaled to {portions} portions (×{factor})",
+    "brand": "PrepProfit · {business}",
+    "brandNoBusiness": "PrepProfit",
+    "basisOriginal": "Original recipe / ×1",
+    "basisWeight": "Target weight: {amount}",
+    "basisLine": "Based on {name}: {amount}",
+    "basisPreset": "{summary} — total {total}",
+    "presetItem": "{quantity} × {name}",
+    "basisFactor": "Scaled ×{factor}",
     "ingredient": "Ingredient",
     "quantity": "Qty",
-    "subRecipes": "Sub-recipes",
-    "notes": "Notes",
+    "subRecipe": "(sub-recipe)",
+    "totalToWeigh": "Total to weigh",
+    "expectedFinishedWeight": "Expected finished weight",
+    "method": "Preparation",
+    "footer": "{recipeName}",
     "units": {
       "weight": "g",
       "volume": "ml",

@@ -69,10 +69,12 @@ describe('kitchen scale listing (money-free operational DTO)', () => {
     await createRecipe(db, ORG_B, { name: 'Other org' });
 
     const listing = await listKitchenScaleRecipes(db, ORG_A);
-    expect(listing.map((r) => r.name)).toEqual(['Bare', 'Bread']);
+    // Most recent activity first — both were just created, so this also proves
+    // the sort doesn't reorder ties unpredictably (name/id tiebreak).
+    expect(listing.map((r) => r.name).sort()).toEqual(['Bare', 'Bread']);
 
     const breadItem = listing.find((r) => r.name === 'Bread')!;
-    expect(breadItem).toEqual({
+    expect(breadItem).toMatchObject({
       id: bread.id,
       name: 'Bread',
       folderId: null,
@@ -81,6 +83,7 @@ describe('kitchen scale listing (money-free operational DTO)', () => {
       lineCount: 2,
       presetCount: 1,
     });
+    expect(breadItem.recentActivityAt).toBeInstanceOf(Date);
 
     const bareItem = listing.find((r) => r.name === 'Bare')!;
     expect(bareItem.yieldWeightGrams).toBeNull();
@@ -105,6 +108,7 @@ describe('kitchen scale listing (money-free operational DTO)', () => {
       'lineCount',
       'name',
       'presetCount',
+      'recentActivityAt',
       'yieldPortions',
       'yieldWeightGrams',
     ]);

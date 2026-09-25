@@ -13,6 +13,7 @@ import type { TenantClient } from '@/lib/db/tenant';
 import { nullTaskRecipeLinks } from '@/lib/data/tasks';
 import { syncBookMembershipForFolderMove } from '@/lib/data/recipe-books';
 import { syncLegacyPriceToDefaultOption } from '@/lib/data/recipe-portion-options';
+import { compareRecentActivity, recentActivityAt } from '@/lib/recipes/library-order';
 
 /**
  * Access to `recipes` is ALWAYS scoped by `organizationId`. See lib/data/ingredients.ts.
@@ -133,12 +134,15 @@ export type KitchenScaleRecipeListItem = {
   yieldWeightGrams: number | null;
   lineCount: number;
   presetCount: number;
+  /** Latest of last edit / last opened (created when neither) — the folder-first
+   *  home's default order and the global search's tie-break (Kitchen Scale redesign). */
+  recentActivityAt: Date;
 };
 
 /**
- * Active recipes in the org as {@link KitchenScaleRecipeListItem}s. Three
- * org-scoped queries (recipes + grouped line counts + grouped preset counts)
- * merged in memory — no N+1, no money fields ever selected.
+ * Active recipes in the org as {@link KitchenScaleRecipeListItem}s, most recent
+ * activity first. Three org-scoped queries (recipes + grouped line counts +
+ * grouped preset counts) merged in memory — no N+1, no money fields ever selected.
  */
 export async function listKitchenScaleRecipes(
   db: TenantClient,
@@ -151,6 +155,9 @@ export async function listKitchenScaleRecipes(
       folderId: recipes.folderId,
       yieldPortions: recipes.yieldPortions,
       yieldWeightGrams: recipes.yieldWeightGrams,
+      createdAt: recipes.createdAt,
+      updatedAt: recipes.updatedAt,
+      lastOpenedAt: recipes.lastOpenedAt,
     })
     .from(recipes)
     .where(
@@ -174,7 +181,7 @@ export async function listKitchenScaleRecipes(
   const lineCounts = new Map(lineRows.map((r) => [r.recipeId, r.value]));
   const presetCounts = new Map(presetRows.map((r) => [r.recipeId, r.value]));
 
-  return recipeRows.map((r) => ({
+  const items = recipeRows.map((r) => ({
     id: r.id,
     name: r.name,
     folderId: r.folderId,
@@ -182,7 +189,9 @@ export async function listKitchenScaleRecipes(
     yieldWeightGrams: r.yieldWeightGrams,
     lineCount: lineCounts.get(r.id) ?? 0,
     presetCount: presetCounts.get(r.id) ?? 0,
+    recentActivityAt: recentActivityAt(r),
   }));
+  return items.sort(compareRecentActivity);
 }
 
 /**

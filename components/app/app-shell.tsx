@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Sidebar } from './sidebar';
 import { TopBar } from './top-bar';
@@ -48,10 +49,29 @@ export function AppShell({
     setCollapsed(localStorage.getItem('pp-sidebar-collapsed') === '1');
   }, []);
 
+  // Kitchen Scale's calculator is a full-width workspace: collapse the rail on
+  // ENTRY (an ephemeral session default, never persisted — leaving restores the
+  // user's own saved preference) so the recipe gets the width. The toggle stays
+  // reachable the whole time; a manual toggle while inside kitchen mode is not
+  // written to the stored preference, so it can't contaminate it.
+  const pathname = usePathname();
+  const inKitchenMode = /^\/kitchen-scale\/[^/]+/.test(pathname ?? '');
+  const inKitchenModeRef = React.useRef(inKitchenMode);
+  React.useEffect(() => {
+    if (inKitchenMode && !inKitchenModeRef.current) {
+      setCollapsed(true);
+    } else if (!inKitchenMode && inKitchenModeRef.current) {
+      setCollapsed(localStorage.getItem('pp-sidebar-collapsed') === '1');
+    }
+    inKitchenModeRef.current = inKitchenMode;
+  }, [inKitchenMode]);
+
   const toggleCollapsed = React.useCallback(() => {
     setCollapsed((v) => {
       const next = !v;
-      localStorage.setItem('pp-sidebar-collapsed', next ? '1' : '0');
+      if (!inKitchenModeRef.current) {
+        localStorage.setItem('pp-sidebar-collapsed', next ? '1' : '0');
+      }
       return next;
     });
   }, []);
