@@ -26,6 +26,18 @@ export function safeText(value: string | number | null | undefined): string {
 }
 
 /**
+ * Format a canonical physical quantity (grams / millilitres / pieces) for a
+ * printed document: up to 2 decimals, trailing zeros trimmed, thousands
+ * separated — "2105" → "2,105", "0.5" → "0.5", "125.25" → "125.25". Kitchen
+ * Scale prints canonical units directly (never kg/l-shifted) so the number on
+ * the page is exactly what a kitchen scale should be zeroed to.
+ */
+export function formatDocumentQuantity(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  return rounded.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+/**
  * Sanitize a stem into a header/filesystem-safe download filename (no extension).
  * Same scrub as `invoiceDocumentFilename` so every generated document's
  * `Content-Disposition` is consistent and injection-safe. A blank stem falls back

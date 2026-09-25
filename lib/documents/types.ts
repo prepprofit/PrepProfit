@@ -252,50 +252,83 @@ export type PayrollDocumentLabels = {
 };
 
 /* -------------------------------------------------------------------------- */
-/* Recipe scaling MVP — operational prep card (money-free, BOTH roles)         */
+/* Kitchen Scale — operational prep card (money-free, BOTH roles)              */
 /* -------------------------------------------------------------------------- */
 
-/** One ingredient line on the prep card — name + dimension + scaled quantity ONLY. */
+/** One ingredient or sub-recipe line on the prep card, in the chef's saved order. */
 export type RecipePrepCardLine = {
   name: string;
   dimension: 'weight' | 'volume' | 'count';
-  /** Canonical amount (g / ml / pieces), already scaled if the card was scaled. */
+  /** Canonical amount (g / ml / pieces), already scaled by the applied factor. */
   quantity: number;
+  isSubRecipe: boolean;
 };
 
+/** One prep-method section with its ordered step texts. */
+export type RecipePrepCardMethodSection = { title: string; steps: string[] };
+
 /**
- * Operational prep-card view-model (Recipe scaling MVP). Deliberately money-free —
- * it carries NO cost, price, margin, or total key, by TYPE, so it can be shown to
- * kitchen and managers alike. It is the print/download counterpart for the kitchen,
- * distinct from the manager-only financial recipe cost sheet.
+ * The calculation-basis caption printed under the recipe name (Kitchen Scale
+ * redesign §5). Exactly what produced the printed quantities, in the chef's own
+ * terms — never a generic "scaled" note when a more specific one is knowable.
+ */
+export type RecipePrepCardBasis =
+  | { kind: 'original' }
+  | { kind: 'weight'; grams: number }
+  | { kind: 'line'; lineName: string; amount: number; dimension: 'weight' | 'volume' | 'count' }
+  | { kind: 'preset'; selections: { name: string; quantity: number }[]; totalGrams: number }
+  /** The factor is known (and IS what was applied) but its origin basis could
+   *  not be resolved (e.g. a hand-edited or stale link) — never invents a basis. */
+  | { kind: 'factor'; factor: number };
+
+/**
+ * Operational prep-card view-model (Kitchen Scale redesign). Deliberately
+ * money-free — it carries NO cost, price, margin, or total key, by TYPE, so it
+ * can be shown to kitchen and managers alike. It is the print/download
+ * counterpart for the kitchen, distinct from the manager-only financial recipe
+ * cost sheet (`RecipeCardDocumentData`).
  */
 export type RecipePrepCardData = {
   seller: SellerIdentity;
   recipeName: string;
-  /** The recipe's own batch size (unscaled). */
-  yieldPortions: number;
+  /** The recipe's own saved batch size (unscaled) — the small header reference. */
+  originalYieldPortions: number;
+  /** The recipe's own saved finished weight (unscaled canonical grams), or null. */
+  originalYieldWeightGrams: number | null;
+  basis: RecipePrepCardBasis;
+  lines: RecipePrepCardLine[];
+  /** Sum of WEIGHT-dimension lines only (scaled) — "Total to weigh". Null when
+   *  the recipe has no weight-dimension lines at all (never mixes units). */
+  totalWeightGrams: number | null;
   /** Usable yield after trim/loss (100 = no loss). */
   yieldPercentage: number;
-  /** Present only when scaled; drives the "Scaled to …" header line. */
-  scale: RecipeScaleMeta | null;
-  lines: RecipePrepCardLine[];
-  /** Sub-recipe component lines — name + finished grams ONLY (money-free). */
-  components: { name: string; quantityGrams: number }[];
-  notes: string | null;
+  /** `totalWeightGrams × yieldPercentage / 100` — shown ONLY alongside
+   *  `totalWeightGrams` and only when loss actually applies (`yieldPercentage
+   *  !== 100`), clearly distinct from the input total. */
+  expectedFinishedWeightGrams: number | null;
+  method: RecipePrepCardMethodSection[];
+  /** Legacy free-text notes, shown ONLY when `method` is empty. */
+  legacyNotes: string | null;
 };
 
 export type RecipePrepCardLabels = {
-  title: string;
-  yield: string;
-  portions: string;
-  usableYield: string;
-  /** "Scaled to {portions} portions (×{factor})" — only shown when scaled. */
-  scaledTo: (args: { portions: string; factor: string }) => string;
+  /** Small top-left business identification line, e.g. "PrepProfit · Chef Guise". */
+  brand: (businessName: string | null) => string;
+  basisOriginal: string;
+  basisWeight: (amount: string) => string;
+  basisLine: (args: { name: string; amount: string }) => string;
+  /** "{summary} — total {total}", e.g. "45 individual portions + 4 × 18 cm cake — total 3,802.5 g". */
+  basisPreset: (args: { summary: string; total: string }) => string;
+  /** One "{quantity} × {name}" preset-selection item joined into the preset summary. */
+  presetItem: (args: { quantity: string; name: string }) => string;
+  basisFactor: (factor: string) => string;
   ingredient: string;
   quantity: string;
-  /** Section title for the sub-recipe component lines. */
-  subRecipes: string;
-  notes: string;
+  subRecipe: string;
+  totalToWeigh: string;
+  expectedFinishedWeight: string;
+  method: string;
+  footer: (recipeName: string) => string;
   /** Unit suffix by dimension (e.g. g / ml / ×). */
   units: Record<'weight' | 'volume' | 'count', string>;
 };

@@ -15,13 +15,13 @@ import { runInOrg } from '@/lib/db/tenant';
 import { rateLimitKey } from '@/lib/rate-limit';
 
 /**
- * Integration test for the operational prep-card PDF route (Recipe scaling MVP).
- * Runs the real handler against PGlite under the non-privileged `tenant_app` role
- * (RLS enforced), with `@/lib/auth`, `@/lib/db` and next-intl stubbed. Proves: BOTH
- * roles can render (no RBAC gate — the card is money-free), a scaled request renders,
- * an invalid `?portions=` → 400, render audits `export.recipePrepCardPdf` in the
- * active org only, a trashed/cross-org id → 404 with no audit leak, and the
- * `documents` rate limit returns 429.
+ * Integration test for the Kitchen Scale prep-card PDF route (Kitchen Scale
+ * redesign). Runs the real handler against PGlite under the non-privileged
+ * `tenant_app` role (RLS enforced), with `@/lib/auth`, `@/lib/db` and next-intl
+ * stubbed. Proves: BOTH roles can render (no RBAC gate — the card is
+ * money-free), a scaled request renders, an invalid `?factor=` → 400, render
+ * audits `export.recipePrepCardPdf` in the active org only, a trashed/cross-org
+ * id → 404 with no audit leak, and the `documents` rate limit returns 429.
  */
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
@@ -155,18 +155,24 @@ describe('GET /api/recipes/[id]/prep-card/pdf', () => {
     expect(res.status).toBe(200);
   });
 
-  it('renders a scaled card for a valid ?portions=', async () => {
+  it('renders a scaled card for a valid ?factor=', async () => {
     h.auth = { orgId: ORG_A, userId: 'kitchen_2', role: 'kitchen' };
-    const res = await call(recipeId, '?portions=20');
+    const res = await call(recipeId, '?factor=5');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/pdf');
   });
 
-  it('returns 400 for an invalid ?portions=', async () => {
+  it('renders a scaled card with a basis caption param', async () => {
+    h.auth = { orgId: ORG_A, userId: 'kitchen_2b', role: 'kitchen' };
+    const res = await call(recipeId, '?factor=2&basis=weight&grams=2000');
+    expect(res.status).toBe(200);
+  });
+
+  it('returns 400 for an invalid ?factor=', async () => {
     h.auth = { orgId: ORG_A, userId: 'kitchen_3', role: 'kitchen' };
-    expect((await call(recipeId, '?portions=0')).status).toBe(400);
-    expect((await call(recipeId, '?portions=-4')).status).toBe(400);
-    expect((await call(recipeId, '?portions=abc')).status).toBe(400);
+    expect((await call(recipeId, '?factor=0')).status).toBe(400);
+    expect((await call(recipeId, '?factor=-4')).status).toBe(400);
+    expect((await call(recipeId, '?factor=abc')).status).toBe(400);
   });
 
   it('returns 404 for a trashed recipe', async () => {
