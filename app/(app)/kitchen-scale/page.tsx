@@ -6,6 +6,7 @@ import { withOrg } from '@/lib/db';
 import { listKitchenScaleRecipes } from '@/lib/data/recipes';
 import { listFoldersWithCounts } from '@/lib/data/recipe-folders';
 import { folderChildren, folderPath } from '@/lib/folders/tree';
+import { recipesInFolderScope } from '@/lib/folders/recipe-scope';
 import { KitchenScaleHome } from '@/components/app/kitchen-scale/kitchen-scale-home';
 import { KitchenScaleFolderList } from '@/components/app/kitchen-scale/kitchen-scale-folder-list';
 import { FolderTile } from '@/components/app/shared/folders/folder-tile';
@@ -64,11 +65,17 @@ export default async function KitchenScalePage({
 
   // ── Folder view ───────────────────────────────────────────────────────────
   const activeKey = activeFolder ? activeFolder.id : inAll ? 'all' : 'none';
-  const visibleRecipes = inAll
-    ? searchItems
-    : searchItems.filter((r) =>
-        activeFolder ? r.folderId === activeFolder.id : r.folderId === null,
-      );
+  // Same recursive scope as /recipes: a folder lists its own recipes AND every
+  // descendant folder's, each exactly once (lib/folders/recipe-scope.ts).
+  const visibleRecipes = recipesInFolderScope(
+    listing.folders,
+    searchItems,
+    activeFolder
+      ? { kind: 'folder', folderId: activeFolder.id }
+      : inAll
+        ? { kind: 'all' }
+        : { kind: 'unfiled' },
+  );
   const href = `/kitchen-scale?folder=${activeKey}`;
   const subfolders = activeFolder ? folderChildren(listing.folders, activeFolder.id) : [];
   const crumbs: BreadcrumbCrumb[] = activeFolder
@@ -131,7 +138,7 @@ export default async function KitchenScalePage({
       {subfolders.length > 0 && (
         <section aria-label={tHome('subfolders')} className="flex flex-col gap-2">
           <h3 className="px-1 text-xs font-medium text-muted-foreground">{tHome('subfolders')}</h3>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {subfolders.map((folder) => (
               <FolderTile
                 key={folder.id}
@@ -140,11 +147,11 @@ export default async function KitchenScalePage({
                 caption={tHome('recipeCount', { count: folder.recipeCount })}
                 icon={
                   folder.icon ? (
-                    <span aria-hidden className="text-xl leading-none">
+                    <span aria-hidden className="text-base leading-none">
                       {folder.icon}
                     </span>
                   ) : (
-                    <Folder className="size-5" aria-hidden />
+                    <Folder className="size-4" aria-hidden />
                   )
                 }
               />

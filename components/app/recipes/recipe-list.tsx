@@ -4,18 +4,16 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ChevronRight, Search, Trash2 } from 'lucide-react';
+import { ChevronRight, FolderInput, Search, Trash2 } from 'lucide-react';
 import type { Recipe } from '@/lib/db/schema';
-import { folderAncestorLabel } from '@/lib/folders/tree';
 import { Input } from '@/components/ui/input';
 // The list never shows money — accept only the operational fields, so a recipe's
 // cost/selling price is not even part of this client component's props (Sprint F4).
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { deleteRecipeAction } from '@/app/(app)/recipes/actions';
-import { moveRecipeToFolderAction } from '@/app/(app)/recipes/folder-actions';
 import { useActionError } from '@/lib/i18n/use-action-error';
+import { cn } from '@/lib/utils';
 import { rememberRecipeListReturn, scrollContainer } from './recipe-list-return';
 
 export type FolderOption = { id: string; name: string; parentId: string | null };
@@ -35,13 +33,25 @@ export type RecipeListItem = Pick<
  */
 export function RecipeList({
   recipes,
-  folders,
   activeKey,
+  hideSearch = false,
+  folderPathOf,
+  onMoveToFolder,
+  dragPropsFor,
+  draggingRecipeId = null,
 }: {
   recipes: RecipeListItem[];
-  folders: FolderOption[];
   /** 'none' | a folder id — drives the empty-state copy. */
   activeKey: string;
+  /** The page owns the search box (the folder view's large one) — hide this grid's own. */
+  hideSearch?: boolean;
+  /** "Linda's › Fillings" under a name, when the recipe isn't in the folder being browsed. */
+  folderPathOf?: (folderId: string | null) => string | null;
+  /** Opens the searchable "Move to…" picker — replaces the old flat folder `<select>`. */
+  onMoveToFolder?: (recipe: { id: string; name: string }) => void;
+  /** From `useFolderDragAndDrop().getRecipeDragProps` — lets a card be dragged onto a folder. */
+  dragPropsFor?: (recipeId: string) => Record<string, unknown>;
+  draggingRecipeId?: string | null;
 }) {
   const t = useTranslations('recipes');
   const tFolders = useTranslations('recipes.folders');
@@ -75,17 +85,6 @@ export function RecipeList({
     });
   };
 
-  const move = (recipeId: string, value: string) => {
-    setError(null);
-    startTransition(async () => {
-      const result = await moveRecipeToFolderAction(recipeId, {
-        folderId: value === '' ? null : value,
-      });
-      if (result.ok) router.refresh();
-      else setError(actionError(result.code));
-    });
-  };
-
   return (
     <div className="flex flex-col gap-4">
       {error && (
@@ -97,20 +96,22 @@ export function RecipeList({
         </div>
       )}
 
-      <div className="relative">
-        <Search
-          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          aria-hidden
-        />
-        <Input
-          type="search"
-          aria-label={tCommon('searchPlaceholder')}
-          placeholder={tCommon('searchPlaceholder')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      {!hideSearch && (
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            aria-label={tCommon('searchPlaceholder')}
+            placeholder={tCommon('searchPlaceholder')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+      )}
 
       {visibleRecipes.length === 0 ? (
         <p className="px-1 py-8 text-center text-sm text-muted-foreground">
@@ -122,39 +123,45 @@ export function RecipeList({
         </p>
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {visibleRecipes.map((recipe) => (
+          {visibleRecipes.map((recipe) => {
+            const path = folderPathOf?.(recipe.folderId) ?? null;
+            return (
             <li
               key={recipe.id}
-              className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4"
+              {...dragPropsFor?.(recipe.id)}
+              className={cn(
+                'flex flex-col gap-3 rounded-xl border border-border bg-surface p-4',
+                draggingRecipeId === recipe.id && 'opacity-40',
+              )}
             >
               <Link
                 href={`/recipes/${recipe.id}`}
                 onClick={() => rememberRecipeListReturn({ href: listHref, query, sort: 'recent', scrollTop: scrollContainer()?.scrollTop ?? 0 })}
+                draggable={false}
                 className="group flex min-w-0 items-center justify-between gap-2"
               >
-                <span className="min-w-0 text-base font-medium leading-snug text-foreground">
-                  {recipe.name}
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-[18px] font-semibold leading-snug text-foreground">
+                    {recipe.name}
+                  </span>
+                  {path && <span className="truncate text-xs text-muted-foreground">{path}</span>}
                 </span>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </Link>
               <div className="flex items-center gap-2">
-                <Select
-                  aria-label={tFolders('moveTo')}
-                  className="h-9 flex-1 text-xs"
-                  value={recipe.folderId ?? ''}
-                  disabled={pending}
-                  onChange={(e) => move(recipe.id, e.target.value)}
-                >
-                  <option value="">{tFolders('noFolder')}</option>
-                  {folders.map((f) => {
-                    const path = folderAncestorLabel(folders, f.id);
-                    return (
-                      <option key={f.id} value={f.id}>
-                        {path ? `${path} › ${f.name}` : f.name}
-                      </option>
-                    );
-                  })}
-                </Select>
+                {onMoveToFolder && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 flex-1 text-xs"
+                    disabled={pending}
+                    onClick={() => onMoveToFolder({ id: recipe.id, name: recipe.name })}
+                  >
+                    <FolderInput className="size-4" aria-hidden />
+                    {tFolders('moveTo')}
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="ghost"
@@ -168,7 +175,8 @@ export function RecipeList({
                 </Button>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 

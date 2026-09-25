@@ -42,7 +42,12 @@ export function MoveToFolderDialog<T extends FolderTreeNode>({
   open: boolean;
   /** The full org folder list — the folder being moved plus every candidate destination. */
   folders: readonly T[];
-  folderId: string;
+  /**
+   * The FOLDER being moved (it and its descendants are excluded), or `null` when
+   * something else is being filed — a RECIPE — for which every folder is a valid
+   * destination.
+   */
+  folderId: string | null;
   pending?: boolean;
   labels: MoveToFolderLabels;
   onMove: (parentId: string | null) => void;
@@ -61,7 +66,7 @@ export function MoveToFolderDialog<T extends FolderTreeNode>({
   }, [open, folderId]);
 
   const destinations = React.useMemo(
-    () => validMoveDestinations(folders, folderId),
+    () => (folderId === null ? [...folders] : validMoveDestinations(folders, folderId)),
     [folders, folderId],
   );
   const q = query.trim().toLowerCase();

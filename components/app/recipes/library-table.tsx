@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Printer, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, FolderInput, Printer, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type { LibraryRecipeRow } from '@/lib/data/recipe-library';
 import { formatMoney } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
@@ -53,15 +53,30 @@ export function LibraryTable({
   rows,
   showMoney,
   currency,
+  hideSearch = false,
+  folderPathOf,
+  onMoveToFolder,
+  dragPropsFor,
+  draggingRecipeId = null,
 }: {
-  /** Already in recent-activity order. */
+  /** Already in recent-activity order (and already search-filtered when `hideSearch`). */
   rows: LibraryTableRow[];
   showMoney: boolean;
   currency: string;
+  /** The page owns the search box (the folder view's large one) — hide this list's own. */
+  hideSearch?: boolean;
+  /** "Linda's › Fillings" under a name, when the recipe isn't in the folder being browsed. */
+  folderPathOf?: (folderId: string | null) => string | null;
+  /** Opens the searchable "Move to…" picker — the touch/keyboard path for filing a recipe. */
+  onMoveToFolder?: (recipe: { id: string; name: string }) => void;
+  /** From `useFolderDragAndDrop().getRecipeDragProps` — lets a row be dragged onto a folder. */
+  dragPropsFor?: (recipeId: string) => Record<string, unknown>;
+  draggingRecipeId?: string | null;
 }) {
   const t = useTranslations('recipes.library');
   const tHome = useTranslations('recipes.home');
   const tIssues = useTranslations('recipes.issues');
+  const tFolders = useTranslations('recipes.folders');
   const tAllergens = useTranslations('allergens');
   const tRecipes = useTranslations('recipes');
   const tCommon = useTranslations('common');
@@ -81,7 +96,9 @@ export function LibraryTable({
   React.useEffect(() => {
     const saved = readRecipeListReturn();
     if (!saved || saved.href !== listHref) return;
-    setQuery(saved.query);
+    // With `hideSearch` the page owns the search box and hands us rows that are
+    // already filtered — restoring the query here would filter them twice.
+    if (!hideSearch) setQuery(saved.query);
     if (SORT_KEYS.includes(saved.sort as SortKey)) setSort(saved.sort as SortKey);
     const top = saved.scrollTop;
     requestAnimationFrame(() => scrollContainer()?.scrollTo({ top }));
@@ -197,18 +214,20 @@ export function LibraryTable({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <Input
-            type="search"
-            aria-label={t('searchPlaceholder')}
-            placeholder={t('searchPlaceholder')}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {!hideSearch && (
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <Input
+              type="search"
+              aria-label={t('searchPlaceholder')}
+              placeholder={t('searchPlaceholder')}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
           <label htmlFor="library-sort" className="shrink-0 text-sm text-muted-foreground">
             {tHome('sortLabel')}
           </label>
@@ -223,6 +242,18 @@ export function LibraryTable({
             <SlidersHorizontal className="size-4" aria-hidden />
             {activeFilters > 0 ? t('filters.toggleActive', { count: activeFilters }) : t('filters.toggle')}
           </Button>
+          {activeFilters > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setAllergenFilter(new Set());
+                setIssueFilter(new Set());
+              }}
+              className="cursor-pointer rounded-lg px-2 py-1 text-xs font-medium text-accent-700 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-accent-300"
+            >
+              {t('filters.reset')}
+            </button>
+          )}
         </div>
       </div>
 
@@ -297,26 +328,37 @@ export function LibraryTable({
             ) : (
               shownRows.map((row) => {
                 const cost = row.money?.costPerKgCents ?? null;
+                const path = folderPathOf?.(row.folderId) ?? null;
                 return (
-                  <tr key={row.id} className="border-b border-border/60 transition-colors last:border-b-0 hover:bg-surface-2/60">
-                    <td className="px-4 py-4 align-middle">
+                  <tr
+                    key={row.id}
+                    className={cn(
+                      'border-b border-border/60 transition-colors last:border-b-0 hover:bg-surface-2/60',
+                      draggingRecipeId === row.id && 'opacity-40',
+                    )}
+                  >
+                    {/* The drag handlers sit on the cell, so the link keeps its own
+                        click behaviour; a real drag cancels the click while it bubbles. */}
+                    <td className="px-4 py-4 align-middle" {...dragPropsFor?.(row.id)}>
                       <Link
                         href={`/recipes/${row.id}`}
                         onClick={remember}
-                        className="block rounded text-lg font-medium leading-snug text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        draggable={false}
+                        className="block rounded text-[18px] font-semibold leading-snug text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {row.name}
                       </Link>
+                      {path && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{path}</span>}
                     </td>
                     {showMoney && (
                       <td className="whitespace-nowrap px-3 py-4 text-right align-middle tabular-nums">
                         {cost !== null ? (
-                          <span className="text-base text-foreground">
+                          <span className="text-sm text-muted-foreground">
                             {formatMoney(cost, currency)}
-                            <span className="ml-0.5 text-xs text-muted-foreground">/kg</span>
+                            <span className="ml-0.5 text-xs">/kg</span>
                           </span>
                         ) : (
-                          <span className="cursor-help text-base text-muted-foreground" title={costReason(row)}>
+                          <span className="cursor-help text-sm text-muted-foreground" title={costReason(row)}>
                             <span aria-hidden>—</span>
                             <span className="sr-only">{costReason(row)}</span>
                           </span>
@@ -338,6 +380,14 @@ export function LibraryTable({
                         >
                           <Printer className="size-[18px]" aria-hidden />
                         </a>
+                        {onMoveToFolder && (
+                          <IconButton
+                            label={tFolders('moveRecipeDialog.trigger', { name: row.name })}
+                            onClick={() => onMoveToFolder({ id: row.id, name: row.name })}
+                          >
+                            <FolderInput className="size-[18px]" aria-hidden />
+                          </IconButton>
+                        )}
                         <IconButton
                           label={t('actions.trash', { name: row.name })}
                           onClick={() => {

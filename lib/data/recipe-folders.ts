@@ -3,6 +3,7 @@ import { recipeFolders, recipes } from '@/lib/db/schema';
 import type { RecipeFolder } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import { validateFolderMove, type FolderMoveRejection } from '@/lib/folders/tree';
+import { rollUpFolderCounts } from '@/lib/folders/recipe-scope';
 
 /**
  * Access to `recipe_folders` is ALWAYS scoped by `organizationId` (RULE #1) —
@@ -17,14 +18,22 @@ import { validateFolderMove, type FolderMoveRejection } from '@/lib/folders/tree
  * in lib/data/recipes.ts.
  */
 
-/** A folder plus how many ACTIVE recipes it holds DIRECTLY (trashed ones and descendants never count). */
+/**
+ * A folder plus how many ACTIVE recipes it holds. `recipeCount` is INCLUSIVE —
+ * its own recipes plus every descendant folder's, at any depth — because opening
+ * a folder browses its whole subtree (lib/folders/recipe-scope.ts). Trashed
+ * recipes never count on either figure.
+ */
 export type FolderWithCount = {
   id: string;
   name: string;
   icon: string | null;
   sortOrder: number;
   parentId: string | null;
+  /** Own recipes + every descendant folder's — what the UI shows. */
   recipeCount: number;
+  /** Recipes filed in THIS folder only — kept for callers that need the split. */
+  directRecipeCount: number;
 };
 
 /** Everything the folder rail needs in one shape: the FULL org-wide flat folder list + the two pseudo-views. */
@@ -49,11 +58,14 @@ export async function listFolders(
 }
 
 /**
- * Folders with per-folder DIRECT active-recipe counts, plus the uncategorized
- * and total counts for the "No folder" / "All recipes" views. Two org-scoped
- * queries (the folders, then a grouped count over active recipes) — no N+1.
- * Returns the FULL flat org tree; callers use lib/folders/tree.ts to derive a
- * single level's children, an ancestor breadcrumb, or the valid move targets.
+ * Folders with per-folder INCLUSIVE active-recipe counts (own + every
+ * descendant's), plus the uncategorized and total counts for the "No folder" /
+ * "All recipes" views. Still two org-scoped queries (the folders, then a grouped
+ * DIRECT count over active recipes) — no N+1 and no recursive SQL: the subtree
+ * roll-up happens in memory over the already-loaded flat list
+ * (lib/folders/recipe-scope.ts). Returns the FULL flat org tree; callers use
+ * lib/folders/tree.ts to derive a single level's children, an ancestor
+ * breadcrumb, or the valid move targets.
  */
 export async function listFoldersWithCounts(
   db: TenantClient,
@@ -78,6 +90,8 @@ export async function listFoldersWithCounts(
     else byFolder.set(row.folderId, row.value);
   }
 
+  const inclusive = rollUpFolderCounts(folders, byFolder);
+
   return {
     folders: folders.map((f) => ({
       id: f.id,
@@ -85,7 +99,8 @@ export async function listFoldersWithCounts(
       icon: f.icon,
       sortOrder: f.sortOrder,
       parentId: f.parentId,
-      recipeCount: byFolder.get(f.id) ?? 0,
+      recipeCount: inclusive.get(f.id) ?? 0,
+      directRecipeCount: byFolder.get(f.id) ?? 0,
     })),
     uncategorizedCount,
     totalCount,

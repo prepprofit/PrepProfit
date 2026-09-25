@@ -9,6 +9,19 @@ import { folderDescendantIds, type FolderTreeNode } from '@/lib/folders/tree';
  * pattern already proven for ingredient-line reordering in
  * components/app/recipes/workspace/recipe-input-list.tsx).
  *
+ * What can be dragged: a FOLDER tile (reparents the folder) and — where the
+ * caller opts in with `onMoveRecipe` — a RECIPE row/card (files the recipe).
+ * What can be dropped on: any folder tile, plus any element the caller marks
+ * with `getDropTargetProps(...)` — the breadcrumb chips use that, so a folder
+ * can be dragged back UP its own ancestor chain (or onto "Recipes" itself,
+ * {@link ROOT_DROP_ID}, for top level / "No folder").
+ *
+ * Native link drag: the tiles are `<a>` elements, and a browser's own HTML5
+ * drag of a link fires `dragstart` and then KILLS the pointer stream with
+ * `pointercancel` — which is exactly why a mouse drag used to do nothing at all.
+ * Every draggable surface therefore gets `draggable={false}` plus a
+ * `dragstart` guard.
+ *
  * Touch vs. scroll: a touch drag only ARMS after a short hold (HOLD_MS) with
  * no more than a few pixels of movement. Until armed, we never call
  * `preventDefault()` and never capture the pointer, so an ordinary touch-scroll
@@ -17,9 +30,13 @@ import { folderDescendantIds, type FolderTreeNode } from '@/lib/folders/tree';
  * on a small movement threshold instead (no scroll ambiguity to protect
  * against there). Once armed we capture the pointer (mouse has no implicit
  * capture like touch does) so `pointermove`/`pointerup` keep reaching us
- * wherever the pointer travels, and `elementFromPoint` finds the tile
+ * wherever the pointer travels, and `elementFromPoint` finds the target
  * currently underneath it. A target must be hovered continuously for
  * COMMIT_MS before it switches from "candidate" to "will move here".
+ *
+ * A drag that actually armed suppresses the tile's own click, so a completed
+ * drag never also opens the folder; a plain tap/click below the threshold never
+ * arms, so opening a folder keeps working.
  *
  * Pointer Events (not Touch Events) are used deliberately: React attaches
  * `touchstart`/`touchmove`/`wheel` listeners as passive (so `preventDefault`
@@ -32,41 +49,78 @@ const TOUCH_CANCEL_DISTANCE = 10;
 const POINTER_ARM_DISTANCE = 4;
 const COMMIT_MS = 500;
 
+/** The drop target meaning "top level" for a folder / "No folder" for a recipe. */
+export const ROOT_DROP_ID = '__root__';
+
 export type FolderDropState = 'candidate' | 'commit';
+
+export type FolderDragKind = 'folder' | 'recipe';
+
+export type FolderDragState = {
+  kind: FolderDragKind;
+  /** The dragged folder's or recipe's id. */
+  id: string;
+};
+
+function targetToParentId(dropId: string): string | null {
+  return dropId === ROOT_DROP_ID ? null : dropId;
+}
 
 export function useFolderDragAndDrop<T extends FolderTreeNode>({
   folders,
   onMove,
+  onMoveRecipe,
   disabled = false,
 }: {
   /** Every folder tile actually rendered (or the full org list) — used to reject self/descendant drop targets. */
   folders: readonly T[];
-  onMove: (id: string, newParentId: string) => void;
+  /** Reparent a folder. `null` = top level (a drop on {@link ROOT_DROP_ID}). */
+  onMove: (id: string, newParentId: string | null) => void;
+  /** File a recipe. `null` = "No folder". Omit to keep recipes undraggable. */
+  onMoveRecipe?: (recipeId: string, folderId: string | null) => void;
   disabled?: boolean;
 }) {
-  const [draggingId, setDraggingId] = React.useState<string | null>(null);
+  const [dragging, setDragging] = React.useState<FolderDragState | null>(null);
   const [overId, setOverId] = React.useState<string | null>(null);
   const [committing, setCommitting] = React.useState(false);
 
-  const tileRefs = React.useRef(new Map<string, HTMLElement>());
+  const nodeRefs = React.useRef(new Map<string, HTMLElement>());
   const start = React.useRef<{
     x: number;
     y: number;
     pointerId: number;
     pointerType: string;
-    folderId: string;
+    kind: FolderDragKind;
+    id: string;
     armed: boolean;
   } | null>(null);
   const holdTimer = React.useRef<number | null>(null);
   const commitTimer = React.useRef<number | null>(null);
   const suppressNextClick = React.useRef<Set<string>>(new Set());
 
+  const draggingId = dragging?.kind === 'folder' ? dragging.id : null;
+
+  /** Folder ids a FOLDER drag may never land on: itself and its own subtree. */
   const excludedIds = React.useMemo(() => {
     if (!draggingId) return new Set<string>();
     const ids = folderDescendantIds(folders, draggingId);
     ids.add(draggingId);
     return ids;
   }, [folders, draggingId]);
+
+  const isValidTarget = React.useCallback(
+    (dropId: string | null): boolean => {
+      const source = start.current;
+      if (dropId === null || !source) return false;
+      if (source.kind === 'recipe') return true; // any folder (or "No folder") is fine
+      if (dropId === ROOT_DROP_ID) {
+        // Already top level → nothing to do, so it must not look droppable.
+        return folders.find((f) => f.id === source.id)?.parentId != null;
+      }
+      return dropId !== source.id && !excludedIds.has(dropId);
+    },
+    [excludedIds, folders],
+  );
 
   const clearHoldTimer = React.useCallback(() => {
     if (holdTimer.current !== null) {
@@ -85,17 +139,17 @@ export function useFolderDragAndDrop<T extends FolderTreeNode>({
     clearHoldTimer();
     clearCommitTimer();
     start.current = null;
-    setDraggingId(null);
+    setDragging(null);
     setOverId(null);
     setCommitting(false);
   }, [clearHoldTimer, clearCommitTimer]);
 
-  function arm(folderId: string) {
+  function arm(kind: FolderDragKind, id: string) {
     if (!start.current) return;
     start.current.armed = true;
-    setDraggingId(folderId);
+    setDragging({ kind, id });
     try {
-      tileRefs.current.get(folderId)?.setPointerCapture(start.current.pointerId);
+      nodeRefs.current.get(`${kind}:${id}`)?.setPointerCapture(start.current.pointerId);
     } catch {
       // Pointer may already be gone (e.g. a fast pointerup raced the timer) — the
       // subsequent pointerup/pointercancel handler still resets cleanly.
@@ -103,35 +157,30 @@ export function useFolderDragAndDrop<T extends FolderTreeNode>({
   }
 
   React.useEffect(() => {
-    if (!draggingId) return;
+    if (!dragging) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      // Escape cancels: nothing is committed, the arrangement is untouched.
       if (e.key === 'Escape') reset();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [draggingId, reset]);
+  }, [dragging, reset]);
 
   React.useEffect(() => () => {
     clearHoldTimer();
     clearCommitTimer();
   }, [clearHoldTimer, clearCommitTimer]);
 
-  function getTileProps(folderId: string) {
-    if (disabled) {
-      return {
-        ref: undefined,
-        'data-folder-tile-id': folderId,
-      } as const;
-    }
+  function dragHandlers(kind: FolderDragKind, id: string) {
+    const key = `${kind}:${id}`;
     return {
       ref: (el: HTMLElement | null) => {
-        if (el) tileRefs.current.set(folderId, el);
-        else tileRefs.current.delete(folderId);
+        if (el) nodeRefs.current.set(key, el);
+        else nodeRefs.current.delete(key);
       },
-      'data-folder-tile-id': folderId,
-      'data-dragging': draggingId === folderId ? 'true' : undefined,
-      'data-drop-candidate': overId === folderId && !committing ? 'true' : undefined,
-      'data-drop-commit': overId === folderId && committing ? 'true' : undefined,
+      draggable: false,
+      // An `<a>`'s native HTML5 link drag would cancel the pointer stream.
+      onDragStart: (e: React.DragEvent) => e.preventDefault(),
       onPointerDown: (e: React.PointerEvent) => {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         start.current = {
@@ -139,14 +188,15 @@ export function useFolderDragAndDrop<T extends FolderTreeNode>({
           y: e.clientY,
           pointerId: e.pointerId,
           pointerType: e.pointerType,
-          folderId,
+          kind,
+          id,
           armed: false,
         };
         if (e.pointerType === 'touch') {
           clearHoldTimer();
           const pointerId = e.pointerId;
           holdTimer.current = window.setTimeout(() => {
-            if (start.current?.pointerId === pointerId && !start.current.armed) arm(folderId);
+            if (start.current?.pointerId === pointerId && !start.current.armed) arm(kind, id);
           }, TOUCH_HOLD_MS);
         }
       },
@@ -160,18 +210,17 @@ export function useFolderDragAndDrop<T extends FolderTreeNode>({
             if (distance > TOUCH_CANCEL_DISTANCE) reset(); // a real scroll/pan — never arm
             return; // otherwise keep waiting for the hold timer
           }
-          if (distance > POINTER_ARM_DISTANCE) arm(folderId);
+          if (distance > POINTER_ARM_DISTANCE) arm(kind, id);
           return;
         }
 
         e.preventDefault();
         const el = document
           .elementFromPoint(e.clientX, e.clientY)
-          ?.closest<HTMLElement>('[data-folder-tile-id]');
-        const targetId = el?.dataset.folderTileId ?? null;
-        const valid = targetId !== null && targetId !== s.folderId && !excludedIds.has(targetId);
+          ?.closest<HTMLElement>('[data-folder-drop-id]');
+        const targetId = el?.dataset.folderDropId ?? null;
 
-        if (!valid) {
+        if (!isValidTarget(targetId)) {
           if (overId !== null) {
             setOverId(null);
             setCommitting(false);
@@ -190,9 +239,14 @@ export function useFolderDragAndDrop<T extends FolderTreeNode>({
         const s = start.current;
         if (!s || s.pointerId !== e.pointerId) return;
         if (s.armed) {
-          suppressNextClick.current.add(s.folderId);
-          window.setTimeout(() => suppressNextClick.current.delete(s.folderId), 0);
-          if (overId) onMove(s.folderId, overId);
+          // A real drag happened — never let it also open the tile/recipe.
+          suppressNextClick.current.add(key);
+          window.setTimeout(() => suppressNextClick.current.delete(key), 0);
+          // Commit ONLY on a valid target; a drop anywhere else changes nothing.
+          if (overId !== null && isValidTarget(overId)) {
+            if (s.kind === 'folder') onMove(s.id, targetToParentId(overId));
+            else onMoveRecipe?.(s.id, targetToParentId(overId));
+          }
         }
         reset();
       },
@@ -200,7 +254,7 @@ export function useFolderDragAndDrop<T extends FolderTreeNode>({
         if (start.current?.pointerId === e.pointerId) reset();
       },
       onClick: (e: React.MouseEvent) => {
-        if (suppressNextClick.current.has(folderId)) {
+        if (suppressNextClick.current.has(key)) {
           e.preventDefault();
           e.stopPropagation();
         }
@@ -208,5 +262,61 @@ export function useFolderDragAndDrop<T extends FolderTreeNode>({
     } as const;
   }
 
-  return { draggingId, overId, committing, getTileProps };
+  /** A folder tile: both a drag SOURCE and a drop TARGET. */
+  function getTileProps(folderId: string) {
+    if (disabled) {
+      return { 'data-folder-drop-id': folderId } as const;
+    }
+    return {
+      ...dragHandlers('folder', folderId),
+      'data-folder-drop-id': folderId,
+      'data-dragging': draggingId === folderId ? 'true' : undefined,
+      'data-drop-candidate': overId === folderId && !committing ? 'true' : undefined,
+      'data-drop-commit': overId === folderId && committing ? 'true' : undefined,
+    } as const;
+  }
+
+  /** A drop-ONLY target (a breadcrumb chip). Pass {@link ROOT_DROP_ID} for top level. */
+  function getDropTargetProps(dropId: string) {
+    return { 'data-folder-drop-id': dropId } as const;
+  }
+
+  /** A recipe row/card as a drag SOURCE (no-op unless `onMoveRecipe` was given). */
+  function getRecipeDragProps(recipeId: string) {
+    if (disabled || !onMoveRecipe) return {} as const;
+    return dragHandlers('recipe', recipeId);
+  }
+
+  /**
+   * Render-time answer to "could the CURRENT drag land here?" — used to show
+   * invalid targets (the dragged folder itself and its own descendants) as
+   * visibly non-droppable while a drag is in flight.
+   */
+  function canDropOn(dropId: string): boolean {
+    if (!dragging) return false;
+    if (dragging.kind === 'recipe') return true;
+    if (dropId === ROOT_DROP_ID) {
+      return folders.find((f) => f.id === dragging.id)?.parentId != null;
+    }
+    return dropId !== dragging.id && !excludedIds.has(dropId);
+  }
+
+  /** Is `dropId` the target the pointer is currently over, and how far along? */
+  function dropStateOf(dropId: string): FolderDropState | null {
+    if (overId !== dropId) return null;
+    return committing ? 'commit' : 'candidate';
+  }
+
+  return {
+    dragging,
+    draggingId,
+    draggingRecipeId: dragging?.kind === 'recipe' ? dragging.id : null,
+    overId,
+    committing,
+    getTileProps,
+    getDropTargetProps,
+    getRecipeDragProps,
+    canDropOn,
+    dropStateOf,
+  };
 }

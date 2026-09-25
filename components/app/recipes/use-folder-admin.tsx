@@ -3,15 +3,15 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ArrowDown, ArrowUp, Folder, FolderPlus, Move, Pencil, Trash2 } from 'lucide-react';
-import type { FolderListing } from '@/lib/data/recipe-folders';
-import { folderChildren, folderPath } from '@/lib/folders/tree';
+import { ArrowDown, ArrowUp, Folder, Move, Pencil, Trash2 } from 'lucide-react';
+import type { FolderListing, FolderWithCount } from '@/lib/data/recipe-folders';
 import { FOLDER_ICONS } from '@/lib/validation/recipe-folders';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import {
   createFolderAction,
   deleteFolderAction,
   moveFolderAction,
+  moveRecipeToFolderAction,
   renameFolderAction,
   reorderFolderAction,
 } from '@/app/(app)/recipes/folder-actions';
@@ -19,11 +19,9 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Toast } from '@/components/ui/toast';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { FolderTile } from '@/components/app/shared/folders/folder-tile';
-import { FolderMenu } from '@/components/app/shared/folders/folder-menu';
-import { FolderBreadcrumb, type BreadcrumbCrumb } from '@/components/app/shared/folders/folder-breadcrumb';
 import { MoveToFolderDialog } from '@/components/app/shared/folders/move-to-folder-dialog';
 import { useFolderDragAndDrop } from '@/components/app/shared/folders/use-folder-drag';
+import type { FolderMenuItem } from '@/components/app/shared/folders/folder-menu';
 import { cn } from '@/lib/utils';
 
 type FolderDialog =
@@ -33,17 +31,27 @@ type FolderDialog =
 type Notice = { message: string; undo: (() => void) | null; isError?: boolean };
 
 /**
- * Immediate subfolders of the folder currently open, shown ABOVE the recipe
- * table (app/(app)/recipes/page.tsx's folder-view branch) — never the full
- * descendant tree flattened together. Same folder CRUD + drag + "Move to…" as
- * RecipeHome's root grid, scoped to this parent, plus the breadcrumb trail.
+ * The folder-management state machine shared by the Recipes landing page and the
+ * in-folder view (previously duplicated almost line for line between
+ * recipe-home.tsx and recipe-subfolders.tsx): create / rename / reorder / delete,
+ * "Move to…" for BOTH a folder and a recipe, drag-and-drop, and the toast with
+ * Undo.
+ *
+ * Every mutation goes through the existing validated Server Actions — there is
+ * no client-side bypass, and nothing is recreated client-side. The UI is NOT
+ * optimistic: the server re-renders after `router.refresh()`, so a rejected move
+ * simply leaves the current arrangement in place and shows the mapped error.
  */
-export function RecipeSubfolders({
+export function useFolderAdmin({
   listing,
   parentId,
+  recipeName,
 }: {
   listing: FolderListing;
-  parentId: string;
+  /** Where "New folder" creates — null on the landing page, the open folder inside one. */
+  parentId: string | null;
+  /** Resolves a recipe id to its name for the move toast (drag drops know only the id). */
+  recipeName?: (id: string) => string | undefined;
 }) {
   const t = useTranslations('recipes.home');
   const tFolders = useTranslations('recipes.folders');
@@ -51,14 +59,12 @@ export function RecipeSubfolders({
   const actionError = useActionError();
   const router = useRouter();
 
-  const children = React.useMemo(() => folderChildren(listing.folders, parentId), [listing.folders, parentId]);
-  const path = React.useMemo(() => folderPath(listing.folders, parentId), [listing.folders, parentId]);
-
   const [dialog, setDialog] = React.useState<FolderDialog | null>(null);
   const [dialogName, setDialogName] = React.useState('');
   const [dialogIcon, setDialogIcon] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null);
   const [moveTarget, setMoveTarget] = React.useState<{ id: string; name: string } | null>(null);
+  const [recipeMoveTarget, setRecipeMoveTarget] = React.useState<{ id: string; name: string } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<Notice | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -120,122 +126,114 @@ export function RecipeSubfolders({
     });
   }
 
-  function performMove(id: string, newParentId: string | null) {
-    const folder = listing.folders.find((f) => f.id === id);
-    startTransition(async () => {
-      const result = await moveFolderAction(id, { parentId: newParentId });
-      if (!result.ok) {
-        setNotice({ message: actionError(result.code), undo: null, isError: true });
-        return;
-      }
-      const previousParentId = result.data.previousParentId;
-      const destination = newParentId ? listing.folders.find((f) => f.id === newParentId)?.name : null;
-      setNotice({
-        message: destination
-          ? tFolders('moved', { name: folder?.name ?? '', parent: destination })
-          : tFolders('movedTopLevel', { name: folder?.name ?? '' }),
-        undo: () => performMove(id, previousParentId),
+  /** Reparents a folder, then offers Undo (which re-runs the same validated action). */
+  const performMove = React.useCallback(
+    (id: string, newParentId: string | null) => {
+      const folder = listing.folders.find((f) => f.id === id);
+      startTransition(async () => {
+        const result = await moveFolderAction(id, { parentId: newParentId });
+        if (!result.ok) {
+          setNotice({ message: actionError(result.code), undo: null, isError: true });
+          return;
+        }
+        const previousParentId = result.data.previousParentId;
+        const destination = newParentId ? listing.folders.find((f) => f.id === newParentId)?.name : null;
+        setNotice({
+          message: destination
+            ? tFolders('moved', { name: folder?.name ?? '', parent: destination })
+            : tFolders('movedTopLevel', { name: folder?.name ?? '' }),
+          undo: () => performMove(id, previousParentId),
+        });
+        router.refresh();
       });
-      router.refresh();
-    });
-  }
+    },
+    [actionError, listing.folders, router, tFolders],
+  );
+
+  /** Files a recipe, then offers Undo back to the folder it came from. */
+  const performRecipeMove = React.useCallback(
+    (recipeId: string, folderId: string | null, previousFolderId?: string | null, name?: string) => {
+      const label = name ?? recipeName?.(recipeId) ?? '';
+      startTransition(async () => {
+        const result = await moveRecipeToFolderAction(recipeId, { folderId });
+        if (!result.ok) {
+          setNotice({ message: actionError(result.code), undo: null, isError: true });
+          return;
+        }
+        const destination = folderId ? listing.folders.find((f) => f.id === folderId)?.name : null;
+        setNotice({
+          message: destination
+            ? tFolders('recipeMoved', { name: label, parent: destination })
+            : tFolders('recipeMovedUnfiled', { name: label }),
+          undo:
+            previousFolderId === undefined
+              ? null
+              : () => performRecipeMove(recipeId, previousFolderId, folderId, label),
+        });
+        router.refresh();
+      });
+    },
+    [actionError, listing.folders, recipeName, router, tFolders],
+  );
 
   const drag = useFolderDragAndDrop({
     folders: listing.folders,
-    onMove: (id, newParentId) => performMove(id, newParentId),
+    onMove: performMove,
+    onMoveRecipe: (recipeId, folderId) => performRecipeMove(recipeId, folderId),
   });
 
-  const crumbs: BreadcrumbCrumb[] = [
-    { key: 'root', label: t('back'), href: '/recipes' },
-    ...path.map((f) => ({ key: f.id, label: f.name, href: `/recipes?folder=${f.id}` })),
-  ];
+  /** The "⋯" menu entries for one folder tile within its sibling rail. */
+  function menuItemsFor(folder: FolderWithCount, index: number, siblingCount: number): FolderMenuItem[] {
+    return [
+      {
+        label: tFolders('rename'),
+        icon: <Pencil className="size-4" />,
+        onSelect: () => openDialog({ mode: 'rename', id: folder.id, name: folder.name, icon: folder.icon }),
+      },
+      {
+        label: tFolders('moveToFolder'),
+        icon: <Move className="size-4" />,
+        onSelect: () => setMoveTarget({ id: folder.id, name: folder.name }),
+      },
+      {
+        label: tFolders('moveUp'),
+        icon: <ArrowUp className="size-4" />,
+        disabled: index === 0,
+        onSelect: () => reorder(folder.id, 'up'),
+      },
+      {
+        label: tFolders('moveDown'),
+        icon: <ArrowDown className="size-4" />,
+        disabled: index === siblingCount - 1,
+        onSelect: () => reorder(folder.id, 'down'),
+      },
+      {
+        label: tFolders('delete'),
+        icon: <Trash2 className="size-4" />,
+        destructive: true,
+        onSelect: () => setDeleteTarget({ id: folder.id, name: folder.name }),
+      },
+    ];
+  }
 
-  return (
-    <div className="flex flex-col gap-4">
-      <FolderBreadcrumb crumbs={crumbs} />
+  /** "Move “Linda” into “Wibox”" — shown while a drag hovers a valid target, before release. */
+  const dragHint = React.useMemo(() => {
+    if (!drag.dragging || drag.overId === null) return null;
+    const source =
+      drag.dragging.kind === 'folder'
+        ? (listing.folders.find((f) => f.id === drag.dragging?.id)?.name ?? '')
+        : (recipeName?.(drag.dragging.id) ?? '');
+    const target = listing.folders.find((f) => f.id === drag.overId)?.name ?? null;
+    return target
+      ? t('dragHint', { name: source, parent: target })
+      : t('dragHintTopLevel', { name: source });
+  }, [drag.dragging, drag.overId, listing.folders, recipeName, t]);
 
-      <section aria-label={tFolders('subfolders')} className="flex flex-col gap-2">
-        {children.length > 0 && (
-          <h3 className="px-1 text-xs font-medium text-muted-foreground">{tFolders('subfolders')}</h3>
-        )}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-          {children.map((folder, index) => (
-              <div key={folder.id} className="relative focus-within:z-30">
-                <FolderTile
-                  href={`/recipes?folder=${folder.id}`}
-                  name={folder.name}
-                  caption={t('recipeCount', { count: folder.recipeCount })}
-                  icon={
-                    folder.icon ? (
-                      <span aria-hidden className="text-xl leading-none">
-                        {folder.icon}
-                      </span>
-                    ) : (
-                      <Folder className="size-5" aria-hidden />
-                    )
-                  }
-                  dragProps={drag.getTileProps(folder.id)}
-                  isDragSource={drag.draggingId === folder.id}
-                  dropState={drag.overId === folder.id ? (drag.committing ? 'commit' : 'candidate') : null}
-                />
-                <FolderMenu
-                  label={t('folderActions', { name: folder.name })}
-                  disabled={pending}
-                  items={[
-                    {
-                      label: tFolders('rename'),
-                      icon: <Pencil className="size-4" />,
-                      onSelect: () => openDialog({ mode: 'rename', id: folder.id, name: folder.name, icon: folder.icon }),
-                    },
-                    {
-                      label: tFolders('moveToFolder'),
-                      icon: <Move className="size-4" />,
-                      onSelect: () => setMoveTarget({ id: folder.id, name: folder.name }),
-                    },
-                    {
-                      label: tFolders('moveUp'),
-                      icon: <ArrowUp className="size-4" />,
-                      disabled: index === 0,
-                      onSelect: () => reorder(folder.id, 'up'),
-                    },
-                    {
-                      label: tFolders('moveDown'),
-                      icon: <ArrowDown className="size-4" />,
-                      disabled: index === children.length - 1,
-                      onSelect: () => reorder(folder.id, 'down'),
-                    },
-                    {
-                      label: tFolders('delete'),
-                      icon: <Trash2 className="size-4" />,
-                      destructive: true,
-                      onSelect: () => setDeleteTarget({ id: folder.id, name: folder.name }),
-                    },
-                  ]}
-                />
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => openDialog({ mode: 'create' })}
-              className={cn(
-                'flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground transition-colors hover:border-accent-300 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              )}
-            >
-              <FolderPlus className="size-5" aria-hidden />
-              {tFolders('newSubfolder')}
-            </button>
-        </div>
-      </section>
-
-      {error && !dialog && !deleteTarget && (
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/15 dark:text-red-300">
-          {error}
-        </p>
-      )}
-
+  const dialogs = (
+    <>
       <ConfirmDialog
         open={dialog !== null}
-        title={dialog?.mode === 'rename' ? tFolders('rename') : tFolders('newSubfolder')}
+        title={dialog?.mode === 'rename' ? tFolders('rename') : parentId === null ? t('newFolder') : tFolders('newSubfolder')}
         description={t('folderDialogDescription')}
         confirmLabel={dialog?.mode === 'rename' ? tFolders('renameSave') : tFolders('create')}
         cancelLabel={tCommon('cancel')}
@@ -245,9 +243,9 @@ export function RecipeSubfolders({
       >
         <div className="flex flex-col gap-3 pt-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="subfolder-name">{t('folderName')}</Label>
+            <Label htmlFor="folder-admin-name">{t('folderName')}</Label>
             <Input
-              id="subfolder-name"
+              id="folder-admin-name"
               autoFocus
               value={dialogName}
               maxLength={80}
@@ -325,6 +323,39 @@ export function RecipeSubfolders({
         />
       )}
 
+      {recipeMoveTarget && (
+        <MoveToFolderDialog
+          open
+          folders={listing.folders}
+          folderId={null}
+          pending={pending}
+          labels={{
+            title: tFolders('moveRecipeDialog.title'),
+            description: tFolders('moveRecipeDialog.description', { name: recipeMoveTarget.name }),
+            searchPlaceholder: tFolders('moveDialog.search'),
+            topLevel: tFolders('noFolder'),
+            moveLabel: tFolders('moveDialog.move'),
+            cancelLabel: tCommon('cancel'),
+            noResults: tCommon('noMatches'),
+            empty: tFolders('moveRecipeDialog.empty'),
+          }}
+          onMove={(folderId) => {
+            performRecipeMove(recipeMoveTarget.id, folderId, undefined, recipeMoveTarget.name);
+            setRecipeMoveTarget(null);
+          }}
+          onCancel={() => setRecipeMoveTarget(null)}
+        />
+      )}
+
+      {dragHint && (
+        <div
+          role="status"
+          className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-border bg-surface px-4 py-2 text-sm text-foreground shadow-lg"
+        >
+          {dragHint}
+        </div>
+      )}
+
       {notice && (
         <Toast
           message={notice.message}
@@ -336,8 +367,18 @@ export function RecipeSubfolders({
           onDismiss={() => setNotice(null)}
         />
       )}
-    </div>
+    </>
   );
+
+  return {
+    drag,
+    pending,
+    error: dialog === null && deleteTarget === null ? error : null,
+    openCreate: () => openDialog({ mode: 'create' }),
+    openRecipeMove: (recipe: { id: string; name: string }) => setRecipeMoveTarget(recipe),
+    menuItemsFor,
+    dialogs,
+  };
 }
 
 function IconChoice({

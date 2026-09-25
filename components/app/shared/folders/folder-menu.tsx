@@ -47,7 +47,7 @@ export function FolderMenu({
   }, [open]);
 
   return (
-    <div ref={ref} className="absolute bottom-2 right-2">
+    <div ref={ref} className="absolute right-1 top-1/2 -translate-y-1/2">
       <button
         type="button"
         aria-label={label}
@@ -56,7 +56,7 @@ export function FolderMenu({
         aria-expanded={open}
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+        className="inline-flex size-7 cursor-pointer items-center justify-center rounded-lg text-muted-foreground/70 transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
       >
         <MoreHorizontal className="size-4" />
       </button>

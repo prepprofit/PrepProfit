@@ -21,6 +21,7 @@ import {
   restoreRecipe,
   softDeleteRecipe,
 } from '@/lib/data/recipes';
+import { recipesInFolderScope } from '@/lib/folders/recipe-scope';
 
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
@@ -291,6 +292,106 @@ describe('recipe folders data layer', () => {
     const mine = await createFolder(db, ORG_A, 'Wibox');
     const theirs = await createFolder(db, ORG_B, 'Not mine');
     expect(await moveFolder(db, ORG_A, mine.id, theirs.id)).toEqual({ ok: false, reason: 'NOT_FOUND' });
+  });
+
+  // ── Recursive browsing (a folder shows its whole subtree) ────────────────
+
+  /** Wibox › Linda's › Fillings, with Wibox itself holding NO recipe of its own. */
+  async function nestedFixture(org: string) {
+    const wibox = await createFolder(db, org, 'Wibox');
+    const linda = await createFolder(db, org, "Linda's", null, wibox.id);
+    const fillings = await createFolder(db, org, 'Fillings', null, linda.id);
+    const ganache = await createRecipe(db, org, { name: 'Ganache', folderId: linda.id });
+    const praline = await createRecipe(db, org, { name: 'Praline', folderId: fillings.id });
+    return { wibox, linda, fillings, ganache, praline };
+  }
+
+  it('rolls descendant recipes up into a folder that has none of its own', async () => {
+    const { wibox, linda, fillings } = await nestedFixture(ORG_A);
+
+    const listing = await listFoldersWithCounts(db, ORG_A);
+    const byId = new Map(listing.folders.map((f) => [f.id, f]));
+    // Wibox holds nothing directly, but browsing it must never say "No recipes".
+    expect(byId.get(wibox.id)?.directRecipeCount).toBe(0);
+    expect(byId.get(wibox.id)?.recipeCount).toBe(2);
+    expect(byId.get(linda.id)?.recipeCount).toBe(2);
+    expect(byId.get(fillings.id)?.recipeCount).toBe(1);
+
+    const inWibox = recipesInFolderScope(listing.folders, await listRecipes(db, ORG_A), {
+      kind: 'folder',
+      folderId: wibox.id,
+    });
+    expect(inWibox.map((r) => r.name).sort()).toEqual(['Ganache', 'Praline']);
+  });
+
+  it('finds a recipe three levels deep from the top ancestor, exactly once', async () => {
+    const { wibox, praline } = await nestedFixture(ORG_A);
+
+    const listing = await listFoldersWithCounts(db, ORG_A);
+    const rows = recipesInFolderScope(listing.folders, await listRecipes(db, ORG_A), {
+      kind: 'folder',
+      folderId: wibox.id,
+    });
+    expect(rows.filter((r) => r.id === praline.id)).toHaveLength(1);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length);
+    // And the org-wide total still counts every recipe once.
+    expect(listing.totalCount).toBe(2);
+  });
+
+  it('keeps trashed recipes out of the recursive counts and lists', async () => {
+    const { wibox, praline } = await nestedFixture(ORG_A);
+    await softDeleteRecipe(db, ORG_A, praline.id);
+
+    const listing = await listFoldersWithCounts(db, ORG_A);
+    expect(listing.folders.find((f) => f.id === wibox.id)?.recipeCount).toBe(1);
+    const rows = recipesInFolderScope(listing.folders, await listRecipes(db, ORG_A), {
+      kind: 'folder',
+      folderId: wibox.id,
+    });
+    expect(rows.map((r) => r.name)).toEqual(['Ganache']);
+
+    await restoreRecipe(db, ORG_A, praline.id);
+    expect(
+      (await listFoldersWithCounts(db, ORG_A)).folders.find((f) => f.id === wibox.id)?.recipeCount,
+    ).toBe(2);
+  });
+
+  it('keeps the recursive scope org-isolated (another org\'s subtree never leaks in)', async () => {
+    const mine = await nestedFixture(ORG_A);
+    const theirs = await nestedFixture(ORG_B);
+
+    const listingA = await listFoldersWithCounts(db, ORG_A);
+    const rowsA = recipesInFolderScope(listingA.folders, await listRecipes(db, ORG_A), {
+      kind: 'folder',
+      folderId: mine.wibox.id,
+    });
+    expect(rowsA).toHaveLength(2);
+    expect(rowsA.every((r) => r.organizationId === ORG_A)).toBe(true);
+    expect(listingA.totalCount).toBe(2);
+
+    // Org A's flat list doesn't contain org B's folders, so their subtree can't
+    // be reached even by id — the scope resolves to nothing.
+    expect(
+      recipesInFolderScope(listingA.folders, await listRecipes(db, ORG_A), {
+        kind: 'folder',
+        folderId: theirs.wibox.id,
+      }),
+    ).toEqual([]);
+  });
+
+  it('re-parenting a folder moves its whole subtree into the new ancestor\'s count', async () => {
+    const { wibox, linda } = await nestedFixture(ORG_A);
+    const other = await createFolder(db, ORG_A, 'Other');
+
+    expect(await moveFolder(db, ORG_A, linda.id, other.id)).toEqual({
+      ok: true,
+      previousParentId: wibox.id,
+    });
+
+    const listing = await listFoldersWithCounts(db, ORG_A);
+    const byId = new Map(listing.folders.map((f) => [f.id, f]));
+    expect(byId.get(wibox.id)?.recipeCount).toBe(0);
+    expect(byId.get(other.id)?.recipeCount).toBe(2); // Linda's + Fillings came along
   });
 
   it('keeps folders org-isolated under RLS', async () => {

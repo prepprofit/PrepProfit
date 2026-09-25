@@ -46,6 +46,7 @@ export async function createFolderAction(
       ),
     );
     revalidatePath('/recipes');
+    revalidatePath('/kitchen-scale');
     return { ok: true, data: { id: row.id } };
   } catch (err) {
     if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
@@ -68,6 +69,7 @@ export async function renameFolderAction(
     );
     if (!row) return { ok: false, code: 'NOT_FOUND' };
     revalidatePath('/recipes');
+    revalidatePath('/kitchen-scale');
     return { ok: true, data: undefined };
   } catch (err) {
     if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
@@ -88,6 +90,7 @@ export async function reorderFolderAction(
   );
   if (!moved) return { ok: false, code: 'NOT_FOUND' };
   revalidatePath('/recipes');
+  revalidatePath('/kitchen-scale');
   return { ok: true, data: undefined };
 }
 
@@ -104,6 +107,7 @@ export async function deleteFolderAction(id: string): Promise<ActionResult> {
   if (result.blockedBySubfolders) return { ok: false, code: 'FOLDER_HAS_SUBFOLDERS' };
   if (!result.deleted) return { ok: false, code: 'NOT_FOUND' };
   revalidatePath('/recipes');
+  revalidatePath('/kitchen-scale');
   return { ok: true, data: undefined };
 }
 
@@ -127,6 +131,7 @@ export async function moveFolderAction(
       };
     }
     revalidatePath('/recipes');
+    revalidatePath('/kitchen-scale');
     return { ok: true, data: { previousParentId: result.previousParentId } };
   } catch (err) {
     if (isUniqueViolation(err)) return { ok: false, code: 'DUPLICATE_NAME' };
@@ -157,5 +162,7 @@ export async function moveRecipeToFolderAction(
   }
   revalidatePath('/recipes');
   revalidatePath(`/recipes/${recipeId}`);
+  // Kitchen Scale browses the same folders — its counts/lists must follow.
+  revalidatePath('/kitchen-scale');
   return { ok: true, data: undefined };
 }
