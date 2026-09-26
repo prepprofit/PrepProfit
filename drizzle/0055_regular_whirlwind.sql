@@ -1,0 +1,2 @@
+ALTER TABLE "ingredients" ADD COLUMN "notes" text;--> statement-breakpoint
+ALTER TABLE "ingredients" ADD CONSTRAINT "ingredients_notes_chk" CHECK ("ingredients"."notes" is null or char_length("ingredients"."notes") <= 1000);

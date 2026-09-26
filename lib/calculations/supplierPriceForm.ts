@@ -44,24 +44,28 @@ export function derivePriceCents(source: PriceSource, sourceCents: number, pack:
     : Math.round((sourceCents * total) / perPricedUnit);
 }
 
-export type VatSuggestionSource = 'entry' | 'ingredient' | 'band' | 'business';
+export type VatSuggestionSource = 'entry' | 'ingredient' | 'band' | 'business' | 'mostCommon';
 
 /**
  * The VAT rate the editor pre-fills, most specific first: this ingredient ⇄
- * supplier entry, the ingredient's own rate, the ingredient's chosen VAT band, then
- * the business's configured default purchase VAT. None → null (VAT stays optional).
- * Mirrors `resolvePurchaseVatBps` on the server.
+ * supplier entry, the ingredient's own rate, the ingredient's chosen VAT band, the
+ * business's configured default purchase VAT, then — only when the business has no
+ * configured default — the most common confirmed purchase VAT rate among the
+ * business's own active ingredients. None → null (VAT stays optional). Mirrors
+ * `resolvePurchaseVatBps` on the server.
  */
 export function suggestPurchaseVat(sources: {
   entryBps: number | null;
   ingredientBps: number | null;
   bandBps: number | null;
   businessBps: number | null;
+  mostCommonBps?: number | null;
 }): { bps: number; source: VatSuggestionSource } | null {
   if (sources.entryBps != null) return { bps: sources.entryBps, source: 'entry' };
   if (sources.ingredientBps != null) return { bps: sources.ingredientBps, source: 'ingredient' };
   if (sources.bandBps != null) return { bps: sources.bandBps, source: 'band' };
   if (sources.businessBps != null) return { bps: sources.businessBps, source: 'business' };
+  if (sources.mostCommonBps != null) return { bps: sources.mostCommonBps, source: 'mostCommon' };
   return null;
 }
 

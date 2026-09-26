@@ -89,6 +89,66 @@ export async function recordPriceObservation(
   return { ok: true, ingredient: row, derivedPriceCents };
 }
 
+/**
+ * Record a deliberate, authorized supplier-pack price and apply it to the approved
+ * cost IMMEDIATELY — no pending/accept step. Used ONLY for a manager's own deliberate
+ * edit inside the ingredient editor (never for an import or a receipt, which stay on
+ * `recordPriceObservation` / `recordDerivedPriceObservation` and keep raising a
+ * pending cost for review). Appends an already-`accepted` history row (source
+ * `'manual'`, carrying the supplier-link provenance) and clears any unrelated
+ * pending observation — the manager just set a definitive price, so a stale pending
+ * candidate from elsewhere is superseded, not lost (its history row is untouched).
+ */
+export type RecordAcceptedSupplierPriceInput = Omit<RecordPriceObservationInput, 'source'>;
+
+export async function recordAcceptedSupplierPrice(
+  db: TenantClient,
+  organizationId: string,
+  input: RecordAcceptedSupplierPriceInput,
+): Promise<RecordPriceObservationResult> {
+  const current = await lockActiveIngredientRow(db, organizationId, input.ingredientId);
+  if (!current) return { ok: false, reason: 'not_found' };
+
+  const derivedPriceCents = approvedPriceCents({
+    packPriceCents: input.packPriceCents,
+    packSize: input.packSize,
+    packUnit: input.packUnit,
+    dimension: current.dimension,
+  });
+
+  await db.insert(ingredientPriceHistory).values({
+    organizationId,
+    ingredientId: input.ingredientId,
+    source: 'manual',
+    packSize: input.packSize.toString(),
+    packUnit: input.packUnit,
+    packPriceCents: input.packPriceCents,
+    derivedPriceCents,
+    accepted: true,
+    actorUserId: input.actorUserId ?? null,
+    ingredientSupplierId: input.ingredientSupplierId ?? null,
+    note: input.note ?? null,
+  });
+
+  const [row] = await db
+    .update(ingredients)
+    .set({
+      priceCents: derivedPriceCents,
+      pendingPriceCents: null,
+      needsPricing: derivedPriceCents > 0 ? false : current.needsPricing,
+    })
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        eq(ingredients.id, input.ingredientId),
+        isNull(ingredients.deletedAt),
+      ),
+    )
+    .returning();
+  if (!row) return { ok: false, reason: 'not_found' };
+  return { ok: true, ingredient: row, derivedPriceCents };
+}
+
 export type RecordDerivedPriceObservationInput = {
   ingredientId: string;
   /** Already-derived cost per priced unit (per kg / litre / piece), integer cents. */

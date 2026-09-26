@@ -288,6 +288,9 @@ export const ingredients = pgTable(
     // by the allergen-replace flow (lib/data/allergens.ts), even on an empty set.
     allergensReviewedAt: timestamp('allergens_reviewed_at', { withTimezone: true }),
     allergensReviewedBy: text('allergens_reviewed_by'),
+    // Free-text notes the manager keeps on the ingredient (e.g. a supplier discount
+    // reminder). Optional, never parsed or used in any calculation.
+    notes: text('notes'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL`.
@@ -298,6 +301,7 @@ export const ingredients = pgTable(
       'ingredients_vat_rate_chk',
       sql`${t.vatRateBps} IS NULL OR (${t.vatRateBps} >= 0 AND ${t.vatRateBps} <= 10000)`,
     ),
+    check('ingredients_notes_chk', sql`${t.notes} is null or char_length(${t.notes}) <= 1000`),
     index('ingredients_org_idx').on(t.organizationId),
     index('ingredients_org_name_idx').on(t.organizationId, t.name),
     // Serves the /trash listing and keeps active-row filtering index-friendly.

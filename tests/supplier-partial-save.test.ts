@@ -43,8 +43,8 @@ async function ingredient(name: string, priceCents = 0, org = ORG_A) {
 }
 const save = (id: string, input: Parameters<typeof setDefaultSupplier>[3], org = ORG_A) =>
   runInOrg(db, org, (tx) => setDefaultSupplier(tx, org, id, input));
-const linkOf = async (id: string) =>
-  (await runInOrg(db, ORG_A, (tx) => loadDefaultLinksByIngredient(tx, ORG_A, [id]))).get(id) ?? null;
+const linkOf = async (id: string, org = ORG_A) =>
+  (await runInOrg(db, org, (tx) => loadDefaultLinksByIngredient(tx, org, [id]))).get(id) ?? null;
 
 describe('saving a supplier with incomplete information', () => {
   it('saves only a supplier — no pack, price or VAT — and keeps the ingredient cost', async () => {
@@ -119,7 +119,8 @@ describe('prices entered per kg and incl. VAT', () => {
     const b = await ingredient('Pistachios');
     await save(b, { supplierName: 'Nut Co', packSize: 500, packUnit: 'g', packPriceCents: 800, priceBasis: 'priced' });
     expect((await linkOf(b))?.packPriceCents).toBe(400); // €8/kg × 500 g
-    expect((await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, b)))?.pendingPriceCents).toBe(800);
+    // A deliberate supplier save applies straight to the approved cost — no pending step.
+    expect((await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, b)))?.priceCents).toBe(800);
   });
 
   it('removes VAT exactly once, using the entry → ingredient → business default chain', async () => {
@@ -142,18 +143,22 @@ describe('prices entered per kg and incl. VAT', () => {
     expect((await linkOf(id))?.packPriceCents).toBe(1_754);
 
     // Without any rate an incl.-VAT price is not stored (the old one stays for the same pack).
-    const noRate = await ingredient('Milk');
+    // A dedicated org: ORG_A already has a confirmed rate on `Cream` above, and the
+    // learned most-common-rate fallback (§5) would otherwise resolve one here too —
+    // this scenario is specifically "no VAT known anywhere yet".
+    const ORG_NO_VAT = 'org_no_vat_chain';
+    const noRate = await ingredient('Milk', 0, ORG_NO_VAT);
     expect(
-      await save(noRate, { supplierName: 'Dairy Co', packSize: 1, packUnit: 'kg', packPriceCents: 114, priceIncludesVat: true }),
+      await save(noRate, { supplierName: 'Dairy Co', packSize: 1, packUnit: 'kg', packPriceCents: 114, priceIncludesVat: true }, ORG_NO_VAT),
     ).toMatchObject({ status: 'ok', priceStatus: 'needs_vat' });
 
-    await runInOrg(db, ORG_A, (tx) => setDefaultPurchaseVat(tx, ORG_A, 1400));
+    await runInOrg(db, ORG_NO_VAT, (tx) => setDefaultPurchaseVat(tx, ORG_NO_VAT, 1400));
     expect(
-      await save(noRate, { supplierName: 'Dairy Co', packSize: 1, packUnit: 'kg', packPriceCents: 114, priceIncludesVat: true }),
+      await save(noRate, { supplierName: 'Dairy Co', packSize: 1, packUnit: 'kg', packPriceCents: 114, priceIncludesVat: true }, ORG_NO_VAT),
     ).toMatchObject({ priceStatus: 'saved', vatRateBps: 1400 });
-    expect((await linkOf(noRate))?.packPriceCents).toBe(100);
+    expect((await linkOf(noRate, ORG_NO_VAT))?.packPriceCents).toBe(100);
     // The business default is a suggestion — not written onto the entry.
-    expect((await linkOf(noRate))?.vatRateBps).toBeNull();
+    expect((await linkOf(noRate, ORG_NO_VAT))?.vatRateBps).toBeNull();
   });
 
   it('remembers a deliberate 0% over the business default', async () => {

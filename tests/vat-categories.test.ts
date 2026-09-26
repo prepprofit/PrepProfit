@@ -13,6 +13,7 @@ import {
   deleteVatCategory,
   ensureVatCategories,
   listVatCategories,
+  mostCommonPurchaseVatBps,
   resolveVatRateBps,
   updateVatCategory,
 } from '@/lib/data/vat-categories';
@@ -222,8 +223,8 @@ describe('setDefaultSupplier converts with the ingredient’s band', () => {
     const flourRow = await runInOrg(db, ORG_A, (tx) =>
       getIngredientById(tx, ORG_A, flour),
     );
-    expect(wineRow?.pendingPriceCents).toBe(7968);
-    expect(flourRow?.pendingPriceCents).toBe(8772);
+    expect(wineRow?.priceCents).toBe(7968);
+    expect(flourRow?.priceCents).toBe(8772);
     // The band picked in the dialog is persisted on the ingredient.
     expect(wineRow?.vatCategoryId).toBe(created.category.id);
     expect(flourRow?.vatCategoryId).toBeNull();
@@ -261,7 +262,9 @@ describe('setDefaultSupplier with a typed VAT rate', () => {
     );
     let row = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, ingId));
     expect(row?.vatRateBps).toBe(1350);
-    expect(row?.pendingPriceCents).toBe(8811); // 100 / 1.135
+    // A deliberate supplier save applies straight to the approved cost — no pending step.
+    expect(row?.priceCents).toBe(8811); // 100 / 1.135
+    expect(row?.pendingPriceCents).toBeNull();
 
     // A save that omits the rate leaves it untouched.
     await runInOrg(db, ORG_A, (tx) =>
@@ -269,7 +272,7 @@ describe('setDefaultSupplier with a typed VAT rate', () => {
     );
     row = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, ingId));
     expect(row?.vatRateBps).toBe(1350);
-    expect(row?.pendingPriceCents).toBe(10_000);
+    expect(row?.priceCents).toBe(10_000);
   });
 
   it('treats 0% as a real rate, distinct from unset (which falls back to the business default)', async () => {
@@ -284,9 +287,9 @@ describe('setDefaultSupplier with a typed VAT rate', () => {
     const zeroRow = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, zero));
     const unsetRow = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, unset));
     expect(zeroRow?.vatRateBps).toBe(0);
-    expect(zeroRow?.pendingPriceCents).toBe(10_000);
+    expect(zeroRow?.priceCents).toBe(10_000);
     expect(unsetRow?.vatRateBps).toBeNull();
-    expect(unsetRow?.pendingPriceCents).toBe(8772); // business default purchase VAT, 14%
+    expect(unsetRow?.priceCents).toBe(8772); // business default purchase VAT, 14%
   });
 
   it('rejects out-of-range rates at the database', async () => {
@@ -296,5 +299,99 @@ describe('setDefaultSupplier with a typed VAT rate', () => {
         tx.update(ingredients).set({ vatRateBps: 10_001 }).where(eq(ingredients.id, ingId)),
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe('mostCommonPurchaseVatBps', () => {
+  async function setRate(org: string, ingredientId: string, vatRateBps: number | null): Promise<void> {
+    await runInOrg(db, org, (tx) =>
+      tx.update(ingredients).set({ vatRateBps }).where(eq(ingredients.id, ingredientId)),
+    );
+  }
+
+  it('returns null when no ingredient has a confirmed rate', async () => {
+    const org = 'org_mc_empty';
+    await newIngredient(org, 'Unrated 1');
+    await newIngredient(org, 'Unrated 2');
+    expect(await runInOrg(db, org, (tx) => mostCommonPurchaseVatBps(tx, org))).toBeNull();
+  });
+
+  it('picks the rate held by the most ingredients, counting each ingredient once', async () => {
+    const org = 'org_mc_majority';
+    const a = await newIngredient(org, 'A');
+    const b = await newIngredient(org, 'B');
+    const c = await newIngredient(org, 'C');
+    await newIngredient(org, 'D (unset, excluded)');
+    await setRate(org, a, 1350);
+    await setRate(org, b, 1350);
+    await setRate(org, c, 2550);
+    expect(await runInOrg(db, org, (tx) => mostCommonPurchaseVatBps(tx, org))).toBe(1350);
+  });
+
+  it('returns null on a tie — no clear majority', async () => {
+    const org = 'org_mc_tie';
+    const a = await newIngredient(org, 'A');
+    const b = await newIngredient(org, 'B');
+    await setRate(org, a, 1350);
+    await setRate(org, b, 2550);
+    expect(await runInOrg(db, org, (tx) => mostCommonPurchaseVatBps(tx, org))).toBeNull();
+  });
+
+  it('treats an explicit 0% as a valid, countable rate', async () => {
+    const org = 'org_mc_zero';
+    const a = await newIngredient(org, 'A');
+    const b = await newIngredient(org, 'B');
+    const c = await newIngredient(org, 'C');
+    await setRate(org, a, 0);
+    await setRate(org, b, 0);
+    await setRate(org, c, 1350);
+    expect(await runInOrg(db, org, (tx) => mostCommonPurchaseVatBps(tx, org))).toBe(0);
+  });
+
+  it('never mixes rates across organizations', async () => {
+    const orgX = 'org_mc_x';
+    const orgY = 'org_mc_y';
+    const x = await newIngredient(orgX, 'X');
+    await setRate(orgX, x, 1350);
+    const y1 = await newIngredient(orgY, 'Y1');
+    const y2 = await newIngredient(orgY, 'Y2');
+    await setRate(orgY, y1, 2550);
+    await setRate(orgY, y2, 2550);
+    expect(await runInOrg(db, orgX, (tx) => mostCommonPurchaseVatBps(tx, orgX))).toBe(1350);
+    expect(await runInOrg(db, orgY, (tx) => mostCommonPurchaseVatBps(tx, orgY))).toBe(2550);
+  });
+
+  it('feeds resolvePurchaseVatBps only when the business has no configured default', async () => {
+    const org = 'org_mc_resolve';
+    const a = await newIngredient(org, 'A');
+    const b = await newIngredient(org, 'B');
+    await setRate(org, a, 1350);
+    await setRate(org, b, 1350);
+    const other = await newIngredient(org, 'Other (no rate, no band)');
+    const withoutDefault = await runInOrg(db, org, (tx) =>
+      setDefaultSupplier(tx, org, other, {
+        supplierName: 'Some Co',
+        packSize: 1,
+        packUnit: 'kg',
+        packPriceCents: 1_135,
+        priceIncludesVat: true,
+        priceBasis: 'pack',
+      }),
+    );
+    expect(withoutDefault).toMatchObject({ status: 'ok', priceStatus: 'saved', vatRateBps: 1350 });
+
+    // Once the business sets its own default, that wins over the learned majority.
+    await runInOrg(db, org, (tx) => setDefaultPurchaseVat(tx, org, 2550));
+    const withDefault = await runInOrg(db, org, (tx) =>
+      setDefaultSupplier(tx, org, other, {
+        supplierName: 'Some Co',
+        packSize: 1,
+        packUnit: 'kg',
+        packPriceCents: 1_255,
+        priceIncludesVat: true,
+        priceBasis: 'pack',
+      }),
+    );
+    expect(withDefault).toMatchObject({ status: 'ok', vatRateBps: 2550 });
   });
 });

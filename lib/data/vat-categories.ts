@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { ingredients, vatCategories, type VatCategory } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import type { VatCategoryInput } from '@/lib/validation/vat-categories';
@@ -104,6 +104,39 @@ export async function resolveVatRateBps(
     )
     .limit(1);
   return fallback?.rateBps ?? null;
+}
+
+/**
+ * The most common CONFIRMED purchase VAT rate among the business's own active
+ * ingredients — the last-resort suggestion when neither an entry, an ingredient, a
+ * VAT band, nor the business's configured default purchase VAT apply. "Confirmed"
+ * means `ingredients.vat_rate_bps`, which the supplier editor only ever writes when
+ * a manager deliberately typed a rate (a suggested default is never persisted) — so
+ * this never reinforces its own suggestions. Each active ingredient counts once.
+ * Ties (including a single ingredient tying with itself — impossible — or two rates
+ * each held by the same number of ingredients) return null: no clear majority, so
+ * the field stays blank rather than guessing.
+ */
+export async function mostCommonPurchaseVatBps(
+  db: TenantClient,
+  organizationId: string,
+): Promise<number | null> {
+  const rows = await db
+    .select({ vatRateBps: ingredients.vatRateBps, count: sql<number>`count(*)::int` })
+    .from(ingredients)
+    .where(
+      and(
+        eq(ingredients.organizationId, organizationId),
+        isNull(ingredients.deletedAt),
+        isNotNull(ingredients.vatRateBps),
+      ),
+    )
+    .groupBy(ingredients.vatRateBps)
+    .orderBy(desc(sql`count(*)`));
+
+  if (rows.length === 0) return null;
+  if (rows.length > 1 && rows[0]!.count === rows[1]!.count) return null;
+  return rows[0]!.vatRateBps;
 }
 
 export type CreateVatCategoryResult =

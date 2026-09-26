@@ -22,7 +22,7 @@ import {
   type VatCategoryOption,
 } from '@/components/app/ingredients/ingredient-grid';
 
-type Section = 'supplier' | 'nutrition' | 'allergens';
+type Section = 'supplier' | 'nutrition' | 'allergens' | 'notes';
 
 const isPackUnit = (unit: string | null): unit is Unit =>
   unit !== null && (PACK_UNITS as readonly string[]).includes(unit);
@@ -90,6 +90,7 @@ export function IngredientDetailsDialog({
     supplier: false,
     nutrition: false,
     allergens: false,
+    notes: false,
   });
 
   React.useEffect(() => {
@@ -335,6 +336,25 @@ export function IngredientDetailsDialog({
               {allergensReviewed ? t('allergens.edit') : t('allergens.review')}
             </Button>
           </CollapsibleSection>
+
+          {/* Notes — free text kept alongside supplier/pricing details, so it is
+              only shown to viewers who can see costs (business-sensitive text,
+              e.g. a supplier discount reminder). */}
+          {canSeeCosts && (
+            <CollapsibleSection
+              id={`${sectionId}-notes`}
+              title={t('notes.title')}
+              summary={row.notes && row.notes.trim() !== '' ? t('notes.added') : notAdded}
+              open={expanded.notes}
+              onToggle={() => toggle('notes')}
+            >
+              {row.notes && row.notes.trim() !== '' ? (
+                <p className="whitespace-pre-wrap break-words text-base">{row.notes}</p>
+              ) : (
+                <p className="text-base text-muted-foreground">{notAdded}</p>
+              )}
+            </CollapsibleSection>
+          )}
         </div>
       </div>
     </dialog>

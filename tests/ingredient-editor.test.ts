@@ -149,7 +149,7 @@ describe('unified editor: direct manual price (no supplier)', () => {
     expect(row?.priceCents).toBe(0);
   });
 
-  it('a supplier pack price still only raises a pending cost, never overwriting the approved price', async () => {
+  it('a deliberate supplier pack price is applied straight to the approved cost — no second approval', async () => {
     const id = await ingredient('Cream', 150);
     const result = await save(id, {
       name: 'Cream',
@@ -158,11 +158,37 @@ describe('unified editor: direct manual price (no supplier)', () => {
     });
     expect(result).toMatchObject({ status: 'ok' });
     if (result.status === 'ok' && result.supplierChange.type === 'set') {
-      expect(result.supplierChange.pendingRaised).toBe(true);
+      expect(result.supplierChange.pendingRaised).toBe(false);
+      expect(result.supplierChange.priceApplied).toBe(true);
     }
     const row = await rowOf(id);
-    expect(row?.priceCents).toBe(150);
-    expect(row?.pendingPriceCents).toBe(200);
+    expect(row?.priceCents).toBe(200);
+    expect(row?.pendingPriceCents).toBeNull();
+    expect(row?.needsPricing).toBe(false);
+  });
+
+  it('a metadata-only supplier edit (product name/code) never touches the approved cost', async () => {
+    const id = await ingredient('Cheese', 400);
+    await save(id, {
+      name: 'Cheese',
+      dimension: 'weight',
+      supplier: { supplierName: 'Dairy Co', packSize: 1, packUnit: 'kg', packPriceCents: 350 },
+    });
+    const afterPrice = await rowOf(id);
+    expect(afterPrice?.priceCents).toBe(350);
+
+    const result = await save(id, {
+      name: 'Cheese',
+      dimension: 'weight',
+      supplier: { supplierName: 'Dairy Co', supplierProductName: 'Juusto 1kg' },
+    });
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok' && result.supplierChange.type === 'set') {
+      expect(result.supplierChange.priceApplied).toBe(false);
+    }
+    const row = await rowOf(id);
+    // Price unchanged — only the pack/product identity was edited, not the price.
+    expect(row?.priceCents).toBe(350);
   });
 });
 

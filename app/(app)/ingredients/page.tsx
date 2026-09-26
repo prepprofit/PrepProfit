@@ -19,7 +19,7 @@ import {
 import { getOrgSettings } from '@/lib/data/org-settings';
 import { getProfilesForIngredients } from '@/lib/data/ingredient-nutrition';
 import { toNutritionView, type IngredientNutritionView } from '@/lib/nutrition/profile-view';
-import { listVatCategories } from '@/lib/data/vat-categories';
+import { listVatCategories, mostCommonPurchaseVatBps } from '@/lib/data/vat-categories';
 import {
   IngredientGrid,
   type SupplierPricePrefs,
@@ -88,8 +88,12 @@ export default async function IngredientsPage({
   // How each supplier quotes prices, remembered from the last time one of their packs
   // was saved, so the dialog's two selects prefill instead of being re-picked.
   const supplierPricePrefs: Record<string, SupplierPricePrefs> = {};
+  // The VAT rate prefill's last-resort fallback (§5): the most common CONFIRMED
+  // purchase VAT rate among the business's own active ingredients, used only when
+  // the business has no configured default. Manager-only, like every other VAT input.
+  let mostCommonVatBps: number | null = null;
   if (canSeeCosts) {
-    const [suppliers, links, bands] = await withOrg(organizationId, async (tx) => [
+    const [suppliers, links, bands, mostCommon] = await withOrg(organizationId, async (tx) => [
       await listSuppliersWithCounts(tx, organizationId),
       await loadDefaultLinksByIngredient(
         tx,
@@ -97,7 +101,9 @@ export default async function IngredientsPage({
         ingredientRows.map((r) => r.id),
       ),
       await listVatCategories(tx, organizationId),
+      await mostCommonPurchaseVatBps(tx, organizationId),
     ]);
+    mostCommonVatBps = mostCommon;
     // Every supplier the business uses is selectable — records AND names already
     // on ingredients (see `supplierPickerNames`).
     supplierNames = supplierPickerNames(
@@ -137,6 +143,7 @@ export default async function IngredientsPage({
         supplierPricePrefs={supplierPricePrefs}
         vatCategories={vatCategories}
         businessPurchaseVatBps={settings.defaultPurchaseVatBps ?? null}
+        mostCommonPurchaseVatBps={mostCommonVatBps}
         typeLocks={typeLocks}
         initialNutrition={initialNutrition}
         canEditNutrition={role === 'manager'}

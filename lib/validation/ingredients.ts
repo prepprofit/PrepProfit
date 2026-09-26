@@ -47,6 +47,9 @@ export type KitchenIngredientFormInput = z.infer<typeof kitchenIngredientSchema>
  * is only honoured when no supplier is being set/cleared in this same save (once a
  * supplier is linked, its own pack price governs cost through the existing
  * pending/accept flow — never overwritten here); omitted = keep the stored price.
+ * `notes` is free text the manager keeps on the ingredient (e.g. a supplier
+ * discount reminder) — omitted = keep the stored notes, an empty string clears
+ * them. Never parsed or used in any calculation.
  */
 export const ingredientEditorSchema = z
   .object({
@@ -55,6 +58,7 @@ export const ingredientEditorSchema = z
     priceCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
     supplier: ingredientSupplierSchema.nullable().optional(),
     clearSupplier: z.boolean().optional(),
+    notes: z.string().trim().max(1000).optional(),
   })
   .refine((v) => !(v.supplier && v.clearSupplier), {
     message: 'supplier and clearSupplier are mutually exclusive',

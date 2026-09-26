@@ -263,7 +263,7 @@ export async function updateIngredientEditorAction(
   const actor = await auditActor();
 
   const outcome = await withOrg(organizationId, async (tx) => {
-    const result = await updateIngredientWithSupplier(tx, organizationId, id, parsed.data);
+    const result = await updateIngredientWithSupplier(tx, organizationId, id, parsed.data, actor.userId);
     if (result.status !== 'ok') return result;
 
     if (result.priceChanged) {
@@ -283,6 +283,17 @@ export async function updateIngredientEditorAction(
     }
     if (result.supplierChange.type === 'set') {
       const { link } = result.supplierChange;
+      // A deliberate pack-price edit for the default supplier is applied to the
+      // approved cost in the same write (`recordAcceptedSupplierPrice`) — audit it
+      // as a price update too, alongside the supplier-set event.
+      if (result.supplierChange.priceApplied) {
+        await writeAuditEvent(tx, organizationId, actor, {
+          action: 'ingredient.priceUpdate',
+          entityType: 'ingredient',
+          entityId: id,
+          metadata: { newPriceCents: result.ingredient.priceCents, supplierName: link.supplierName },
+        });
+      }
       await writeAuditEvent(tx, organizationId, actor, {
         action: 'ingredient.supplierSet',
         entityType: 'ingredient',
@@ -416,8 +427,16 @@ export async function setIngredientSupplierAction(
   // The VAT rate used to read an incl.-VAT quote is resolved server-side inside the
   // transaction (entry → ingredient → business default purchase VAT).
   const outcome = await withOrg(organizationId, async (tx) => {
-    const result = await setDefaultSupplier(tx, organizationId, ingredientId, parsed.data);
+    const result = await setDefaultSupplier(tx, organizationId, ingredientId, parsed.data, actor.userId);
     if (result.status !== 'ok') return result;
+    if (result.priceApplied) {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'ingredient.priceUpdate',
+        entityType: 'ingredient',
+        entityId: ingredientId,
+        metadata: { newPriceCents: result.appliedPriceCents, supplierId: result.supplier.id },
+      });
+    }
     await writeAuditEvent(tx, organizationId, actor, {
       action: 'ingredient.supplierSet',
       entityType: 'ingredient',

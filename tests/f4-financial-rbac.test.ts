@@ -129,6 +129,7 @@ describe('kitchen DTO projections omit the financial keys', () => {
       vatRateBps: null,
       allergensReviewedAt: null,
       allergensReviewedBy: null,
+      notes: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,

@@ -203,7 +203,7 @@ describe('setDefaultSupplier — dual-write', () => {
 });
 
 describe('pending cost from a pack price', () => {
-  it('raises pending on a real pack change, then accept moves it to price', async () => {
+  it('applies a real pack change straight to the approved cost — no pending step', async () => {
     const ingId = await newIngredient(ORG_A, 'Almond flour', 'weight', 100);
     const first = await runInOrg(db, ORG_A, (tx) =>
       setDefaultSupplier(tx, ORG_A, ingId, {
@@ -213,13 +213,15 @@ describe('pending cost from a pack price', () => {
         packPriceCents: 2000, // €20 / 5 kg → 400 c/kg
       }),
     );
-    expect(first.status === 'ok' && first.pendingRaised).toBe(true);
+    expect(first.status === 'ok' && first.pendingRaised).toBe(false);
+    expect(first.status === 'ok' && first.priceApplied).toBe(true);
 
-    let ing = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, ingId));
-    expect(ing?.priceCents).toBe(100);
-    expect(ing?.pendingPriceCents).toBe(400);
+    const ing = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, ingId));
+    expect(ing?.priceCents).toBe(400);
+    expect(ing?.pendingPriceCents).toBeNull();
 
-    // The history row carries the originating link id (provenance, §12.5).
+    // The history row carries the originating link id (provenance, §12.5) and is
+    // already accepted — a deliberate editor save needs no separate Approve step.
     const link = await runInOrg(db, ORG_A, (tx) => getDefaultLink(tx, ORG_A, ingId));
     const hist = await runInOrg(db, ORG_A, (tx) =>
       tx
@@ -234,11 +236,8 @@ describe('pending cost from a pack price', () => {
     );
     expect(hist).toHaveLength(1);
     expect(hist[0]?.ingredientSupplierId).toBe(link?.link.id);
-
-    await runInOrg(db, ORG_A, (tx) => acceptPendingCost(tx, ORG_A, ingId));
-    ing = await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, ingId));
-    expect(ing?.priceCents).toBe(400);
-    expect(ing?.pendingPriceCents).toBeNull();
+    expect(hist[0]?.accepted).toBe(true);
+    expect(hist[0]?.source).toBe('manual');
   });
 
   it('is a no-op when the pack is unchanged (no new history, no re-opened pending)', async () => {

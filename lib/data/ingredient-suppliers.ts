@@ -7,10 +7,10 @@ import {
   listIngredientTypeLocks,
   updateIngredient,
 } from '@/lib/data/ingredients';
-import { recordPriceObservation } from '@/lib/data/ingredient-pricing';
+import { recordAcceptedSupplierPrice } from '@/lib/data/ingredient-pricing';
 import { packPriceExclVatCents } from '@/lib/calculations/purchasePrice';
 import { findOrCreateSupplierByName } from '@/lib/data/suppliers';
-import { resolveVatRateBps } from '@/lib/data/vat-categories';
+import { mostCommonPurchaseVatBps, resolveVatRateBps } from '@/lib/data/vat-categories';
 import { isPackUnitCompatible } from '@/lib/suppliers/display-name';
 import { normalizeIngredientName } from '@/lib/import/resolveIngredient';
 import { normalizeSupplierName } from '@/lib/suppliers/normalize';
@@ -335,7 +335,12 @@ export type SetDefaultSupplierResult =
       status: 'ok';
       link: IngredientSupplier;
       supplier: Supplier;
+      /** Always false — a deliberate save in this editor never leaves a price pending. */
       pendingRaised: boolean;
+      /** True when this save just applied a new pack price straight to the approved cost. */
+      priceApplied: boolean;
+      /** The new approved per-priced-unit cost when `priceApplied`; null otherwise. */
+      appliedPriceCents: number | null;
       priceStatus: SupplierPriceStatus;
       /** The VAT rate the save used to read an incl.-VAT price (null = unknown). */
       vatRateBps: number | null;
@@ -355,8 +360,10 @@ function numOrNull(value: string | null): number | null {
 /**
  * The purchase VAT that applies to an ingredient's supplier entry, most specific
  * first: the entry's own rate → the ingredient's typed rate → the ingredient's
- * (explicitly chosen) VAT band → the business's configured default purchase VAT.
- * NULL when none is set — never the sales rate, never an invented statutory rate.
+ * (explicitly chosen) VAT band → the business's configured default purchase VAT →
+ * (only when the business has no configured default) the most common CONFIRMED
+ * purchase VAT rate among the business's own active ingredients. NULL when none of
+ * these resolve — never the sales rate, never an invented statutory rate.
  */
 export async function resolvePurchaseVatBps(
   db: TenantClient,
@@ -374,7 +381,8 @@ export async function resolvePurchaseVatBps(
     .from(organizationSettings)
     .where(eq(organizationSettings.organizationId, organizationId))
     .limit(1);
-  return settings?.vat ?? null;
+  if (settings?.vat != null) return settings.vat;
+  return mostCommonPurchaseVatBps(db, organizationId);
 }
 
 /**
@@ -389,15 +397,23 @@ export async function resolvePurchaseVatBps(
  *     derived honestly (complete pack; a VAT rate when entered incl. VAT). Otherwise
  *     the supplier still saves and `priceStatus` says what's missing;
  *  5. upsert the link, flip `is_default`, mirror the supplier name;
- *  6. raise a pending observed cost ONLY when a real pack price is stored AND the
- *     pack changed (§12.6). The ingredient's approved cost is never overwritten
- *     here — let alone with zero.
+ *  6. apply a new whole-pack price straight to the approved cost ONLY when a real
+ *     pack price is stored AND the pack changed. This function is called ONLY from
+ *     deliberate, manager-authorized UI saves (the unified ingredient editor and the
+ *     standalone supplier action) — never from an import or a receipt, which record
+ *     their own pending observations directly via `recordPriceObservation` /
+ *     `recordDerivedPriceObservation` and are untouched by this. So a save here never
+ *     needs a second "Approve" step: it records an already-accepted history row and
+ *     updates `price_cents` in the same write. A metadata-only edit (name/code) never
+ *     reaches this branch — `priceStatus` is only `'saved'` when a complete pack and
+ *     price were actually derived.
  */
 export async function setDefaultSupplier(
   db: TenantClient,
   organizationId: string,
   ingredientId: string,
   input: IngredientSupplierInput,
+  actorUserId: string | null = null,
 ): Promise<SetDefaultSupplierResult> {
   const ingredient = await lockActiveIngredientRow(db, organizationId, ingredientId);
   if (!ingredient) return { status: 'not_found' };
@@ -547,7 +563,8 @@ export async function setDefaultSupplier(
     })
     .where(and(eq(ingredients.organizationId, organizationId), eq(ingredients.id, ingredientId)));
 
-  let pendingRaised = false;
+  let priceApplied = false;
+  let appliedPriceCents: number | null = null;
   const packChanged =
     priorSize !== newPackSize ||
     priorUnit !== newPackUnit ||
@@ -555,19 +572,29 @@ export async function setDefaultSupplier(
     (prior?.packPriceCents ?? null) !== newPackPriceCents;
 
   if (priceStatus === 'saved' && newPackPriceCents != null && newPackSize != null && newPackUnit != null && packChanged) {
-    await recordPriceObservation(db, organizationId, {
+    const applied = await recordAcceptedSupplierPrice(db, organizationId, {
       ingredientId,
-      source: 'quote',
       // The price trail records the quantity actually purchased (4 × 1.65 kg → 6.6).
       packSize: newUnitsPerPack * newPackSize,
       packUnit: newPackUnit,
       packPriceCents: newPackPriceCents,
       ingredientSupplierId: link.id,
+      actorUserId,
     });
-    pendingRaised = true;
+    priceApplied = true;
+    if (applied.ok) appliedPriceCents = applied.derivedPriceCents;
   }
 
-  return { status: 'ok', link, supplier, pendingRaised, priceStatus, vatRateBps: taxRateBps };
+  return {
+    status: 'ok',
+    link,
+    supplier,
+    pendingRaised: false,
+    priceApplied,
+    appliedPriceCents,
+    priceStatus,
+    vatRateBps: taxRateBps,
+  };
 }
 
 /**
@@ -615,6 +642,7 @@ export type IngredientEditorSupplierChange =
       link: DefaultSupplierSummary;
       priceStatus: SupplierPriceStatus;
       pendingRaised: boolean;
+      priceApplied: boolean;
     };
 
 export type IngredientEditorOutcome =
@@ -645,6 +673,7 @@ export async function updateIngredientWithSupplier(
   organizationId: string,
   ingredientId: string,
   input: IngredientEditorInput,
+  actorUserId: string | null = null,
 ): Promise<IngredientEditorOutcome> {
   const current = await lockActiveIngredientRow(db, organizationId, ingredientId);
   if (!current) return { status: 'not_found' };
@@ -663,12 +692,13 @@ export async function updateIngredientWithSupplier(
     const cleared = await clearDefaultSupplier(db, organizationId, ingredientId);
     if (cleared) supplierChange = { type: 'cleared' };
   } else if (input.supplier) {
-    const result = await setDefaultSupplier(db, organizationId, ingredientId, input.supplier);
+    const result = await setDefaultSupplier(db, organizationId, ingredientId, input.supplier, actorUserId);
     if (result.status !== 'ok') return result;
     supplierChange = {
       type: 'set',
       priceStatus: result.priceStatus,
       pendingRaised: result.pendingRaised,
+      priceApplied: result.priceApplied,
       link: {
         supplierName: result.supplier.name,
         packSize: numOrNull(result.link.packSize),
@@ -684,7 +714,7 @@ export async function updateIngredientWithSupplier(
 
   // A direct manual price only applies when no supplier is being set/cleared in
   // this save — once a supplier link exists, its own pack price is the source of
-  // truth (via the pending/accept flow above, untouched here).
+  // truth (applied directly by `setDefaultSupplier` above, untouched here).
   const hasDirectPrice = supplierChange.type === 'none' && input.priceCents != null;
   const priceChanged = hasDirectPrice && input.priceCents !== current.priceCents;
 
@@ -713,6 +743,8 @@ export async function updateIngredientWithSupplier(
     priceCents,
     needsPricing,
     pendingPriceCents,
+    // Untouched (undefined) keeps the stored notes; an empty string clears them.
+    notes: input.notes !== undefined ? (input.notes === '' ? null : input.notes) : current.notes,
   });
   if (!row) return { status: 'not_found' };
 

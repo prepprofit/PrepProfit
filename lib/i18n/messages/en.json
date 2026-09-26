@@ -833,7 +833,11 @@
     "ingredientEditor": {
       "heading": "Supplier",
       "ingredientNameLabel": "Ingredient name",
-      "moreDetails": "More details",
+      "notes": {
+        "title": "Notes",
+        "added": "Note added",
+        "placeholder": "Contact Jussi Laakso about a discount when ordering more than 15 units."
+      },
       "directPriceLabel": "Price per {unit}",
       "supplierName": "Supplier",
       "supplierPlaceholder": "Pick or add a supplier",
@@ -891,8 +895,6 @@
       },
       "vatRate": "VAT rate",
       "vatRateUnset": "Not set",
-      "vatPresets": "Shortcuts:",
-      "vatRateClear": "Clear",
       "vatRateInvalid": "Enter a VAT rate from 0 to 100, e.g. 14 or 13,5.",
       "vatRateZero": "0% — this purchase has no VAT.",
       "vatRateSet": "Using {rate}% for this ingredient.",
@@ -909,7 +911,7 @@
       "priceNeedsPack": "Add the pack size to calculate the other price and work out the cost per {unit}.",
       "priceNeedsVat": "These prices include VAT but no VAT rate is set — add the rate to save the price. The supplier still saves.",
       "currentCost": "Current ingredient cost: {amount} per {unit} (excl. VAT).",
-      "currentCostUnknown": "This ingredient has no approved cost yet.",
+      "currentCostUnknown": "Price not entered.",
       "costWillBePending": "This price works out at {amount} per {unit} excl. VAT. It's saved for you to accept — the current cost stays until you do.",
       "done": "Done",
       "saving": "Saving…",
@@ -918,17 +920,23 @@
         "ingredient": "Default: this ingredient's VAT",
         "band": "Default: this ingredient's VAT band",
         "business": "Default: your business purchase VAT",
+        "mostCommon": "Default: the rate most of your ingredients use",
         "none": "No VAT set — optional",
         "cleared": "Not set"
       },
+      "vatInfoTitle": "Where this VAT rate comes from",
       "saved": {
         "ok": "Supplier saved: {name}.",
-        "pending": "Supplier saved: {name}. The new cost is waiting for you to accept it.",
+        "priceApplied": "Supplier saved: {name}. Ingredient cost updated to {amount} per {unit}.",
         "partial": "Supplier saved. Fields marked in red weren't saved — correct them and save again.",
         "needsVat": "Supplier saved. The price wasn't saved because it includes VAT and no VAT rate is set.",
         "needsPack": "Supplier saved. The price wasn't saved yet — add the pack size to store it."
       },
-      "noPriceYet": "No price yet"
+      "noPriceYet": "Price not entered",
+      "addPrice": "Add price",
+      "infoLabel": "More information",
+      "fallbackPriceLabel": "Calculated",
+      "fallbackPriceHint": "Calculated from this ingredient's current price — not yet confirmed with this supplier."
     },
     "invoices": {
       "cardTitle": "Read a supplier invoice",
@@ -1304,6 +1312,10 @@
         "disclaimer": "Kitchen aid only — always check packaging and supplier information. Never a claim that the ingredient is allergen-free.",
         "edit": "Edit allergens",
         "review": "Review allergens"
+      },
+      "notes": {
+        "title": "Notes",
+        "added": "Note added"
       }
     }
   },

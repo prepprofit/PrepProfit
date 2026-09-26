@@ -51,9 +51,11 @@ type Dimension = Ingredient['dimension'];
  * Row shape the grid renders. Price is OPTIONAL: for kitchen the server ships rows
  * with no `priceCents` key at all (Sprint F4), and the Price column is not rendered.
  */
-export type IngredientRow = Omit<Ingredient, 'priceCents' | 'pendingPriceCents'> & {
+export type IngredientRow = Omit<Ingredient, 'priceCents' | 'pendingPriceCents' | 'notes'> & {
   priceCents?: number;
   pendingPriceCents?: number | null;
+  /** Manager-only free-text notes; absent for a kitchen row (Sprint F4). */
+  notes?: string | null;
 };
 
 /**
@@ -168,6 +170,7 @@ export function IngredientGrid({
   supplierPricePrefs = {},
   vatCategories = [],
   businessPurchaseVatBps = null,
+  mostCommonPurchaseVatBps = null,
   typeLocks = {},
   initialNutrition = {},
   canEditNutrition = false,
@@ -192,6 +195,8 @@ export function IngredientGrid({
   vatCategories?: VatCategoryOption[];
   /** The business's configured default purchase VAT (bps) — supplier editor default. */
   businessPurchaseVatBps?: number | null;
+  /** Last-resort VAT prefill: the business's most common confirmed purchase rate. */
+  mostCommonPurchaseVatBps?: number | null;
   /** Ingredients whose type is locked because quantities use the current unit. */
   typeLocks?: Record<string, IngredientTypeLock>;
   /** Each ingredient's own nutrition profile (absent = not added). */
@@ -779,14 +784,13 @@ export function IngredientGrid({
           vatCategoryId={supplierTarget.vatCategoryId ?? null}
           vatRateBps={supplierTarget.vatRateBps ?? null}
           businessPurchaseVatBps={businessPurchaseVatBps}
+          mostCommonPurchaseVatBps={mostCommonPurchaseVatBps}
           currentPriceCents={supplierTarget.priceCents ?? null}
           supplierNames={supplierNames}
           pricePrefs={pricePrefs}
           initialLink={supplierLinks[supplierTarget.id] ?? null}
           pendingPriceCents={supplierTarget.pendingPriceCents ?? null}
-          typeLockReason={typeLockReason(supplierTarget.id)}
-          dimensionLabel={dimensionLabel}
-          dimensionPillLabel={dimensionPillLabel}
+          notes={supplierTarget.notes ?? null}
           focusSection={editorFocus}
           onClose={() => setSupplierEditId(null)}
           onSaved={(update: IngredientEditorSavedUpdate) => {

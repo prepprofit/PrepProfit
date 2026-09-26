@@ -30,17 +30,23 @@ export type IngredientInput = Omit<
 
 /**
  * Kitchen-facing ingredient shape (Sprint F4): the full row with the financial
- * columns (`priceCents`, `pendingPriceCents`) OMITTED — the keys are literally
- * absent, not zeroed, so a kitchen payload can never carry a cost. Built with
- * {@link toKitchenIngredient}. Pages/actions ship this to kitchen instead of the
- * full `Ingredient` (UI hiding alone is never enough — CLAUDE.md).
+ * columns (`priceCents`, `pendingPriceCents`) and manager-only free-text `notes`
+ * (may hold supplier/pricing reminders) OMITTED — the keys are literally absent,
+ * not zeroed/blanked, so a kitchen payload can never carry a cost or business
+ * note. Built with {@link toKitchenIngredient}. Pages/actions ship this to
+ * kitchen instead of the full `Ingredient` (UI hiding alone is never enough —
+ * CLAUDE.md).
  */
-export type KitchenIngredient = Omit<Ingredient, 'priceCents' | 'pendingPriceCents'>;
+export type KitchenIngredient = Omit<Ingredient, 'priceCents' | 'pendingPriceCents' | 'notes'>;
 
-/** Strips the financial columns from an ingredient row for a kitchen payload. */
+/** Strips the financial columns and notes from an ingredient row for a kitchen payload. */
 export function toKitchenIngredient(row: Ingredient): KitchenIngredient {
-  const { priceCents: _priceCents, pendingPriceCents: _pendingPriceCents, ...rest } =
-    row;
+  const {
+    priceCents: _priceCents,
+    pendingPriceCents: _pendingPriceCents,
+    notes: _notes,
+    ...rest
+  } = row;
   return rest;
 }
 
