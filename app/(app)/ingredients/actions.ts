@@ -24,12 +24,15 @@ import {
   getSupplierProductIdentity,
   hasIncompatiblePacks,
   setDefaultSupplier,
+  updateIngredientWithSupplier,
   type DefaultSupplierSummary,
+  type IngredientEditorSupplierChange,
   type SupplierPriceStatus,
   type SupplierProductIdentity,
 } from '@/lib/data/ingredient-suppliers';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
+  ingredientEditorSchema,
   ingredientSchema,
   kitchenIngredientSchema,
 } from '@/lib/validation/ingredients';
@@ -232,6 +235,90 @@ export async function updateIngredientAction(
   if (outcome === 'type_in_use') return { ok: false, code: 'INGREDIENT_TYPE_IN_USE' };
   revalidateIngredientConsumers();
   return { ok: true, data: outcome };
+}
+
+export type UpdateIngredientEditorResult = {
+  ingredient: Ingredient;
+  supplierChange: IngredientEditorSupplierChange;
+};
+
+/**
+ * The unified ingredient editor (pencil + supplier shortcut, both open the same
+ * dialog): name, dimension, and the default supplier link in ONE atomic save.
+ * MANAGER-ONLY — FORBIDDEN before any data access, since suppliers and pricing are
+ * financial (F4). The combined write and its audit event(s) run in ONE `withOrg`
+ * transaction (`updateIngredientWithSupplier`), so a supplier failure never leaves a
+ * stray name/dimension change committed.
+ */
+export async function updateIngredientEditorAction(
+  id: string,
+  input: unknown,
+): Promise<ActionResult<UpdateIngredientEditorResult>> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+
+  const parsed = ingredientEditorSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  const actor = await auditActor();
+
+  const outcome = await withOrg(organizationId, async (tx) => {
+    const result = await updateIngredientWithSupplier(tx, organizationId, id, parsed.data);
+    if (result.status !== 'ok') return result;
+
+    if (result.priceChanged) {
+      await appendManualPriceHistory(
+        tx,
+        organizationId,
+        id,
+        result.ingredient.priceCents,
+        actor.userId,
+      );
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'ingredient.priceUpdate',
+        entityType: 'ingredient',
+        entityId: id,
+        metadata: { newPriceCents: result.ingredient.priceCents },
+      });
+    }
+    if (result.supplierChange.type === 'set') {
+      const { link } = result.supplierChange;
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'ingredient.supplierSet',
+        entityType: 'ingredient',
+        entityId: id,
+        metadata: {
+          supplierName: link.supplierName,
+          packSize: link.packSize,
+          packUnit: link.packUnit,
+          unitsPerPack: link.unitsPerPack,
+          packPriceCents: link.packPriceCents,
+          priceStatus: result.supplierChange.priceStatus,
+          pendingRaised: result.supplierChange.pendingRaised,
+        },
+      });
+    } else if (result.supplierChange.type === 'cleared') {
+      await writeAuditEvent(tx, organizationId, actor, {
+        action: 'ingredient.supplierClear',
+        entityType: 'ingredient',
+        entityId: id,
+      });
+    }
+    return result;
+  });
+
+  if (outcome.status === 'not_found') return { ok: false, code: 'NOT_FOUND' };
+  if (outcome.status === 'pack_unit_mismatch') return { ok: false, code: 'PACK_UNIT_MISMATCH' };
+  if (outcome.status === 'type_in_use') return { ok: false, code: 'INGREDIENT_TYPE_IN_USE' };
+  if (outcome.status === 'supplier_inactive') return { ok: false, code: 'SUPPLIER_INACTIVE' };
+  if (outcome.status === 'invalid_name') return { ok: false, code: 'INVALID_INPUT' };
+
+  revalidateIngredientConsumers();
+  revalidatePath('/suppliers');
+  return {
+    ok: true,
+    data: { ingredient: outcome.ingredient, supplierChange: outcome.supplierChange },
+  };
 }
 
 /**

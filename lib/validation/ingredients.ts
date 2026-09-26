@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ingredientSupplierSchema } from '@/lib/validation/suppliers';
 
 /**
  * Server-side validation for ingredients (CLAUDE.md: Zod on all user input, on
@@ -37,3 +38,26 @@ export const kitchenIngredientSchema = z.object({
 });
 
 export type KitchenIngredientFormInput = z.infer<typeof kitchenIngredientSchema>;
+
+/**
+ * The unified ingredient editor (name + dimension + supplier + pricing, ONE Save).
+ * MANAGER-ONLY at the action layer. `supplier` and `clearSupplier` are mutually
+ * exclusive with each other; both are optional — omitting both leaves the
+ * ingredient's supplier link untouched. `priceCents` is a DIRECT manual price and
+ * is only honoured when no supplier is being set/cleared in this same save (once a
+ * supplier is linked, its own pack price governs cost through the existing
+ * pending/accept flow — never overwritten here); omitted = keep the stored price.
+ */
+export const ingredientEditorSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    dimension: z.enum(DIMENSIONS),
+    priceCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
+    supplier: ingredientSupplierSchema.nullable().optional(),
+    clearSupplier: z.boolean().optional(),
+  })
+  .refine((v) => !(v.supplier && v.clearSupplier), {
+    message: 'supplier and clearSupplier are mutually exclusive',
+  });
+
+export type IngredientEditorInput = z.infer<typeof ingredientEditorSchema>;

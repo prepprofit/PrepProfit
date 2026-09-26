@@ -31,7 +31,10 @@ import {
 import { IngredientAddDialog } from '@/components/app/ingredients/ingredient-add-dialog';
 import { IngredientAllergenDialog } from '@/components/app/ingredients/ingredient-allergen-dialog';
 import { IngredientCatalogDialog } from '@/components/app/ingredients/ingredient-catalog-dialog';
-import { IngredientSupplierDialog } from '@/components/app/ingredients/ingredient-supplier-dialog';
+import {
+  IngredientSupplierDialog,
+  type IngredientEditorSavedUpdate,
+} from '@/components/app/ingredients/ingredient-supplier-dialog';
 import { IngredientNutritionDialog } from '@/components/app/ingredients/ingredient-nutrition-dialog';
 import { IngredientDetailsDialog } from '@/components/app/ingredients/ingredient-details-dialog';
 import type { IngredientNutritionView } from '@/lib/nutrition/profile-view';
@@ -249,6 +252,9 @@ export function IngredientGrid({
   // open and hand back to it on close, so popups never stack.
   const [detailsId, setDetailsId] = React.useState<string | null>(null);
   const [supplierEditId, setSupplierEditId] = React.useState<string | null>(null);
+  // Which entry point opened the unified editor (pencil vs. the supplier shortcut)
+  // — steers initial focus only; both open the exact same dialog.
+  const [editorFocus, setEditorFocus] = React.useState<'name' | 'supplier'>('name');
   // Price-entry preferences per supplier name, updated in place as packs are saved
   // so a second ingredient from the same supplier prefills without a round-trip.
   const [pricePrefs, setPricePrefs] = React.useState<
@@ -308,6 +314,14 @@ export function IngredientGrid({
   const onEdit = React.useCallback(
     (id: string) => {
       setError(null);
+      // Manager: the pencil opens the unified editor (name + supplier + pricing +
+      // measurement type, one Save). Kitchen: operational-only inline row editor
+      // (name + dimension), unchanged.
+      if (canSeeCosts) {
+        setEditorFocus('name');
+        setSupplierEditId(id);
+        return;
+      }
       // Switching rows discards the previous row's uncommitted edits — nothing was
       // ever sent, so the only state to clear is the local draft.
       setEditingId((prev) => {
@@ -316,7 +330,7 @@ export function IngredientGrid({
       });
       resetDraft(id);
     },
-    [resetDraft],
+    [resetDraft, canSeeCosts],
   );
 
   const onCancel = React.useCallback(
@@ -374,7 +388,10 @@ export function IngredientGrid({
     setDeleteProblem(null);
     setConfirmId(id);
   }, []);
-  const editSupplier = React.useCallback((id: string) => setSupplierEditId(id), []);
+  const editSupplier = React.useCallback((id: string) => {
+    setEditorFocus('supplier');
+    setSupplierEditId(id);
+  }, []);
   const viewDetails = React.useCallback((id: string) => setDetailsId(id), []);
   const closeDetails = React.useCallback(() => {
     const id = detailsId;
@@ -707,7 +724,7 @@ export function IngredientGrid({
           allergens={allergens[detailsTarget.id] ?? []}
           allergensReviewed={reviewed[detailsTarget.id] === true}
           canEditNutrition={canEditNutrition}
-          onEditSupplier={() => setSupplierEditId(detailsTarget.id)}
+          onEditSupplier={() => editSupplier(detailsTarget.id)}
           onEditNutrition={() => setNutritionEditId(detailsTarget.id)}
           onEditAllergens={() => setAllergenEditId(detailsTarget.id)}
           onClose={closeDetails}
@@ -767,26 +784,26 @@ export function IngredientGrid({
           pricePrefs={pricePrefs}
           initialLink={supplierLinks[supplierTarget.id] ?? null}
           pendingPriceCents={supplierTarget.pendingPriceCents ?? null}
+          typeLockReason={typeLockReason(supplierTarget.id)}
+          dimensionLabel={dimensionLabel}
+          dimensionPillLabel={dimensionPillLabel}
+          focusSection={editorFocus}
           onClose={() => setSupplierEditId(null)}
-          onSaved={(summary, prefs, savedNotice) => {
+          onSaved={(update: IngredientEditorSavedUpdate) => {
             const id = supplierTarget.id;
-            setSupplierLinks((prev) => ({ ...prev, [id]: summary }));
-            setPricePrefs((prev) => ({ ...prev, [summary.supplierName]: prefs }));
-            setRows((prev) =>
-              prev.map((r) =>
-                r.id === id
-                  ? { ...r, supplier: summary.supplierName, vatRateBps: summary.vatRateBps ?? r.vatRateBps }
-                  : r,
-              ),
-            );
-            if (!savedNotice.incomplete) setNotice({ message: savedNotice.message, undo: null });
-          }}
-          onCleared={() => {
-            const id = supplierTarget.id;
-            setSupplierLinks((prev) => ({ ...prev, [id]: null }));
-            setRows((prev) =>
-              prev.map((r) => (r.id === id ? { ...r, supplier: null } : r)),
-            );
+            const merged = { ...supplierTarget, ...update.ingredient } as IngredientRow;
+            setRows((prev) => prev.map((r) => (r.id === id ? merged : r)));
+            setDrafts((prev) => ({ ...prev, [id]: draftFromRow(merged) }));
+            const { supplierChange, prefs } = update;
+            if (supplierChange.type === 'set') {
+              setSupplierLinks((prev) => ({ ...prev, [id]: supplierChange.link }));
+              if (prefs) setPricePrefs((prev) => ({ ...prev, [supplierChange.link.supplierName]: prefs }));
+            } else if (supplierChange.type === 'cleared') {
+              setSupplierLinks((prev) => ({ ...prev, [id]: null }));
+            }
+            if (update.notice && !update.notice.incomplete) {
+              setNotice({ message: update.notice.message, undo: null });
+            }
           }}
           onAccepted={(priceCents) => {
             const id = supplierTarget.id;

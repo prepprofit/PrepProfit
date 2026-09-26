@@ -832,6 +832,9 @@
     },
     "ingredientEditor": {
       "heading": "Supplier",
+      "ingredientNameLabel": "Ingredient name",
+      "moreDetails": "More details",
+      "directPriceLabel": "Price per {unit}",
       "supplierName": "Supplier",
       "supplierPlaceholder": "Pick or add a supplier",
       "productName": "Supplier’s product name",
@@ -895,7 +898,7 @@
       "vatRateSet": "Using {rate}% for this ingredient.",
       "vatRateFallback": "Not set — using {name} ({rate}%). Type a rate to use a different one.",
       "costInclVatRate": "{amount} incl. {rate}% VAT",
-      "packAndPrice": "Pack & price",
+      "packAndPrice": "Pack & VAT details",
       "packSummary": "{pack} · {price} {basis}",
       "optional": "Optional",
       "pricesAre": "Prices below are",

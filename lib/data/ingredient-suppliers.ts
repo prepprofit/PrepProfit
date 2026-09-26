@@ -1,8 +1,12 @@
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { ingredients, ingredientSuppliers, organizationSettings, suppliers } from '@/lib/db/schema';
-import type { IngredientSupplier, Supplier } from '@/lib/db/schema';
+import type { Ingredient, IngredientSupplier, Supplier } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
-import { lockActiveIngredientRow } from '@/lib/data/ingredients';
+import {
+  lockActiveIngredientRow,
+  listIngredientTypeLocks,
+  updateIngredient,
+} from '@/lib/data/ingredients';
 import { recordPriceObservation } from '@/lib/data/ingredient-pricing';
 import { packPriceExclVatCents } from '@/lib/calculations/purchasePrice';
 import { findOrCreateSupplierByName } from '@/lib/data/suppliers';
@@ -12,6 +16,7 @@ import { normalizeIngredientName } from '@/lib/import/resolveIngredient';
 import { normalizeSupplierName } from '@/lib/suppliers/normalize';
 import type { SupplierPackCandidate } from '@/lib/ai/supplier-pack-resolve';
 import type { Unit } from '@/lib/units';
+import type { IngredientEditorInput } from '@/lib/validation/ingredients';
 import type { IngredientSupplierInput } from '@/lib/validation/suppliers';
 
 /**
@@ -599,4 +604,117 @@ export async function clearDefaultSupplier(
       ),
     );
   return true;
+}
+
+/** What happened to the supplier link part of a unified editor save. */
+export type IngredientEditorSupplierChange =
+  | { type: 'none' }
+  | { type: 'cleared' }
+  | {
+      type: 'set';
+      link: DefaultSupplierSummary;
+      priceStatus: SupplierPriceStatus;
+      pendingRaised: boolean;
+    };
+
+export type IngredientEditorOutcome =
+  | { status: 'ok'; ingredient: Ingredient; supplierChange: IngredientEditorSupplierChange; priceChanged: boolean }
+  | { status: 'not_found' }
+  | { status: 'pack_unit_mismatch' }
+  | { status: 'type_in_use' }
+  | { status: 'supplier_inactive' }
+  | { status: 'invalid_name' };
+
+/**
+ * The unified ingredient editor's save contract: name + dimension + (set / clear /
+ * leave untouched) the default supplier link, ALL under the caller's `withOrg` — one
+ * atomic write, so a supplier failure (bad pack unit, inactive supplier…) never
+ * leaves a stray name/dimension change behind. Order matters for atomicity: the
+ * supplier part (which does its own guard-then-write) runs BEFORE the ingredient
+ * row is written, so nothing commits unless every part succeeds.
+ *
+ * A dimension change is guarded exactly like the plain ingredient editor
+ * (`updateIngredientAction`): blocked while an existing supplier pack would become
+ * unit-incompatible, or while recipes/menus/stock lock the current unit. That guard
+ * runs against packs as they are BEFORE this save's own supplier write, so changing
+ * the dimension and the pack in the very same save is not specially reconciled
+ * (a rare combination; saving the dimension change alone first resolves it).
+ */
+export async function updateIngredientWithSupplier(
+  db: TenantClient,
+  organizationId: string,
+  ingredientId: string,
+  input: IngredientEditorInput,
+): Promise<IngredientEditorOutcome> {
+  const current = await lockActiveIngredientRow(db, organizationId, ingredientId);
+  if (!current) return { status: 'not_found' };
+
+  if (input.dimension !== current.dimension) {
+    if (await hasIncompatiblePacks(db, organizationId, ingredientId, input.dimension)) {
+      return { status: 'pack_unit_mismatch' };
+    }
+    if ((await listIngredientTypeLocks(db, organizationId, [ingredientId])).has(ingredientId)) {
+      return { status: 'type_in_use' };
+    }
+  }
+
+  let supplierChange: IngredientEditorSupplierChange = { type: 'none' };
+  if (input.clearSupplier) {
+    const cleared = await clearDefaultSupplier(db, organizationId, ingredientId);
+    if (cleared) supplierChange = { type: 'cleared' };
+  } else if (input.supplier) {
+    const result = await setDefaultSupplier(db, organizationId, ingredientId, input.supplier);
+    if (result.status !== 'ok') return result;
+    supplierChange = {
+      type: 'set',
+      priceStatus: result.priceStatus,
+      pendingRaised: result.pendingRaised,
+      link: {
+        supplierName: result.supplier.name,
+        packSize: numOrNull(result.link.packSize),
+        packUnit: result.link.packUnit,
+        packPriceCents: result.link.packPriceCents,
+        unitsPerPack: result.link.unitsPerPack,
+        supplierProductName: result.link.supplierProductName,
+        supplierSku: result.link.supplierSku,
+        vatRateBps: result.link.vatRateBps,
+      },
+    };
+  }
+
+  // A direct manual price only applies when no supplier is being set/cleared in
+  // this save — once a supplier link exists, its own pack price is the source of
+  // truth (via the pending/accept flow above, untouched here).
+  const hasDirectPrice = supplierChange.type === 'none' && input.priceCents != null;
+  const priceChanged = hasDirectPrice && input.priceCents !== current.priceCents;
+
+  // The supplier write above may have already updated the price columns (a new
+  // pack price raises `pendingPriceCents`; a clear removes the mirror). Re-read
+  // them so this final write carries those changes forward instead of clobbering
+  // them with the pre-supplier-write snapshot in `current`.
+  let priceCents = current.priceCents;
+  let needsPricing = current.needsPricing;
+  let pendingPriceCents = current.pendingPriceCents;
+  if (supplierChange.type !== 'none') {
+    const refreshed = await lockActiveIngredientRow(db, organizationId, ingredientId);
+    if (!refreshed) return { status: 'not_found' };
+    priceCents = refreshed.priceCents;
+    needsPricing = refreshed.needsPricing;
+    pendingPriceCents = refreshed.pendingPriceCents;
+  } else if (hasDirectPrice) {
+    priceCents = input.priceCents as number;
+    needsPricing = priceChanged ? (priceCents > 0 ? false : needsPricing) : needsPricing;
+    pendingPriceCents = priceChanged ? null : pendingPriceCents;
+  }
+
+  const row = await updateIngredient(db, organizationId, ingredientId, {
+    name: input.name,
+    dimension: input.dimension,
+    priceCents,
+    needsPricing,
+    pendingPriceCents,
+  });
+  if (!row) return { status: 'not_found' };
+
+  return { status: 'ok', ingredient: row, supplierChange, priceChanged };
 }
