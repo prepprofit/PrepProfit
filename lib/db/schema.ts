@@ -700,6 +700,11 @@ export const recipes = pgTable(
       mode: 'number',
     }),
     yieldUnit: text('yield_unit'),
+    // Recipe-wide display/input unit for weight-based ingredient quantities and the
+    // finished-weight summary (redesigned workspace, top-of-page unit selector). A
+    // presentation preference only — never changes canonical stored quantities
+    // (always grams). Default 'g' for new recipes.
+    displayUnit: text('display_unit', { enum: ['g', 'kg'] }).notNull().default('g'),
     // Nutrition serving definition for the label (plan §6.1); NULL = not set →
     // label stays incomplete/disabled.
     nutritionServingQuantity: numeric('nutrition_serving_quantity', {

@@ -20,6 +20,8 @@ const legacyCostsSchema = z
   .object({ labour: z.boolean(), energy: z.boolean() })
   .refine((v) => v.labour || v.energy);
 
+const displayUnitSchema = z.enum(['g', 'kg']);
+
 /**
  * Recipes 2.0 workspace save (plan §10). ONE action persists the whole edit
  * draft atomically through the facade. Both roles may call it — the draft
@@ -139,5 +141,37 @@ export async function clearLegacyRecipeCostsAction(
     return { ok: true, data: undefined };
   } catch (error) {
     return unexpected('clearLegacyRecipeCostsAction', error);
+  }
+}
+
+/**
+ * The g/kg display unit is a per-recipe presentation preference, not part of the
+ * versioned workspace draft: it never changes a stored quantity, so it saves
+ * immediately (no expectedVersion, no conflict) whether the recipe is being
+ * viewed or edited. Both roles may call it — operational, not financial.
+ */
+export async function updateDisplayUnitAction(
+  recipeId: string,
+  input: unknown,
+): Promise<ActionResult> {
+  const parsed = displayUnitSchema.safeParse(input);
+  if (!parsed.success || typeof recipeId !== 'string' || recipeId.trim() === '') {
+    return { ok: false, code: 'INVALID_INPUT' };
+  }
+  try {
+    const organizationId = await getOrgId();
+    const outcome = await withOrg(organizationId, async (tx) => {
+      const [row] = await tx
+        .update(recipes)
+        .set({ displayUnit: parsed.data })
+        .where(and(eq(recipes.organizationId, organizationId), eq(recipes.id, recipeId), isNull(recipes.deletedAt)))
+        .returning({ id: recipes.id });
+      return row ?? null;
+    });
+    if (!outcome) return { ok: false, code: 'NOT_FOUND' };
+    revalidatePath(`/recipes/${recipeId}`);
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return unexpected('updateDisplayUnitAction', error);
   }
 }

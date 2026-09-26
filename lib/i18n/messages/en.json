@@ -1528,7 +1528,9 @@
           "caffeineMg": "Caffeine"
         },
         "addNutrition": "Add nutrition",
-        "completeNutrition": "Complete nutrition"
+        "completeNutrition": "Complete nutrition",
+        "statusCompleteShort": "Complete",
+        "statusIncompleteShort": "Needs review"
       },
       "saveRecipe": "Save recipe",
       "editRecipe": "Edit recipe {name}",
@@ -1579,7 +1581,9 @@
           "measured": "measured",
           "calculated": "calculated"
         },
-        "reviewNeeded": "Check this yield: it was saved when yield increased ingredient cost. It now reduces the finished weight instead — open Edit and save to confirm."
+        "reviewNeeded": "Check this yield: it was saved when yield increased ingredient cost. It now reduces the finished weight instead — open Edit and save to confirm.",
+        "infoLabel": "About finished weight and yield",
+        "infoBody": "Enter the finished batch weight you measured, or the percentage you expect to keep. Changing either updates the other. Ingredient quantities stay unchanged. Cost per kg uses the finished weight."
       },
       "costSummary": {
         "title": "Recipe cost",
@@ -1591,7 +1595,15 @@
         "needsWeight": "Cost per kg needs a finished weight — edit the recipe and use a measured weight.",
         "legacy": "Includes labour {labour} and energy {energy} saved by the old recipe editor. Labour and extra costs now belong in Menu.",
         "legacyRemove": "Remove from recipe"
-      }
+      },
+      "quantityColumn": "Quantity ({unit})",
+      "unitToggleLabel": "Display unit",
+      "adjustFinishedWeight": "Adjust finished weight",
+      "doneAdjusting": "Done",
+      "ingredientTotal": "Ingredient total",
+      "makesLine": "This recipe makes {weight}",
+      "noFinishedWeightShort": "No finished weight set yet",
+      "supporting": "Supporting information"
     },
     "title": "Recipes",
     "subtitle": "Build a recipe, see what it really costs, and price it with confidence.",
@@ -1770,7 +1782,8 @@
       "errors": {
         "nameRequired": "Give the preset a name.",
         "weightRequired": "Enter a target weight greater than zero."
-      }
+      },
+      "countLabel": "{count, plural, =0 {No presets} one {# preset} other {# presets}}"
     },
     "placeholders": {
       "name": "e.g. Sourdough loaf",

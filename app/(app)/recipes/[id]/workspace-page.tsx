@@ -11,6 +11,7 @@ import { loadRecipeIngredientCostDetails } from '@/lib/data/recipe-cost-details'
 import { costPerKgCents, recipeInputWeightGrams } from '@/lib/calculations/recipeCost';
 import { loadRecipeFinishedWeights } from '@/lib/data/recipe-yield';
 import { listRecipePresets } from '@/lib/data/recipe-presets';
+import { listFolders } from '@/lib/data/recipe-folders';
 import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 import { loadRecipeAllergenRollup } from '@/lib/data/allergens';
 import { resolveRecipeNutritionTree } from '@/lib/data/recipe-nutrition-tree';
@@ -57,7 +58,7 @@ export async function RecipeWorkspacePage({
   const role = await getUserRole();
   const workspaceRole = canSeeRecipeCosts(role) ? 'manager' : 'kitchen';
 
-  const [dto, ingredientRows, pickerRecipes, allergenRollup, settings, presets] =
+  const [dto, ingredientRows, pickerRecipes, allergenRollup, settings, presets, folders] =
     await Promise.all([
       withOrg(organizationId, (tx) =>
         getRecipeWorkspace(tx, organizationId, recipeId, workspaceRole),
@@ -71,6 +72,7 @@ export async function RecipeWorkspacePage({
       ),
       getOrgSettings(),
       withOrg(organizationId, (tx) => listRecipePresets(tx, organizationId, recipeId)),
+      withOrg(organizationId, (tx) => listFolders(tx, organizationId)),
     ]);
   if (!dto) notFound();
 
@@ -404,6 +406,7 @@ export async function RecipeWorkspacePage({
       inputWeightGrams,
       finishedWeightGrams,
       folderId: dto.recipe.folderId,
+      displayUnit: dto.recipe.displayUnit,
       notes: dto.recipe.notes,
       coverMediaId: dto.recipe.coverMediaId,
       coverUrl: dto.recipe.coverMediaId
@@ -454,6 +457,7 @@ export async function RecipeWorkspacePage({
     })),
     uom,
     nutrition,
+    folders: folders.map((f) => ({ id: f.id, name: f.name, parentId: f.parentId })),
   };
 
   return (

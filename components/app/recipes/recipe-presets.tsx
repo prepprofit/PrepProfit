@@ -68,6 +68,7 @@ export function RecipePresets({
   currency,
   batchTotalCents,
   yieldWeightGrams,
+  hideHeader = false,
 }: {
   recipeId: string;
   /** Canonical preset list (owned by the editor so the scale panel stays in sync). */
@@ -82,6 +83,8 @@ export function RecipePresets({
   batchTotalCents: number | null;
   /** Live batch yield weight in canonical grams; null = not set. */
   yieldWeightGrams: number | null;
+  /** Skip the title/description Card chrome — the caller already shows a heading (e.g. an accordion trigger). */
+  hideHeader?: boolean;
 }) {
   const t = useTranslations('recipes.presets');
   const actionError = useActionError();
@@ -264,13 +267,9 @@ export function RecipePresets({
     });
   };
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('title')}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <p className="text-sm text-muted-foreground">{t('description')}</p>
+  const body = (
+    <div className="flex flex-col gap-4">
+        {!hideHeader && <p className="text-sm text-muted-foreground">{t('description')}</p>}
 
         {error && (
           <div
@@ -436,7 +435,17 @@ export function RecipePresets({
             {t('add')}
           </Button>
         </div>
-      </CardContent>
+    </div>
+  );
+
+  if (hideHeader) return body;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('title')}</CardTitle>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
     </Card>
   );
 }

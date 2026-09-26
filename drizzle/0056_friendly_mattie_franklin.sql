@@ -1,0 +1,1 @@
+ALTER TABLE "recipes" ADD COLUMN "display_unit" text DEFAULT 'g' NOT NULL;

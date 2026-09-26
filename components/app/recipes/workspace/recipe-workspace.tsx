@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Pencil, Presentation } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,9 +15,17 @@ import { formatMoney } from '@/lib/format/money';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import type { MeasurementSystem } from '@/lib/units';
 import { impliedYieldPercentage, recipeInputWeightGrams } from '@/lib/calculations/recipeCost';
-import { clearLegacyRecipeCostsAction, saveWorkspaceAction } from '@/app/(app)/recipes/[id]/workspace-actions';
+import { formatWeightForUnit, parseWeightInput, type WeightDisplayUnit } from '@/lib/format/weight';
+import type { FolderTreeNode } from '@/lib/folders/tree';
+import {
+  clearLegacyRecipeCostsAction,
+  saveWorkspaceAction,
+  updateDisplayUnitAction,
+} from '@/app/(app)/recipes/[id]/workspace-actions';
 import { RecipePresets, type EditorPreset } from '@/components/app/recipes/recipe-presets';
 import { BackToRecipesLink } from '@/components/app/recipes/back-to-recipes-link';
+import { RecipeFolderPicker } from '@/components/app/recipes/workspace/recipe-folder-picker';
+import { InfoPopover } from '@/components/app/recipes/workspace/info-popover';
 import { cn } from '@/lib/utils';
 import { BatchScaleControl } from './batch-scale-control';
 import {
@@ -56,6 +65,8 @@ export type WorkspaceClientData = {
     /** The shared finished weight used for cost per kg (measured or calculated). */
     finishedWeightGrams: number | null;
     folderId: string | null;
+    /** Recipe-wide display/input unit for weight quantities and the finished-weight summary. */
+    displayUnit: WeightDisplayUnit;
     notes: string | null;
     coverMediaId: string | null;
     coverUrl: string | null;
@@ -75,6 +86,8 @@ export type WorkspaceClientData = {
   /** Unit-conversion anchors per ingredient — for the line editor, not rendered. */
   uom: UomTabItem[];
   nutrition: NutritionTabData;
+  /** Full org folder list, for the compact folder picker beneath the name. */
+  folders: FolderTreeNode[];
 };
 
 type Draft = {
@@ -98,21 +111,15 @@ function parseDecimal(text: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function formatWeight(grams: number): string {
-  return grams >= 1000 ? `${Math.round(grams / 10) / 100} kg` : `${Math.round(grams * 10) / 10} g`;
-}
-
 /**
- * Recipe page. The RECIPE leads at full width: name, "Scale recipe", the ingredient
- * and sub-recipe quantities (each with its line cost for managers) and a cost summary
- * — cost per batch and cost per kg only — with a pencil Edit button. Preparation
- * method, nutrition, allergens and kitchen presets follow below.
- *
- * Scaling is a temporary kitchen calculation (never saved). Editing is a separate
- * local draft — name, yield calculator, cover, ingredient order/quantities and method
- * — saved atomically through `saveWorkspaceAction` (optimistic concurrency) or
- * cancelled. Subtitles, line notes, sections and portion options already stored are
- * preserved untouched.
+ * Recipe page. The RECIPE leads at full width: name, a compact folder control,
+ * the ingredient list (g/kg selector beside its heading), a compact finished-weight
+ * summary and the preparation method — all in one reading order. Kitchen presets,
+ * cost and nutrition/allergens follow below as expandable sections. Editing is a
+ * local draft — name, yield, cover, ingredient order/quantities and method — saved
+ * atomically through `saveWorkspaceAction` (optimistic concurrency) or cancelled.
+ * Subtitles, line notes, sections and portion options already stored are preserved
+ * untouched. Scaling (view mode) is a temporary kitchen calculation, never saved.
  */
 export function RecipeWorkspace({
   data,
@@ -126,12 +133,27 @@ export function RecipeWorkspace({
   const t = useTranslations('recipes.workspace');
   const tYield = useTranslations('recipes.workspace.yieldCalc');
   const tCost = useTranslations('recipes.workspace.costSummary');
+  const tNutrition = useTranslations('recipes.workspace.nutrition');
+  const tPresets = useTranslations('recipes.presets');
   const actionError = useActionError();
   const router = useRouter();
 
   const [factor, setFactor] = React.useState(1);
   const [presets, setPresets] = React.useState<EditorPreset[]>(data.presets);
   React.useEffect(() => setPresets(data.presets), [data.presets]);
+
+  // Display-only g/kg preference — a per-recipe presentation setting, saved
+  // immediately (not part of the versioned edit draft) so it "remembers" across
+  // visits whether the recipe is being viewed or edited.
+  const [displayUnit, setDisplayUnit] = React.useState<WeightDisplayUnit>(data.recipe.displayUnit);
+  React.useEffect(() => setDisplayUnit(data.recipe.displayUnit), [data.recipe.displayUnit]);
+  const changeDisplayUnit = (unit: WeightDisplayUnit) => {
+    if (unit === displayUnit) return;
+    setDisplayUnit(unit);
+    void updateDisplayUnitAction(data.recipe.id, unit).then((result) => {
+      if (!result.ok) router.refresh();
+    });
+  };
 
   const lineUom = React.useMemo(() => {
     const map: Record<string, LineUom> = {};
@@ -155,6 +177,7 @@ export function RecipeWorkspace({
   const [conflict, setConflict] = React.useState(false);
   const [confirmLeave, setConfirmLeave] = React.useState<{ href: string | null } | null>(null);
   const [savedNotice, setSavedNotice] = React.useState(false);
+  const [yieldExpanded, setYieldExpanded] = React.useState(false);
   const initialKey = React.useRef<string | null>(null);
   const editing = draft !== null;
   const dirty = draft !== null && JSON.stringify(draft) !== initialKey.current;
@@ -199,6 +222,12 @@ export function RecipeWorkspace({
     setDraft(null);
     setError(null);
     setConfirmLeave(null);
+    setYieldExpanded(false);
+  };
+
+  const adjustFinishedWeight = () => {
+    if (!editing) startEdit();
+    setYieldExpanded(true);
   };
 
   // Live yield calculation from the draft (loss applied once, to the output).
@@ -328,6 +357,18 @@ export function RecipeWorkspace({
   const cost = data.cost;
   const lineCosts = cost?.lineCosts;
 
+  // The finished-weight summary strip's numbers — draft-derived while editing,
+  // the persisted values otherwise (scaled by the view-only batch factor).
+  const finishedGrams = editing ? draftFinished : view.finishedWeightGrams !== null ? view.finishedWeightGrams * factor : null;
+  const finishedSource: 'measured' | 'calculated' | null = editing
+    ? draft.yieldMode === 'measured'
+      ? 'measured'
+      : 'calculated'
+    : view.yieldWeightSource;
+
+  const nutritionIncomplete = data.nutrition.status !== 'complete';
+  const allergenCount = data.nutrition.allergens.contains.length + data.nutrition.allergens.mayContain.length;
+
   return (
     <div className="flex w-full flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -370,47 +411,26 @@ export function RecipeWorkspace({
       <Card>
         <CardContent className="flex flex-col gap-5 pt-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            {editing ? (
-              <div className="flex w-full max-w-3xl flex-col gap-1.5">
-                <Label htmlFor="recipe-name">{t('namePlaceholder')}</Label>
-                <Input
-                  id="recipe-name"
-                  value={draft.name}
-                  aria-invalid={nameMissing}
-                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  className="h-12 text-lg font-semibold"
-                />
-                {nameMissing && <p className="text-xs text-red-700 dark:text-red-300">{t('nameRequired')}</p>}
-              </div>
-            ) : (
-              <div className="flex min-w-0 flex-1 items-start gap-4">
-                {view.coverUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- short signed URL from the private store; next/image cannot optimize it
-                  <img src={view.coverUrl} alt="" className="hidden h-20 w-28 shrink-0 rounded-xl border border-border object-cover sm:block" />
-                ) : null}
-                <div className="min-w-0">
-                  <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{view.name}</h1>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {view.inputWeightGrams !== null && (
-                      <span>
-                        {tYield('inputShort', { weight: formatWeight(view.inputWeightGrams * factor) })} ·{' '}
-                      </span>
-                    )}
-                    <span>{tYield('yieldShort', { percent: view.yieldPercentage })}</span>
-                    {view.finishedWeightGrams !== null && (
-                      <span>
-                        {' '}
-                        · {tYield('finishedShort', { weight: formatWeight(view.finishedWeightGrams * factor) })}{' '}
-                        <span className="text-xs">({tYield(`source.${view.yieldWeightSource === 'measured' ? 'measured' : 'calculated'}`)})</span>
-                      </span>
-                    )}
-                  </p>
-                  {view.yieldReviewNeeded && (
-                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{tYield('reviewNeeded')}</p>
-                  )}
-                </div>
-              </div>
-            )}
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              {editing ? (
+                <>
+                  <Label htmlFor="recipe-name" className="sr-only">
+                    {t('namePlaceholder')}
+                  </Label>
+                  <Input
+                    id="recipe-name"
+                    value={draft.name}
+                    aria-invalid={nameMissing}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    className="h-auto max-w-3xl border-none bg-transparent px-0 text-[28px] font-semibold tracking-tight shadow-none focus-visible:ring-0 sm:text-[30px]"
+                  />
+                  {nameMissing && <p className="text-xs text-red-700 dark:text-red-300">{t('nameRequired')}</p>}
+                </>
+              ) : (
+                <h1 className="font-display text-[28px] font-semibold tracking-tight text-foreground sm:text-[30px]">{view.name}</h1>
+              )}
+              <RecipeFolderPicker recipeId={view.id} recipeName={view.name} folderId={view.folderId} folders={data.folders} />
+            </div>
 
             <div className="flex flex-wrap items-center gap-2">
               {editing ? (
@@ -439,35 +459,27 @@ export function RecipeWorkspace({
             </p>
           ) : null}
 
-          {editing ? (
-            <YieldCalculator
-              inputGrams={draftInputGrams}
-              mode={draft.yieldMode}
-              percentText={draft.yieldPercentText}
-              measuredText={draft.measuredText}
-              finishedGrams={draftFinished}
-              impliedPercent={impliedPercent}
-              problem={yieldProblem}
-              yieldQuantity={draft.yieldQuantity}
-              yieldUnit={draft.yieldUnit}
-              onChange={(patch) => setDraft({ ...draft, ...patch })}
-            />
-          ) : (
+          {!editing ? (
             <div className="rounded-xl bg-surface-2 p-3">
               <BatchScaleControl factor={factor} onFactorChange={setFactor} />
             </div>
-          )}
+          ) : null}
 
+          {/* ── Ingredients ─────────────────────────────────────────────── */}
           <section aria-labelledby="recipe-ingredients" className="flex flex-col gap-2">
-            <h2 id="recipe-ingredients" className="text-base font-semibold text-foreground">
-              {t('ingredients')}
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 id="recipe-ingredients" className="text-base font-semibold text-foreground">
+                {t('ingredients')}
+              </h2>
+              <UnitToggle value={displayUnit} onChange={changeDisplayUnit} label={t('unitToggleLabel')} />
+            </div>
             {editing ? (
               <RecipeInputListEdit
                 lines={draft.lines}
                 ingredientOptions={data.ingredientOptions}
                 componentOptions={data.componentOptions}
                 lineUom={lineUom}
+                displayUnit={displayUnit}
                 onLinesChange={(lines) => setDraft({ ...draft, lines })}
               />
             ) : (
@@ -475,6 +487,7 @@ export function RecipeWorkspace({
                 sections={data.sections}
                 lines={data.lines}
                 factor={factor}
+                displayUnit={displayUnit}
                 onAnchorScale={(base, target) => setFactor(target / base)}
                 lineCosts={lineCosts}
                 currency={data.currency}
@@ -483,48 +496,22 @@ export function RecipeWorkspace({
             )}
           </section>
 
-          {/* Cost summary, below the ingredient list — managers only. */}
-          {!editing && cost ? (
-            <section aria-labelledby="recipe-cost" className="flex flex-col gap-3 border-t border-border pt-4">
-              <h2 id="recipe-cost" className="sr-only">
-                {tCost('title')}
-              </h2>
-              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-border px-4 py-3">
-                  <dt className="text-xs text-muted-foreground">
-                    {factor === 1 ? tCost('batch') : tCost('batchScaled', { factor: Math.round(factor * 100) / 100 })}
-                  </dt>
-                  <dd className="font-display text-2xl font-semibold tabular-nums">
-                    {cost.complete ? formatMoney(Math.round(cost.batchCostCents * factor), data.currency) : '—'}
-                  </dd>
-                </div>
-                <div className="rounded-xl border border-border px-4 py-3">
-                  <dt className="text-xs text-muted-foreground">{tCost('perKg')}</dt>
-                  <dd className="font-display text-2xl font-semibold tabular-nums">
-                    {cost.complete && cost.costPerKgCents !== null ? formatMoney(cost.costPerKgCents, data.currency) : '—'}
-                  </dd>
-                </div>
-              </dl>
-              {!cost.complete ? (
-                <p className="text-sm text-amber-700 dark:text-amber-300">{tCost('incomplete')}</p>
-              ) : cost.costPerKgCents === null ? (
-                <p className="text-sm text-muted-foreground">{tCost('needsWeight')}</p>
-              ) : null}
-              {(cost.legacy.labourCents > 0 || cost.legacy.energyCents > 0) && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">
-                  <span>
-                    {tCost('legacy', {
-                      labour: formatMoney(cost.legacy.labourCents, data.currency),
-                      energy: formatMoney(cost.legacy.energyCents, data.currency),
-                    })}
-                  </span>
-                  <Button type="button" size="sm" variant="outline" disabled={legacyPending} onClick={clearLegacy}>
-                    {tCost('legacyRemove')}
-                  </Button>
-                </div>
-              )}
-            </section>
-          ) : null}
+          {/* ── Finished-weight summary ─────────────────────────────────── */}
+          <FinishedWeightSummary
+            editing={editing}
+            expanded={yieldExpanded}
+            onToggleExpand={() => (editing ? setYieldExpanded((v) => !v) : adjustFinishedWeight())}
+            displayUnit={displayUnit}
+            finishedGrams={finishedGrams}
+            source={finishedSource}
+            reviewNeeded={view.yieldReviewNeeded}
+            inputGrams={draftInputGrams}
+            mode={draft?.yieldMode ?? 'percent'}
+            percentText={draft?.yieldPercentText ?? ''}
+            measuredText={draft?.measuredText ?? ''}
+            problem={yieldProblem}
+            onModeChange={(patch) => draft && setDraft({ ...draft, ...patch })}
+          />
 
           {editing ? (
             <div className="flex flex-col gap-3 border-t border-border pt-4">
@@ -553,12 +540,10 @@ export function RecipeWorkspace({
         </CardContent>
       </Card>
 
-      {/* ── Supporting sections, below the recipe ───────────────────────── */}
+      {/* ── Preparation method ───────────────────────────────────────────── */}
       <Card>
-        <CardHeader>
-          <CardTitle>{t('tabs.method')}</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-3 pt-6">
+          <h2 className="text-base font-semibold text-foreground">{t('tabs.method')}</h2>
           {editing ? (
             <RecipeMethodEdit
               recipeId={view.id}
@@ -575,27 +560,107 @@ export function RecipeWorkspace({
 
       {editing ? <div className="flex justify-end">{editActions}</div> : null}
 
-      <RecipePresets
-        recipeId={view.id}
-        presets={presets}
-        onPresetsChange={setPresets}
-        measurementSystem={data.measurementSystem}
-        canSeeCosts={false}
-        currency={data.currency}
-        batchTotalCents={null}
-        yieldWeightGrams={view.finishedWeightGrams}
-      />
-
+      {/* ── Supporting information ───────────────────────────────────────── */}
       <Card>
-        <CardHeader>
-          <CardTitle>{t('tabs.nutrition')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <RecipeNutritionTab recipeId={view.id} data={data.nutrition} />
+        <CardContent className="pt-2">
+          <h2 className="sr-only">{t('supporting')}</h2>
+          <Accordion type="multiple" defaultValue={[]}>
+            <AccordionItem value="presets">
+              <AccordionTrigger>
+                <span className="flex flex-1 flex-wrap items-center justify-between gap-2 pr-2">
+                  <span>{tPresets('title')}</span>
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {tPresets('countLabel', { count: presets.length })}
+                  </span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <RecipePresets
+                  recipeId={view.id}
+                  presets={presets}
+                  onPresetsChange={setPresets}
+                  measurementSystem={data.measurementSystem}
+                  canSeeCosts={false}
+                  currency={data.currency}
+                  batchTotalCents={null}
+                  yieldWeightGrams={view.finishedWeightGrams}
+                  hideHeader
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            {cost ? (
+              <AccordionItem value="cost">
+                <AccordionTrigger>
+                  <span className="flex flex-1 flex-wrap items-center justify-between gap-2 pr-2">
+                    <span>{tCost('title')}</span>
+                    <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                      {cost.complete ? formatMoney(cost.batchCostCents, data.currency) : tCost('incomplete')}
+                    </span>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-border px-4 py-3">
+                      <dt className="text-xs text-muted-foreground">
+                        {factor === 1 ? tCost('batch') : tCost('batchScaled', { factor: Math.round(factor * 100) / 100 })}
+                      </dt>
+                      <dd className="font-display text-2xl font-semibold tabular-nums">
+                        {cost.complete ? formatMoney(Math.round(cost.batchCostCents * factor), data.currency) : '—'}
+                      </dd>
+                    </div>
+                    <div className="rounded-xl border border-border px-4 py-3">
+                      <dt className="text-xs text-muted-foreground">{tCost('perKg')}</dt>
+                      <dd className="font-display text-2xl font-semibold tabular-nums">
+                        {cost.complete && cost.costPerKgCents !== null ? formatMoney(cost.costPerKgCents, data.currency) : '—'}
+                      </dd>
+                    </div>
+                  </dl>
+                  {!cost.complete ? (
+                    <p className="mt-3 text-sm text-amber-700 dark:text-amber-300">{tCost('incomplete')}</p>
+                  ) : cost.costPerKgCents === null ? (
+                    <p className="mt-3 text-sm text-muted-foreground">{tCost('needsWeight')}</p>
+                  ) : null}
+                  {(cost.legacy.labourCents > 0 || cost.legacy.energyCents > 0) && (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">
+                      <span>
+                        {tCost('legacy', {
+                          labour: formatMoney(cost.legacy.labourCents, data.currency),
+                          energy: formatMoney(cost.legacy.energyCents, data.currency),
+                        })}
+                      </span>
+                      <Button type="button" size="sm" variant="outline" disabled={legacyPending} onClick={clearLegacy}>
+                        {tCost('legacyRemove')}
+                      </Button>
+                    </div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+            ) : null}
+
+            <AccordionItem value="nutrition">
+              <AccordionTrigger>
+                <span className="flex flex-1 flex-wrap items-center justify-between gap-2 pr-2">
+                  <span>{t('tabs.nutrition')}</span>
+                  <span
+                    className={cn(
+                      'text-xs font-normal',
+                      nutritionIncomplete ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground',
+                    )}
+                  >
+                    {nutritionIncomplete ? tNutrition('statusIncompleteShort') : tNutrition('statusCompleteShort')}
+                    {allergenCount > 0 ? ` · ${allergenCount}` : ''}
+                  </span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="flex flex-col gap-4">
+                <RecipeNutritionTab recipeId={view.id} data={data.nutrition} />
+                {allergenPanel}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </CardContent>
       </Card>
-
-      {allergenPanel}
 
       <ConfirmDialog
         open={confirmLeave !== null}
@@ -616,124 +681,168 @@ export function RecipeWorkspace({
   );
 }
 
-function YieldCalculator({
+/** The compact g/kg toggle beside the "Ingredients" heading. */
+function UnitToggle({
+  value,
+  onChange,
+  label,
+}: {
+  value: WeightDisplayUnit;
+  onChange: (unit: WeightDisplayUnit) => void;
+  label: string;
+}) {
+  return (
+    <div role="group" aria-label={label} className="inline-flex rounded-lg border border-border p-0.5 text-xs font-medium">
+      {(['g', 'kg'] as const).map((unit) => (
+        <button
+          key={unit}
+          type="button"
+          aria-pressed={value === unit}
+          onClick={() => onChange(unit)}
+          className={cn(
+            'rounded-md px-2.5 py-1 transition-colors',
+            value === unit ? 'bg-accent-600 text-white' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {unit}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * "This recipe makes X g/kg" — the compact strip that replaces the old
+ * always-visible yield form. Collapsed, it's a single line plus an "Adjust
+ * finished weight" action; expanded (edit mode only), both the finished weight
+ * and the yield % are plain editable fields — editing either recalculates the
+ * other, so there's no separate mode switch to pick first.
+ */
+function FinishedWeightSummary({
+  editing,
+  expanded,
+  onToggleExpand,
+  displayUnit,
+  finishedGrams,
+  source,
+  reviewNeeded,
   inputGrams,
   mode,
   percentText,
   measuredText,
-  finishedGrams,
-  impliedPercent,
   problem,
-  yieldQuantity,
-  yieldUnit,
-  onChange,
+  onModeChange,
 }: {
+  editing: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  displayUnit: WeightDisplayUnit;
+  finishedGrams: number | null;
+  source: 'measured' | 'calculated' | null;
+  reviewNeeded: boolean;
   inputGrams: number | null;
   mode: 'percent' | 'measured';
   percentText: string;
   measuredText: string;
-  finishedGrams: number | null;
-  impliedPercent: number | null;
   problem: string | null;
-  yieldQuantity: string;
-  yieldUnit: string;
-  onChange: (patch: Partial<Pick<Draft, 'yieldMode' | 'yieldPercentText' | 'measuredText' | 'yieldQuantity' | 'yieldUnit'>>) => void;
+  onModeChange: (patch: Partial<Pick<Draft, 'yieldMode' | 'yieldPercentText' | 'measuredText'>>) => void;
 }) {
   const t = useTranslations('recipes.workspace.yieldCalc');
   const tw = useTranslations('recipes.workspace');
+
+  // What the finished-weight field DISPLAYS: the measured grams (converted to the
+  // selected unit) in measured mode, the computed finished weight in percent mode.
+  // Tracked as raw typed text while focused so a partial decimal ("0,") isn't
+  // reformatted mid-keystroke — same pattern as the ingredient row's DecimalInput.
+  const computedFinishedText =
+    mode === 'measured'
+      ? (() => {
+          const grams = parseDecimal(measuredText);
+          return grams !== null ? formatWeightForUnit(grams, displayUnit) : measuredText;
+        })()
+      : finishedGrams !== null
+        ? formatWeightForUnit(finishedGrams, displayUnit)
+        : '';
+  const [finishedText, setFinishedText] = React.useState(computedFinishedText);
+  const [finishedFocused, setFinishedFocused] = React.useState(false);
+  React.useEffect(() => {
+    if (!finishedFocused) setFinishedText(computedFinishedText);
+  }, [computedFinishedText, finishedFocused]);
+
   return (
-    <fieldset className="flex flex-col gap-3 rounded-xl border border-border p-4">
-      <legend className="px-1 text-sm font-semibold text-foreground">{t('title')}</legend>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-muted-foreground">{t('input')}</span>
-          <span className="flex h-10 items-center rounded-lg bg-surface-2 px-3 font-medium tabular-nums">
-            {inputGrams !== null ? formatWeight(inputGrams) : '—'}
+    <div className="flex flex-col gap-2 rounded-xl border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-sm">
+          <span className="font-medium text-foreground">
+            {finishedGrams !== null
+              ? tw('makesLine', { weight: formatWeightForUnit(finishedGrams, displayUnit) + ` ${displayUnit}` })
+              : t('needsMeasured')}
           </span>
+          {finishedGrams !== null && source ? (
+            <span className="text-xs text-muted-foreground">({t(`source.${source}`)})</span>
+          ) : null}
+          <InfoPopover label={t('infoLabel')}>{t('infoBody')}</InfoPopover>
         </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="yield-percent" className={cn(mode !== 'percent' && 'text-muted-foreground')}>
-            {t('percent')}
-          </Label>
-          <div className="relative">
-            <Input
-              id="yield-percent"
-              inputMode="numeric"
-              value={mode === 'measured' ? (impliedPercent !== null ? String(impliedPercent) : '') : percentText}
-              disabled={mode === 'measured'}
-              aria-invalid={mode === 'percent' && problem !== null}
-              onChange={(e) => onChange({ yieldPercentText: e.target.value })}
-              className="pr-8 text-right tabular-nums"
-            />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+        <Button type="button" size="sm" variant="ghost" onClick={onToggleExpand} className="h-7 px-2 text-xs">
+          {expanded && editing ? tw('doneAdjusting') : tw('adjustFinishedWeight')}
+        </Button>
+      </div>
+      {reviewNeeded ? <p className="text-xs text-amber-700 dark:text-amber-300">{t('reviewNeeded')}</p> : null}
+
+      {editing && expanded ? (
+        <div className="mt-1 grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">{tw('ingredientTotal')}</span>
+            <span className="flex h-10 items-center rounded-lg bg-surface-2 px-3 font-medium tabular-nums">
+              {inputGrams !== null ? formatWeightForUnit(inputGrams, displayUnit) + ` ${displayUnit}` : '—'}
+            </span>
           </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          {mode === 'measured' ? (
-            <>
-              <Label htmlFor="yield-measured">{t('measured')}</Label>
-              <div className="relative">
-                <Input
-                  id="yield-measured"
-                  inputMode="decimal"
-                  value={measuredText}
-                  aria-invalid={problem !== null}
-                  onChange={(e) => onChange({ measuredText: e.target.value })}
-                  className="pr-8 text-right tabular-nums"
-                />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">g</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <span className="text-xs text-muted-foreground">{t('finished')}</span>
-              <span className="flex h-10 items-center rounded-lg bg-surface-2 px-3 font-semibold tabular-nums">
-                {finishedGrams !== null ? formatWeight(finishedGrams) : '—'}
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="yield-percent">{t('percent')}</Label>
+            <div className="relative">
+              <Input
+                id="yield-percent"
+                inputMode="numeric"
+                value={percentText}
+                aria-invalid={mode === 'percent' && problem !== null}
+                onChange={(e) => onModeChange({ yieldPercentText: e.target.value, yieldMode: 'percent' })}
+                className="pr-8 text-right tabular-nums"
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="yield-finished">{t('finished')}</Label>
+            <div className="relative">
+              <Input
+                id="yield-finished"
+                inputMode="decimal"
+                value={finishedText}
+                aria-invalid={mode === 'measured' && problem !== null}
+                onFocus={() => setFinishedFocused(true)}
+                onBlur={() => {
+                  setFinishedFocused(false);
+                  setFinishedText(computedFinishedText);
+                }}
+                onChange={(e) => {
+                  setFinishedText(e.target.value);
+                  const grams = e.target.value.trim() === '' ? null : parseWeightInput(e.target.value, displayUnit);
+                  if (e.target.value.trim() === '') {
+                    onModeChange({ measuredText: '', yieldMode: 'measured' });
+                  } else if (grams !== null) {
+                    onModeChange({ measuredText: String(grams), yieldMode: 'measured' });
+                  }
+                }}
+                className="pr-8 text-right tabular-nums"
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                {displayUnit}
               </span>
-            </>
-          )}
+            </div>
+          </div>
+          {problem ? <p className="text-xs text-red-700 dark:text-red-300 sm:col-span-3">{problem}</p> : null}
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-        <label className="inline-flex cursor-pointer items-center gap-2">
-          <input type="radio" name="yield-mode" checked={mode === 'percent'} onChange={() => onChange({ yieldMode: 'percent' })} />
-          {t('modePercent')}
-        </label>
-        <label className="inline-flex cursor-pointer items-center gap-2">
-          <input type="radio" name="yield-mode" checked={mode === 'measured'} onChange={() => onChange({ yieldMode: 'measured' })} />
-          {t('modeMeasured')}
-        </label>
-      </div>
-      {problem ? (
-        <p className="text-xs text-red-700 dark:text-red-300">{problem}</p>
-      ) : mode === 'percent' && inputGrams === null ? (
-        <p className="text-xs text-amber-700 dark:text-amber-300">{t('needsMeasured')}</p>
-      ) : (
-        <p className="text-xs text-muted-foreground">{mode === 'percent' ? t('hintPercent') : t('hintMeasured')}</p>
-      )}
-
-      <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="yield-qty">{t('makes')}</Label>
-          <Input
-            id="yield-qty"
-            inputMode="decimal"
-            value={yieldQuantity}
-            placeholder={tw('yieldQuantityPlaceholder')}
-            onChange={(e) => onChange({ yieldQuantity: e.target.value })}
-            className="w-24 text-right tabular-nums"
-          />
-        </div>
-        <Input
-          value={yieldUnit}
-          placeholder={tw('yieldUnitPlaceholder')}
-          aria-label={tw('yieldUnitPlaceholder')}
-          onChange={(e) => onChange({ yieldUnit: e.target.value })}
-          className="w-48"
-        />
-      </div>
-    </fieldset>
+      ) : null}
+    </div>
   );
 }
