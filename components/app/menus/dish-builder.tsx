@@ -4,7 +4,19 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, ArrowLeft, Check, Copy, Info, Plus, Search, Trash2, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Check,
+  Copy,
+  Folder,
+  Info,
+  MoreVertical,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 import {
   compositionCost,
   ingredientCanonicalQuantity,
@@ -42,6 +54,7 @@ import {
   markDishOpenedAction,
   updateDishAction,
 } from '@/app/(app)/menus/actions';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -247,6 +260,14 @@ export function DishBuilder({
         : v?.kind === 'expense' && Number.isFinite(v.amountCents);
     return e.description.trim() !== '' && numbersValid;
   });
+  const extrasTotalCents = extras.reduce((sum, _, i) => {
+    const v = extraValues[i];
+    if (v?.kind === 'work' && Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents)) {
+      return sum + Math.round(v.hours * v.hourlyCents);
+    }
+    if (v?.kind === 'expense' && Number.isFinite(v.amountCents)) return sum + v.amountCents;
+    return sum;
+  }, 0);
 
   // ── Cost + pricing ────────────────────────────────────────────────────────
   const lookups: DishCostLookups = React.useMemo(
@@ -419,6 +440,7 @@ export function DishBuilder({
   const [copying, setCopying] = React.useState(false);
   const [copyName, setCopyName] = React.useState('');
   const [copyBanner, setCopyBanner] = React.useState(justCopied);
+  const [menuOpen, setMenuOpen] = React.useState(false);
 
   const backHref = initial.folderId ? `/menus/folders/${initial.folderId}` : isNew ? '/menus' : '/menus/folders/unfiled';
 
@@ -440,12 +462,6 @@ export function DishBuilder({
       setJustSaved(true);
       router.refresh();
     });
-  }
-
-  /** Leave the editor, asking first when there are unsaved changes. */
-  function leave(href: string) {
-    if (dirty) setLeaveTo(href);
-    else router.push(href);
   }
 
   function remove() {
@@ -482,23 +498,34 @@ export function DishBuilder({
     return () => observer.disconnect();
   }, []);
 
+  // Labour + extras live in expandable rows inside the cost-details card. The
+  // margin panel's "Labour not entered · Add" indicator opens (and scrolls to)
+  // the labour row directly, rather than duplicating labour fields elsewhere.
+  const [openCostSections, setOpenCostSections] = React.useState<string[]>(() => (labourBlank ? [] : ['labour']));
+  const labourRowRef = React.useRef<HTMLDivElement>(null);
+  function openLabourRow() {
+    setOpenCostSections((prev) => (prev.includes('labour') ? prev : [...prev, 'labour']));
+    window.requestAnimationFrame(() => labourRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }
+  const [notesOpen, setNotesOpen] = React.useState(notes.trim() !== '');
+
   const dash = '—';
   const priceShown = pricing.priceExclCents !== null ? money(pricing.priceExclCents) : dash;
   const costShown = pricing.costPerPortionCents !== null ? money(pricing.costPerPortionCents) : dash;
   const leftShown = pricing.amountLeftPerPortionCents !== null ? money(pricing.amountLeftPerPortionCents) : dash;
   const marginShown = pricing.marginBps !== null ? formatPercentBps(pricing.marginBps) : dash;
   const leftNegative = pricing.amountLeftPerPortionCents !== null && pricing.amountLeftPerPortionCents < 0;
-  const coversAll = portions !== null ? t('coversAll', { count: portions }) : t('coversAllUnknown');
+  const totalCostShown = cost.totalCostCents !== null && portions !== null ? money(cost.totalCostCents) : dash;
+  const costsHeading = portions !== null ? t('costs.heading', { count: portions }) : t('costs.headingUnknown');
+  const labourStatusLabel = labourBlank ? t('labour.statusMissing') : t('labour.statusEntered');
+  const labourCostShown =
+    !labourBlank && cost.productionLabourCents !== null ? money(cost.productionLabourCents) : null;
+  const extrasStatusLabel = extras.length === 0 ? t('extras.statusEmpty') : money(extrasTotalCents);
 
   const actions = (
-    <div className="flex items-center gap-2">
-      <Button type="button" variant="outline" onClick={() => leave(backHref)} disabled={pending}>
-        {t('cancel')}
-      </Button>
-      <Button type="submit" disabled={!canSave || pending || !dirty}>
-        {pending ? t('saving') : t('save')}
-      </Button>
-    </div>
+    <Button type="submit" disabled={!canSave || pending || !dirty}>
+      {pending ? t('saving') : t('save')}
+    </Button>
   );
 
   return (
@@ -507,10 +534,10 @@ export function DishBuilder({
         e.preventDefault();
         save();
       }}
-      className="mx-auto flex w-full max-w-3xl flex-col gap-5 pb-28 md:pb-0"
+      className="mx-auto flex w-full max-w-3xl flex-col gap-5"
     >
-      {/* Header */}
-      <div className="flex flex-col gap-3">
+      {/* Header — back link, big editable name, overflow menu, one Save button. */}
+      <div className="sticky top-0 z-20 flex flex-col gap-2 rounded-xl bg-surface/95 pb-3 pt-1 backdrop-blur">
         <Link
           href={backHref}
           onClick={(e) => {
@@ -523,22 +550,30 @@ export function DishBuilder({
           <ArrowLeft className="size-4" />
           {t('back')}
         </Link>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            {isNew ? t('titleCreate') : t('titleEdit')}
-          </h2>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-start gap-2">
+          <Label htmlFor="dish-name" className="sr-only">
+            {t('fields.name')}
+          </Label>
+          <Input
+            id="dish-name"
+            value={name}
+            maxLength={200}
+            autoFocus={isNew || justCopied}
+            placeholder={t('fields.namePlaceholder')}
+            onChange={(e) => setName(e.target.value)}
+            className="h-auto flex-1 border-none bg-transparent px-0 font-display text-[28px] font-semibold tracking-tight text-foreground shadow-none focus-visible:ring-0 sm:text-[30px]"
+          />
+          <div className="flex shrink-0 items-center gap-1.5 pt-1.5">
             {justSaved && !dirty && (
               <span role="status" className="inline-flex items-center gap-1 text-sm text-brand-700 dark:text-brand-300">
-                <Check className="size-4" /> {t('saved')}
+                <Check className="size-4" />
+                <span className="hidden sm:inline">{t('saved')}</span>
               </span>
             )}
-            {dirty && <span className="text-sm text-muted-foreground">{t('unsaved')}</span>}
+            {dirty && <span className="hidden text-sm text-muted-foreground sm:inline">{t('unsaved')}</span>}
             {!isNew && (
-              <>
-                <Button
-                  type="button"
-                  variant="ghost"
+              <OverflowMenu open={menuOpen} onOpenChange={setMenuOpen} label={t('overflow.label')}>
+                <OverflowMenuItem
                   disabled={dirty}
                   title={dirty ? t('copy.saveFirst') : undefined}
                   onClick={() => {
@@ -546,15 +581,16 @@ export function DishBuilder({
                     setCopying(true);
                   }}
                 >
-                  <Copy />
-                  <span className="hidden sm:inline">{t('copy.action')}</span>
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => setConfirmDelete(true)} aria-label={t('delete')}>
-                  <Trash2 />
-                </Button>
-              </>
+                  <Copy className="size-4" />
+                  {t('copy.action')}
+                </OverflowMenuItem>
+                <OverflowMenuItem destructive onClick={() => setConfirmDelete(true)}>
+                  <Trash2 className="size-4" />
+                  {t('delete')}
+                </OverflowMenuItem>
+              </OverflowMenu>
             )}
-            <div className="hidden md:block">{actions}</div>
+            {actions}
           </div>
         </div>
         {copyBanner && (
@@ -604,63 +640,53 @@ export function DishBuilder({
         </Card>
       )}
 
+      {/* Compact folder + portions row — quiet, secondary to name and price. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Folder className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <Label htmlFor="dish-folder" className="sr-only">
+            {t('fields.folder')}
+          </Label>
+          <Select
+            id="dish-folder"
+            value={folderId ?? ''}
+            onChange={(e) => setFolderId(e.target.value === '' ? null : e.target.value)}
+            className="h-8 border-none bg-transparent px-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <option value="">{t('fields.unfiled')}</option>
+            {folders.map((f) => {
+              const path = folderAncestorLabel(folders, f.id);
+              return (
+                <option key={f.id} value={f.id}>
+                  {path ? `${path} › ${f.name}` : f.name}
+                </option>
+              );
+            })}
+          </Select>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">{t('portions.compactPrefix')}</span>
+          <Input
+            id="portions"
+            inputMode="numeric"
+            value={portionsText}
+            aria-label={t('portions.ariaLabel', { count: portions ?? 0 })}
+            aria-invalid={!needsConversion && portions === null}
+            disabled={needsConversion}
+            onChange={(e) => setPortionsText(e.target.value)}
+            className="h-8 w-16 text-right text-sm tabular-nums"
+          />
+          <span className="text-muted-foreground">{t('portions.compactSuffix')}</span>
+        </div>
+      </div>
+
+      {/* Price + margin panel */}
       <div ref={firstCardRef}>
-      <Card>
-        <CardContent className="flex flex-col gap-5 pt-6">
-          {/* 1. Dish name */}
-          <Field id="dish-name" label={t('fields.name')}>
-            <Input
-              id="dish-name"
-              value={name}
-              maxLength={200}
-              autoFocus={isNew || justCopied}
-              placeholder={t('fields.namePlaceholder')}
-              onChange={(e) => setName(e.target.value)}
-              className="h-12 text-base"
-            />
-          </Field>
-
-          {/* 2. Folder + number of portions, side by side on wider screens */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
-            <Field id="dish-folder" label={t('fields.folder')}>
-              <Select
-                id="dish-folder"
-                value={folderId ?? ''}
-                onChange={(e) => setFolderId(e.target.value === '' ? null : e.target.value)}
-                className="h-12 text-base"
-              >
-                <option value="">{t('fields.unfiled')}</option>
-                {folders.map((f) => {
-                  const path = folderAncestorLabel(folders, f.id);
-                  return (
-                  <option key={f.id} value={f.id}>
-                    {path ? `${path} › ${f.name}` : f.name}
-                  </option>
-                  );
-                })}
-              </Select>
-            </Field>
-            <Field id="portions" label={t('portions.label')}>
-              <Input
-                id="portions"
-                inputMode="numeric"
-                value={portionsText}
-                aria-invalid={!needsConversion && portions === null}
-                aria-describedby="portions-hint"
-                disabled={needsConversion}
-                onChange={(e) => setPortionsText(e.target.value)}
-                className="h-12 text-right text-base tabular-nums"
-              />
-              <p id="portions-hint" className="text-sm text-muted-foreground">
-                {t('portions.hint')}
-              </p>
-            </Field>
-          </div>
-
-          {/* 3. Selling price excl. / incl. VAT */}
-          <div className="flex flex-col gap-2">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field id="price-excl" label={t('price.excl')}>
+        <Card>
+          <CardContent className="flex flex-col gap-5 pt-6">
+            {/* Selling prices: excl. VAT is primary, incl. VAT + VAT rate are quiet and secondary. */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <Field id="price-excl" label={t('price.excl')} className="sm:max-w-64">
                 <MoneyInput
                   id="price-excl"
                   value={priceText('excl')}
@@ -669,74 +695,63 @@ export function DishBuilder({
                   disabled={needsConversion}
                   onChange={(v) => onPriceChange('excl', v)}
                   onBlur={() => setPriceDraft(null)}
+                  size="lg"
                 />
               </Field>
-              <Field id="price-incl" label={t('price.incl')}>
-                <MoneyInput
-                  id="price-incl"
-                  value={priceText('incl')}
-                  currency={currency}
-                  invalid={priceInvalid && priceDraft?.field === 'incl'}
-                  disabled={needsConversion}
-                  onChange={(v) => onPriceChange('incl', v)}
-                  onBlur={() => setPriceDraft(null)}
-                />
-              </Field>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Label htmlFor="vat-rate" className="text-sm font-normal text-muted-foreground">
-                {t('price.vatRate')}
-              </Label>
-              <div className="relative w-24">
-                <Input
-                  id="vat-rate"
-                  inputMode="decimal"
-                  value={vatText}
-                  aria-invalid={!vatValid}
-                  placeholder={numberToField((defaultVatBps ?? 0) / 100)}
-                  onChange={(e) => {
-                    setVatText(e.target.value);
-                    setPriceDraft(null);
-                  }}
-                  className="h-9 pr-7 text-right tabular-nums"
-                />
-                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+              <div className="flex flex-col gap-3 sm:items-end">
+                <Field id="price-incl" label={t('price.incl')} className="sm:items-end">
+                  <MoneyInput
+                    id="price-incl"
+                    value={priceText('incl')}
+                    currency={currency}
+                    invalid={priceInvalid && priceDraft?.field === 'incl'}
+                    disabled={needsConversion}
+                    onChange={(v) => onPriceChange('incl', v)}
+                    onBlur={() => setPriceDraft(null)}
+                    size="sm"
+                  />
+                </Field>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Label htmlFor="vat-rate" className="text-xs font-normal text-muted-foreground">
+                    {t('price.vatRate')}
+                  </Label>
+                  <div className="relative w-20">
+                    <Input
+                      id="vat-rate"
+                      inputMode="decimal"
+                      value={vatText}
+                      aria-invalid={!vatValid}
+                      placeholder={numberToField((defaultVatBps ?? 0) / 100)}
+                      onChange={(e) => {
+                        setVatText(e.target.value);
+                        setPriceDraft(null);
+                      }}
+                      className="h-8 pr-6 text-right text-sm tabular-nums"
+                    />
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                  </div>
+                </div>
+                <span className="text-right text-xs text-muted-foreground">
+                  {vatBlank
+                    ? defaultVatBps !== null
+                      ? t('price.vatDefault', { rate: formatPercentBps(defaultVatBps) })
+                      : t('price.vatNone')
+                    : vatValid
+                      ? t('price.vatOverride', { rate: formatPercentBps(vatBps) })
+                      : t('problems.vat')}
+                </span>
               </div>
-              <span className="text-xs text-muted-foreground">
-                {vatBlank
-                  ? defaultVatBps !== null
-                    ? t('price.vatDefault', { rate: formatPercentBps(defaultVatBps) })
-                    : t('price.vatNone')
-                  : vatValid
-                    ? t('price.vatOverride', { rate: formatPercentBps(vatBps) })
-                    : t('problems.vat')}
-              </span>
             </div>
-          </div>
 
-          {/* 4. Profit-margin calculator + live summary, in the same card */}
-          <section aria-labelledby="margin-calculator" className="flex flex-col gap-4 border-t border-border pt-5">
-            <div>
-              <h3 id="margin-calculator" className="text-base font-semibold text-foreground">
-                {t('calc.title')}
-              </h3>
-              <p className="text-xs text-muted-foreground">{t('calc.vatBasis')}</p>
-            </div>
-            <dl className="flex flex-col gap-2 text-sm">
-              <Row label={t('calc.price')} value={priceShown} />
+            {/* Only three main results. */}
+            <dl className="flex flex-col gap-2 border-t border-border pt-4 text-sm">
               <Row label={t('calc.costPerPortion')} value={costShown} />
               <Row label={t('calc.leftPerPortion')} value={leftShown} strong negative={leftNegative} />
               <Row label={t('calc.margin')} value={marginShown} strong negative={leftNegative} />
-              <Row
-                label={t('calc.totalCostPct')}
-                value={pricing.totalCostBps !== null ? formatPercentBps(pricing.totalCostBps) : dash}
-              />
-              <Row
-                label={portions !== null ? t('calc.totalCost', { count: portions }) : t('calc.totalCostUnknown')}
-                value={cost.totalCostCents !== null && portions !== null ? money(cost.totalCostCents) : dash}
-                divided
-              />
             </dl>
+            <div className="flex flex-wrap items-center gap-2">
+              <LabourStatusChip label={labourStatusLabel} cost={labourCostShown} onClick={openLabourRow} />
+            </div>
 
             {missingReason ? (
               <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
@@ -744,9 +759,12 @@ export function DishBuilder({
                 {missingReason}
               </p>
             ) : null}
-            <p className="text-xs text-muted-foreground">{t('calc.overheads')}</p>
 
-            <div className="flex flex-col gap-3 rounded-xl bg-surface-2 p-4">
+            {/* Target-margin strip — soft teal/cyan, visually distinct. */}
+            <div className="flex flex-col gap-3 rounded-xl bg-accent-50 p-4 ring-1 ring-accent-200 dark:bg-accent-950/40 dark:ring-accent-800/60">
+              <h3 id="margin-calculator" className="text-sm font-semibold text-foreground">
+                {t('calc.title')}
+              </h3>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <Field id="target-margin" label={t('calc.target')}>
                   <div className="relative">
@@ -762,8 +780,18 @@ export function DishBuilder({
                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
                   </div>
                 </Field>
-                <ReadOnly label={t('calc.suggestedExcl')} value={suggestedExcl !== null ? money(suggestedExcl) : dash} />
-                <ReadOnly label={t('calc.suggestedIncl')} value={suggestedIncl !== null ? money(suggestedIncl) : dash} />
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-sm font-medium text-foreground">{t('calc.suggestedExcl')}</span>
+                  <span className="flex h-12 items-center justify-end rounded-lg bg-surface px-3 font-display text-lg font-semibold tabular-nums ring-1 ring-border">
+                    {suggestedExcl !== null ? money(suggestedExcl) : dash}
+                  </span>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">{t('calc.suggestedIncl')}</span>
+                  <span className="flex h-9 items-center justify-end rounded-lg bg-surface px-3 text-sm tabular-nums ring-1 ring-border">
+                    {suggestedIncl !== null ? money(suggestedIncl) : dash}
+                  </span>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Button
@@ -787,16 +815,15 @@ export function DishBuilder({
                 </span>
               </div>
             </div>
-          </section>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Compact live summary — only once the pricing card has scrolled out of view. */}
       {summaryPinned && (
         <div
           aria-hidden
-          className="sticky top-0 z-10 rounded-xl border border-accent-200 bg-accent-50/95 px-4 py-2.5 shadow-sm backdrop-blur dark:border-accent-800 dark:bg-accent-950/90"
+          className="sticky top-16 z-10 rounded-xl border border-accent-200 bg-accent-50/95 px-4 py-2.5 shadow-sm backdrop-blur dark:border-accent-800 dark:bg-accent-950/90"
         >
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
             <MiniStat label={t('calc.price')} value={priceShown} />
@@ -807,354 +834,379 @@ export function DishBuilder({
         </div>
       )}
 
-      {/* 6. Recipes */}
+      {/* Cost details: recipes, ingredients (always visible), labour + extras (expandable). */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">{t('recipes.title')}</CardTitle>
-          <p className="text-sm text-muted-foreground">{coversAll}</p>
+        <CardHeader className="flex-row items-baseline justify-between gap-3 pb-3">
+          <CardTitle className="text-lg">{costsHeading}</CardTitle>
+          <span className="text-sm text-muted-foreground">{totalCostShown}</span>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {recipeLines.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('recipes.empty')}</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {recipeLines.map((line, index) => {
-                const option = recipeById.get(line.recipeId);
-                const contribution = lineCost.get(recipeLineKey(line.recipeId)) ?? null;
-                const perKg = excludeLabour ? option?.costPerKgWithoutLabourCents : option?.costPerKgCents;
-                const q = parseNumber(line.quantity);
-                const remove = () => setRecipeLines((prev) => prev.filter((_, i) => i !== index));
-                const hasWeight = option != null && option.yieldWeightGrams != null && option.yieldWeightGrams > 0;
-                if (line.unit !== 'g') {
-                  // A line saved in recipe portions: kept exactly as saved (and costed as
-                  // before) until it is converted to grams or removed — never reinterpreted.
-                  const saved = parseNumber(line.quantity) ?? 0;
-                  const grams =
-                    hasWeight && option.yieldPortions > 0
-                      ? Math.round(((saved * (option.yieldWeightGrams as number)) / option.yieldPortions) * 10_000) / 10_000
-                      : null;
-                  return (
-                    <li key={line.recipeId} className="flex flex-col gap-2 py-3">
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                        <div className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-0 sm:flex-1">
-                          <span className="truncate font-medium text-foreground">{line.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {t('recipes.savedPortions', { count: saved })}
+        <CardContent className="flex flex-col gap-6">
+          {/* Recipes */}
+          <section className="flex flex-col gap-3">
+            <h3 className="text-sm font-semibold text-foreground">{t('recipes.title')}</h3>
+            {recipeLines.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('recipes.empty')}</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {recipeLines.map((line, index) => {
+                  const option = recipeById.get(line.recipeId);
+                  const contribution = lineCost.get(recipeLineKey(line.recipeId)) ?? null;
+                  const perKg = excludeLabour ? option?.costPerKgWithoutLabourCents : option?.costPerKgCents;
+                  const q = parseNumber(line.quantity);
+                  const remove = () => setRecipeLines((prev) => prev.filter((_, i) => i !== index));
+                  const hasWeight = option != null && option.yieldWeightGrams != null && option.yieldWeightGrams > 0;
+                  if (line.unit !== 'g') {
+                    // A line saved in recipe portions: kept exactly as saved (and costed as
+                    // before) until it is converted to grams or removed — never reinterpreted.
+                    const saved = parseNumber(line.quantity) ?? 0;
+                    const grams =
+                      hasWeight && option.yieldPortions > 0
+                        ? Math.round(((saved * (option.yieldWeightGrams as number)) / option.yieldPortions) * 10_000) / 10_000
+                        : null;
+                    return (
+                      <li key={line.recipeId} className="flex flex-col gap-2 py-3">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                          <div className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-0 sm:flex-1">
+                            <span className="truncate font-medium text-foreground">{line.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {t('recipes.savedPortions', { count: saved })}
+                            </span>
+                          </div>
+                          <span className="ml-auto w-24 text-right text-sm font-medium tabular-nums text-foreground">
+                            {contribution !== null ? money(contribution) : dash}
                           </span>
-                        </div>
-                        <span className="ml-auto w-24 text-right text-sm font-medium tabular-nums text-foreground">
-                          {contribution !== null ? money(contribution) : dash}
-                        </span>
-                        <Button type="button" variant="ghost" size="sm" aria-label={`${t('remove')} — ${line.name}`} onClick={remove}>
-                          <X />
-                        </Button>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
-                        <AlertTriangle className="size-4 shrink-0" aria-hidden />
-                        <span className="min-w-0 flex-1">
-                          {grams !== null
-                            ? t('recipes.portionLineConvertible', { grams: numberToField(grams) })
-                            : t('recipes.portionLineNeedsWeight', { name: line.name })}
-                        </span>
-                        {grams !== null ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              setRecipeLines((prev) =>
-                                prev.map((l, i) => (i === index ? { ...l, quantity: numberToField(grams), unit: 'g' } : l)),
-                              )
-                            }
-                          >
-                            {t('recipes.convertToGrams', { grams: numberToField(grams) })}
+                          <Button type="button" variant="ghost" size="sm" aria-label={`${t('remove')} — ${line.name}`} onClick={remove}>
+                            <X />
                           </Button>
-                        ) : option ? (
-                          <Link href={`/recipes/${line.recipeId}`} className="font-medium underline underline-offset-2">
-                            {t('recipes.openRecipe')}
-                          </Link>
-                        ) : null}
-                      </div>
-                    </li>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                          <AlertTriangle className="size-4 shrink-0" aria-hidden />
+                          <span className="min-w-0 flex-1">
+                            {grams !== null
+                              ? t('recipes.portionLineConvertible', { grams: numberToField(grams) })
+                              : t('recipes.portionLineNeedsWeight', { name: line.name })}
+                          </span>
+                          {grams !== null ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setRecipeLines((prev) =>
+                                  prev.map((l, i) => (i === index ? { ...l, quantity: numberToField(grams), unit: 'g' } : l)),
+                                )
+                              }
+                            >
+                              {t('recipes.convertToGrams', { grams: numberToField(grams) })}
+                            </Button>
+                          ) : option ? (
+                            <Link href={`/recipes/${line.recipeId}`} className="font-medium underline underline-offset-2">
+                              {t('recipes.openRecipe')}
+                            </Link>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  }
+                  return (
+                    <ComponentRow
+                      key={line.recipeId}
+                      name={line.name}
+                      meta={
+                        !option ? (
+                          <Badge variant="negative">{t('unavailable')}</Badge>
+                        ) : !hasWeight ? (
+                          <Badge variant="warning">{t('recipes.noWeight')}</Badge>
+                        ) : perKg != null ? (
+                          <span>{t('recipes.perKg', { amount: money(perKg) })}</span>
+                        ) : (
+                          <Badge variant="warning">{t('needsPricing')}</Badge>
+                        )
+                      }
+                      warning={option && !hasWeight ? t('recipes.needsWeight', { name: line.name }) : undefined}
+                      warningHref={option && !hasWeight ? `/recipes/${line.recipeId}` : undefined}
+                      warningLinkLabel={t('recipes.openRecipe')}
+                      quantity={line.quantity}
+                      quantityInvalid={q === null || q <= 0}
+                      onQuantity={(value) => setRecipeLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))}
+                      unit="g"
+                      units={[{ value: 'g', label: tUnits('g') }]}
+                      onUnit={() => undefined}
+                      contribution={contribution !== null ? money(contribution) : dash}
+                      removeLabel={t('remove')}
+                      onRemove={remove}
+                      quantityLabel={t('recipes.grams')}
+                      unitLabel={t('unit')}
+                    />
                   );
-                }
-                return (
-                  <ComponentRow
-                    key={line.recipeId}
-                    name={line.name}
-                    meta={
-                      !option ? (
-                        <Badge variant="negative">{t('unavailable')}</Badge>
-                      ) : !hasWeight ? (
-                        <Badge variant="warning">{t('recipes.noWeight')}</Badge>
-                      ) : perKg != null ? (
-                        <span>{t('recipes.perKg', { amount: money(perKg) })}</span>
-                      ) : (
-                        <Badge variant="warning">{t('needsPricing')}</Badge>
-                      )
-                    }
-                    warning={option && !hasWeight ? t('recipes.needsWeight', { name: line.name }) : undefined}
-                    warningHref={option && !hasWeight ? `/recipes/${line.recipeId}` : undefined}
-                    warningLinkLabel={t('recipes.openRecipe')}
-                    quantity={line.quantity}
-                    quantityInvalid={q === null || q <= 0}
-                    onQuantity={(value) => setRecipeLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))}
-                    unit="g"
-                    units={[{ value: 'g', label: tUnits('g') }]}
-                    onUnit={() => undefined}
-                    contribution={contribution !== null ? money(contribution) : dash}
-                    removeLabel={t('remove')}
-                    onRemove={remove}
-                    quantityLabel={t('recipes.grams')}
-                    unitLabel={t('unit')}
-                  />
-                );
-              })}
-            </ul>
-          )}
-          <ComponentPicker
-            placeholder={t('recipes.add')}
-            emptyLabel={t('noMatches')}
-            options={recipeOptions
-              .filter((r) => !recipeLines.some((l) => l.recipeId === r.id))
-              .map((r) => {
-                const perKg = excludeLabour ? r.costPerKgWithoutLabourCents : r.costPerKgCents;
-                return {
-                  id: r.id,
-                  name: r.name,
-                  hint: !r.yieldWeightGrams
-                    ? t('recipes.noWeight')
-                    : perKg !== null
-                      ? t('recipes.perKg', { amount: money(perKg) })
-                      : t('needsPricing'),
-                };
-              })}
-            onPick={(id) => {
-              const option = recipeById.get(id);
-              if (option) addRecipe(option);
-            }}
-          />
-        </CardContent>
-      </Card>
-
-      {/* 7. Direct ingredients and packaging */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">{t('ingredients.title')}</CardTitle>
-          <p className="text-sm text-muted-foreground">{coversAll}</p>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {ingredientLines.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('ingredients.empty')}</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {ingredientLines.map((line, index) => {
-                const option = ingredientById.get(line.ingredientId);
-                const contribution = lineCost.get(ingredientLineKey(line.ingredientId)) ?? null;
-                const q = parseNumber(line.quantity);
-                return (
-                  <ComponentRow
-                    key={line.ingredientId}
-                    name={line.name}
-                    meta={
-                      !option ? (
-                        <Badge variant="negative">{t('unavailable')}</Badge>
-                      ) : option.needsPricing ? (
-                        <Badge variant="warning">{t('needsPricing')}</Badge>
-                      ) : (
-                        <span>{t(`ingredients.per.${option.dimension}`, { amount: money(option.priceCents) })}</span>
-                      )
-                    }
-                    quantity={line.quantity}
-                    quantityInvalid={q === null || q <= 0}
-                    onQuantity={(value) =>
-                      setIngredientLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))
-                    }
-                    unit={line.unit}
-                    units={(option ? ingredientUnitsFor(option.dimension) : [line.unit]).map((u) => ({ value: u, label: tUnits(u) }))}
-                    onUnit={(value) =>
-                      setIngredientLines((prev) =>
-                        prev.map((l, i) => (i === index ? { ...l, unit: value as DishIngredientUnit } : l)),
-                      )
-                    }
-                    contribution={contribution !== null ? money(contribution) : dash}
-                    removeLabel={t('remove')}
-                    onRemove={() => setIngredientLines((prev) => prev.filter((_, i) => i !== index))}
-                    quantityLabel={t('quantity')}
-                    unitLabel={t('unit')}
-                  />
-                );
-              })}
-            </ul>
-          )}
-          <ComponentPicker
-            placeholder={t('ingredients.add')}
-            emptyLabel={t('noMatches')}
-            options={ingredientOptions
-              .filter((i) => !ingredientLines.some((l) => l.ingredientId === i.id))
-              .map((i) => ({
-                id: i.id,
-                name: i.name,
-                hint: i.needsPricing ? t('needsPricing') : t(`ingredients.per.${i.dimension}`, { amount: money(i.priceCents) }),
-              }))}
-            onPick={(id) => {
-              const option = ingredientById.get(id);
-              if (option) addIngredient(option);
-            }}
-          />
-        </CardContent>
-      </Card>
-
-      {/* 8. Labour */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">{t('labour.title')}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Field id="labour-hours" label={portions !== null ? t('labour.hoursFor', { count: portions }) : t('labour.hours')}>
-              <Input
-                id="labour-hours"
-                inputMode="decimal"
-                value={hoursText}
-                placeholder={t('optional')}
-                aria-invalid={!labourBlank && !labourValid}
-                onChange={(e) => setHoursText(e.target.value)}
-                className="h-12 text-right text-base tabular-nums"
-              />
-            </Field>
-            <Field id="labour-rate" label={t('labour.rate')}>
-              <MoneyInput
-                id="labour-rate"
-                value={rateText}
-                currency={currency}
-                placeholder={t('optional')}
-                invalid={!labourBlank && !labourValid}
-                onChange={setRateText}
-              />
-            </Field>
-            <ReadOnly
-              label={t('labour.cost')}
-              value={labourBlank ? t('labour.notEnteredShort') : cost.productionLabourCents !== null ? money(cost.productionLabourCents) : dash}
+                })}
+              </ul>
+            )}
+            <ComponentPicker
+              placeholder={t('recipes.add')}
+              emptyLabel={t('noMatches')}
+              options={recipeOptions
+                .filter((r) => !recipeLines.some((l) => l.recipeId === r.id))
+                .map((r) => {
+                  const perKg = excludeLabour ? r.costPerKgWithoutLabourCents : r.costPerKgCents;
+                  return {
+                    id: r.id,
+                    name: r.name,
+                    hint: !r.yieldWeightGrams
+                      ? t('recipes.noWeight')
+                      : perKg !== null
+                        ? t('recipes.perKg', { amount: money(perKg) })
+                        : t('needsPricing'),
+                  };
+                })}
+              onPick={(id) => {
+                const option = recipeById.get(id);
+                if (option) addRecipe(option);
+              }}
             />
-          </div>
-          <p className="text-xs text-muted-foreground">{t('labour.hint')}</p>
-          {!labourBlank && !labourValid && <p className="text-sm text-red-700 dark:text-red-300">{t('problems.labour')}</p>}
-          {labourValid && <Notice tone="info">{t('labour.replacesRecipeLabour')}</Notice>}
-          {labourBlank && (
-            <Notice tone="info">{cost.inheritsRecipeLabour ? t('labour.legacy') : t('labour.notEntered')}</Notice>
-          )}
-        </CardContent>
-      </Card>
+          </section>
 
-      {/* 9. Extra costs */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">{t('extras.title')}</CardTitle>
-          <p className="text-sm text-muted-foreground">{t('extras.reminder')}</p>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {extras.length > 0 && (
-            <ul className="flex flex-col gap-3">
-              {extras.map((extra, index) => {
-                const v = extraValues[index];
-                const amount =
-                  v?.kind === 'work'
-                    ? Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents)
-                      ? money(Math.round(v.hours * v.hourlyCents))
-                      : dash
-                    : v && Number.isFinite(v.amountCents)
-                      ? money(v.amountCents)
-                      : dash;
-                return (
-                  <li key={extra.key} className="flex flex-wrap items-end gap-2 rounded-xl border border-border p-3">
-                    <Field
-                      id={`extra-desc-${extra.key}`}
-                      label={extra.kind === 'work' ? t('extras.workLabel') : t('extras.expenseLabel')}
-                      className="min-w-40 flex-1"
-                    >
+          {/* Direct ingredients and packaging */}
+          <section className="flex flex-col gap-3 border-t border-border pt-6">
+            <h3 className="text-sm font-semibold text-foreground">{t('ingredients.title')}</h3>
+            {ingredientLines.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('ingredients.empty')}</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {ingredientLines.map((line, index) => {
+                  const option = ingredientById.get(line.ingredientId);
+                  const contribution = lineCost.get(ingredientLineKey(line.ingredientId)) ?? null;
+                  const q = parseNumber(line.quantity);
+                  return (
+                    <ComponentRow
+                      key={line.ingredientId}
+                      name={line.name}
+                      meta={
+                        !option ? (
+                          <Badge variant="negative">{t('unavailable')}</Badge>
+                        ) : option.needsPricing ? (
+                          <Badge variant="warning">{t('needsPricing')}</Badge>
+                        ) : (
+                          <span>{t(`ingredients.per.${option.dimension}`, { amount: money(option.priceCents) })}</span>
+                        )
+                      }
+                      quantity={line.quantity}
+                      quantityInvalid={q === null || q <= 0}
+                      onQuantity={(value) =>
+                        setIngredientLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))
+                      }
+                      unit={line.unit}
+                      units={(option ? ingredientUnitsFor(option.dimension) : [line.unit]).map((u) => ({ value: u, label: tUnits(u) }))}
+                      onUnit={(value) =>
+                        setIngredientLines((prev) =>
+                          prev.map((l, i) => (i === index ? { ...l, unit: value as DishIngredientUnit } : l)),
+                        )
+                      }
+                      contribution={contribution !== null ? money(contribution) : dash}
+                      removeLabel={t('remove')}
+                      onRemove={() => setIngredientLines((prev) => prev.filter((_, i) => i !== index))}
+                      quantityLabel={t('quantity')}
+                      unitLabel={t('unit')}
+                    />
+                  );
+                })}
+              </ul>
+            )}
+            <ComponentPicker
+              placeholder={t('ingredients.add')}
+              emptyLabel={t('noMatches')}
+              options={ingredientOptions
+                .filter((i) => !ingredientLines.some((l) => l.ingredientId === i.id))
+                .map((i) => ({
+                  id: i.id,
+                  name: i.name,
+                  hint: i.needsPricing ? t('needsPricing') : t(`ingredients.per.${i.dimension}`, { amount: money(i.priceCents) }),
+                }))}
+              onPick={(id) => {
+                const option = ingredientById.get(id);
+                if (option) addIngredient(option);
+              }}
+            />
+          </section>
+
+          {/* Labour + extra costs — expandable rows, collapsed status always visible. */}
+          <Accordion
+            type="multiple"
+            value={openCostSections}
+            onValueChange={setOpenCostSections}
+            className="border-t border-border pt-1"
+          >
+            <AccordionItem value="labour">
+              <div ref={labourRowRef}>
+                <AccordionTrigger className="py-3">
+                  <span className="flex w-full items-center justify-between gap-3 pr-2">
+                    <span className="text-sm font-semibold text-foreground">{t('labour.title')}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {labourBlank ? t('labour.statusMissing') : (labourCostShown ?? t('labour.statusEntered'))}
+                    </span>
+                  </span>
+                </AccordionTrigger>
+              </div>
+              <AccordionContent>
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <Field id="labour-hours" label={portions !== null ? t('labour.hoursFor', { count: portions }) : t('labour.hours')}>
                       <Input
-                        id={`extra-desc-${extra.key}`}
-                        value={extra.description}
-                        maxLength={120}
-                        aria-invalid={extra.description.trim() === ''}
-                        placeholder={extra.kind === 'work' ? t('extras.workPlaceholder') : t('extras.expensePlaceholder')}
-                        onChange={(e) => patchExtra(extra.key, { description: e.target.value })}
+                        id="labour-hours"
+                        inputMode="decimal"
+                        value={hoursText}
+                        placeholder={t('optional')}
+                        aria-invalid={!labourBlank && !labourValid}
+                        onChange={(e) => setHoursText(e.target.value)}
+                        className="h-12 text-right text-base tabular-nums"
                       />
                     </Field>
-                    {extra.kind === 'work' ? (
-                      <>
-                        <Field id={`extra-hours-${extra.key}`} label={t('extras.hours')} className="w-24">
-                          <Input
-                            id={`extra-hours-${extra.key}`}
-                            inputMode="decimal"
-                            value={extra.hours}
-                            onChange={(e) => patchExtra(extra.key, { hours: e.target.value })}
-                            className="text-right tabular-nums"
-                          />
-                        </Field>
-                        <Field id={`extra-rate-${extra.key}`} label={t('extras.rate')} className="w-28">
-                          <Input
-                            id={`extra-rate-${extra.key}`}
-                            inputMode="decimal"
-                            value={extra.rate}
-                            onChange={(e) => patchExtra(extra.key, { rate: e.target.value })}
-                            className="text-right tabular-nums"
-                          />
-                        </Field>
-                      </>
-                    ) : (
-                      <Field id={`extra-amount-${extra.key}`} label={t('extras.amount')} className="w-32">
-                        <Input
-                          id={`extra-amount-${extra.key}`}
-                          inputMode="decimal"
-                          value={extra.amount}
-                          onChange={(e) => patchExtra(extra.key, { amount: e.target.value })}
-                          className="text-right tabular-nums"
-                        />
-                      </Field>
-                    )}
-                    <span className="flex h-10 w-24 items-center justify-end text-sm font-semibold tabular-nums">{amount}</span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`${t('remove')} — ${extra.description}`}
-                      onClick={() => setExtras((prev) => prev.filter((e) => e.key !== extra.key))}
-                    >
-                      <X />
+                    <Field id="labour-rate" label={t('labour.rate')}>
+                      <MoneyInput
+                        id="labour-rate"
+                        value={rateText}
+                        currency={currency}
+                        placeholder={t('optional')}
+                        invalid={!labourBlank && !labourValid}
+                        onChange={setRateText}
+                      />
+                    </Field>
+                    <ReadOnly
+                      label={t('labour.cost')}
+                      value={labourBlank ? t('labour.notEnteredShort') : cost.productionLabourCents !== null ? money(cost.productionLabourCents) : dash}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t('labour.hint')}</p>
+                  {!labourBlank && !labourValid && <p className="text-sm text-red-700 dark:text-red-300">{t('problems.labour')}</p>}
+                  {labourValid && <Notice tone="info">{t('labour.replacesRecipeLabour')}</Notice>}
+                  {labourBlank && (
+                    <Notice tone="info">{cost.inheritsRecipeLabour ? t('labour.legacy') : t('labour.notEntered')}</Notice>
+                  )}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="extras">
+              <AccordionTrigger className="py-3">
+                <span className="flex w-full items-center justify-between gap-3 pr-2">
+                  <span className="text-sm font-semibold text-foreground">{t('extras.title')}</span>
+                  <span className="text-sm text-muted-foreground">{extrasStatusLabel}</span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm text-muted-foreground">{t('extras.reminder')}</p>
+                  {extras.length > 0 && (
+                    <ul className="flex flex-col gap-3">
+                      {extras.map((extra, index) => {
+                        const v = extraValues[index];
+                        const amount =
+                          v?.kind === 'work'
+                            ? Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents)
+                              ? money(Math.round(v.hours * v.hourlyCents))
+                              : dash
+                            : v && Number.isFinite(v.amountCents)
+                              ? money(v.amountCents)
+                              : dash;
+                        return (
+                          <li key={extra.key} className="flex flex-wrap items-end gap-2 rounded-xl border border-border p-3">
+                            <Field
+                              id={`extra-desc-${extra.key}`}
+                              label={extra.kind === 'work' ? t('extras.workLabel') : t('extras.expenseLabel')}
+                              className="min-w-40 flex-1"
+                            >
+                              <Input
+                                id={`extra-desc-${extra.key}`}
+                                value={extra.description}
+                                maxLength={120}
+                                aria-invalid={extra.description.trim() === ''}
+                                placeholder={extra.kind === 'work' ? t('extras.workPlaceholder') : t('extras.expensePlaceholder')}
+                                onChange={(e) => patchExtra(extra.key, { description: e.target.value })}
+                              />
+                            </Field>
+                            {extra.kind === 'work' ? (
+                              <>
+                                <Field id={`extra-hours-${extra.key}`} label={t('extras.hours')} className="w-24">
+                                  <Input
+                                    id={`extra-hours-${extra.key}`}
+                                    inputMode="decimal"
+                                    value={extra.hours}
+                                    onChange={(e) => patchExtra(extra.key, { hours: e.target.value })}
+                                    className="text-right tabular-nums"
+                                  />
+                                </Field>
+                                <Field id={`extra-rate-${extra.key}`} label={t('extras.rate')} className="w-28">
+                                  <Input
+                                    id={`extra-rate-${extra.key}`}
+                                    inputMode="decimal"
+                                    value={extra.rate}
+                                    onChange={(e) => patchExtra(extra.key, { rate: e.target.value })}
+                                    className="text-right tabular-nums"
+                                  />
+                                </Field>
+                              </>
+                            ) : (
+                              <Field id={`extra-amount-${extra.key}`} label={t('extras.amount')} className="w-32">
+                                <Input
+                                  id={`extra-amount-${extra.key}`}
+                                  inputMode="decimal"
+                                  value={extra.amount}
+                                  onChange={(e) => patchExtra(extra.key, { amount: e.target.value })}
+                                  className="text-right tabular-nums"
+                                />
+                              </Field>
+                            )}
+                            <span className="flex h-10 w-24 items-center justify-end text-sm font-semibold tabular-nums">{amount}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`${t('remove')} — ${extra.description}`}
+                              onClick={() => setExtras((prev) => prev.filter((e) => e.key !== extra.key))}
+                            >
+                              <X />
+                            </Button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('work')])}>
+                      <Plus />
+                      {t('extras.addWork')}
                     </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('work')])}>
-              <Plus />
-              {t('extras.addWork')}
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('expense')])}>
-              <Plus />
-              {t('extras.addExpense')}
-            </Button>
-          </div>
+                    <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('expense')])}>
+                      <Plus />
+                      {t('extras.addExpense')}
+                    </Button>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </CardContent>
       </Card>
 
-      {/* Notes stay available, after the calculator flow. */}
+      {/* Notes — a quiet expandable section. */}
       <Card>
-        <CardContent className="pt-6">
-          <Field id="dish-notes" label={t('fields.notes')}>
-            <Textarea
-              id="dish-notes"
-              value={notes}
-              maxLength={1000}
-              placeholder={t('fields.notesPlaceholder')}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </Field>
-        </CardContent>
+        <Accordion type="single" collapsible value={notesOpen ? 'notes' : ''} onValueChange={(v) => setNotesOpen(v === 'notes')}>
+          <AccordionItem value="notes" className="border-b-0">
+            <AccordionTrigger className="px-6 py-4 hover:no-underline">
+              <span className="text-sm font-semibold text-foreground">{t('fields.notes')}</span>
+            </AccordionTrigger>
+            <AccordionContent className="px-6">
+              <Textarea
+                id="dish-notes"
+                aria-label={t('fields.notes')}
+                value={notes}
+                maxLength={1000}
+                placeholder={t('fields.notesPlaceholder')}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </Card>
 
       {!canSave && (dirty || !isNew) && (
@@ -1164,19 +1216,6 @@ export function DishBuilder({
           ))}
         </ul>
       )}
-
-      <div className="hidden justify-end md:flex">{actions}</div>
-
-      {/* Mobile: margin + Save / Cancel always in reach. */}
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 px-4 py-3 backdrop-blur md:hidden">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-          <span className="min-w-0 truncate text-sm">
-            <span className="text-muted-foreground">{t('calc.margin')}: </span>
-            <span className={cn('font-semibold tabular-nums', leftNegative && 'text-red-700 dark:text-red-300')}>{marginShown}</span>
-          </span>
-          {actions}
-        </div>
-      </div>
 
       <ConfirmDialog
         open={leaveTo !== null}
@@ -1249,6 +1288,7 @@ function MoneyInput({
   invalid,
   disabled,
   placeholder = '0.00',
+  size = 'md',
 }: {
   id: string;
   value: string;
@@ -1258,6 +1298,8 @@ function MoneyInput({
   invalid?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  /** 'lg' = the primary selling price (excl. VAT); 'sm' = the quiet secondary price; 'md' = everywhere else. */
+  size?: 'sm' | 'md' | 'lg';
 }) {
   return (
     <div className="relative">
@@ -1270,9 +1312,21 @@ function MoneyInput({
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
-        className="h-12 pr-14 text-right text-base tabular-nums"
+        className={cn(
+          'text-right tabular-nums',
+          size === 'lg' && 'h-14 pr-16 font-display text-2xl font-semibold sm:text-[28px]',
+          size === 'md' && 'h-12 pr-14 text-base',
+          size === 'sm' && 'h-9 w-36 pr-11 text-sm text-muted-foreground',
+        )}
       />
-      <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+      <span
+        className={cn(
+          'pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground',
+          size === 'lg' && 'right-4 text-base',
+          size === 'md' && 'right-3.5 text-sm',
+          size === 'sm' && 'right-2.5 text-xs',
+        )}
+      >
         {currency}
       </span>
     </div>
@@ -1306,16 +1360,14 @@ function Row({
   value,
   strong,
   negative,
-  divided,
 }: {
   label: string;
   value: string;
   strong?: boolean;
   negative?: boolean;
-  divided?: boolean;
 }) {
   return (
-    <div className={cn('flex items-baseline justify-between gap-2', divided && 'border-t border-border pt-2')}>
+    <div className="flex items-baseline justify-between gap-2">
       <dt className={cn(strong ? 'font-medium text-foreground' : 'text-muted-foreground')}>{label}</dt>
       <dd
         className={cn(
@@ -1327,6 +1379,20 @@ function Row({
         {value}
       </dd>
     </div>
+  );
+}
+
+/** The margin panel's actionable labour indicator — never a confirmed zero. */
+function LabourStatusChip({ label, cost, onClick }: { label: string; cost: string | null; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+    >
+      {label}
+      {cost && <span className="tabular-nums text-foreground">{cost}</span>}
+    </button>
   );
 }
 
@@ -1361,6 +1427,90 @@ function Notice({
         </button>
       )}
     </div>
+  );
+}
+
+/** Small "⋮" menu (Make a copy / Delete dish) — no dropdown-menu package in the stack, so a minimal own implementation. */
+function OverflowMenu({
+  open,
+  onOpenChange,
+  label,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    function onDocPointer(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onOpenChange(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onOpenChange(false);
+    }
+    document.addEventListener('mousedown', onDocPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onOpenChange]);
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => onOpenChange(!open)}
+      >
+        <MoreVertical />
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-30 mt-1 min-w-44 rounded-xl border border-border bg-surface p-1 shadow-lg"
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OverflowMenuItem({
+  onClick,
+  disabled,
+  title,
+  destructive,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+  destructive?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      title={title}
+      onClick={onClick}
+      className={cn(
+        'flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent',
+        destructive ? 'text-red-700 dark:text-red-300' : 'text-foreground',
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

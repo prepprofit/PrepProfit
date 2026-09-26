@@ -509,10 +509,8 @@
       }
     },
     "builder": {
-      "back": "Back",
+      "back": "Back to Menu",
       "untitled": "Untitled dish",
-      "titleCreate": "Create Dish",
-      "titleEdit": "Edit Dish",
       "save": "Save Dish",
       "saving": "Saving…",
       "saved": "Saved",
@@ -524,12 +522,10 @@
       "dismiss": "Dismiss",
       "optional": "Optional",
       "composition": "What goes in",
-      "coversAll": "{count, plural, one {Enter quantities for # portion.} other {Enter quantities for all # portions together.}}",
-      "coversAllUnknown": "Enter quantities for all the portions together.",
       "fields": {
         "name": "Dish name",
         "namePlaceholder": "e.g. Passion fruit chocolate cake",
-        "folder": "Folder (optional)",
+        "folder": "Folder",
         "unfiled": "No folder",
         "notes": "Notes",
         "notesPlaceholder": "Assembly, plating, storage, customer details…"
@@ -545,7 +541,10 @@
       },
       "portions": {
         "label": "Number of portions",
-        "hint": "Enter all quantities and costs for this number of portions."
+        "hint": "Enter all quantities and costs for this number of portions.",
+        "compactPrefix": "Costs below make",
+        "compactSuffix": "portions",
+        "ariaLabel": "{count, plural, one {Costs below make # portion} other {Costs below make # portions}}"
       },
       "price": {
         "excl": "Selling price per portion, excl. VAT",
@@ -557,15 +556,10 @@
       },
       "calc": {
         "title": "Margin calculator",
-        "vatBasis": "All amounts per portion, excluding VAT.",
         "price": "Selling price",
         "costPerPortion": "Total cost per portion",
         "leftPerPortion": "Amount left per portion",
         "margin": "Margin",
-        "totalCostPct": "Total cost %",
-        "totalCost": "{count, plural, one {Total cost for # portion} other {Total cost for all # portions}}",
-        "totalCostUnknown": "Total cost for all portions",
-        "overheads": "The amount left still needs to cover overheads and profit.",
         "target": "Target margin",
         "suggestedExcl": "Suggested price excl. VAT",
         "suggestedIncl": "Suggested price incl. VAT",
@@ -624,7 +618,9 @@
         "hint": "Include preparation, assembly and packing. Two people working four hours each = 8 working hours. Don’t count baking, cooling or resting time when nobody is working on it.",
         "replacesRecipeLabour": "These hours cover all production work. Recipe labour won’t be added again.",
         "legacy": "Labour isn’t entered, so the labour already inside your recipe costs is used. Enter hours (even 0) to replace it.",
-        "notEntered": "Labour isn’t entered, so no labour is included in this dish’s cost. Enter hours (even 0) to set it."
+        "notEntered": "Labour isn’t entered, so no labour is included in this dish’s cost. Enter hours (even 0) to set it.",
+        "statusMissing": "Labour not entered · Add",
+        "statusEntered": "Labour included · Edit"
       },
       "extras": {
         "title": "Extra costs",
@@ -637,7 +633,8 @@
         "hours": "Hours",
         "rate": "Cost per hour",
         "amount": "Amount",
-        "reminder": "Only add work that is not already included above. Packaging belongs in the ingredient list."
+        "reminder": "Only add work that is not already included above. Packaging belongs in the ingredient list.",
+        "statusEmpty": "No extra costs"
       },
       "copy": {
         "action": "Make a copy",
@@ -664,6 +661,13 @@
         "price": "Enter the selling price as a number.",
         "quantity": "Every recipe and ingredient needs a quantity above zero.",
         "unavailable": "Remove the items that are in the trash."
+      },
+      "overflow": {
+        "label": "More actions"
+      },
+      "costs": {
+        "heading": "{count, plural, one {Costs for # portion} other {Costs for # portions}}",
+        "headingUnknown": "Costs for all portions"
       }
     },
     "batch": {
