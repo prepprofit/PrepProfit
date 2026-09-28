@@ -177,6 +177,13 @@ export type ActionErrorCode =
   // A supplier price was entered as VAT-INCLUSIVE while the org has no VAT rate
   // configured — the net cost is unknowable, so we refuse instead of assuming 0%.
   | 'VAT_RATE_REQUIRED'
+  // A price per pack was entered but there is no usable pack size to work out the
+  // price per kg / litre / piece from (a typed price per unit never needs a pack).
+  | 'PACK_REQUIRED_FOR_PRICE'
+  // The pack is measured in another type of unit than the ingredient (e.g. ml for a
+  // weight ingredient) and the ingredient has no equivalency to convert it — 500 ml is
+  // never assumed to weigh 500 g.
+  | 'PACK_NEEDS_EQUIVALENCY'
   // A purchase VAT band was deleted while an ingredient still points at it, or
   // while it is the org's default (an org must always keep a fallback rate).
   | 'VAT_CATEGORY_IN_USE'

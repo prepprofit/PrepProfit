@@ -41,6 +41,7 @@ import type { IngredientNutritionView } from '@/lib/nutrition/profile-view';
 import { AddToTaskListMenu } from '@/components/app/tasks/add-to-task-list-menu';
 import type { AllergenTag } from '@/lib/data/allergens';
 import type { SupplierPriceBasis } from '@/lib/calculations/purchasePrice';
+import type { UomAnchors } from '@/lib/calculations/uom';
 import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
 import type { IngredientTypeLock, IngredientUsage } from '@/lib/data/ingredients';
 import { restoreIngredientAction } from '@/app/(app)/trash/actions';
@@ -171,6 +172,7 @@ export function IngredientGrid({
   vatCategories = [],
   businessPurchaseVatBps = null,
   mostCommonPurchaseVatBps = null,
+  equivalencies = {},
   typeLocks = {},
   initialNutrition = {},
   canEditNutrition = false,
@@ -197,6 +199,8 @@ export function IngredientGrid({
   businessPurchaseVatBps?: number | null;
   /** Last-resort VAT prefill: the business's most common confirmed purchase rate. */
   mostCommonPurchaseVatBps?: number | null;
+  /** Each ingredient's own unit equivalency (only those that have one). */
+  equivalencies?: Record<string, UomAnchors>;
   /** Ingredients whose type is locked because quantities use the current unit. */
   typeLocks?: Record<string, IngredientTypeLock>;
   /** Each ingredient's own nutrition profile (absent = not added). */
@@ -785,6 +789,7 @@ export function IngredientGrid({
           vatRateBps={supplierTarget.vatRateBps ?? null}
           businessPurchaseVatBps={businessPurchaseVatBps}
           mostCommonPurchaseVatBps={mostCommonPurchaseVatBps}
+          anchors={equivalencies[supplierTarget.id] ?? null}
           currentPriceCents={supplierTarget.priceCents ?? null}
           supplierNames={supplierNames}
           pricePrefs={pricePrefs}
@@ -805,7 +810,7 @@ export function IngredientGrid({
             } else if (supplierChange.type === 'cleared') {
               setSupplierLinks((prev) => ({ ...prev, [id]: null }));
             }
-            if (update.notice && !update.notice.incomplete) {
+            if (update.notice) {
               setNotice({ message: update.notice.message, undo: null });
             }
           }}

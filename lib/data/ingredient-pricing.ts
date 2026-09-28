@@ -89,53 +89,60 @@ export async function recordPriceObservation(
   return { ok: true, ingredient: row, derivedPriceCents };
 }
 
-/**
- * Record a deliberate, authorized supplier-pack price and apply it to the approved
- * cost IMMEDIATELY — no pending/accept step. Used ONLY for a manager's own deliberate
- * edit inside the ingredient editor (never for an import or a receipt, which stay on
- * `recordPriceObservation` / `recordDerivedPriceObservation` and keep raising a
- * pending cost for review). Appends an already-`accepted` history row (source
- * `'manual'`, carrying the supplier-link provenance) and clears any unrelated
- * pending observation — the manager just set a definitive price, so a stale pending
- * candidate from elsewhere is superseded, not lost (its history row is untouched).
- */
-export type RecordAcceptedSupplierPriceInput = Omit<RecordPriceObservationInput, 'source'>;
+export type RecordAcceptedPriceInput = {
+  ingredientId: string;
+  /** Already-derived active cost per kg / litre / piece, excl. VAT, integer cents. */
+  derivedPriceCents: number;
+  /** The purchase the price came from, when there is one (a typed price per kg has none). */
+  pack?: { packSize: number; packUnit: Unit; packPriceCents: number } | null;
+  ingredientSupplierId?: string | null;
+  actorUserId?: string | null;
+  note?: string | null;
+  /** Skip the history row when neither the cost nor the pack it came from changed. */
+  recordHistory?: boolean;
+};
 
-export async function recordAcceptedSupplierPrice(
+/**
+ * Apply an ALREADY-DERIVED, deliberate manager price as the ingredient's active cost
+ * immediately (no pending/accept step) and append an `accepted` `manual` history row.
+ * Idempotent on the price itself: re-saving the same value leaves `price_cents`
+ * untouched but still clears a stale pending observation, because the manager just
+ * stated the definitive price. Caller MUST hold the ingredient lock (inside `withOrg`).
+ *
+ * Used ONLY for a manager's own deliberate edit inside the ingredient editor — never
+ * for an import or a receipt, which stay on `recordPriceObservation` /
+ * `recordDerivedPriceObservation` and keep raising a pending cost for review.
+ */
+export async function recordAcceptedPrice(
   db: TenantClient,
   organizationId: string,
-  input: RecordAcceptedSupplierPriceInput,
+  input: RecordAcceptedPriceInput,
 ): Promise<RecordPriceObservationResult> {
   const current = await lockActiveIngredientRow(db, organizationId, input.ingredientId);
   if (!current) return { ok: false, reason: 'not_found' };
 
-  const derivedPriceCents = approvedPriceCents({
-    packPriceCents: input.packPriceCents,
-    packSize: input.packSize,
-    packUnit: input.packUnit,
-    dimension: current.dimension,
-  });
-
-  await db.insert(ingredientPriceHistory).values({
-    organizationId,
-    ingredientId: input.ingredientId,
-    source: 'manual',
-    packSize: input.packSize.toString(),
-    packUnit: input.packUnit,
-    packPriceCents: input.packPriceCents,
-    derivedPriceCents,
-    accepted: true,
-    actorUserId: input.actorUserId ?? null,
-    ingredientSupplierId: input.ingredientSupplierId ?? null,
-    note: input.note ?? null,
-  });
+  if (input.recordHistory !== false) {
+    await db.insert(ingredientPriceHistory).values({
+      organizationId,
+      ingredientId: input.ingredientId,
+      source: 'manual',
+      packSize: input.pack ? input.pack.packSize.toString() : null,
+      packUnit: input.pack ? input.pack.packUnit : null,
+      packPriceCents: input.pack ? input.pack.packPriceCents : null,
+      derivedPriceCents: input.derivedPriceCents,
+      accepted: true,
+      actorUserId: input.actorUserId ?? null,
+      ingredientSupplierId: input.ingredientSupplierId ?? null,
+      note: input.note ?? null,
+    });
+  }
 
   const [row] = await db
     .update(ingredients)
     .set({
-      priceCents: derivedPriceCents,
+      priceCents: input.derivedPriceCents,
       pendingPriceCents: null,
-      needsPricing: derivedPriceCents > 0 ? false : current.needsPricing,
+      needsPricing: input.derivedPriceCents > 0 ? false : current.needsPricing,
     })
     .where(
       and(
@@ -146,7 +153,7 @@ export async function recordAcceptedSupplierPrice(
     )
     .returning();
   if (!row) return { ok: false, reason: 'not_found' };
-  return { ok: true, ingredient: row, derivedPriceCents };
+  return { ok: true, ingredient: row, derivedPriceCents: input.derivedPriceCents };
 }
 
 export type RecordDerivedPriceObservationInput = {

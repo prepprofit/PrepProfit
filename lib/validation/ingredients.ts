@@ -43,19 +43,21 @@ export type KitchenIngredientFormInput = z.infer<typeof kitchenIngredientSchema>
  * The unified ingredient editor (name + dimension + supplier + pricing, ONE Save).
  * MANAGER-ONLY at the action layer. `supplier` and `clearSupplier` are mutually
  * exclusive with each other; both are optional — omitting both leaves the
- * ingredient's supplier link untouched. `priceCents` is a DIRECT manual price and
- * is only honoured when no supplier is being set/cleared in this same save (once a
- * supplier is linked, its own pack price governs cost through the existing
- * pending/accept flow — never overwritten here); omitted = keep the stored price.
- * `notes` is free text the manager keeps on the ingredient (e.g. a supplier
- * discount reminder) — omitted = keep the stored notes, an empty string clears
- * them. Never parsed or used in any calculation.
+ * ingredient's supplier link untouched. `priceCents` is a DIRECT price per kg / litre
+ * / piece, as typed: it applies whenever no supplier link is being SET in this save
+ * (with a supplier, the price rides on `supplier.packPriceCents` and its basis).
+ * `priceIncludesVat` / `priceVatRateBps` say how to read it — the server removes VAT
+ * once and never assumes 0%. Omitted = keep the stored price. `notes` is free text
+ * the manager keeps on the ingredient — omitted = keep the stored notes, an empty
+ * string clears them. Never parsed or used in any calculation.
  */
 export const ingredientEditorSchema = z
   .object({
     name: z.string().trim().min(1).max(120),
     dimension: z.enum(DIMENSIONS),
     priceCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
+    priceIncludesVat: z.boolean().optional(),
+    priceVatRateBps: z.number().int().min(0).max(10_000).nullable().optional(),
     supplier: ingredientSupplierSchema.nullable().optional(),
     clearSupplier: z.boolean().optional(),
     notes: z.string().trim().max(1000).optional(),

@@ -7,8 +7,10 @@ import {
   listIngredientTypeLocks,
   updateIngredient,
 } from '@/lib/data/ingredients';
-import { recordAcceptedSupplierPrice } from '@/lib/data/ingredient-pricing';
-import { packPriceExclVatCents } from '@/lib/calculations/purchasePrice';
+import { recordAcceptedPrice } from '@/lib/data/ingredient-pricing';
+import { getIngredientEquivalencyAnchors } from '@/lib/data/ingredient-nutrition';
+import { resolveEnteredPrice, type EnteredPack } from '@/lib/calculations/ingredientPriceEntry';
+import { hasUsableAnchorPair } from '@/lib/calculations/uom';
 import { findOrCreateSupplierByName } from '@/lib/data/suppliers';
 import { mostCommonPurchaseVatBps, resolveVatRateBps } from '@/lib/data/vat-categories';
 import { isPackUnitCompatible } from '@/lib/suppliers/display-name';
@@ -183,6 +185,52 @@ export async function getSupplierProductIdentity(
 }
 
 /**
+ * The full entry (pack, price, VAT, product name and code) this ingredient has with
+ * the supplier of this name — matched on the normalized key, never created. NULL when
+ * the supplier is unknown or not linked to the ingredient yet. Lets the editor show
+ * THAT supplier's own numbers when the manager switches supplier, instead of leaving
+ * the previous supplier's pack and price on screen.
+ */
+export async function getSupplierEntry(
+  db: TenantClient,
+  organizationId: string,
+  ingredientId: string,
+  supplierName: string,
+): Promise<DefaultSupplierSummary | null> {
+  const normalizedName = normalizeSupplierName(supplierName);
+  if (normalizedName === '') return null;
+  const [row] = await db
+    .select({
+      supplierName: suppliers.name,
+      packSize: ingredientSuppliers.packSize,
+      packUnit: ingredientSuppliers.packUnit,
+      packPriceCents: ingredientSuppliers.packPriceCents,
+      unitsPerPack: ingredientSuppliers.unitsPerPack,
+      supplierProductName: ingredientSuppliers.supplierProductName,
+      supplierSku: ingredientSuppliers.supplierSku,
+      vatRateBps: ingredientSuppliers.vatRateBps,
+    })
+    .from(ingredientSuppliers)
+    .innerJoin(
+      suppliers,
+      and(
+        eq(suppliers.organizationId, organizationId),
+        eq(suppliers.id, ingredientSuppliers.supplierId),
+      ),
+    )
+    .where(
+      and(
+        eq(ingredientSuppliers.organizationId, organizationId),
+        eq(ingredientSuppliers.ingredientId, ingredientId),
+        eq(suppliers.normalizedName, normalizedName),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  return { ...row, packSize: numOrNull(row.packSize) };
+}
+
+/**
  * Whether any of the ingredient's supplier-link packs use a unit that would be
  * INCOMPATIBLE with `dimension` (§12.9). Used to block changing an ingredient's
  * dimension while a pack (e.g. a kg pack) would no longer make sense. Links with a
@@ -319,16 +367,14 @@ export async function loadSupplierPacksByIngredientName(
 }
 
 /**
- * What happened to the PRICE part of a supplier save. The supplier itself is always
- * assigned (unless the name/unit is invalid); pricing is optional and may be
- * completed later, so an incomplete price never blocks the save:
- *  - `saved`       a new whole-pack net price was stored;
- *  - `unchanged`   no price sent (or the same pack) — the stored price was kept;
- *  - `none`        no price is known for this link;
- *  - `needs_pack`  a price was entered but there's no complete pack size to price;
- *  - `needs_vat`   an incl.-VAT price was entered but no VAT rate is known.
+ * What happened to the PRICE part of a supplier save. A price that can't be resolved
+ * honestly is a hard failure (`SetDefaultSupplierResult` — nothing is written), never a
+ * half-saved supplier with a quiet warning:
+ *  - `saved`       a price was resolved, stored and applied as the ingredient's cost;
+ *  - `unchanged`   no price sent — the stored pack price was kept;
+ *  - `none`        no price is known for this link.
  */
-export type SupplierPriceStatus = 'saved' | 'unchanged' | 'none' | 'needs_pack' | 'needs_vat';
+export type SupplierPriceStatus = 'saved' | 'unchanged' | 'none';
 
 export type SetDefaultSupplierResult =
   | {
@@ -348,7 +394,15 @@ export type SetDefaultSupplierResult =
   | { status: 'not_found' }
   | { status: 'supplier_inactive' }
   | { status: 'invalid_name' }
-  | { status: 'pack_unit_mismatch' };
+  | { status: 'pack_unit_mismatch' }
+  | SupplierPriceFailure;
+
+/** Why an entered price could not be turned into a cost — nothing was written. */
+export type SupplierPriceFailure =
+  | { status: 'vat_rate_required' }
+  | { status: 'pack_required' }
+  | { status: 'needs_equivalency' }
+  | { status: 'invalid_price' };
 
 /** Numeric-or-null coercion for the stored numeric pack size (driver returns a string). */
 function numOrNull(value: string | null): number | null {
@@ -392,21 +446,21 @@ export async function resolvePurchaseVatBps(
  *  2. merge the entry: a field OMITTED (`undefined`) keeps what this ingredient ⇄
  *     supplier entry already stores; `null` clears it; a value replaces it. Unknown
  *     stays NULL — never 0;
- *  3. validate the pack unit's dimension matches the ingredient;
- *  4. price (optional): stored as the whole-pack net price only when it can be
- *     derived honestly (complete pack; a VAT rate when entered incl. VAT). Otherwise
- *     the supplier still saves and `priceStatus` says what's missing;
+ *  3. an explicitly chosen pack unit must match the ingredient's dimension (a stored
+ *     mismatch is left alone — it only matters when a price needs it);
+ *  4. price (optional): the entered price is resolved by `resolveEnteredPrice` — VAT
+ *     removed once, a typed price per kg needs no pack, a typed pack price needs a
+ *     pack that converts. When it can't be resolved honestly NOTHING is written and
+ *     the failure is returned, so the caller never reports a half-saved price;
  *  5. upsert the link, flip `is_default`, mirror the supplier name;
- *  6. apply a new whole-pack price straight to the approved cost ONLY when a real
- *     pack price is stored AND the pack changed. This function is called ONLY from
+ *  6. a resolved price is applied straight to the ingredient's active cost — even when
+ *     the pack and pack price are unchanged, so an active cost that drifted from its
+ *     pack heals on the next deliberate save. This function is called ONLY from
  *     deliberate, manager-authorized UI saves (the unified ingredient editor and the
  *     standalone supplier action) — never from an import or a receipt, which record
- *     their own pending observations directly via `recordPriceObservation` /
- *     `recordDerivedPriceObservation` and are untouched by this. So a save here never
- *     needs a second "Approve" step: it records an already-accepted history row and
- *     updates `price_cents` in the same write. A metadata-only edit (name/code) never
- *     reaches this branch — `priceStatus` is only `'saved'` when a complete pack and
- *     price were actually derived.
+ *     their own pending observations directly and are untouched by this. So a save
+ *     here never needs a second "Approve" step. A metadata-only edit (name/code) sends
+ *     no price and never reaches this branch.
  */
 export async function setDefaultSupplier(
   db: TenantClient,
@@ -447,7 +501,16 @@ export async function setDefaultSupplier(
   const productName = keep(input.supplierProductName, prior?.supplierProductName ?? null);
   const sku = keep(input.supplierSku, prior?.supplierSku ?? null);
 
-  if (newPackUnit && !isPackUnitCompatible(newPackUnit, ingredient.dimension)) {
+  const anchors = await getIngredientEquivalencyAnchors(db, organizationId, ingredientId);
+  // Only a unit the manager just chose is validated; a stored mismatch (e.g. a legacy
+  // 500 ml pack on a weight ingredient) must not block unrelated edits. An ingredient
+  // equivalency lets a cross-dimension pack convert, so it is allowed then.
+  if (
+    input.packUnit != null &&
+    input.packUnit !== priorUnit &&
+    !isPackUnitCompatible(input.packUnit as Unit, ingredient.dimension) &&
+    !hasUsableAnchorPair(anchors)
+  ) {
     return { status: 'pack_unit_mismatch' };
   }
 
@@ -466,12 +529,16 @@ export async function setDefaultSupplier(
     ingredientBandId: vatCategoryId,
   });
 
-  const packComplete = newPackSize != null && newPackSize > 0 && newPackUnit != null && newUnitsPerPack > 0;
+  const pack: EnteredPack | null =
+    newPackSize != null && newPackSize > 0 && newPackUnit != null && newUnitsPerPack > 0
+      ? { unitsPerPack: newUnitsPerPack, packSize: newPackSize, packUnit: newPackUnit }
+      : null;
   const packSameAsPrior =
     prior != null && priorSize === newPackSize && priorUnit === newPackUnit && priorUnits === newUnitsPerPack;
 
   let newPackPriceCents: number | null;
   let priceStatus: SupplierPriceStatus;
+  let resolvedNetUnitCents: number | null = null;
   if (input.packPriceCents === undefined) {
     // No price sent: the stored price still describes the stored pack — keep it;
     // a different pack makes it meaningless, so it becomes unknown (not zero).
@@ -480,27 +547,30 @@ export async function setDefaultSupplier(
   } else if (input.packPriceCents === null) {
     newPackPriceCents = null;
     priceStatus = 'none';
-  } else if (!packComplete) {
-    newPackPriceCents = packSameAsPrior ? (prior?.packPriceCents ?? null) : null;
-    priceStatus = 'needs_pack';
   } else {
-    const net = packPriceExclVatCents({
-      priceCents: input.packPriceCents,
-      basis: input.priceBasis ?? 'pack',
+    const basis = input.priceBasis ?? 'pack';
+    const resolution = resolveEnteredPrice({
+      source: basis === 'priced' ? 'unit' : 'pack',
+      // 'inner' is a legacy per-unit quote: the whole purchase is that × the units.
+      amountCents: basis === 'inner' ? input.packPriceCents * newUnitsPerPack : input.packPriceCents,
       includesVat: input.priceIncludesVat ?? false,
-      taxRateBps,
-      unitsPerPack: newUnitsPerPack,
-      packSize: newPackSize as number,
-      packUnit: newPackUnit as Unit,
+      vatRateBps: taxRateBps,
+      pack,
       dimension: ingredient.dimension,
+      anchors,
     });
-    if (net == null) {
-      newPackPriceCents = packSameAsPrior ? (prior?.packPriceCents ?? null) : null;
-      priceStatus = 'needs_vat';
-    } else {
-      newPackPriceCents = net;
-      priceStatus = 'saved';
+    if (!resolution.ok) {
+      if (resolution.reason === 'vat_rate_required') return { status: 'vat_rate_required' };
+      if (resolution.reason === 'pack_required') return { status: 'pack_required' };
+      if (resolution.reason === 'needs_equivalency') return { status: 'needs_equivalency' };
+      return { status: 'invalid_price' };
     }
+    resolvedNetUnitCents = resolution.value.netUnitCents;
+    // A pack that can't be priced (typed price per kg, no/unconvertible pack) keeps the
+    // stored pack price only while the pack itself is unchanged.
+    newPackPriceCents =
+      resolution.value.netPackCents ?? (packSameAsPrior ? (prior?.packPriceCents ?? null) : null);
+    priceStatus = 'saved';
   }
 
   // Clear the current default FIRST so the partial unique (≤1 default/ingredient)
@@ -565,24 +635,30 @@ export async function setDefaultSupplier(
 
   let priceApplied = false;
   let appliedPriceCents: number | null = null;
-  const packChanged =
-    priorSize !== newPackSize ||
-    priorUnit !== newPackUnit ||
-    priorUnits !== newUnitsPerPack ||
-    (prior?.packPriceCents ?? null) !== newPackPriceCents;
-
-  if (priceStatus === 'saved' && newPackPriceCents != null && newPackSize != null && newPackUnit != null && packChanged) {
-    const applied = await recordAcceptedSupplierPrice(db, organizationId, {
+  if (resolvedNetUnitCents !== null) {
+    const packDataChanged =
+      priorSize !== newPackSize ||
+      priorUnit !== newPackUnit ||
+      priorUnits !== newUnitsPerPack ||
+      (prior?.packPriceCents ?? null) !== newPackPriceCents;
+    const costChanged =
+      resolvedNetUnitCents !== ingredient.priceCents ||
+      (ingredient.needsPricing && resolvedNetUnitCents > 0);
+    const applied = await recordAcceptedPrice(db, organizationId, {
       ingredientId,
+      derivedPriceCents: resolvedNetUnitCents,
       // The price trail records the quantity actually purchased (4 × 1.65 kg → 6.6).
-      packSize: newUnitsPerPack * newPackSize,
-      packUnit: newPackUnit,
-      packPriceCents: newPackPriceCents,
+      pack:
+        pack && newPackPriceCents != null
+          ? { packSize: pack.unitsPerPack * pack.packSize, packUnit: pack.packUnit, packPriceCents: newPackPriceCents }
+          : null,
       ingredientSupplierId: link.id,
       actorUserId,
+      recordHistory: costChanged || packDataChanged,
     });
-    priceApplied = true;
-    if (applied.ok) appliedPriceCents = applied.derivedPriceCents;
+    if (!applied.ok) return { status: 'not_found' };
+    priceApplied = costChanged;
+    appliedPriceCents = applied.derivedPriceCents;
   }
 
   return {
@@ -651,7 +727,8 @@ export type IngredientEditorOutcome =
   | { status: 'pack_unit_mismatch' }
   | { status: 'type_in_use' }
   | { status: 'supplier_inactive' }
-  | { status: 'invalid_name' };
+  | { status: 'invalid_name' }
+  | SupplierPriceFailure;
 
 /**
  * The unified ingredient editor's save contract: name + dimension + (set / clear /
@@ -712,16 +789,39 @@ export async function updateIngredientWithSupplier(
     };
   }
 
-  // A direct manual price only applies when no supplier is being set/cleared in
-  // this save — once a supplier link exists, its own pack price is the source of
-  // truth (applied directly by `setDefaultSupplier` above, untouched here).
-  const hasDirectPrice = supplierChange.type === 'none' && input.priceCents != null;
-  const priceChanged = hasDirectPrice && input.priceCents !== current.priceCents;
+  // A direct manual price (typed price per kg with no supplier link attached to this
+  // save). Once a supplier link is being set, its own price governs — applied by
+  // `setDefaultSupplier` above. VAT is removed here, once, when the price includes it.
+  let directNetCents: number | null = null;
+  if (supplierChange.type !== 'set' && input.priceCents != null) {
+    let vatBps = input.priceVatRateBps ?? null;
+    if (input.priceIncludesVat && vatBps == null) {
+      vatBps = await resolvePurchaseVatBps(db, organizationId, {
+        linkVatBps: null,
+        ingredientVatBps: current.vatRateBps,
+        ingredientBandId: current.vatCategoryId,
+      });
+    }
+    const resolution = resolveEnteredPrice({
+      source: 'unit',
+      amountCents: input.priceCents,
+      includesVat: input.priceIncludesVat ?? false,
+      vatRateBps: vatBps,
+      pack: null,
+      dimension: input.dimension,
+    });
+    if (!resolution.ok) {
+      return resolution.reason === 'vat_rate_required' ? { status: 'vat_rate_required' } : { status: 'invalid_price' };
+    }
+    directNetCents = resolution.value.netUnitCents;
+  }
+  const hasDirectPrice = directNetCents !== null;
+  const priceChanged = hasDirectPrice && directNetCents !== current.priceCents;
 
-  // The supplier write above may have already updated the price columns (a new
-  // pack price raises `pendingPriceCents`; a clear removes the mirror). Re-read
-  // them so this final write carries those changes forward instead of clobbering
-  // them with the pre-supplier-write snapshot in `current`.
+  // The supplier write above may have already updated the price columns (a resolved
+  // price is applied to the active cost; a clear removes the mirror). Re-read them so
+  // this final write carries those changes forward instead of clobbering them with
+  // the pre-supplier-write snapshot in `current`.
   let priceCents = current.priceCents;
   let needsPricing = current.needsPricing;
   let pendingPriceCents = current.pendingPriceCents;
@@ -731,8 +831,9 @@ export async function updateIngredientWithSupplier(
     priceCents = refreshed.priceCents;
     needsPricing = refreshed.needsPricing;
     pendingPriceCents = refreshed.pendingPriceCents;
-  } else if (hasDirectPrice) {
-    priceCents = input.priceCents as number;
+  }
+  if (hasDirectPrice) {
+    priceCents = directNetCents as number;
     needsPricing = priceChanged ? (priceCents > 0 ? false : needsPricing) : needsPricing;
     pendingPriceCents = priceChanged ? null : pendingPriceCents;
   }

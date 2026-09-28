@@ -95,11 +95,11 @@ describe('saving a supplier with incomplete information', () => {
     expect((await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, id)))?.priceCents).toBe(150);
   });
 
-  it('a price without a complete pack still saves the supplier and says what is missing', async () => {
-    const id = await ingredient('Salt');
-    const result = await save(id, { supplierName: 'Salt Co', packPriceCents: 300 });
-    expect(result).toMatchObject({ status: 'ok', priceStatus: 'needs_pack', pendingRaised: false });
-    expect((await linkOf(id))?.packPriceCents).toBeNull();
+  it('a pack price without a usable pack is refused and writes nothing', async () => {
+    const id = await ingredient('Salt', 120);
+    expect(await save(id, { supplierName: 'Salt Co', packPriceCents: 300 })).toEqual({ status: 'pack_required' });
+    expect(await linkOf(id)).toBeNull();
+    expect((await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, id)))?.priceCents).toBe(120);
   });
 
   it('clearing a field stores it as unknown', async () => {
@@ -142,7 +142,8 @@ describe('prices entered per kg and incl. VAT', () => {
     await save(id, { supplierName: 'Dairy Co', packSize: 2.5, packUnit: 'kg', packPriceCents: 800, priceBasis: 'priced', priceIncludesVat: true });
     expect((await linkOf(id))?.packPriceCents).toBe(1_754);
 
-    // Without any rate an incl.-VAT price is not stored (the old one stays for the same pack).
+    // Without any rate an incl.-VAT price is refused outright — never read as 0% — and the
+    // supplier link is not written either.
     // A dedicated org: ORG_A already has a confirmed rate on `Cream` above, and the
     // learned most-common-rate fallback (§5) would otherwise resolve one here too —
     // this scenario is specifically "no VAT known anywhere yet".
@@ -150,7 +151,8 @@ describe('prices entered per kg and incl. VAT', () => {
     const noRate = await ingredient('Milk', 0, ORG_NO_VAT);
     expect(
       await save(noRate, { supplierName: 'Dairy Co', packSize: 1, packUnit: 'kg', packPriceCents: 114, priceIncludesVat: true }, ORG_NO_VAT),
-    ).toMatchObject({ status: 'ok', priceStatus: 'needs_vat' });
+    ).toEqual({ status: 'vat_rate_required' });
+    expect(await linkOf(noRate, ORG_NO_VAT)).toBeNull();
 
     await runInOrg(db, ORG_NO_VAT, (tx) => setDefaultPurchaseVat(tx, ORG_NO_VAT, 1400));
     expect(

@@ -21,6 +21,7 @@ import {
 } from '@/lib/data/ingredient-pricing';
 import {
   clearDefaultSupplier,
+  getSupplierEntry,
   getSupplierProductIdentity,
   hasIncompatiblePacks,
   setDefaultSupplier,
@@ -37,7 +38,7 @@ import {
   kitchenIngredientSchema,
 } from '@/lib/validation/ingredients';
 import { ingredientSupplierSchema } from '@/lib/validation/suppliers';
-import type { ActionResult } from '@/lib/action-result';
+import type { ActionErrorCode, ActionResult } from '@/lib/action-result';
 import type { Ingredient } from '@/lib/db/schema';
 
 /**
@@ -51,6 +52,37 @@ function revalidateIngredientConsumers(): void {
   revalidatePath('/ingredients');
   revalidatePath('/recipes');
 }
+
+/** Thrown inside `withOrg` so a refused save rolls the whole transaction back. */
+class RollbackSave<T> extends Error {
+  constructor(readonly outcome: T) {
+    super('rollback');
+  }
+}
+
+/** A save that could not be completed, mapped to its stable error code. */
+type SaveFailure =
+  | { status: 'not_found' }
+  | { status: 'pack_unit_mismatch' }
+  | { status: 'type_in_use' }
+  | { status: 'supplier_inactive' }
+  | { status: 'invalid_name' }
+  | { status: 'vat_rate_required' }
+  | { status: 'pack_required' }
+  | { status: 'needs_equivalency' }
+  | { status: 'invalid_price' };
+
+const SAVE_FAILURE_CODE: Record<SaveFailure['status'], ActionErrorCode> = {
+  not_found: 'NOT_FOUND',
+  pack_unit_mismatch: 'PACK_UNIT_MISMATCH',
+  type_in_use: 'INGREDIENT_TYPE_IN_USE',
+  supplier_inactive: 'SUPPLIER_INACTIVE',
+  invalid_name: 'INVALID_INPUT',
+  vat_rate_required: 'VAT_RATE_REQUIRED',
+  pack_required: 'PACK_REQUIRED_FOR_PRICE',
+  needs_equivalency: 'PACK_NEEDS_EQUIVALENCY',
+  invalid_price: 'INVALID_INPUT',
+};
 
 /**
  * The numeric `priceCents` a (kitchen) client tried to send, if any — used to
@@ -262,74 +294,67 @@ export async function updateIngredientEditorAction(
   const organizationId = await getOrgId();
   const actor = await auditActor();
 
-  const outcome = await withOrg(organizationId, async (tx) => {
-    const result = await updateIngredientWithSupplier(tx, organizationId, id, parsed.data, actor.userId);
-    if (result.status !== 'ok') return result;
+  try {
+    const outcome = await withOrg(organizationId, async (tx) => {
+      const result = await updateIngredientWithSupplier(tx, organizationId, id, parsed.data, actor.userId);
+      // A refused save must leave NOTHING behind (not even a just-created supplier).
+      if (result.status !== 'ok') throw new RollbackSave<SaveFailure>(result);
 
-    if (result.priceChanged) {
-      await appendManualPriceHistory(
-        tx,
-        organizationId,
-        id,
-        result.ingredient.priceCents,
-        actor.userId,
-      );
-      await writeAuditEvent(tx, organizationId, actor, {
-        action: 'ingredient.priceUpdate',
-        entityType: 'ingredient',
-        entityId: id,
-        metadata: { newPriceCents: result.ingredient.priceCents },
-      });
-    }
-    if (result.supplierChange.type === 'set') {
-      const { link } = result.supplierChange;
-      // A deliberate pack-price edit for the default supplier is applied to the
-      // approved cost in the same write (`recordAcceptedSupplierPrice`) — audit it
-      // as a price update too, alongside the supplier-set event.
-      if (result.supplierChange.priceApplied) {
+      if (result.priceChanged) {
+        await appendManualPriceHistory(tx, organizationId, id, result.ingredient.priceCents, actor.userId);
         await writeAuditEvent(tx, organizationId, actor, {
           action: 'ingredient.priceUpdate',
           entityType: 'ingredient',
           entityId: id,
-          metadata: { newPriceCents: result.ingredient.priceCents, supplierName: link.supplierName },
+          metadata: { newPriceCents: result.ingredient.priceCents },
         });
       }
-      await writeAuditEvent(tx, organizationId, actor, {
-        action: 'ingredient.supplierSet',
-        entityType: 'ingredient',
-        entityId: id,
-        metadata: {
-          supplierName: link.supplierName,
-          packSize: link.packSize,
-          packUnit: link.packUnit,
-          unitsPerPack: link.unitsPerPack,
-          packPriceCents: link.packPriceCents,
-          priceStatus: result.supplierChange.priceStatus,
-          pendingRaised: result.supplierChange.pendingRaised,
-        },
-      });
-    } else if (result.supplierChange.type === 'cleared') {
-      await writeAuditEvent(tx, organizationId, actor, {
-        action: 'ingredient.supplierClear',
-        entityType: 'ingredient',
-        entityId: id,
-      });
-    }
-    return result;
-  });
+      if (result.supplierChange.type === 'set') {
+        const { link } = result.supplierChange;
+        // A deliberate price for the default supplier is applied to the active cost in
+        // the same write — audit it as a price update too, alongside the supplier-set.
+        if (result.supplierChange.priceApplied) {
+          await writeAuditEvent(tx, organizationId, actor, {
+            action: 'ingredient.priceUpdate',
+            entityType: 'ingredient',
+            entityId: id,
+            metadata: { newPriceCents: result.ingredient.priceCents, supplierName: link.supplierName },
+          });
+        }
+        await writeAuditEvent(tx, organizationId, actor, {
+          action: 'ingredient.supplierSet',
+          entityType: 'ingredient',
+          entityId: id,
+          metadata: {
+            supplierName: link.supplierName,
+            packSize: link.packSize,
+            packUnit: link.packUnit,
+            unitsPerPack: link.unitsPerPack,
+            packPriceCents: link.packPriceCents,
+            priceStatus: result.supplierChange.priceStatus,
+            pendingRaised: result.supplierChange.pendingRaised,
+          },
+        });
+      } else if (result.supplierChange.type === 'cleared') {
+        await writeAuditEvent(tx, organizationId, actor, {
+          action: 'ingredient.supplierClear',
+          entityType: 'ingredient',
+          entityId: id,
+        });
+      }
+      return result;
+    });
 
-  if (outcome.status === 'not_found') return { ok: false, code: 'NOT_FOUND' };
-  if (outcome.status === 'pack_unit_mismatch') return { ok: false, code: 'PACK_UNIT_MISMATCH' };
-  if (outcome.status === 'type_in_use') return { ok: false, code: 'INGREDIENT_TYPE_IN_USE' };
-  if (outcome.status === 'supplier_inactive') return { ok: false, code: 'SUPPLIER_INACTIVE' };
-  if (outcome.status === 'invalid_name') return { ok: false, code: 'INVALID_INPUT' };
-
-  revalidateIngredientConsumers();
-  revalidatePath('/suppliers');
-  return {
-    ok: true,
-    data: { ingredient: outcome.ingredient, supplierChange: outcome.supplierChange },
-  };
+    revalidateIngredientConsumers();
+    revalidatePath('/suppliers');
+    return {
+      ok: true,
+      data: { ingredient: outcome.ingredient, supplierChange: outcome.supplierChange },
+    };
+  } catch (error) {
+    if (error instanceof RollbackSave) return { ok: false, code: SAVE_FAILURE_CODE[(error.outcome as SaveFailure).status] };
+    return unexpected('updateIngredientEditorAction', error, organizationId);
+  }
 }
 
 /**
@@ -426,58 +451,59 @@ export async function setIngredientSupplierAction(
   const actor = await auditActor();
   // The VAT rate used to read an incl.-VAT quote is resolved server-side inside the
   // transaction (entry → ingredient → business default purchase VAT).
-  const outcome = await withOrg(organizationId, async (tx) => {
-    const result = await setDefaultSupplier(tx, organizationId, ingredientId, parsed.data, actor.userId);
-    if (result.status !== 'ok') return result;
-    if (result.priceApplied) {
+  try {
+    const outcome = await withOrg(organizationId, async (tx) => {
+      const result = await setDefaultSupplier(tx, organizationId, ingredientId, parsed.data, actor.userId);
+      if (result.status !== 'ok') throw new RollbackSave<SaveFailure>(result);
+      if (result.priceApplied) {
+        await writeAuditEvent(tx, organizationId, actor, {
+          action: 'ingredient.priceUpdate',
+          entityType: 'ingredient',
+          entityId: ingredientId,
+          metadata: { newPriceCents: result.appliedPriceCents, supplierId: result.supplier.id },
+        });
+      }
       await writeAuditEvent(tx, organizationId, actor, {
-        action: 'ingredient.priceUpdate',
+        action: 'ingredient.supplierSet',
         entityType: 'ingredient',
         entityId: ingredientId,
-        metadata: { newPriceCents: result.appliedPriceCents, supplierId: result.supplier.id },
+        metadata: {
+          supplierId: result.supplier.id,
+          packSize: result.link.packSize == null ? null : Number(result.link.packSize),
+          packUnit: result.link.packUnit,
+          unitsPerPack: result.link.unitsPerPack,
+          // The STORED whole-pack net price, not the raw quote.
+          packPriceCents: result.link.packPriceCents,
+          priceStatus: result.priceStatus,
+          pendingRaised: result.pendingRaised,
+        },
       });
-    }
-    await writeAuditEvent(tx, organizationId, actor, {
-      action: 'ingredient.supplierSet',
-      entityType: 'ingredient',
-      entityId: ingredientId,
-      metadata: {
-        supplierId: result.supplier.id,
-        packSize: result.link.packSize == null ? null : Number(result.link.packSize),
-        packUnit: result.link.packUnit,
-        unitsPerPack: result.link.unitsPerPack,
-        // The STORED whole-pack net price, not the raw quote.
-        packPriceCents: result.link.packPriceCents,
-        priceStatus: result.priceStatus,
-        pendingRaised: result.pendingRaised,
-      },
+      return result;
     });
-    return result;
-  });
 
-  if (outcome.status === 'not_found') return { ok: false, code: 'NOT_FOUND' };
-  if (outcome.status === 'supplier_inactive') return { ok: false, code: 'SUPPLIER_INACTIVE' };
-  if (outcome.status === 'invalid_name') return { ok: false, code: 'INVALID_INPUT' };
-  if (outcome.status === 'pack_unit_mismatch') return { ok: false, code: 'PACK_UNIT_MISMATCH' };
-  revalidateIngredientConsumers();
-  revalidatePath('/suppliers');
-  return {
-    ok: true,
-    data: {
-      priceStatus: outcome.priceStatus,
-      pendingRaised: outcome.pendingRaised,
-      link: {
-        supplierName: outcome.supplier.name,
-        packSize: outcome.link.packSize == null ? null : Number(outcome.link.packSize),
-        packUnit: outcome.link.packUnit,
-        packPriceCents: outcome.link.packPriceCents,
-        unitsPerPack: outcome.link.unitsPerPack,
-        supplierProductName: outcome.link.supplierProductName,
-        supplierSku: outcome.link.supplierSku,
-        vatRateBps: outcome.link.vatRateBps,
+    revalidateIngredientConsumers();
+    revalidatePath('/suppliers');
+    return {
+      ok: true,
+      data: {
+        priceStatus: outcome.priceStatus,
+        pendingRaised: outcome.pendingRaised,
+        link: {
+          supplierName: outcome.supplier.name,
+          packSize: outcome.link.packSize == null ? null : Number(outcome.link.packSize),
+          packUnit: outcome.link.packUnit,
+          packPriceCents: outcome.link.packPriceCents,
+          unitsPerPack: outcome.link.unitsPerPack,
+          supplierProductName: outcome.link.supplierProductName,
+          supplierSku: outcome.link.supplierSku,
+          vatRateBps: outcome.link.vatRateBps,
+        },
       },
-    },
-  };
+    };
+  } catch (error) {
+    if (error instanceof RollbackSave) return { ok: false, code: SAVE_FAILURE_CODE[(error.outcome as SaveFailure).status] };
+    return unexpected('setIngredientSupplierAction', error, organizationId);
+  }
 }
 
 const supplierIdentityLookupSchema = z.object({
@@ -504,6 +530,28 @@ export async function getSupplierProductIdentityAction(
     getSupplierProductIdentity(tx, organizationId, parsed.data.ingredientId, parsed.data.supplierName),
   );
   return { ok: true, data: identity };
+}
+
+/**
+ * The full entry (pack, price, VAT, product name and code) this ingredient has with a
+ * given supplier, so the editor shows THAT supplier's own numbers when the manager
+ * switches supplier. Read-only; MANAGER-ONLY — FORBIDDEN before data. `null` = not
+ * linked yet.
+ */
+export async function getSupplierEntryAction(
+  ingredientId: string,
+  supplierName: string,
+): Promise<ActionResult<DefaultSupplierSummary | null>> {
+  if (!(await isManager())) return { ok: false, code: 'FORBIDDEN' };
+
+  const parsed = supplierIdentityLookupSchema.safeParse({ ingredientId, supplierName });
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+
+  const organizationId = await getOrgId();
+  const entry = await withOrg(organizationId, (tx) =>
+    getSupplierEntry(tx, organizationId, parsed.data.ingredientId, parsed.data.supplierName),
+  );
+  return { ok: true, data: entry };
 }
 
 /**

@@ -6,7 +6,7 @@ import { ingredients, vatCategories } from '@/lib/db/schema';
 import type { TenantDb } from '@/lib/db/tenant';
 import { runInOrg } from '@/lib/db/tenant';
 import { createIngredient, getIngredientById } from '@/lib/data/ingredients';
-import { setDefaultSupplier } from '@/lib/data/ingredient-suppliers';
+import { loadDefaultLinksByIngredient, setDefaultSupplier } from '@/lib/data/ingredient-suppliers';
 import { setDefaultPurchaseVat } from '@/lib/data/org-settings';
 import {
   createVatCategory,
@@ -202,12 +202,12 @@ describe('setDefaultSupplier converts with the ingredient’s band', () => {
         ...quote,
       }),
     );
-    // No band and no business default purchase VAT: the supplier saves, the gross
-    // price can't be read (nothing is invented) and no cost is raised.
+    // No band and no business default purchase VAT: the gross price can't be read
+    // (nothing is invented), so the whole save is refused and no cost is raised.
     const unknown = await runInOrg(db, ORG_A, (tx) =>
       setDefaultSupplier(tx, ORG_A, flour, { supplierName: 'Mill Co', ...quote }),
     );
-    expect(unknown).toMatchObject({ status: 'ok', priceStatus: 'needs_vat' });
+    expect(unknown).toEqual({ status: 'vat_rate_required' });
     expect((await runInOrg(db, ORG_A, (tx) => getIngredientById(tx, ORG_A, flour)))?.pendingPriceCents).toBeNull();
 
     // Once the business configures a default purchase VAT, the same quote prices.
@@ -230,7 +230,7 @@ describe('setDefaultSupplier converts with the ingredient’s band', () => {
     expect(flourRow?.vatCategoryId).toBeNull();
   });
 
-  it('saves the supplier but not a gross price when no VAT is known anywhere', async () => {
+  it('refuses a gross price when no VAT is known anywhere, writing no link', async () => {
     const ingId = await newIngredient('org_empty', 'Salt');
     const result = await runInOrg(db, 'org_empty', (tx) =>
       setDefaultSupplier(tx, 'org_empty', ingId, {
@@ -241,8 +241,9 @@ describe('setDefaultSupplier converts with the ingredient’s band', () => {
         priceIncludesVat: true,
       }),
     );
-    expect(result).toMatchObject({ status: 'ok', priceStatus: 'needs_vat', vatRateBps: null });
-    if (result.status === 'ok') expect(result.link.packPriceCents).toBeNull();
+    expect(result).toEqual({ status: 'vat_rate_required' });
+    const links = await runInOrg(db, 'org_empty', (tx) => loadDefaultLinksByIngredient(tx, 'org_empty', [ingId]));
+    expect(links.size).toBe(0);
   });
 });
 

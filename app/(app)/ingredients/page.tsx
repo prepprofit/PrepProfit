@@ -17,6 +17,8 @@ import {
   type DefaultSupplierSummary,
 } from '@/lib/data/ingredient-suppliers';
 import { getOrgSettings } from '@/lib/data/org-settings';
+import { loadEquivalencyAnchorsByIngredient } from '@/lib/data/ingredient-uom';
+import type { UomAnchors } from '@/lib/calculations/uom';
 import { getProfilesForIngredients } from '@/lib/data/ingredient-nutrition';
 import { toNutritionView, type IngredientNutritionView } from '@/lib/nutrition/profile-view';
 import { listVatCategories, mostCommonPurchaseVatBps } from '@/lib/data/vat-categories';
@@ -85,6 +87,9 @@ export default async function IngredientsPage({
   // them, and kitchen never sees a price at all.
   let vatCategories: VatCategoryOption[] = [];
   const initialSupplierLinks: Record<string, DefaultSupplierSummary> = {};
+  // Each ingredient's own unit equivalency, so a volume pack on a weight ingredient
+  // converts only when a real equivalency exists (never 1 ml = 1 g).
+  const equivalencies: Record<string, UomAnchors> = {};
   // How each supplier quotes prices, remembered from the last time one of their packs
   // was saved, so the dialog's two selects prefill instead of being re-picked.
   const supplierPricePrefs: Record<string, SupplierPricePrefs> = {};
@@ -93,7 +98,7 @@ export default async function IngredientsPage({
   // the business has no configured default. Manager-only, like every other VAT input.
   let mostCommonVatBps: number | null = null;
   if (canSeeCosts) {
-    const [suppliers, links, bands, mostCommon] = await withOrg(organizationId, async (tx) => [
+    const [suppliers, links, bands, mostCommon, anchorMap] = await withOrg(organizationId, async (tx) => [
       await listSuppliersWithCounts(tx, organizationId),
       await loadDefaultLinksByIngredient(
         tx,
@@ -102,6 +107,11 @@ export default async function IngredientsPage({
       ),
       await listVatCategories(tx, organizationId),
       await mostCommonPurchaseVatBps(tx, organizationId),
+      await loadEquivalencyAnchorsByIngredient(
+        tx,
+        organizationId,
+        ingredientRows.map((r) => r.id),
+      ),
     ]);
     mostCommonVatBps = mostCommon;
     // Every supplier the business uses is selectable — records AND names already
@@ -123,6 +133,7 @@ export default async function IngredientsPage({
       };
     }
     for (const [id, link] of links) initialSupplierLinks[id] = link;
+    for (const [id, anchors] of anchorMap) equivalencies[id] = anchors;
   }
 
   // Type changes are refused while quantities use the current unit; the grid says why.
@@ -144,6 +155,7 @@ export default async function IngredientsPage({
         vatCategories={vatCategories}
         businessPurchaseVatBps={settings.defaultPurchaseVatBps ?? null}
         mostCommonPurchaseVatBps={mostCommonVatBps}
+        equivalencies={equivalencies}
         typeLocks={typeLocks}
         initialNutrition={initialNutrition}
         canEditNutrition={role === 'manager'}

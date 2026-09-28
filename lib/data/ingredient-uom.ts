@@ -61,6 +61,38 @@ export async function getIngredientUom(
   return { equivalency: equivalencies[0] ?? null, prepActions };
 }
 
+/**
+ * Batch loader (no N+1): each ingredient's equivalency anchors, for the ingredients
+ * that have one. The ingredient editor uses them to convert a volume/count pack to the
+ * ingredient's own unit only when a real equivalency exists.
+ */
+export async function loadEquivalencyAnchorsByIngredient(
+  db: TenantClient,
+  organizationId: string,
+  ingredientIds: string[],
+): Promise<Map<string, UomAnchors>> {
+  const map = new Map<string, UomAnchors>();
+  if (ingredientIds.length === 0) return map;
+  const rows = await db
+    .select({
+      ingredientId: ingredientUomEquivalencies.ingredientId,
+      weightGrams: ingredientUomEquivalencies.weightGrams,
+      volumeMl: ingredientUomEquivalencies.volumeMl,
+      eachCount: ingredientUomEquivalencies.eachCount,
+    })
+    .from(ingredientUomEquivalencies)
+    .where(
+      and(
+        eq(ingredientUomEquivalencies.organizationId, organizationId),
+        inArray(ingredientUomEquivalencies.ingredientId, [...new Set(ingredientIds)]),
+      ),
+    );
+  for (const r of rows) {
+    map.set(r.ingredientId, { weightGrams: r.weightGrams, volumeMl: r.volumeMl, eachCount: r.eachCount });
+  }
+  return map;
+}
+
 /** Batch loader (no N+1): UoM state for many ingredients at once. */
 export async function loadIngredientUomByIngredient(
   db: TenantClient,
