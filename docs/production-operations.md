@@ -119,7 +119,13 @@ the second layer of defense exists.
   Pass it inline — it is **not** the string in Coolify.
 - **Verify after deploy**: confirm `drizzle.__drizzle_migrations` max `created_at` matches the
   newest migration, and spot-check the new columns/tables + that RLS is `enabled + forced`.
-- Current head: **0053** (`0052_supplier_vat_defaults`: `ingredient_suppliers.vat_rate_bps` +
+- **Apply BEFORE pushing a commit that reads a new column.** Coolify deploys on push and does
+  not migrate. On 2026-09-26 `7ce5484` shipped selecting `recipes.display_unit` (migration
+  0056) before 0056 was applied: every Drizzle `select()` names all columns, so `/recipes`
+  failed with `column "display_unit" does not exist` (Postgres `42703`) until the migration
+  was applied. `tests/schema-migration-drift.test.ts` catches schema columns with no
+  migration; it cannot see an unapplied prod DB, so the ordering above is the guard.
+- Historical note — head at Sprint 3.x was **0053** (`0052_supplier_vat_defaults`: `ingredient_suppliers.vat_rate_bps` +
   `organization_settings.default_purchase_vat_bps`; `0053_recipe_yield_model`:
   `recipes.yield_weight_source` / `yield_review_needed`, flags recipes with a non-100 yield
   for review and backfills a calculated finished weight for all-gram recipes). The app
@@ -267,7 +273,7 @@ as every one of them purges data or sends real email.
 - [ ] All env vars set in Coolify, `NEXT_PUBLIC_*` ticked as Build Variables; a fresh
       deploy is green and `curl -s https://prepprofit.com/sign-in | grep -o 'pk_[a-z]*_'`
       returns `pk_live_`.
-- [ ] Migrations applied + verified (head 0053); RLS enabled + forced on every business table.
+- [ ] Migrations applied + verified (head = newest file in `drizzle/`, currently 0056); RLS enabled + forced on every business table.
 - [ ] All six Scheduled Tasks exist with the full `node -e …` command; `ai-cost-report`
       returns 200 on a manual run.
 - [ ] Clerk webhook endpoint on the **apex** + secret set; a `user.created` test event is accepted.
