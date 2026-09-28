@@ -8,19 +8,6 @@ import { countNeedsPricing } from '@/lib/data/ingredients';
 import { getTrialView } from '@/lib/trial';
 import { getEffectiveEntitlementState } from '@/lib/entitlements';
 import { readActivationSnapshot } from '@/lib/data/activation';
-import {
-  buildSidebarAiMeterView,
-  getAiUsageThisMonth,
-  type SidebarAiMeterView,
-} from '@/lib/data/ai-usage';
-
-// Cached on the layout side (not in `lib/data/*`, which stays React-free) so the single
-// server read is shared with any other per-request caller and never duplicated. Reads
-// every metered feature so the sidebar meter can page left/right through them.
-const getSidebarAiMeterView = cache(
-  async (): Promise<SidebarAiMeterView | null> =>
-    buildSidebarAiMeterView(await getAiUsageThisMonth()),
-);
 
 // One org transaction for all DB-backed manager layout data (activation snapshot
 // for Flows + the needs-pricing sidebar badge) instead of two serial `withOrg`s.
@@ -44,17 +31,16 @@ export default async function AppLayout({
   const role = await getUserRole();
   const canSeeFinance = canAccessFinancials(role);
 
-  // Trial surfaces, the AI meter, and the Flows onboarding payload are manager-only.
+  // Trial surfaces and the Flows onboarding payload are manager-only.
   // Kitchen staff never see checkout/upgrade/onboarding CTAs in v1, so we skip the reads
   // (incl. the entitlement + activation reads) entirely for them.
-  const [trial, sidebarAiMeter, entitlement, dbSnapshot] = canSeeFinance
+  const [trial, entitlement, dbSnapshot] = canSeeFinance
     ? await Promise.all([
         getTrialView(),
-        getSidebarAiMeterView(),
         getEffectiveEntitlementState(),
         getManagerLayoutDbSnapshot(),
       ])
-    : [null, null, null, null];
+    : [null, null, null];
   const activation = dbSnapshot?.activation ?? null;
   // Sidebar "Ingredients" badge: how many active ingredients still need a price.
   // Manager-only (pricing is financial); kitchen gets no badge and no extra read.
@@ -82,7 +68,6 @@ export default async function AppLayout({
       <AppShell
         canSeeFinance={canSeeFinance}
         trial={trial}
-        sidebarAiMeter={sidebarAiMeter}
         lowestPaidPrice={lowestPaidPrice}
         needsPricingCount={needsPricingCount}
       >

@@ -45,6 +45,11 @@ import type { UomAnchors } from '@/lib/calculations/uom';
 import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
 import type { IngredientTypeLock, IngredientUsage } from '@/lib/data/ingredients';
 import { restoreIngredientAction } from '@/app/(app)/trash/actions';
+import {
+  listScrollContainer,
+  readIngredientListView,
+  saveIngredientListView,
+} from '@/lib/ingredients/list-view-state';
 
 type Dimension = Ingredient['dimension'];
 
@@ -261,6 +266,27 @@ export function IngredientGrid({
   // open and hand back to it on close, so popups never stack.
   const [detailsId, setDetailsId] = React.useState<string | null>(null);
   const [supplierEditId, setSupplierEditId] = React.useState<string | null>(null);
+  // Returning from a recipe opened out of the details popup: Back lands on the same
+  // history entry, so search, sort, scroll and the open popup come back with it.
+  const [pendingScroll, setPendingScroll] = React.useState<number | null>(null);
+  React.useLayoutEffect(() => {
+    const view = readIngredientListView();
+    if (!view) return;
+    setQuery(view.query);
+    setSort(view.sort);
+    if (view.detailsId && initialIngredients.some((r) => r.id === view.detailsId)) {
+      setDetailsId(view.detailsId);
+    }
+    setPendingScroll(view.scrollTop);
+    // Mount-only by design: the parked view belongs to this history entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  React.useLayoutEffect(() => {
+    if (pendingScroll === null) return;
+    const main = listScrollContainer();
+    if (main) main.scrollTop = pendingScroll;
+    setPendingScroll(null);
+  }, [pendingScroll]);
   // Which entry point opened the unified editor (pencil vs. the supplier shortcut)
   // — steers initial focus only; both open the exact same dialog.
   const [editorFocus, setEditorFocus] = React.useState<'name' | 'supplier'>('name');
@@ -402,6 +428,14 @@ export function IngredientGrid({
     setSupplierEditId(id);
   }, []);
   const viewDetails = React.useCallback((id: string) => setDetailsId(id), []);
+  const parkListView = React.useCallback(() => {
+    saveIngredientListView({
+      query,
+      sort,
+      scrollTop: listScrollContainer()?.scrollTop ?? 0,
+      detailsId,
+    });
+  }, [query, sort, detailsId]);
   const closeDetails = React.useCallback(() => {
     const id = detailsId;
     setDetailsId(null);
@@ -736,6 +770,7 @@ export function IngredientGrid({
           onEditSupplier={() => editSupplier(detailsTarget.id)}
           onEditNutrition={() => setNutritionEditId(detailsTarget.id)}
           onEditAllergens={() => setAllergenEditId(detailsTarget.id)}
+          onOpenRecipe={parkListView}
           onClose={closeDetails}
         />
       )}

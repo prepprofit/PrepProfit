@@ -14,13 +14,15 @@ import {
 } from '@/components/ui/card';
 import { useActionError } from '@/lib/i18n/use-action-error';
 import type { ActionErrorCode } from '@/lib/action-result';
+import type { ImportAllowance } from '@/lib/data/ai-usage';
+import { ImportAllowanceLine } from '@/components/app/import/import-allowance-line';
 
 /**
  * Invoice upload (Sprint 2). Posts the chosen image/PDF to the manager-only upload
  * route, then navigates to the review workbench for the created draft import. All
  * validation + metering happens on the server; this only surfaces progress + errors.
  */
-export function InvoiceUpload() {
+export function InvoiceUpload({ allowance }: { allowance: ImportAllowance | null }) {
   const t = useTranslations('suppliers.invoices.upload');
   const actionError = useActionError();
   const router = useRouter();
@@ -79,6 +81,7 @@ export function InvoiceUpload() {
             {uploading ? t('uploading') : t('choose')}
           </Button>
         </div>
+        <ImportAllowanceLine method="invoice" allowance={allowance} />
         <p className="text-xs text-muted-foreground">{t('supported')}</p>
         <p className="text-xs text-muted-foreground">{t('safety')}</p>
         {error && (

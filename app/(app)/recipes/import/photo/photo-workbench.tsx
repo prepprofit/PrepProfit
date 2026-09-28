@@ -52,7 +52,8 @@ import {
   countDimensionMismatches,
 } from '@/app/(app)/import/recipe-resolution';
 import type { IngredientOption } from '@/lib/data/ingredients';
-import type { AiUsageRow } from '@/lib/data/ai-usage';
+import type { ImportAllowance } from '@/lib/data/ai-usage';
+import { ImportAllowanceLine } from '@/components/app/import/import-allowance-line';
 
 const ISSUE_DISPLAY_LIMIT = 50;
 
@@ -85,26 +86,36 @@ function deriveQuantity(text: string): number | null {
 export function PhotoImportWorkbench({
   measurementSystem,
   ingredientOptions,
-  photoUsage,
+  photoAllowance,
 }: {
   measurementSystem: MeasurementSystem;
   ingredientOptions: IngredientOption[];
-  photoUsage: AiUsageRow;
+  /** `null` = usage could not be loaded (rendered as unavailable, never as zero). */
+  photoAllowance: ImportAllowance | null;
 }) {
   const [resetKey, setResetKey] = useState(0);
-  // Live availability lives HERE (not in PhotoFlow) so it survives "Start over",
-  // which remounts PhotoFlow via `key`. Decremented once per successful extraction so
-  // a second upload in the same session reflects the slot already spent. The server
-  // hint is the seed; the upload route stays the real cap authority.
-  const [availableNow, setAvailableNow] = useState(photoUsage.availableNow);
+  // Live allowance lives HERE (not in PhotoFlow) so it survives "Start over", which
+  // remounts PhotoFlow via `key`. Advanced once per successful extraction so a second
+  // upload in the same session reflects the slot already spent. The server value is the
+  // seed; the upload route stays the real cap authority.
+  const [allowance, setAllowance] = useState<ImportAllowance | null>(photoAllowance);
   return (
     <PhotoFlow
       key={resetKey}
       measurementSystem={measurementSystem}
       ingredientOptions={ingredientOptions}
-      availableNow={availableNow}
-      usageLimit={photoUsage.limit}
-      onExtracted={() => setAvailableNow((n) => Math.max(0, n - 1))}
+      allowance={allowance}
+      onExtracted={() =>
+        setAllowance((a) =>
+          a
+            ? {
+                ...a,
+                used: a.used + 1,
+                availableNow: Math.max(0, a.availableNow - 1),
+              }
+            : a,
+        )
+      }
       onStartOver={() => setResetKey((k) => k + 1)}
     />
   );
@@ -113,15 +124,13 @@ export function PhotoImportWorkbench({
 function PhotoFlow({
   measurementSystem,
   ingredientOptions,
-  availableNow,
-  usageLimit,
+  allowance,
   onExtracted,
   onStartOver,
 }: {
   measurementSystem: MeasurementSystem;
   ingredientOptions: IngredientOption[];
-  availableNow: number;
-  usageLimit: number;
+  allowance: ImportAllowance | null;
   onExtracted: () => void;
   onStartOver: () => void;
 }) {
@@ -402,12 +411,8 @@ function PhotoFlow({
               {t('upload.chooseFromGallery')}
             </Button>
           </div>
-          {/* Proactive quota hint — display only; the upload route enforces the cap. */}
-          <p className="text-xs text-muted-foreground">
-            {availableNow <= 0
-              ? t('upload.usageExhausted', { limit: usageLimit })
-              : t('upload.usageLeft', { available: availableNow, limit: usageLimit })}
-          </p>
+          {/* Proactive allowance line — display only; the upload route enforces the cap. */}
+          <ImportAllowanceLine method="photo" allowance={allowance} />
           {selectedFile && (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <CheckCircle2 className="size-4 text-accent-600" />

@@ -37,8 +37,6 @@ import {
 } from 'lucide-react';
 import { navGroups, topItems, type NavKey, type NavGroupKey } from '@/lib/nav';
 import { clerkAppearance } from '@/lib/clerk-appearance';
-import { SidebarAiMeter } from './trial/sidebar-ai-meter';
-import type { SidebarAiMeterView } from '@/lib/data/ai-usage';
 import { cn } from '@/lib/utils';
 
 const icons: Record<NavKey, LucideIcon> = {
@@ -86,7 +84,6 @@ export function Sidebar({
   canSeeFinance = true,
   collapsed = false,
   onToggleCollapse,
-  sidebarAiMeter,
   needsPricingCount = 0,
 }: {
   className?: string;
@@ -100,8 +97,6 @@ export function Sidebar({
   collapsed?: boolean;
   /** Provided only for the desktop rail; renders the collapse toggle when set. */
   onToggleCollapse?: () => void;
-  /** Manager-only photo-extraction usage meter; shown expanded-only in the footer. */
-  sidebarAiMeter?: SidebarAiMeterView | null;
   /** Active ingredients still needing a price — amber badge on the Ingredients row. */
   needsPricingCount?: number;
 }) {
@@ -356,11 +351,6 @@ export function Sidebar({
 
       {showFooter && (
         <div className="flex flex-col gap-2 border-t border-border p-3">
-          {/* Photo-extraction usage meter — manager-only, expanded rail only (the
-              icon rail keeps its compact footer). Serializable view built server-side. */}
-          {canSeeFinance && !collapsed && sidebarAiMeter && (
-            <SidebarAiMeter view={sidebarAiMeter} onNavigate={onNavigate} />
-          )}
           {/* Settings + Plans & billing live in the top-bar user menu; Trash and
               Import stay here. Trash is manager-only (financial records +
               destructive purges); the server enforces the page + every action. */}

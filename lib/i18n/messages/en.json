@@ -1267,6 +1267,18 @@
         "edit": "Edit supplier",
         "add": "Set supplier"
       },
+      "usage": {
+        "title": "Used in recipes",
+        "loading": "Loading…",
+        "count": "{count, plural, one {# recipe} other {# recipes}}",
+        "empty": "Not used in any recipes yet",
+        "loadFailedShort": "Couldn’t load",
+        "loadFailed": "We couldn’t load the recipes that use this ingredient. That’s a loading problem — it doesn’t mean the ingredient is unused.",
+        "retry": "Try again",
+        "via": "Via {name}",
+        "viaMany": "Via {name} and {count, plural, one {# other sub-recipe} other {# other sub-recipes}}",
+        "viaNote": "“Via” means the ingredient is inside a sub-recipe used by that recipe, not entered on the recipe directly."
+      },
       "nutrition": {
         "title": "Nutrition",
         "source": "Source",
@@ -1639,8 +1651,6 @@
         "chooseFromGallery": "Choose from gallery",
         "cta": "Extract recipe",
         "extracting": "Reading the photo…",
-        "usageLeft": "{available} of {limit} photo extractions left this month.",
-        "usageExhausted": "You've used all {limit} photo extractions this month. They reset at the start of next month.",
         "progress": {
           "title": "Reading your recipe…",
           "hint": "This usually takes 15–20 seconds. Please keep this tab open.",
@@ -2193,6 +2203,33 @@
     "noAccess": {
       "title": "Managers only",
       "body": "Importing creates financial and inventory records, so it is available to managers only. Ask an organization manager if you need to import data."
+    },
+    "allowance": {
+      "method": {
+        "photo": "Photo imports",
+        "invoice": "Invoice imports"
+      },
+      "line": "{label}: {used} of {limit} used this month",
+      "resets": "Resets {date}",
+      "exhausted": "{label}: all {limit} used this month. No more can be started until your allowance resets on {date}.",
+      "inFlight": "{label}: {used} of {limit} used. The remaining imports are still being processed — try again in a moment.",
+      "notIncluded": "{label} aren’t included in your current plan.",
+      "unavailable": "{label}: usage couldn’t be loaded right now. Your monthly limit still applies when you upload.",
+      "managePlan": "Manage plan"
+    },
+    "aiMethods": {
+      "title": "Import from a photo or document",
+      "subtitle": "AI reads the file and stages a draft for you to review. Nothing is created until you confirm.",
+      "photo": {
+        "title": "Recipe photo",
+        "body": "Turn a photo of a printed or handwritten recipe into a reviewable recipe draft.",
+        "cta": "Import a recipe photo"
+      },
+      "invoice": {
+        "title": "Supplier invoice",
+        "body": "Read line items and prices from a supplier invoice (photo or PDF) for review.",
+        "cta": "Import a supplier invoice"
+      }
     },
     "entity": {
       "label": "What do you want to import?",
@@ -3154,11 +3191,6 @@
     "banner": {
       "body": "You have {daysLabel} to try the paid features. Upgrade anytime from {price}/month.",
       "cta": "Upgrade"
-    },
-    "sidebar": {
-      "title": "AI usage this month",
-      "managePlan": "Manage plan",
-      "upgrade": "Upgrade"
     }
   },
   "flowsOnboarding": {

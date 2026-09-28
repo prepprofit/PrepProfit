@@ -8,7 +8,6 @@ import { TopBar } from './top-bar';
 import { CommandPalette } from './command-palette';
 import { TrialTopBanner } from './trial/trial-top-banner';
 import type { TrialView } from '@/lib/trial';
-import type { SidebarAiMeterView } from '@/lib/data/ai-usage';
 import { cn } from '@/lib/utils';
 
 /**
@@ -20,7 +19,6 @@ export function AppShell({
   children,
   canSeeFinance,
   trial,
-  sidebarAiMeter,
   lowestPaidPrice,
   needsPricingCount = 0,
 }: {
@@ -29,8 +27,6 @@ export function AppShell({
   canSeeFinance: boolean;
   /** Active reverse-trial view (manager-only); `null` disables the top banner. */
   trial: TrialView | null;
-  /** Photo-extraction usage meter for the expanded sidebar footer (manager-only). */
-  sidebarAiMeter: SidebarAiMeterView | null;
   /** Lowest paid price label for the banner copy (empty for kitchen). */
   lowestPaidPrice: string;
   /** Active ingredients still needing a price — badge on the Ingredients nav row. */
@@ -124,7 +120,6 @@ export function AppShell({
         canSeeFinance={canSeeFinance}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
-        sidebarAiMeter={sidebarAiMeter}
         needsPricingCount={needsPricingCount}
       />
 
@@ -155,8 +150,7 @@ export function AppShell({
             className="h-full"
             onNavigate={() => setOpen(false)}
             canSeeFinance={canSeeFinance}
-            sidebarAiMeter={sidebarAiMeter}
-            needsPricingCount={needsPricingCount}
+                needsPricingCount={needsPricingCount}
           />
         </div>
       </div>

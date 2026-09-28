@@ -11,6 +11,7 @@ import {
   monthStartUtc,
 } from '@/lib/data/ai-extraction';
 import { countOperationUsageByFeatureSince } from '@/lib/data/ai-operation-attempts';
+import { logError } from '@/lib/observability';
 
 /**
  * Server read model for the AI USAGE METER (used / remaining per feature this month).
@@ -114,114 +115,65 @@ export async function getAiUsageThisMonth(
 }
 
 /**
- * Just the photo-extraction row (the inline hint on `/recipes/import/photo`). One
- * entitlement read + one ledger read inside `withOrg`, so the page pays no cost for the
- * five operation features it does not show.
+ * One import method's allowance for the import workflow (client-safe: plain values, the
+ * reset instant as an ISO string). DISPLAY only — the upload routes remain the cap
+ * authority. `availableNow` (limit − used − in-flight) is what the "can I start one
+ * right now?" copy uses, so it never promises a slot that is already reserved.
  */
-export async function getPhotoExtractionUsageThisMonth(
-  now: Date = new Date(),
-): Promise<AiUsageRow> {
-  const organizationId = await getOrgId();
-  const limits = await allAiMonthlyLimits();
-  const monthStart = monthStartUtc(now);
-  const counts = await withOrg(organizationId, (tx) =>
-    countExtractionUsageSince(tx, organizationId, monthStart, now),
-  );
-  return buildUsageRow(
-    'photo_recipe_extraction',
-    counts,
-    limits.photo_recipe_extraction.limit,
-  );
-}
-
-/** Photo-extraction usage + the tier/source/reset context the sidebar meter needs. */
-export type PhotoExtractionUsageSummary = {
-  tier: PlanTier;
-  source: EntitlementSource;
-  /** First instant of the next UTC month — when the counter resets. */
-  resetAt: Date;
-  row: AiUsageRow;
-};
-
-/**
- * Photo-extraction usage for the SIDEBAR meter (one row, plus the tier/source needed to
- * pick its CTA). Reads only the effective photo limit + the extraction ledger inside one
- * `withOrg` transaction — it deliberately never touches the five operation features, so
- * the meter costs one cheap read per navigation instead of the full billing meter.
- */
-export async function getPhotoExtractionUsageSummaryThisMonth(
-  now: Date = new Date(),
-): Promise<PhotoExtractionUsageSummary> {
-  const organizationId = await getOrgId();
-  const limits = await allAiMonthlyLimits();
-  const monthStart = monthStartUtc(now);
-  const counts = await withOrg(organizationId, (tx) =>
-    countExtractionUsageSince(tx, organizationId, monthStart, now),
-  );
-  const photo = limits.photo_recipe_extraction;
-  return {
-    tier: photo.tier,
-    source: photo.source,
-    resetAt: nextMonthResetUtc(now),
-    row: buildUsageRow('photo_recipe_extraction', counts, photo.limit),
-  };
-}
-
-/** One metered feature's slice of the sidebar meter (client-safe). */
-export type SidebarAiMeterFeature = {
-  feature: AiUsageFeature;
+export type ImportAllowance = {
+  feature: ImportAllowanceFeature;
   used: number;
   limit: number;
-  remaining: number;
   availableNow: number;
-  /** `used / limit` clamped to 0..100 for the bar. */
-  percent: number;
+  /** ISO instant of the next UTC month start — when the counter resets. */
+  resetAt: string;
 };
 
-/** Serializable view for the sidebar AI-usage meter (client-safe). */
-export type SidebarAiMeterView = {
-  source: EntitlementSource;
-  /**
-   * Source-driven upsell: trial/free → `Upgrade` to `/pricing`, paid → `Manage plan` to
-   * `/billing`, comped → none (no plan to buy).
-   */
-  cta: null | { labelKey: 'upgrade' | 'managePlan'; href: '/pricing' | '/billing' };
-  /**
-   * One entry per metered feature the plan actually grants (`limit > 0`), in display
-   * order. Always non-empty (the builder returns `null` when there is nothing to show),
-   * so the sidebar meter can page left/right through them.
-   */
-  features: SidebarAiMeterFeature[];
-};
+/** The AI-assisted import methods that carry their own monthly allowance. */
+export const IMPORT_ALLOWANCE_FEATURES = [
+  'photo_recipe_extraction',
+  'supplier_invoice_extraction',
+] as const;
+export type ImportAllowanceFeature = (typeof IMPORT_ALLOWANCE_FEATURES)[number];
 
 /**
- * Pure projection of the full {@link AiUsageSummary} into the sidebar meter view.
- * Returns `null` when the plan grants no metered allowance (every `limit <= 0`) so the
- * footer meter simply doesn't render. `percent` clamps at 100 even after a downgrade
- * left `used > limit`; the CTA follows the entitlement source.
+ * Pure projection of the full meter into per-import-method allowances. A method whose
+ * row is missing yields `null` ("unknown") — callers must render that as unavailable,
+ * never as zero used or unlimited.
  */
-export function buildSidebarAiMeterView(
+export function buildImportAllowances(
   summary: AiUsageSummary,
-): SidebarAiMeterView | null {
-  const visible = summary.rows.filter((row) => row.limit > 0);
-  if (visible.length === 0) return null;
-  const { source } = summary;
-  const cta =
-    source === 'comped'
-      ? null
-      : source === 'paid'
-        ? ({ labelKey: 'managePlan', href: '/billing' } as const)
-        : ({ labelKey: 'upgrade', href: '/pricing' } as const);
-  return {
-    source,
-    cta,
-    features: visible.map((row) => ({
-      feature: row.feature,
+): Record<ImportAllowanceFeature, ImportAllowance | null> {
+  const pick = (feature: ImportAllowanceFeature): ImportAllowance | null => {
+    const row = summary.rows.find((r) => r.feature === feature);
+    if (!row) return null;
+    return {
+      feature,
       used: row.used,
       limit: row.limit,
-      remaining: row.remaining,
       availableNow: row.availableNow,
-      percent: Math.min(100, Math.round((row.used / row.limit) * 100)),
-    })),
+      resetAt: summary.resetAt.toISOString(),
+    };
   };
+  return {
+    photo_recipe_extraction: pick('photo_recipe_extraction'),
+    supplier_invoice_extraction: pick('supplier_invoice_extraction'),
+  };
+}
+
+/**
+ * Allowances for the import workflow (the /import page and each AI import page). One
+ * entitlement read + both ledger reads, org-scoped through `getAiUsageThisMonth`. If the
+ * read fails the error is logged and every method comes back `null` (unavailable) — the
+ * page still renders, and server-side limit enforcement is unaffected.
+ */
+export async function getImportAllowances(
+  now: Date = new Date(),
+): Promise<Record<ImportAllowanceFeature, ImportAllowance | null>> {
+  try {
+    return buildImportAllowances(await getAiUsageThisMonth(now));
+  } catch (err) {
+    logError({ action: 'getImportAllowances' }, err);
+    return { photo_recipe_extraction: null, supplier_invoice_extraction: null };
+  }
 }

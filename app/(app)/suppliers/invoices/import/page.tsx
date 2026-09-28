@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { canAccessFinancials, getUserRole } from '@/lib/auth';
+import { getImportAllowances } from '@/lib/data/ai-usage';
 import { NoAccess } from '@/components/app/no-access';
 import { InvoiceUpload } from './upload-client';
 
@@ -17,10 +18,13 @@ export default async function SupplierInvoiceImportPage() {
     return <NoAccess title={t('noAccess.title')} body={t('noAccess.body')} />;
   }
 
+  // Display-only allowance; the upload route enforces the cap. `null` = load failed.
+  const { supplier_invoice_extraction: allowance } = await getImportAllowances();
+
   return (
     <div className="flex flex-col gap-5">
       <p className="text-sm text-muted-foreground">{t('upload.subtitle')}</p>
-      <InvoiceUpload />
+      <InvoiceUpload allowance={allowance} />
     </div>
   );
 }

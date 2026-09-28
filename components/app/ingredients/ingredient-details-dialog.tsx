@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { ChevronDown, X } from 'lucide-react';
 import { ALLERGEN_CATALOG } from '@/lib/allergens/catalog';
 import { NUTRIENT_KEYS } from '@/lib/calculations/nutrition';
@@ -15,6 +16,8 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { NUTRIENT_UNIT } from '@/components/app/ingredients/ingredient-nutrition-dialog';
 import type { AllergenTag } from '@/lib/data/allergens';
+import type { IngredientRecipeUsageResult } from '@/lib/data/ingredient-recipe-usage';
+import { getIngredientRecipeUsageAction } from '@/app/(app)/ingredients/actions';
 import type { DefaultSupplierSummary } from '@/lib/data/ingredient-suppliers';
 import {
   formatUpdated,
@@ -22,7 +25,13 @@ import {
   type VatCategoryOption,
 } from '@/components/app/ingredients/ingredient-grid';
 
-type Section = 'supplier' | 'nutrition' | 'allergens' | 'notes';
+type Section = 'supplier' | 'usage' | 'nutrition' | 'allergens' | 'notes';
+
+/** Loading, failed and empty are three different things — never conflated. */
+type UsageState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; data: IngredientRecipeUsageResult };
 
 const isPackUnit = (unit: string | null): unit is Unit =>
   unit !== null && (PACK_UNITS as readonly string[]).includes(unit);
@@ -57,6 +66,7 @@ export function IngredientDetailsDialog({
   onEditSupplier,
   onEditNutrition,
   onEditAllergens,
+  onOpenRecipe,
   onClose,
 }: {
   open: boolean;
@@ -74,6 +84,8 @@ export function IngredientDetailsDialog({
   onEditSupplier: () => void;
   onEditNutrition: () => void;
   onEditAllergens: () => void;
+  /** Called just before following a recipe link, so the list can park its browsing state. */
+  onOpenRecipe: () => void;
   onClose: () => void;
 }) {
   const t = useTranslations('ingredients.details');
@@ -88,6 +100,7 @@ export function IngredientDetailsDialog({
   const sectionId = React.useId();
   const [expanded, setExpanded] = React.useState<Record<Section, boolean>>({
     supplier: false,
+    usage: false,
     nutrition: false,
     allergens: false,
     notes: false,
@@ -100,8 +113,52 @@ export function IngredientDetailsDialog({
     else if (!open && el.open) el.close();
   }, [open]);
 
-  const toggle = (section: Section) =>
+  // Where-used: fetched when the popup opens (so the count is in the header), and
+  // silently refreshed on re-open, on expand and when the tab regains focus, so a
+  // recipe changed elsewhere never leaves a stale list behind.
+  const [usage, setUsage] = React.useState<UsageState>({ status: 'loading' });
+  const usageRequest = React.useRef(0);
+  const ingredientId = row.id;
+  const loadUsage = React.useCallback(
+    async (silent: boolean) => {
+      const request = ++usageRequest.current;
+      if (!silent) setUsage({ status: 'loading' });
+      let next: UsageState;
+      try {
+        const res = await getIngredientRecipeUsageAction(ingredientId);
+        next = res.ok ? { status: 'ready', data: res.data } : { status: 'error' };
+      } catch {
+        next = { status: 'error' };
+      }
+      if (request !== usageRequest.current) return; // a newer request superseded this one
+      // A failed background refresh keeps the last good list instead of replacing it.
+      setUsage((prev) => (silent && next.status === 'error' && prev.status === 'ready' ? prev : next));
+    },
+    [ingredientId],
+  );
+  const loadedOnce = React.useRef(false);
+  React.useEffect(() => {
+    if (!open) return;
+    void loadUsage(loadedOnce.current);
+    loadedOnce.current = true;
+  }, [open, loadUsage]);
+  React.useEffect(() => {
+    if (!open) return;
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void loadUsage(true);
+    };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [open, loadUsage]);
+
+  const toggle = (section: Section) => {
+    if (section === 'usage' && !expanded.usage) void loadUsage(true);
     setExpanded((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
 
   const pricedUnit = PRICED_UNIT_LABEL[row.dimension];
   const notAdded = t('notAdded');
@@ -126,6 +183,16 @@ export function IngredientDetailsDialog({
           })
         : formatInUnit(supplierLink.packSize, supplierLink.packUnit)
       : null;
+
+  // ── Used in recipes ─────────────────────────────────────────────────────
+  const usageSummary =
+    usage.status === 'loading'
+      ? t('usage.loading')
+      : usage.status === 'error'
+        ? t('usage.loadFailedShort')
+        : usage.data.count === 0
+          ? t('usage.empty')
+          : t('usage.count', { count: usage.data.count });
 
   // ── Nutrition ───────────────────────────────────────────────────────────
   const nutritionStatus = nutritionViewStatus(nutrition);
@@ -242,6 +309,64 @@ export function IngredientDetailsDialog({
                 {supplierLink ? t('supplier.edit') : t('supplier.add')}
               </Button>
             ) : null}
+          </CollapsibleSection>
+
+          {/* Used in recipes — direct lines and sub-recipe (nested) usage */}
+          <CollapsibleSection
+            id={`${sectionId}-usage`}
+            title={t('usage.title')}
+            summary={usageSummary}
+            summaryTone={usage.status === 'error' ? 'warning' : 'default'}
+            open={expanded.usage}
+            onToggle={() => toggle('usage')}
+          >
+            {usage.status === 'loading' ? (
+              <p className="text-base text-muted-foreground" role="status">
+                {t('usage.loading')}
+              </p>
+            ) : usage.status === 'error' ? (
+              <div className="flex flex-col gap-2" role="alert">
+                <p className="text-base text-amber-800 dark:text-amber-300">{t('usage.loadFailed')}</p>
+                <Button type="button" variant="outline" className="w-fit" onClick={() => void loadUsage(false)}>
+                  {t('usage.retry')}
+                </Button>
+              </div>
+            ) : usage.data.count === 0 ? (
+              <p className="text-base text-muted-foreground">{t('usage.empty')}</p>
+            ) : (
+              <>
+                <ul className="flex max-h-64 flex-col divide-y divide-border/60 overflow-y-auto">
+                  {usage.data.recipes.map((recipe) => (
+                    <li key={recipe.id} className="flex flex-col gap-0.5 py-2">
+                      <Link
+                        href={`/recipes/${recipe.id}`}
+                        onClick={(e) => {
+                          if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) onOpenRecipe();
+                        }}
+                        className="w-fit max-w-full break-words text-base font-medium text-accent-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-accent-300"
+                      >
+                        {recipe.name}
+                      </Link>
+                      {recipe.folderPath.length > 0 ? (
+                        <span className="break-words text-sm text-muted-foreground">
+                          {recipe.folderPath.join(' › ')}
+                        </span>
+                      ) : null}
+                      {recipe.via.length > 0 ? (
+                        <span className="break-words text-sm text-muted-foreground">
+                          {recipe.via.length === 1
+                            ? t('usage.via', { name: recipe.via[0] ?? '' })
+                            : t('usage.viaMany', { name: recipe.via[0] ?? '', count: recipe.via.length - 1 })}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                {usage.data.recipes.some((r) => r.via.length > 0) ? (
+                  <p className="text-sm text-muted-foreground">{t('usage.viaNote')}</p>
+                ) : null}
+              </>
+            )}
           </CollapsibleSection>
 
           {/* Nutrition */}

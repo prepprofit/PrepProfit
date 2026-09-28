@@ -33,6 +33,10 @@ import {
 } from '@/lib/data/ingredient-suppliers';
 import { auditActor, writeAuditEvent } from '@/lib/data/audit';
 import {
+  loadIngredientRecipeUsage,
+  type IngredientRecipeUsageResult,
+} from '@/lib/data/ingredient-recipe-usage';
+import {
   ingredientEditorSchema,
   ingredientSchema,
   kitchenIngredientSchema,
@@ -581,4 +585,28 @@ export async function clearIngredientSupplierAction(
   revalidateIngredientConsumers();
   revalidatePath('/suppliers');
   return { ok: true, data: undefined };
+}
+
+/**
+ * "Used in recipes" for the ingredient details view: unique active recipes that use the
+ * ingredient directly or through sub-recipes (names + folder paths only, no money), so
+ * it is open to kitchen and managers alike. Read-only and org-scoped; `NOT_FOUND` when
+ * the ingredient is not an active ingredient of this org, so the UI can tell that apart
+ * from a genuinely empty result and from a failed load (`UNEXPECTED`).
+ */
+export async function getIngredientRecipeUsageAction(
+  ingredientId: unknown,
+): Promise<ActionResult<IngredientRecipeUsageResult>> {
+  const parsed = z.string().min(1).max(64).safeParse(ingredientId);
+  if (!parsed.success) return { ok: false, code: 'INVALID_INPUT' };
+  try {
+    const organizationId = await getOrgId();
+    const usage = await withOrg(organizationId, (tx) =>
+      loadIngredientRecipeUsage(tx, organizationId, parsed.data),
+    );
+    if (!usage) return { ok: false, code: 'NOT_FOUND' };
+    return { ok: true, data: usage };
+  } catch (err) {
+    return unexpected('getIngredientRecipeUsage', err);
+  }
 }

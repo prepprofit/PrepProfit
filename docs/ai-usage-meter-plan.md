@@ -1,5 +1,7 @@
 # Plan - AI usage meter (used / remaining) UI
 
+**Update 2026-09-28:** the permanent sidebar meter (carousel, bar, dots) was removed. Allowances now show per method inside the import workflow (`/import`, `/recipes/import/photo`, `/suppliers/invoices/import`) via `getImportAllowances()` + `ImportAllowanceLine`; `/billing` keeps the full meter. Server-side caps are unchanged.
+
 **Status:** SENIOR-REVISED PLAN. Ready for implementation; not implemented yet.
 **Audit date:** 2026-07-03.
 **Scope:** current-month AI usage visibility in `/billing` plus an inline photo-import hint.

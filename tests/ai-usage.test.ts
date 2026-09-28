@@ -21,12 +21,11 @@ import {
 import { AI_USAGE_FEATURES } from '@/lib/ai/usage-features';
 import type { AiOperationFeature } from '@/lib/ai/operation-types';
 import {
-  buildSidebarAiMeterView,
+  buildImportAllowances,
   buildUsageRow,
   nextMonthResetUtc,
   type AiUsageSummary,
 } from '@/lib/data/ai-usage';
-import type { EntitlementSource } from '@/lib/entitlements';
 
 /**
  * Data-layer tests for the AI usage meter (2026-07). Cover the combined DISPLAY counts
@@ -225,72 +224,46 @@ describe('buildUsageRow (pure meter math)', () => {
   });
 });
 
-describe('buildSidebarAiMeterView (pure sidebar meter projection)', () => {
-  function summary(
-    source: EntitlementSource,
-    used: number,
-    limit: number,
-  ): AiUsageSummary {
-    return {
-      tier: 'business',
-      source,
-      resetAt: nextMonthResetUtc(new Date('2026-07-03T00:00:00Z')),
-      rows: [buildUsageRow('photo_recipe_extraction', { used, reserved: used }, limit)],
-    };
-  }
-
-  it('returns null when the plan grants no metered allowance', () => {
-    expect(buildSidebarAiMeterView(summary('free', 0, 0))).toBeNull();
+describe('buildImportAllowances (per-method import allowance projection)', () => {
+  const resetAt = nextMonthResetUtc(new Date('2026-07-03T00:00:00Z'));
+  const summary = (rows: AiUsageSummary['rows']): AiUsageSummary => ({
+    tier: 'business',
+    source: 'paid',
+    resetAt,
+    rows,
   });
 
-  it('keeps only the features the plan actually grants (limit > 0)', () => {
-    const view = buildSidebarAiMeterView({
-      tier: 'business',
-      source: 'paid',
-      resetAt: nextMonthResetUtc(new Date('2026-07-03T00:00:00Z')),
-      rows: [
-        buildUsageRow('photo_recipe_extraction', { used: 2, reserved: 2 }, 500),
-        buildUsageRow('kitchen_cfo_report', { used: 0, reserved: 0 }, 0),
+  it('projects the photo and invoice rows with real used/limit and the reset instant', () => {
+    const result = buildImportAllowances(
+      summary([
+        buildUsageRow('photo_recipe_extraction', { used: 2, reserved: 3 }, 500),
+        buildUsageRow('supplier_invoice_extraction', { used: 7, reserved: 7 }, 40),
         buildUsageRow('daily_close_summary', { used: 1, reserved: 1 }, 30),
-      ],
+      ]),
+    );
+    expect(result.photo_recipe_extraction).toEqual({
+      feature: 'photo_recipe_extraction',
+      used: 2,
+      limit: 500,
+      availableNow: 497,
+      resetAt: '2026-08-01T00:00:00.000Z',
     });
-    expect(view?.features.map((f) => f.feature)).toEqual([
-      'photo_recipe_extraction',
-      'daily_close_summary',
-    ]);
+    expect(result.supplier_invoice_extraction).toMatchObject({ used: 7, limit: 40, availableNow: 33 });
   });
 
-  it('picks Upgrade → /pricing for trial and free', () => {
-    for (const source of ['trial', 'free'] as const) {
-      expect(buildSidebarAiMeterView(summary(source, 5, 50))?.cta).toEqual({
-        labelKey: 'upgrade',
-        href: '/pricing',
-      });
-    }
+  it('reports a missing row as null (unknown), never as zero usage', () => {
+    const result = buildImportAllowances(
+      summary([buildUsageRow('photo_recipe_extraction', { used: 0, reserved: 0 }, 10)]),
+    );
+    expect(result.photo_recipe_extraction).not.toBeNull();
+    expect(result.supplier_invoice_extraction).toBeNull();
   });
 
-  it('picks Manage plan → /billing for paid', () => {
-    expect(buildSidebarAiMeterView(summary('paid', 5, 100))?.cta).toEqual({
-      labelKey: 'managePlan',
-      href: '/billing',
-    });
-  });
-
-  it('has no CTA for comped', () => {
-    expect(buildSidebarAiMeterView(summary('comped', 5, 500))?.cta).toBeNull();
-  });
-
-  it('clamps percent at 100 and remaining at 0 for over-cap usage', () => {
-    const feature = buildSidebarAiMeterView(summary('free', 12, 10))?.features[0];
-    expect(feature?.percent).toBe(100);
-    expect(feature?.remaining).toBe(0);
-    expect(feature?.used).toBe(12);
-  });
-
-  it('computes percent from used / limit', () => {
-    expect(
-      buildSidebarAiMeterView(summary('trial', 5, 50))?.features[0]?.percent,
-    ).toBe(10);
+  it('keeps the true used count and clamps availableNow at 0 when over the cap', () => {
+    const over = buildImportAllowances(
+      summary([buildUsageRow('photo_recipe_extraction', { used: 12, reserved: 12 }, 10)]),
+    ).photo_recipe_extraction;
+    expect(over).toMatchObject({ used: 12, limit: 10, availableNow: 0 });
   });
 });
 
