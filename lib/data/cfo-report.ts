@@ -115,7 +115,6 @@ export async function loadCfoReport(
       ingredientIds: [...new Set(recipe.lines.map((l) => l.ingredientId))],
       costUnresolved: recipe.costUnresolved,
       yieldWeightGrams: recipe.yieldWeightGrams,
-      componentLaborCostCents: recipe.componentLaborCostCents,
     })),
     menus: catalogue.menus,
   };

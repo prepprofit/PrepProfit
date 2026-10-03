@@ -514,7 +514,9 @@
     "builder": {
       "back": "Back to Menu",
       "untitled": "Untitled dish",
-      "save": "Save Dish",
+      "newTitle": "New dish",
+      "editTitle": "Edit dish",
+      "save": "Save dish",
       "saving": "Saving…",
       "saved": "Saved",
       "unsaved": "Unsaved changes",
@@ -525,124 +527,165 @@
       "dismiss": "Dismiss",
       "optional": "Optional",
       "composition": "What goes in",
+      "infoLabel": "More about {topic}",
       "fields": {
         "name": "Dish name",
         "namePlaceholder": "e.g. Passion fruit chocolate cake",
         "folder": "Folder",
         "unfiled": "No folder",
         "notes": "Notes",
+        "notesOptional": "Notes (optional)",
         "notesPlaceholder": "Assembly, plating, storage, customer details…"
       },
       "output": {
-        "makes": "Makes"
+        "makes": "Makes",
+        "prefix": "These quantities make",
+        "count": "Number of saleable items",
+        "label": "What one item is called",
+        "labelPlaceholder": "{unit, select, piece {pieces} cake {cakes} other {portions}}",
+        "singular": "{unit, select, piece {piece} cake {cake} other {portion}}",
+        "topic": "the number of items",
+        "info": "The number of saleable items that all the quantities, labour and costs on this page make together. Changing it never scales the quantities or work hours — it spreads the same costs over more or fewer items."
       },
       "convert": {
-        "title": "Set this product up in portions",
-        "body": "This product was saved as a batch of {amount} {unit} priced at {price} per kg. The dish editor now works per portion, so enter how many portions this batch makes and the selling price per portion.",
+        "title": "Set this product up in items",
+        "body": "This product was saved as a batch of {amount} {unit} priced at {price} per kg. The dish editor now works per saleable item, so enter how many items this batch makes and the selling price per item.",
         "keeps": "Nothing is guessed: ingredients, labour and extras stay as they are, and the batch weight is kept as its finished weight. Nothing changes until you save.",
-        "action": "Use portions"
+        "action": "Use items"
       },
-      "portions": {
-        "label": "Number of portions",
-        "hint": "Enter all quantities and costs for this number of portions.",
-        "compactPrefix": "Costs below make",
-        "compactSuffix": "portions",
-        "ariaLabel": "{count, plural, one {Costs below make # portion} other {Costs below make # portions}}"
-      },
-      "price": {
-        "excl": "Selling price per portion, excl. VAT",
-        "incl": "Selling price per portion, incl. VAT",
-        "vatRate": "VAT rate",
-        "vatDefault": "Using your default rate ({rate})",
-        "vatNone": "No default VAT rate set — enter one to link the prices",
-        "vatOverride": "Using {rate} for this dish. Clear it to use your default rate."
-      },
-      "calc": {
-        "title": "Margin calculator",
-        "price": "Selling price",
-        "costPerPortion": "Total cost per portion",
-        "leftPerPortion": "Amount left per portion",
-        "margin": "Margin",
-        "target": "Target margin",
-        "suggestedExcl": "Suggested price excl. VAT",
-        "suggestedIncl": "Suggested price incl. VAT",
-        "usePrice": "Use this price",
-        "targetHint": "Type a target margin to see the price that reaches it. Your price only changes if you choose “Use this price”.",
-        "targetInvalid": "Enter a target margin from 0 to 99.99%.",
-        "suggestedNeedsCost": "A suggested price needs the total cost per portion first.",
-        "missing": {
-          "convert": "Set this product up in portions to see its margin.",
-          "portions": "Enter the number of portions (a whole number of 1 or more) to see the cost per portion.",
-          "costs": "Add recipes, ingredients, labour or extra costs to see the cost per portion.",
-          "labour": "Labour needs both working hours and cost per hour — or leave both empty.",
-          "extras": "Each extra cost needs a description and a valid amount.",
-          "unpriced": "Some items have no known cost yet, so the cost per portion can’t be worked out. Price them or remove them.",
-          "price": "Enter a selling price to see the amount left and the margin."
-        }
-      },
+      "unitSwitch": "Weight unit for recipes and direct ingredients",
       "recipes": {
         "title": "Recipes",
-        "empty": "No recipes yet. Add sponges, creams, sauces… in grams from your recipe library.",
-        "add": "Add a recipe (in grams)…",
+        "empty": "Add sponges, creams, sauces… from your recipe library.",
+        "search": "Find a recipe…",
+        "searchLabel": "Find a recipe to add",
         "perKg": "{amount}/kg",
-        "perPortion": "{amount}/portion",
-        "needsWeight": "{name} has no finished weight yet, so its grams can't be costed. Weigh the finished batch and add it to the recipe.",
-        "grams": "Grams",
         "noWeight": "No finished weight",
+        "needsWeight": "{name} has no finished weight yet, so its weight can’t be costed. Weigh the finished batch and add it to the recipe.",
         "openRecipe": "Open recipe",
         "savedPortions": "{count, plural, one {Saved as # recipe portion} other {Saved as # recipe portions}}",
         "portionLineConvertible": "Recipe components are now entered in grams. From the recipe's finished weight this is {grams} g.",
         "portionLineNeedsWeight": "Recipe components are now entered in grams, but {name} has no finished weight. Add it to the recipe to convert this line — until then it keeps its saved portions.",
-        "convertToGrams": "Use {grams} g"
+        "convertToGrams": "Use {grams} g",
+        "legacyCosts": "Labour or extra costs saved on this recipe are not counted here. Add what still applies under Labour or Extra costs.",
+        "topic": "recipe costs",
+        "info": "Recipes are costed by their ingredients only: ingredient cost ÷ finished weight, after cooking loss. Recipe labour is never added here — enter the work once under Labour."
       },
       "ingredients": {
-        "title": "Ingredients and packaging",
-        "empty": "No direct ingredients. Add fruit, garnishes, boxes or disposables.",
-        "add": "Add an ingredient or packaging…",
+        "title": "Direct ingredients",
+        "empty": "Add fruit, garnishes, boxes or anything else used directly in this dish.",
+        "search": "Find an ingredient or packaging…",
+        "searchLabel": "Find an ingredient or packaging to add",
         "per": {
           "weight": "{amount}/kg",
           "volume": "{amount}/l",
           "count": "{amount}/pc"
-        }
+        },
+        "kindLabel": "Counts as",
+        "food": "Food",
+        "packaging": "Packaging",
+        "kindMissing": "Food or packaging?",
+        "topic": "food and packaging",
+        "info": "Mark each item as food or packaging. Packaging counts in total cost and hourly earnings, but not in the ingredient margin. The choice is saved on the ingredient when you save the dish, so other dishes use it too."
       },
-      "quantity": "Quantity",
-      "unit": "Unit",
-      "remove": "Remove",
+      "quantityFor": "Quantity of {name} in {unit}",
+      "removeItem": "Remove {name}",
       "unavailable": "In trash",
       "needsPricing": "Needs pricing",
-      "noMatches": "No matches",
+      "noMatches": "No matches for “{query}”",
+      "added": "Added",
       "labour": {
-        "title": "Labour costs",
-        "hours": "Working hours",
-        "hoursFor": "{count, plural, one {Working hours for # portion} other {Working hours for all # portions}}",
-        "rate": "Cost per hour",
+        "title": "Labour",
+        "hours": "Total work hours",
+        "rate": "Hourly cost",
         "cost": "Labour cost",
-        "notEnteredShort": "Not entered",
-        "hint": "Include preparation, assembly and packing. Two people working four hours each = 8 working hours. Don’t count baking, cooling or resting time when nobody is working on it.",
-        "replacesRecipeLabour": "These hours cover all production work. Recipe labour won’t be added again.",
-        "legacy": "Labour isn’t entered, so the labour already inside your recipe costs is used. Enter hours (even 0) to replace it.",
-        "notEntered": "Labour isn’t entered, so no labour is included in this dish’s cost. Enter hours (even 0) to set it.",
-        "statusMissing": "Labour not entered · Add",
-        "statusEntered": "Labour included · Edit"
+        "notEntered": "Not entered",
+        "extraWork": "+ {hours} h extra work · {total} h in total",
+        "topic": "labour",
+        "info": "Add up the hours everyone actively works on these quantities: preparation, assembly and packing. Two people working four hours each is 8 work hours. Unattended baking, chilling or resting doesn’t count. Hourly cost is what one staff hour costs the business — wages plus employer costs."
       },
       "extras": {
         "title": "Extra costs",
-        "addWork": "Add extra work",
-        "addExpense": "Add expense",
+        "none": "None",
+        "addWork": "Extra work",
+        "addExpense": "Expense",
         "workLabel": "Extra work",
         "expenseLabel": "Expense",
         "workPlaceholder": "e.g. Driving, shopping",
         "expensePlaceholder": "e.g. Parking, equipment hire",
         "hours": "Hours",
-        "rate": "Cost per hour",
+        "rate": "Hourly cost",
         "amount": "Amount",
-        "reminder": "Only add work that is not already included above. Packaging belongs in the ingredient list.",
-        "statusEmpty": "No extra costs"
+        "topic": "extra costs",
+        "info": "Costs not covered above, entered once for these quantities — for example delivery driving or equipment hire. Extra work adds its hours to the work-hour total. Nothing is assumed: overheads are never added automatically."
+      },
+      "price": {
+        "heading": "Selling price / {unit}",
+        "excl": "excl. VAT",
+        "incl": "incl. VAT",
+        "vat": "VAT",
+        "topic": "VAT",
+        "vatInfo": "Leave VAT empty to use your default rate ({rate}). Type a rate to use it for this dish only. You can type either price — the other follows.",
+        "vatInfoNone": "No default VAT rate is set in Settings, so 0% is used until you type one. You can type either price — the other follows."
+      },
+      "results": {
+        "totalCost": "Total cost / item",
+        "ingredientMargin": "Ingredient margin",
+        "earned": "Earned / work hour",
+        "foodCost": "{percent} food cost",
+        "assumes": "If all {count} {label} sell at {price} excl. VAT.",
+        "totalCostTopic": "total cost per item",
+        "totalCostInfo": "Everything entered on this page — recipes, direct ingredients and packaging, labour and extra costs — divided by the number of items.",
+        "ingredientMarginTopic": "ingredient margin",
+        "ingredientMarginInfo": "Selling price excl. VAT compared with food ingredient costs only. A 70% ingredient margin means food costs take 30% of sales — it is not company profit. Packaging, labour and extra costs are left out.",
+        "earnedTopic": "earnings per work hour",
+        "earnedInfo": "What is left from sales after every cost on this page, labour included, divided by the total work hours. It still has to cover your other overheads (rent, energy, admin…) and profit, so it is not net profit.",
+        "missing": {
+          "convert": "Set this product up in items first.",
+          "items": "Enter the number of items.",
+          "costs": "Add recipes or ingredients.",
+          "price": "Enter a selling price.",
+          "unknownCost": "{count, plural, one {# item has no known cost yet} other {# items have no known cost yet}}",
+          "unclassified": "{count, plural, one {Mark # direct ingredient as food or packaging} other {Mark # direct ingredients as food or packaging}}",
+          "labour": "Labour not entered",
+          "noHours": "No work hours entered",
+          "noFood": "Add a recipe or a food ingredient for the ingredient margin.",
+          "invalid": "Fix the highlighted fields.",
+          "labourAction": "Add labour"
+        }
+      },
+      "calc": {
+        "toggle": "See calculation",
+        "sales": "Sales excl. VAT",
+        "salesDetail": "{count} × {price}",
+        "components": "Recipes and direct ingredients",
+        "componentsDetail": "food {food} · packaging {packaging}",
+        "labour": "Labour",
+        "labourDetail": "{hours} h × {rate}",
+        "extras": "Extra costs",
+        "extrasDetail": "incl. {hours} h extra work",
+        "workHours": "Total work hours",
+        "remaining": "Remaining before other overheads",
+        "notEntered": "Not entered",
+        "unknown": "Unknown"
+      },
+      "target": {
+        "title": "Target ingredient margin",
+        "equivalent": "{margin} target ingredient margin → {food} food cost",
+        "suggested": "Suggested price excl. VAT",
+        "suggestedIncl": "{price} incl. VAT",
+        "use": "Use price",
+        "hint": "Based on food ingredients only. Your price changes only when you choose “Use price”.",
+        "invalid": "Enter a target below 100%.",
+        "needsFood": "A suggestion needs a known food cost per item.",
+        "notCovering": "At {price}, the total cost of {cost} per item isn’t covered — this price would make a loss.",
+        "coverNeedsLabour": "Enter labour to check that this price covers every cost.",
+        "coverUnknown": "Some costs are still unknown, so this price can’t be checked against the total cost yet."
       },
       "copy": {
         "action": "Make a copy",
         "title": "Make a copy",
-        "description": "The copy gets everything: portions, recipes, ingredients, labour, extras and price. The original stays unchanged.",
+        "description": "The copy gets everything: items, recipes, ingredients, labour, extras and price. The original stays unchanged.",
         "confirm": "Make copy",
         "defaultName": "{name} (copy)",
         "saveFirst": "Save your changes before copying.",
@@ -655,10 +698,11 @@
         "keep": "Keep editing"
       },
       "problems": {
-        "convert": "Set this product up in portions before saving.",
+        "convert": "Set this product up in items before saving.",
         "name": "Give the dish a name.",
-        "portions": "Enter the number of portions as a whole number of 1 or more.",
-        "labour": "Enter both working hours and cost per hour (zero or more), or leave both empty.",
+        "items": "Enter the number of items as a whole number from 1 to 100,000.",
+        "label": "Keep the item name to 40 characters or fewer.",
+        "labour": "Enter both work hours and hourly cost (zero or more), or leave both empty.",
         "extras": "Each extra needs a description and valid hours, cost per hour or amount.",
         "vat": "VAT must be between 0 and 100%.",
         "price": "Enter the selling price as a number.",
@@ -667,10 +711,6 @@
       },
       "overflow": {
         "label": "More actions"
-      },
-      "costs": {
-        "heading": "{count, plural, one {Costs for # portion} other {Costs for # portions}}",
-        "headingUnknown": "Costs for all portions"
       }
     },
     "batch": {
@@ -680,7 +720,8 @@
         "piece": "per piece",
         "cake": "per cake",
         "portion": "per portion"
-      }
+      },
+      "makesLabel": "{amount} {label}"
     }
   },
   "productions": {

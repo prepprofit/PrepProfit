@@ -12,9 +12,11 @@ import {
 import type { Menu, MenuFolder } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
 import type { Dimension } from '@/lib/units';
+import type { WeightDisplayUnit } from '@/lib/format/weight';
 import { costPerKgCents } from '@/lib/calculations/recipeCost';
 import {
   compositionCost,
+  type DishCostKind,
   dishPricing,
   ingredientCanonicalQuantity,
   ingredientDisplayAmount,
@@ -30,7 +32,7 @@ import { mergeMenuAllergens, type MenuAllergen } from '@/lib/calculations/menu';
 import type { RecipeAllergenRollup } from '@/lib/calculations/allergens';
 import {
   catalogueDishLookups,
-  catalogueRecipeCosts,
+  catalogueRecipeIngredientCosts,
   loadActiveCatalogue,
 } from '@/lib/data/active-catalogue';
 import {
@@ -296,6 +298,8 @@ export type DishOutputView = {
   quantity: number;
   unit: DishOutputUnit;
   sizeDescription: string | null;
+  /** What one saleable item is called ("mini cakes"); null = the unit's own name. */
+  label: string | null;
   /** Count batches only; grams. */
   finishedWeightGrams: number | null;
 };
@@ -305,6 +309,7 @@ function outputView(row: Menu): DishOutputView {
     quantity: outputDisplayAmount(row.outputQuantity, row.outputUnit),
     unit: row.outputUnit,
     sizeDescription: row.sizeDescription,
+    label: row.outputLabel,
     finishedWeightGrams: row.finishedWeightGrams,
   };
 }
@@ -483,6 +488,7 @@ export type ManagerDishDetail = DishIdentity & {
   sellingPriceCents: number | null;
   priceBasis: PriceBasis;
   vatRateBps: number | null;
+  displayUnit: WeightDisplayUnit;
   labour: { hours: number; hourlyCents: number } | null;
   extras: DishExtraView[];
   recipeLines: KitchenDishRecipeLine[];
@@ -588,6 +594,7 @@ export async function getManagerDish(
     sellingPriceCents: menu.sellingPriceCents,
     priceBasis: menu.priceBasis,
     vatRateBps: menu.vatRateBps,
+    displayUnit: menu.displayUnit,
     labour:
       menu.labourHours !== null && menu.labourHourlyCents !== null
         ? { hours: menu.labourHours, hourlyCents: menu.labourHourlyCents }
@@ -649,12 +656,12 @@ export type DishRecipeOption = {
   name: string;
   yieldPortions: number;
   yieldWeightGrams: number | null;
-  /** Null when an ingredient needs pricing or the sub-recipe tree is unresolvable. */
-  costPerPortionCents: number | null;
-  /** The same cost without the recipe's own and nested sub-recipe labour. */
-  costPerPortionWithoutLabourCents: number | null;
-  costPerKgCents: number | null;
-  costPerKgWithoutLabourCents: number | null;
+  /** Ingredient-only cost of one batch (unrounded); null when an ingredient needs pricing or the tree is unresolvable. */
+  ingredientCostCents: number | null;
+  /** Ingredient-only cost per finished kg (yield-adjusted); null without a finished weight or a known cost. */
+  ingredientCostPerKgCents: number | null;
+  /** Labour/energy/packaging left on the recipe by the old editor — never counted in a dish. */
+  legacyExtraCostCents: number;
 };
 
 export type DishIngredientOption = {
@@ -664,6 +671,8 @@ export type DishIngredientOption = {
   /** Price per kg / litre / piece, cents. */
   priceCents: number;
   needsPricing: boolean;
+  /** Food vs packaging; null = not classified yet. */
+  costKind: DishCostKind | null;
 };
 
 export async function listDishBuilderOptions(
@@ -671,21 +680,20 @@ export async function listDishBuilderOptions(
   organizationId: string,
 ): Promise<{ recipes: DishRecipeOption[]; ingredients: DishIngredientOption[] }> {
   const catalogue = await loadActiveCatalogue(db, organizationId);
-  const costs = catalogueRecipeCosts(catalogue);
+  const costs = catalogueRecipeIngredientCosts(catalogue);
   return {
     recipes: catalogue.recipes
       .map((r) => {
         const c = costs.get(r.id);
+        const batch = c?.ingredientCostCents ?? null;
         return {
           id: r.id,
           name: r.name,
           yieldPortions: r.yieldPortions,
           yieldWeightGrams: r.yieldWeightGrams,
-          costPerPortionCents: c?.withLabour ?? null,
-          costPerPortionWithoutLabourCents: c?.withoutLabour ?? null,
-          costPerKgCents: c?.totalWithLabour != null ? costPerKgCents(c.totalWithLabour, r.yieldWeightGrams) : null,
-          costPerKgWithoutLabourCents:
-            c?.totalWithoutLabour != null ? costPerKgCents(c.totalWithoutLabour, r.yieldWeightGrams) : null,
+          ingredientCostCents: batch,
+          ingredientCostPerKgCents: batch !== null ? costPerKgCents(batch, r.yieldWeightGrams) : null,
+          legacyExtraCostCents: c?.legacyExtraCostCents ?? 0,
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name)),
@@ -696,6 +704,7 @@ export async function listDishBuilderOptions(
         dimension: i.dimension,
         priceCents: i.priceCents,
         needsPricing: i.needsPricing,
+        costKind: i.costKind,
       }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   };
@@ -716,7 +725,7 @@ export async function loadStoredRecipeLines(
 // ── Mutations ────────────────────────────────────────────────────────────────
 
 export type SaveDishOutcome =
-  | { status: 'ok'; menu: Menu }
+  | { status: 'ok'; menu: Menu; classifiedIngredients: number }
   | { status: 'not_found' }
   | { status: 'invalid_recipe' }
   | { status: 'invalid_ingredient' }
@@ -825,6 +834,37 @@ async function insertDishChildren(
   }
 }
 
+/**
+ * Saves the chef's explicit food / packaging choices onto the ingredients (only
+ * where it changes). Runs after `validateDishReferences`, which has locked these
+ * active, same-org rows. Returns how many ingredients were (re)classified.
+ */
+async function applyIngredientCostKinds(
+  db: TenantClient,
+  organizationId: string,
+  lines: DishFormInput['ingredientLines'],
+): Promise<number> {
+  let changed = 0;
+  for (const kind of ['food', 'packaging'] as const) {
+    const ids = lines.filter((l) => l.costKind === kind).map((l) => l.ingredientId);
+    if (ids.length === 0) continue;
+    const rows = await db
+      .update(ingredients)
+      .set({ costKind: kind })
+      .where(
+        and(
+          eq(ingredients.organizationId, organizationId),
+          inArray(ingredients.id, ids),
+          isNull(ingredients.deletedAt),
+          sql`${ingredients.costKind} is distinct from ${kind}`,
+        ),
+      )
+      .returning({ id: ingredients.id });
+    changed += rows.length;
+  }
+  return changed;
+}
+
 function dishFields(input: DishFormInput) {
   return {
     name: input.name,
@@ -832,6 +872,8 @@ function dishFields(input: DishFormInput) {
     outputQuantity: outputCanonicalQuantity(input.output.quantity, input.output.unit),
     outputUnit: input.output.unit,
     sizeDescription: input.output.sizeDescription ?? null,
+    outputLabel: input.output.label ?? null,
+    ...(input.displayUnit ? { displayUnit: input.displayUnit } : {}),
     finishedWeightGrams: input.output.finishedWeightGrams,
     sellingPriceCents: input.sellingPriceCents,
     priceBasis: input.priceBasis,
@@ -855,7 +897,8 @@ export async function createDish(
     .returning();
   if (!menu) throw new Error('Failed to create dish.');
   await insertDishChildren(db, organizationId, menu.id, input);
-  return { status: 'ok', menu };
+  const classifiedIngredients = await applyIngredientCostKinds(db, organizationId, input.ingredientLines);
+  return { status: 'ok', menu, classifiedIngredients };
 }
 
 /** Replace an active product's fields + full composition + extras in one transaction. */
@@ -887,12 +930,14 @@ export async function updateDish(
     .delete(menuExtras)
     .where(and(eq(menuExtras.organizationId, organizationId), eq(menuExtras.menuId, id)));
   await insertDishChildren(db, organizationId, id, input);
-  return { status: 'ok', menu };
+  const classifiedIngredients = await applyIngredientCostKinds(db, organizationId, input.ingredientLines);
+  return { status: 'ok', menu, classifiedIngredients };
 }
 
 /**
  * "Make a copy": an independent product with the same composition, output, size,
- * finished weight, labour, extras, price + basis, VAT, folder and notes. Children are
+ * item label, finished weight, labour, extras, price + basis, VAT, display unit,
+ * folder and notes. Children are
  * copied row-for-row (canonical quantities stay exact); the original is untouched.
  */
 export async function duplicateDish(
@@ -912,10 +957,12 @@ export async function duplicateDish(
       outputQuantity: source.outputQuantity,
       outputUnit: source.outputUnit,
       sizeDescription: source.sizeDescription,
+      outputLabel: source.outputLabel,
       finishedWeightGrams: source.finishedWeightGrams,
       sellingPriceCents: source.sellingPriceCents,
       priceBasis: source.priceBasis,
       vatRateBps: source.vatRateBps,
+      displayUnit: source.displayUnit,
       labourHours: source.labourHours,
       labourHourlyCents: source.labourHourlyCents,
       notes: source.notes,

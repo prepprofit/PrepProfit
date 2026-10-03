@@ -547,6 +547,29 @@ Acceptance criteria:
   notes after any numbered steps instead of hiding them. Scale, slideshow and prep tasks
   stay on the saved recipe page. Unsaved edits are protected (Cancel, in-app links,
   reload/close). No migration.
+- **Menu dish editor (simplified costing).** Order: large dish name; compact folder +
+  "These quantities make [n] [item name]" (the count spreads the same costs, never scales a
+  quantity or hour; optional `menus.output_label`); Recipes (search under the list; picking
+  focuses the quantity; ONE g/kg switch for recipes + direct ingredients, remembered on save
+  as `menus.display_unit`; pieces and ml/l keep their units); Direct ingredients (renamed
+  from "Ingredients and packaging"; each line is explicitly Food or Packaging, saved on the
+  ingredient as `ingredients.cost_kind` — NULL = unclassified, never inferred); Labour
+  (total combined work hours × hourly employment cost); collapsible Extra costs showing its
+  total; "Selling price / [item]" with excl. VAT primary and incl. VAT + VAT rate secondary;
+  three results — Total cost / item, Ingredient margin (food only: (sales − food) ÷ sales)
+  and Earned / work hour ((sales − every cost) ÷ combined hours incl. extra work, "—" for
+  zero/missing hours) — plus a quiet "See calculation"; the pale-cyan target ingredient
+  margin calculator (food ÷ (1 − target), rounded UP to the cent, warns when it doesn't cover
+  total cost, applies only on "Use price"); optional notes. Costing change in the shared
+  `compositionCost` (every consumer): recipe components cost at their ingredient-only,
+  yield-adjusted cost (batch ingredients ÷ finished weight); recipe labour/energy/packaging
+  left by the old recipe editor are no longer inherited (the dish row says so). Blank
+  labour no longer pulls in recipe labour: the editor shows labour as not entered and
+  withholds total cost / item and €/hour until it is (0 allowed). Unpriced items and
+  unclassified direct ingredients are flagged, never treated as zero; drafts still save.
+  Pure maths: `dishResults` + `priceForIngredientMargin` (`lib/calculations/dish.ts`),
+  quantity helpers in `lib/menus/dish-editor.ts`. Migration 0057 (additive; apply BEFORE
+  the release that reads it).
 
 ## Backlog - not scheduled until prioritized
 

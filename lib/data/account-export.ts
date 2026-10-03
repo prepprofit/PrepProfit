@@ -86,7 +86,9 @@ import {
 // carry folder_id/portions/vat_rate_bps/last_opened_at and `menuItems` a `unit`.
 // v16 (Menu batches): added `menuExtras`; `menus` rows now carry output_quantity/
 // output_unit/size_description/finished_weight_grams/price_basis/labour_* fields.
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 16;
+// v17 (Menu dish editor): `ingredients` rows now carry cost_kind and `menus` rows
+// output_label/display_unit (flow through `select()`).
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 17;
 
 export type OrgDataExport = {
   schemaVersion: number;

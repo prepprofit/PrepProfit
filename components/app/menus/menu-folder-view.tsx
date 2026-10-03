@@ -325,11 +325,13 @@ export function MenuFolderView(props: Props) {
                     <span className="truncate text-xs text-muted-foreground">
                       {t('meta', {
                         components: dish.componentCount,
-                        batch: tBatch('makes', {
-                          unit: dish.output.unit,
-                          count: dish.output.quantity,
-                          amount: numberToField(dish.output.quantity),
-                        }),
+                        batch: dish.output.label
+                          ? tBatch('makesLabel', { amount: numberToField(dish.output.quantity), label: dish.output.label })
+                          : tBatch('makes', {
+                              unit: dish.output.unit,
+                              count: dish.output.quantity,
+                              amount: numberToField(dish.output.quantity),
+                            }),
                       })}
                       {' · '}
                       {dateLabel}

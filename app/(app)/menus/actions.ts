@@ -40,6 +40,8 @@ import type { ActionErrorCode, ActionResult } from '@/lib/action-result';
  * RULE #1: org id from Clerk, never the client.
  *
  * Audit metadata is ids, counts, flags and changed field names only — NEVER a price.
+ * Saving a dish also stores the chef's explicit food / packaging choice on each
+ * direct ingredient (counted in the audit as `classifiedIngredientCount`).
  */
 
 function revalidateMenus(id?: string): void {
@@ -80,6 +82,7 @@ export async function createDishAction(input: unknown): Promise<ActionResult<{ i
           labourEntered: parsed.data.labour !== null,
           outputUnit: parsed.data.output.unit,
           priceSet: parsed.data.sellingPriceCents !== null,
+          classifiedIngredientCount: result.classifiedIngredients,
         },
       });
     }
@@ -87,6 +90,7 @@ export async function createDishAction(input: unknown): Promise<ActionResult<{ i
   });
   if (outcome.status !== 'ok') return { ok: false, code: SAVE_ERRORS[outcome.status] };
   revalidateMenus(outcome.menu.id);
+  if (outcome.classifiedIngredients > 0) revalidatePath('/ingredients', 'layout');
   return { ok: true, data: { id: outcome.menu.id } };
 }
 
@@ -112,8 +116,10 @@ export async function updateDishAction(id: string, input: unknown): Promise<Acti
       before.name !== next.name && 'name',
       before.folderId !== next.folderId && 'folder',
       (before.outputUnit !== next.output.unit ||
-        before.outputQuantity !== result.menu.outputQuantity) &&
+        before.outputQuantity !== result.menu.outputQuantity ||
+        before.outputLabel !== result.menu.outputLabel) &&
         'output',
+      before.displayUnit !== result.menu.displayUnit && 'displayUnit',
       before.sellingPriceCents !== next.sellingPriceCents && 'sellingPrice',
       before.priceBasis !== next.priceBasis && 'priceBasis',
       before.vatRateBps !== next.vatRateBps && 'vatRate',
@@ -133,6 +139,7 @@ export async function updateDishAction(id: string, input: unknown): Promise<Acti
         extraCount: next.extras.length,
         labourEntered: next.labour !== null,
         priceChanged: before.sellingPriceCents !== next.sellingPriceCents,
+        classifiedIngredientCount: result.classifiedIngredients,
         changedFields,
       },
     });
@@ -140,6 +147,7 @@ export async function updateDishAction(id: string, input: unknown): Promise<Acti
   });
   if (outcome.status !== 'ok') return { ok: false, code: SAVE_ERRORS[outcome.status] };
   revalidateMenus(id);
+  if (outcome.classifiedIngredients > 0) revalidatePath('/ingredients', 'layout');
   return { ok: true, data: undefined };
 }
 

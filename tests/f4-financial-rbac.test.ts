@@ -130,6 +130,7 @@ describe('kitchen DTO projections omit the financial keys', () => {
       allergensReviewedAt: null,
       allergensReviewedBy: null,
       notes: null,
+      costKind: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,

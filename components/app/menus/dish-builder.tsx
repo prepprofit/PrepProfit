@@ -4,37 +4,23 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Check,
-  Copy,
-  Folder,
-  Info,
-  MoreVertical,
-  Plus,
-  Search,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { AlertTriangle, Check, Copy, Folder, Info, Plus, Trash2, X } from 'lucide-react';
 import {
   compositionCost,
-  ingredientCanonicalQuantity,
+  dishResults,
   ingredientLineKey,
-  ingredientUnitsFor,
   outputKind,
-  portionPricing,
   priceExclVat,
-  priceForMargin,
+  priceForIngredientMargin,
   priceInclVat,
   recipeLineKey,
   roundHours,
   type DishComposition,
+  type DishCostKind,
   type DishCostLookups,
   type DishExtra,
   type DishIngredientUnit,
   type DishOutputUnit,
-  type DishRecipeUnit,
 } from '@/lib/calculations/dish';
 import type {
   DishExtraView,
@@ -44,9 +30,21 @@ import type {
   KitchenDishIngredientLine,
   KitchenDishRecipeLine,
 } from '@/lib/data/menus';
-import { centsToAmountInput, formatMoney, parseMoneyToCents } from '@/lib/format/money';
+import type { Dimension } from '@/lib/units';
+import type { WeightDisplayUnit } from '@/lib/format/weight';
+import { centsToAmountInput, formatMoney } from '@/lib/format/money';
 import { folderAncestorLabel } from '@/lib/folders/tree';
 import { useActionError } from '@/lib/i18n/use-action-error';
+import {
+  canonicalToField,
+  canonicalToUnitAmount,
+  fieldToCanonical,
+  lineDisplayUnit,
+  parseDecimal,
+  parseMoneyText,
+  parsePercentBps,
+  roundCanonical,
+} from '@/lib/menus/dish-editor';
 import {
   createDishAction,
   deleteMenuAction,
@@ -57,14 +55,20 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { InfoPopover } from '@/components/app/recipes/workspace/info-popover';
 import { cn } from '@/lib/utils';
-import { formatPercentBps, numberToField } from './dish-format';
+import { UnitSwitch } from '@/components/app/recipes/editor/unit-switch';
+import { useLeaveGuard } from '@/components/app/recipes/editor/use-leave-guard';
+import { numberToField } from './dish-format';
+import { CostKindToggle, Field, LineRow, MoneyInput, OverflowMenu, OverflowMenuItem } from './dish-builder-parts';
+import { DishPricingPanel } from './dish-pricing-panel';
+import { DishSearch } from './dish-search';
 
 export type DishBuilderInitial = {
   id: string | null;
@@ -73,6 +77,7 @@ export type DishBuilderInitial = {
   output: DishOutputView;
   sellingPriceCents: number | null;
   vatRateBps: number | null;
+  displayUnit: WeightDisplayUnit;
   labour: { hours: number; hourlyCents: number } | null;
   extras: DishExtraView[];
   notes: string | null;
@@ -80,37 +85,29 @@ export type DishBuilderInitial = {
   ingredientLines: KitchenDishIngredientLine[];
 };
 
-type RecipeLineState = { recipeId: string; name: string; quantity: string; unit: DishRecipeUnit };
-type IngredientLineState = { ingredientId: string; name: string; quantity: string; unit: DishIngredientUnit };
-type ExtraState = {
-  key: string;
-  kind: 'work' | 'expense';
-  description: string;
-  hours: string;
-  rate: string;
-  amount: string;
+/** `amount` is canonical: grams for gram lines, recipe portions for a legacy portion line. */
+type RecipeLineState = { recipeId: string; name: string; unit: 'g' | 'portion'; amount: number | null; draft: string | null };
+/** `amount` is canonical (g / ml / count); `storedUnit` keeps ml vs l and is never reinterpreted as weight. */
+type IngredientLineState = {
+  ingredientId: string;
+  name: string;
+  dimension: Dimension;
+  storedUnit: DishIngredientUnit;
+  amount: number | null;
+  draft: string | null;
+  costKind: DishCostKind | null;
 };
+type ExtraState = { key: string; kind: 'work' | 'expense'; description: string; hours: string; rate: string; amount: string };
 
-/** Portions are whole numbers; the same upper bound the batch output had. */
-const MAX_PORTIONS = 100_000;
+/** Saleable items are whole numbers; the same upper bound the batch output had. */
+const MAX_ITEMS = 100_000;
+const DASH = '—';
 
-function parseNumber(text: string): number | null {
-  const trimmed = text.trim().replace(',', '.');
-  if (trimmed === '') return null;
-  const value = Number(trimmed);
-  return Number.isFinite(value) ? value : null;
-}
+const UNIT_DIMENSION: Record<DishIngredientUnit, Dimension> = { g: 'weight', kg: 'weight', ml: 'volume', l: 'volume', piece: 'count' };
 
-/** A money field: blank → null, otherwise integer cents (or NaN when unreadable/negative). */
-function parseMoneyField(text: string): number | null {
-  if (text.trim() === '') return null;
-  if (!/^\s*[\d.,\s]+\s*$/.test(text)) return Number.NaN;
-  return parseMoneyToCents(text);
-}
-
-function parsePortions(text: string): number | null {
-  const value = parseNumber(text);
-  return value !== null && Number.isInteger(value) && value >= 1 && value <= MAX_PORTIONS ? value : null;
+function parseItems(text: string): number | null {
+  const value = parseDecimal(text);
+  return value !== null && Number.isInteger(value) && value >= 1 && value <= MAX_ITEMS ? value : null;
 }
 
 const blankExtra = (kind: 'work' | 'expense'): ExtraState => ({
@@ -123,20 +120,19 @@ const blankExtra = (kind: 'work' | 'expense'): ExtraState => ({
 });
 
 /**
- * Dish editor — a per-portion selling-price and margin calculator. The order is
- * fixed: name, folder, selling price (excl./incl. VAT), number of portions, the
- * margin calculator, then recipes, direct ingredients, labour and extras.
+ * The Menu dish editor. Order: name; folder + "These quantities make [n] [items]";
+ * recipes and direct ingredients (one shared g/kg switch); labour; extra costs;
+ * selling price with the three results; the target ingredient margin calculator;
+ * optional notes. One Save dish action, a quieter Cancel.
  *
- * Every quantity and cost below covers ALL the portions entered. Cost per portion is
- * total cost ÷ portions: changing the number of portions redistributes the cost and
- * never rescales a quantity. Every figure comes from the shared `compositionCost` +
- * `portionPricing` (the same maths the Menu list, sales and insights use). A
- * suggested price is only applied on "Use this price" — the chef's price is never
- * overwritten.
+ * Every quantity, hour and cost on the page covers ALL the items entered: the item
+ * count only spreads the same costs, it never rescales a quantity or an hour. Figures
+ * come from the shared `compositionCost` + `dishResults` — the same maths the Menu
+ * list, sales and insights use. Unentered labour and unknown prices are shown as
+ * missing, never as a confirmed zero, and a draft can still be saved.
  *
  * A product saved earlier as a WEIGHT batch (priced per kg) is never reinterpreted:
- * the editor asks for its portions and a price per portion, and keeps the weight as
- * the finished batch weight. Until then it can't be saved.
+ * the editor asks for its items and a price per item first.
  */
 export function DishBuilder({
   initial,
@@ -171,20 +167,20 @@ export function DishBuilder({
   /** Grams of a converted weight batch, kept as its finished weight. */
   const [convertedGrams, setConvertedGrams] = React.useState<number | null>(null);
   const needsConversion = legacyWeight && convertedGrams === null;
-  /** Count products keep their stored unit (piece / cake / portion); the rest become portions. */
+  /** Count products keep their stored unit (piece / cake / portion); weight batches become portions. */
   const countUnit: DishOutputUnit = legacyWeight ? 'portion' : initial.output.unit;
 
   const [name, setName] = React.useState(initial.name);
   const [folderId, setFolderId] = React.useState(initial.folderId);
   const [notes, setNotes] = React.useState(initial.notes ?? '');
-  const [portionsText, setPortionsText] = React.useState(
+  const [itemsText, setItemsText] = React.useState(
     legacyWeight ? '' : initial.output.quantity > 0 ? numberToField(initial.output.quantity) : '1',
   );
+  const [labelText, setLabelText] = React.useState(initial.output.label ?? '');
+  const [displayUnit, setDisplayUnit] = React.useState<WeightDisplayUnit>(initial.displayUnit);
   const [priceExclCents, setPriceExclCents] = React.useState(legacyWeight ? null : initial.sellingPriceCents);
   const [priceDraft, setPriceDraft] = React.useState<{ field: 'excl' | 'incl'; text: string } | null>(null);
-  const [vatText, setVatText] = React.useState(
-    initial.vatRateBps !== null ? numberToField(initial.vatRateBps / 100) : '',
-  );
+  const [vatText, setVatText] = React.useState(initial.vatRateBps !== null ? numberToField(initial.vatRateBps / 100) : '');
   const [targetText, setTargetText] = React.useState('');
   const [hoursText, setHoursText] = React.useState(initial.labour ? numberToField(initial.labour.hours) : '');
   const [rateText, setRateText] = React.useState(initial.labour ? centsToAmountInput(initial.labour.hourlyCents) : '');
@@ -198,41 +194,54 @@ export function DishBuilder({
       amount: e.kind === 'expense' ? centsToAmountInput(e.amountCents) : '',
     })),
   );
-  // Recipe components are entered in grams. Older kilogram lines convert exactly;
-  // recipe-portion lines stay as saved until corrected (see the recipes section).
+  // Recipe components are entered by weight. Older kilogram lines convert exactly to
+  // grams; recipe-portion lines stay as saved until corrected (see the recipes list).
   const [recipeLines, setRecipeLines] = React.useState<RecipeLineState[]>(() =>
-    initial.recipeLines.map((l) =>
-      l.unit === 'kg'
-        ? { recipeId: l.recipeId, name: l.recipeName, quantity: numberToField(l.quantity * 1000), unit: 'g' as const }
-        : { recipeId: l.recipeId, name: l.recipeName, quantity: numberToField(l.quantity), unit: l.unit },
-    ),
+    initial.recipeLines.map((l) => ({
+      recipeId: l.recipeId,
+      name: l.recipeName,
+      unit: l.unit === 'portion' ? ('portion' as const) : ('g' as const),
+      amount: l.unit === 'kg' ? roundCanonical(l.quantity * 1000) : l.quantity,
+      draft: null,
+    })),
   );
   const [ingredientLines, setIngredientLines] = React.useState<IngredientLineState[]>(() =>
-    initial.ingredientLines.map((l) => ({
-      ingredientId: l.ingredientId,
-      name: l.ingredientName,
-      quantity: numberToField(l.quantity),
-      unit: l.unit,
-    })),
+    initial.ingredientLines.map((l) => {
+      const option = ingredientById.get(l.ingredientId);
+      const factor = l.unit === 'kg' || l.unit === 'l' ? 1000 : 1;
+      return {
+        ingredientId: l.ingredientId,
+        name: l.ingredientName,
+        dimension: option?.dimension ?? UNIT_DIMENSION[l.unit],
+        storedUnit: l.unit,
+        // The loader returns the amount in the saved unit; keep it canonical here.
+        amount: roundCanonical(l.quantity * factor),
+        draft: null,
+        costKind: option?.costKind ?? null,
+      };
+    }),
   );
 
   React.useEffect(() => {
     if (initial.id) void markDishOpenedAction(initial.id);
   }, [initial.id]);
 
-  // ── Portions + VAT ────────────────────────────────────────────────────────
-  const portions = parsePortions(portionsText);
-  const vatValue = parseNumber(vatText);
+  // ── Items + VAT ───────────────────────────────────────────────────────────
+  const items = parseItems(itemsText);
   const vatBlank = vatText.trim() === '';
-  const vatValid = vatBlank || (vatValue !== null && vatValue >= 0 && vatValue <= 100);
-  const vatBps = vatBlank || !vatValid || vatValue === null ? (defaultVatBps ?? 0) : Math.round(vatValue * 100);
+  const vatParsed = parsePercentBps(vatText);
+  const vatValid = vatBlank || (vatParsed !== null && vatParsed >= 0 && vatParsed <= 10_000);
+  const vatBps = vatBlank || !vatValid || vatParsed === null ? (defaultVatBps ?? 0) : vatParsed;
+  const label = labelText.trim();
+  const itemPlural = label !== '' ? label : t('output.labelPlaceholder', { unit: countUnit });
+  const itemSingular = label !== '' ? label : t('output.singular', { unit: countUnit });
 
   // ── Labour + extras ───────────────────────────────────────────────────────
-  const hours = parseNumber(hoursText);
-  const rate = parseMoneyField(rateText);
+  const hours = parseDecimal(hoursText);
+  const rate = parseMoneyText(rateText);
   const labourBlank = hoursText.trim() === '' && rateText.trim() === '';
   const labourValid =
-    !labourBlank && hours !== null && hours >= 0 && hours <= 100_000 && rate !== null && Number.isFinite(rate) && rate >= 0;
+    !labourBlank && hours !== null && hours <= 100_000 && rate !== null && Number.isFinite(rate) && rate >= 0;
   const labour: DishComposition['labour'] = labourBlank
     ? null
     : labourValid
@@ -241,133 +250,162 @@ export function DishBuilder({
 
   const extraValues: DishExtra[] = extras.map((e) => {
     if (e.kind === 'work') {
-      const h = parseNumber(e.hours);
-      const r = parseMoneyField(e.rate);
+      const h = parseDecimal(e.hours);
+      const r = parseMoneyText(e.rate);
       return {
         kind: 'work',
-        hours: h === null || h < 0 ? Number.NaN : roundHours(h),
+        hours: h === null ? Number.NaN : roundHours(h),
         hourlyCents: r === null || !Number.isFinite(r) ? Number.NaN : r,
       };
     }
-    const a = parseMoneyField(e.amount);
+    const a = parseMoneyText(e.amount);
     return { kind: 'expense', amountCents: a === null || !Number.isFinite(a) ? Number.NaN : a };
   });
-  const extrasValid = extras.every((e, i) => {
+  const extraValid = (i: number) => {
     const v = extraValues[i];
-    const numbersValid =
-      v?.kind === 'work'
-        ? Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents)
-        : v?.kind === 'expense' && Number.isFinite(v.amountCents);
-    return e.description.trim() !== '' && numbersValid;
-  });
-  const extrasTotalCents = extras.reduce((sum, _, i) => {
-    const v = extraValues[i];
-    if (v?.kind === 'work' && Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents)) {
-      return sum + Math.round(v.hours * v.hourlyCents);
-    }
-    if (v?.kind === 'expense' && Number.isFinite(v.amountCents)) return sum + v.amountCents;
-    return sum;
+    return v?.kind === 'work' ? Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents) : v?.kind === 'expense' && Number.isFinite(v.amountCents);
+  };
+  const extrasValid = extras.every((e, i) => e.description.trim() !== '' && extraValid(i));
+  const extrasTotalCents = extraValues.reduce((sum, v, i) => {
+    if (!extraValid(i)) return sum;
+    return sum + (v.kind === 'work' ? Math.round(v.hours * v.hourlyCents) : v.amountCents);
   }, 0);
 
-  // ── Cost + pricing ────────────────────────────────────────────────────────
-  const lookups: DishCostLookups = React.useMemo(
-    () => ({
-      recipeCostPerPortion: (id, { excludeLabour }) => {
-        const r = recipeById.get(id);
-        return (excludeLabour ? r?.costPerPortionWithoutLabourCents : r?.costPerPortionCents) ?? null;
-      },
-      recipeYield: (id) => recipeById.get(id) ?? null,
-      ingredient: (id) => ingredientById.get(id) ?? null,
-    }),
-    [recipeById, ingredientById],
-  );
-
+  // ── Cost + results ────────────────────────────────────────────────────────
+  const lineUnit = (l: IngredientLineState) => lineDisplayUnit(l.dimension, l.storedUnit, displayUnit);
+  const kindById = new Map(ingredientLines.map((l) => [l.ingredientId, l.costKind]));
+  const lookups: DishCostLookups = {
+    recipe: (id) => {
+      const r = recipeById.get(id);
+      return r ? { yieldPortions: r.yieldPortions, yieldWeightGrams: r.yieldWeightGrams, ingredientCostCents: r.ingredientCostCents } : null;
+    },
+    ingredient: (id) => {
+      const i = ingredientById.get(id);
+      return i ? { dimension: i.dimension, priceCents: i.priceCents, needsPricing: i.needsPricing, costKind: kindById.get(id) ?? null } : null;
+    },
+  };
   const cost = compositionCost(
     {
-      // Portions are the sale units; the finished weight plays no part in the price.
-      output: { quantity: portions ?? 0, unit: countUnit, finishedWeightGrams: null },
+      // Items are the sale units; the finished weight plays no part in the price.
+      output: { quantity: items ?? 0, unit: countUnit, finishedWeightGrams: null },
       labour,
       extras: extraValues,
-      recipeLines: recipeLines.map((l) => ({ recipeId: l.recipeId, quantity: parseNumber(l.quantity) ?? 0, unit: l.unit })),
-      ingredientLines: ingredientLines.map((l) => ({
-        ingredientId: l.ingredientId,
-        quantity: ingredientCanonicalQuantity(parseNumber(l.quantity) ?? 0, l.unit),
-        unit: l.unit,
-      })),
+      recipeLines: recipeLines.map((l) => ({ recipeId: l.recipeId, quantity: l.amount ?? 0, unit: l.unit })),
+      ingredientLines: ingredientLines.map((l) => ({ ingredientId: l.ingredientId, quantity: l.amount ?? 0, unit: lineUnit(l) })),
     },
     lookups,
   );
   const lineCost = new Map(cost.lineCosts.map((l) => [l.key, l.costCents]));
-  const excludeLabour = labour !== null;
-  const pricing = portionPricing(cost, priceExclCents, vatBps);
+  const results = dishResults(cost, priceExclCents, vatBps);
 
-  const targetValue = parseNumber(targetText);
-  const targetBps = targetValue !== null && targetValue >= 0 && targetValue < 100 ? Math.round(targetValue * 100) : null;
-  const suggestedExcl = targetBps !== null ? priceForMargin(pricing.exactCostPerPortionCents, targetBps) : null;
+  const targetBlank = targetText.trim() === '';
+  const targetParsed = parsePercentBps(targetText);
+  const targetBps = targetParsed !== null && targetParsed >= 0 && targetParsed < 10_000 ? targetParsed : null;
+  const targetInvalid = !targetBlank && targetBps === null;
+  const suggestedExcl = targetBps !== null ? priceForIngredientMargin(results.exactFoodCostPerItemCents, targetBps) : null;
   const suggestedIncl = suggestedExcl !== null ? priceInclVat(suggestedExcl, vatBps) : null;
+  const coverNote =
+    suggestedExcl === null
+      ? null
+      : results.exactTotalCostPerItemCents !== null
+        ? suggestedExcl < results.exactTotalCostPerItemCents
+          ? {
+              tone: 'warning' as const,
+              text: t('target.notCovering', {
+                price: money(suggestedExcl),
+                cost: money(Math.round(results.exactTotalCostPerItemCents)),
+              }),
+            }
+          : null
+        : { tone: 'muted' as const, text: cost.labourEntered ? t('target.coverUnknown') : t('target.coverNeedsLabour') };
 
   function priceText(field: 'excl' | 'incl'): string {
     if (priceDraft?.field === field) return priceDraft.text;
-    const cents = field === 'excl' ? pricing.priceExclCents : pricing.priceInclCents;
+    const cents = field === 'excl' ? results.priceExclCents : results.priceInclCents;
     return cents !== null ? centsToAmountInput(cents) : '';
   }
-
   function onPriceChange(field: 'excl' | 'incl', text: string) {
     setPriceDraft({ field, text });
-    const cents = parseMoneyField(text);
+    const cents = parseMoneyText(text);
     if (cents === null) setPriceExclCents(null);
     else if (Number.isFinite(cents)) setPriceExclCents(field === 'excl' ? cents : priceExclVat(cents, vatBps));
   }
-  const priceInvalid =
-    priceDraft !== null && priceDraft.text.trim() !== '' && !Number.isFinite(parseMoneyField(priceDraft.text) ?? 0);
+  const priceInvalid = priceDraft !== null && !Number.isFinite(parseMoneyText(priceDraft.text) ?? 0);
 
-  /** Why the calculator can't show every figure yet — the first missing piece wins. */
-  const missingReason = needsConversion
-    ? t('calc.missing.convert')
-    : portions === null
-      ? t('calc.missing.portions')
-      : recipeLines.length + ingredientLines.length + extras.length === 0 && labourBlank
-        ? t('calc.missing.costs')
-        : !labourBlank && !labourValid
-          ? t('calc.missing.labour')
-          : !extrasValid
-            ? t('calc.missing.extras')
-            : !cost.complete
-              ? t('calc.missing.unpriced')
-              : pricing.priceExclCents === null || pricing.priceExclCents <= 0
-                ? t('calc.missing.price')
-                : null;
+  // ── Focus (picked rows, Enter, remove) ────────────────────────────────────
+  const quantityRefs = React.useRef(new Map<string, HTMLInputElement>());
+  const recipeSearchRef = React.useRef<HTMLInputElement>(null);
+  const ingredientSearchRef = React.useRef<HTMLInputElement>(null);
+  const hoursRef = React.useRef<HTMLInputElement>(null);
+  const pendingFocus = React.useRef<string | null>(null);
+  const registerQuantity = (key: string) => (el: HTMLInputElement | null) => {
+    if (el) quantityRefs.current.set(key, el);
+    else quantityRefs.current.delete(key);
+  };
+  const focusQuantity = (key: string) => {
+    const el = quantityRefs.current.get(key);
+    el?.focus();
+    el?.select();
+  };
+  React.useEffect(() => {
+    const key = pendingFocus.current;
+    if (!key) return;
+    pendingFocus.current = null;
+    focusQuantity(key);
+  });
 
-  // ── Lines ─────────────────────────────────────────────────────────────────
-  function addRecipe(option: DishRecipeOption) {
-    setRecipeLines((prev) => [
-      ...prev,
-      // Always grams; a recipe without a finished weight is flagged, never guessed.
-      { recipeId: option.id, name: option.name, quantity: '100', unit: 'g' },
-    ]);
+  function pickRecipe(id: string) {
+    const option = recipeById.get(id);
+    if (!option) return;
+    const key = recipeLineKey(id);
+    if (recipeLines.some((l) => l.recipeId === id)) return focusQuantity(key);
+    // No default weight: the chef types it, so nothing is costed from a guess.
+    setRecipeLines((prev) => [...prev, { recipeId: id, name: option.name, unit: 'g', amount: null, draft: '' }]);
+    pendingFocus.current = key;
   }
-  function addIngredient(option: DishIngredientOption) {
-    const unit = ingredientUnitsFor(option.dimension)[0] ?? 'piece';
+  function pickIngredient(id: string) {
+    const option = ingredientById.get(id);
+    if (!option) return;
+    const key = ingredientLineKey(id);
+    if (ingredientLines.some((l) => l.ingredientId === id)) return focusQuantity(key);
     setIngredientLines((prev) => [
       ...prev,
-      { ingredientId: option.id, name: option.name, quantity: unit === 'piece' ? '1' : '10', unit },
+      {
+        ingredientId: id,
+        name: option.name,
+        dimension: option.dimension,
+        storedUnit: option.dimension === 'weight' ? displayUnit : option.dimension === 'volume' ? 'ml' : 'piece',
+        amount: null,
+        draft: '',
+        costKind: option.costKind,
+      },
     ]);
+    pendingFocus.current = key;
   }
+
+  function changeDisplayUnit(next: WeightDisplayUnit) {
+    if (next === displayUnit) return;
+    setDisplayUnit(next);
+    // Quantities are canonical: re-render readable weights in the new unit. An
+    // unreadable draft is left as typed so nothing the chef entered disappears.
+    setRecipeLines((prev) => prev.map((l) => (l.unit === 'g' && l.amount !== null ? { ...l, draft: null } : l)));
+    setIngredientLines((prev) => prev.map((l) => (l.dimension === 'weight' && l.amount !== null ? { ...l, draft: null } : l)));
+  }
+
   const patchExtra = (key: string, patch: Partial<ExtraState>) =>
     setExtras((prev) => prev.map((e) => (e.key === key ? { ...e, ...patch } : e)));
 
-  // ── Weight batch → portions (explicit and lossless) ───────────────────────
-  const [convertPortionsText, setConvertPortionsText] = React.useState('');
+  // ── Weight batch → items (explicit and lossless) ──────────────────────────
+  const [convertItemsText, setConvertItemsText] = React.useState('');
   const [convertPriceText, setConvertPriceText] = React.useState('');
-  const convertPortions = parsePortions(convertPortionsText);
-  const convertPrice = parseMoneyField(convertPriceText);
-  const canConvert = convertPortions !== null && (convertPrice === null || Number.isFinite(convertPrice));
-
+  const convertItems = parseItems(convertItemsText);
+  const convertPrice = parseMoneyText(convertPriceText);
+  const canConvert = convertItems !== null && (convertPrice === null || Number.isFinite(convertPrice));
   function applyConversion() {
-    if (!canConvert || convertPortions === null) return;
+    if (!canConvert || convertItems === null) return;
     const grams = initial.output.unit === 'kg' ? initial.output.quantity * 1000 : initial.output.quantity;
     setConvertedGrams(grams);
-    setPortionsText(String(convertPortions));
+    setItemsText(String(convertItems));
     setPriceExclCents(convertPrice);
     setPriceDraft(null);
   }
@@ -375,24 +413,23 @@ export function DishBuilder({
   // ── Save / dirty ──────────────────────────────────────────────────────────
   const unavailable =
     recipeLines.some((l) => !recipeById.has(l.recipeId)) || ingredientLines.some((l) => !ingredientById.has(l.ingredientId));
-  const invalidQuantity = [...recipeLines, ...ingredientLines].some((l) => {
-    const q = parseNumber(l.quantity);
-    return q === null || q <= 0;
-  });
+  const invalidQuantity = [...recipeLines, ...ingredientLines].some((l) => l.amount === null || l.amount <= 0);
 
   const payload = {
     name: name.trim(),
     folderId,
     output: {
-      quantity: portions ?? 0,
+      quantity: items ?? 0,
       unit: countUnit,
       // Kept exactly as stored. A converted weight batch keeps its weight here.
       sizeDescription: initial.output.sizeDescription,
+      label: label === '' ? null : label,
       finishedWeightGrams: legacyWeight ? convertedGrams : initial.output.finishedWeightGrams,
     },
     sellingPriceCents: priceExclCents,
     priceBasis: 'unit' as const,
-    vatRateBps: vatBlank || vatValue === null ? null : Math.round(vatValue * 100),
+    vatRateBps: vatBlank || vatParsed === null ? null : vatParsed,
+    displayUnit,
     labour: labourValid ? labour : null,
     extras: extras.map((e, i) => {
       const v = extraValues[i] as DishExtra;
@@ -401,28 +438,25 @@ export function DishBuilder({
         : { kind: 'expense' as const, description: e.description.trim(), amountCents: v.amountCents };
     }),
     notes: notes.trim() === '' ? null : notes.trim(),
-    recipeLines: recipeLines.map((l) => ({ recipeId: l.recipeId, quantity: parseNumber(l.quantity) ?? 0, unit: l.unit })),
-    ingredientLines: ingredientLines.map((l) => ({
-      ingredientId: l.ingredientId,
-      quantity: parseNumber(l.quantity) ?? 0,
-      unit: l.unit,
-    })),
+    recipeLines: recipeLines.map((l) => ({ recipeId: l.recipeId, quantity: l.amount ?? 0, unit: l.unit })),
+    ingredientLines: ingredientLines.map((l) => {
+      const unit = lineUnit(l);
+      return {
+        ingredientId: l.ingredientId,
+        quantity: l.amount === null ? 0 : canonicalToUnitAmount(l.amount, unit),
+        unit,
+        costKind: l.costKind,
+      };
+    }),
   };
   const payloadKey = JSON.stringify(payload);
   const [savedKey, setSavedKey] = React.useState(payloadKey);
   const dirty = payloadKey !== savedKey;
 
-  React.useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
-
   const problems = [
     needsConversion && t('problems.convert'),
     payload.name === '' && t('problems.name'),
-    !needsConversion && portions === null && t('problems.portions'),
+    !needsConversion && items === null && t('problems.items'),
     priceInvalid && t('problems.price'),
     !vatValid && t('problems.vat'),
     !labourBlank && !labourValid && t('problems.labour'),
@@ -434,6 +468,8 @@ export function DishBuilder({
 
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
+  const [showProblems, setShowProblems] = React.useState(false);
+  const problemsRef = React.useRef<HTMLUListElement>(null);
   const [justSaved, setJustSaved] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [leaveTo, setLeaveTo] = React.useState<string | null>(null);
@@ -441,11 +477,20 @@ export function DishBuilder({
   const [copyName, setCopyName] = React.useState('');
   const [copyBanner, setCopyBanner] = React.useState(justCopied);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [extrasOpen, setExtrasOpen] = React.useState(false);
+  const [notesOpen, setNotesOpen] = React.useState(notes.trim() !== '');
 
-  const backHref = initial.folderId ? `/menus/folders/${initial.folderId}` : isNew ? '/menus' : '/menus/folders/unfiled';
+  useLeaveGuard(dirty && !pending, (href) => setLeaveTo(href));
+
+  const cancelHref = initial.folderId ? `/menus/folders/${initial.folderId}` : isNew ? '/menus' : '/menus/folders/unfiled';
 
   function save() {
-    if (!canSave) return;
+    if (pending) return;
+    if (!canSave) {
+      setShowProblems(true);
+      window.requestAnimationFrame(() => problemsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      return;
+    }
     setError(null);
     setJustSaved(false);
     startTransition(async () => {
@@ -460,8 +505,28 @@ export function DishBuilder({
       if (!result.ok) return setError(actionError(result.code));
       setSavedKey(payloadKey);
       setJustSaved(true);
+      setShowProblems(false);
       router.refresh();
     });
+  }
+
+  // Ctrl/Cmd+S saves from anywhere in the form.
+  const saveRef = React.useRef(save);
+  saveRef.current = save;
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  function cancel() {
+    if (dirty) setLeaveTo(cancelHref);
+    else router.push(cancelHref);
   }
 
   function remove() {
@@ -487,46 +552,35 @@ export function DishBuilder({
     });
   }
 
-  // The compact summary appears only while the pricing card is out of view.
-  const firstCardRef = React.useRef<HTMLDivElement>(null);
-  const [summaryPinned, setSummaryPinned] = React.useState(false);
-  React.useEffect(() => {
-    const el = firstCardRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(([entry]) => setSummaryPinned(entry ? !entry.isIntersecting : false));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  // Labour + extras live in expandable rows inside the cost-details card. The
-  // margin panel's "Labour not entered · Add" indicator opens (and scrolls to)
-  // the labour row directly, rather than duplicating labour fields elsewhere.
-  const [openCostSections, setOpenCostSections] = React.useState<string[]>(() => (labourBlank ? [] : ['labour']));
-  const labourRowRef = React.useRef<HTMLDivElement>(null);
-  function openLabourRow() {
-    setOpenCostSections((prev) => (prev.includes('labour') ? prev : [...prev, 'labour']));
-    window.requestAnimationFrame(() => labourRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  function focusLabour() {
+    hoursRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    hoursRef.current?.focus({ preventScroll: true });
   }
-  const [notesOpen, setNotesOpen] = React.useState(notes.trim() !== '');
 
-  const dash = '—';
-  const priceShown = pricing.priceExclCents !== null ? money(pricing.priceExclCents) : dash;
-  const costShown = pricing.costPerPortionCents !== null ? money(pricing.costPerPortionCents) : dash;
-  const leftShown = pricing.amountLeftPerPortionCents !== null ? money(pricing.amountLeftPerPortionCents) : dash;
-  const marginShown = pricing.marginBps !== null ? formatPercentBps(pricing.marginBps) : dash;
-  const leftNegative = pricing.amountLeftPerPortionCents !== null && pricing.amountLeftPerPortionCents < 0;
-  const totalCostShown = cost.totalCostCents !== null && portions !== null ? money(cost.totalCostCents) : dash;
-  const costsHeading = portions !== null ? t('costs.heading', { count: portions }) : t('costs.headingUnknown');
-  const labourStatusLabel = labourBlank ? t('labour.statusMissing') : t('labour.statusEntered');
-  const labourCostShown =
-    !labourBlank && cost.productionLabourCents !== null ? money(cost.productionLabourCents) : null;
-  const extrasStatusLabel = extras.length === 0 ? t('extras.statusEmpty') : money(extrasTotalCents);
+  // ── Why some results are blank ────────────────────────────────────────────
+  const hasComponents = recipeLines.length + ingredientLines.length > 0;
+  const unknownCostCount = cost.incompleteKeys.filter((k) => k.startsWith('r:') || k.startsWith('i:')).length;
+  const missing: { key: string; text: string; action?: { label: string; onClick: () => void } }[] = [];
+  if (needsConversion) missing.push({ key: 'convert', text: t('results.missing.convert') });
+  else {
+    if (items === null) missing.push({ key: 'items', text: t('results.missing.items') });
+    if (!hasComponents) missing.push({ key: 'costs', text: t('results.missing.costs') });
+    if (results.priceExclCents === null || results.priceExclCents <= 0) missing.push({ key: 'price', text: t('results.missing.price') });
+    if (unknownCostCount > 0) missing.push({ key: 'unknown', text: t('results.missing.unknownCost', { count: unknownCostCount }) });
+    if (cost.unclassifiedKeys.length > 0) {
+      missing.push({ key: 'unclassified', text: t('results.missing.unclassified', { count: cost.unclassifiedKeys.length }) });
+    }
+    if ((!labourBlank && !labourValid) || !extrasValid) missing.push({ key: 'invalid', text: t('results.missing.invalid') });
+    else if (labourBlank) {
+      missing.push({ key: 'labour', text: t('results.missing.labour'), action: { label: t('results.missing.labourAction'), onClick: focusLabour } });
+    } else if (cost.workHours === 0) missing.push({ key: 'hours', text: t('results.missing.noHours') });
+    if (hasComponents && !cost.hasFoodLines && cost.unclassifiedKeys.length === 0) {
+      missing.push({ key: 'food', text: t('results.missing.noFood') });
+    }
+  }
 
-  const actions = (
-    <Button type="submit" disabled={!canSave || pending || !dirty}>
-      {pending ? t('saving') : t('save')}
-    </Button>
-  );
+  const extraHours = cost.extraWorkHours ?? 0;
+  const extrasStatus = extras.length === 0 ? t('extras.none') : extrasValid ? money(extrasTotalCents) : DASH;
 
   return (
     <form
@@ -534,97 +588,94 @@ export function DishBuilder({
         e.preventDefault();
         save();
       }}
-      className="mx-auto flex w-full max-w-3xl flex-col gap-5"
+      className="mx-auto flex w-full max-w-3xl flex-col gap-5 pb-10"
     >
-      {/* Header — back link, big editable name, overflow menu, one Save button. */}
-      <div className="sticky top-0 z-20 flex flex-col gap-2 rounded-xl bg-surface/95 pb-3 pt-1 backdrop-blur">
-        <Link
-          href={backHref}
-          onClick={(e) => {
-            if (!dirty) return;
-            e.preventDefault();
-            setLeaveTo(backHref);
-          }}
-          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" />
-          {t('back')}
-        </Link>
-        <div className="flex items-start gap-2">
-          <Label htmlFor="dish-name" className="sr-only">
-            {t('fields.name')}
-          </Label>
-          <Input
-            id="dish-name"
-            value={name}
-            maxLength={200}
-            autoFocus={isNew || justCopied}
-            placeholder={t('fields.namePlaceholder')}
-            onChange={(e) => setName(e.target.value)}
-            className="h-auto flex-1 border-none bg-transparent px-0 font-display text-[28px] font-semibold tracking-tight text-foreground shadow-none focus-visible:ring-0 sm:text-[30px]"
-          />
-          <div className="flex shrink-0 items-center gap-1.5 pt-1.5">
-            {justSaved && !dirty && (
-              <span role="status" className="inline-flex items-center gap-1 text-sm text-brand-700 dark:text-brand-300">
-                <Check className="size-4" />
-                <span className="hidden sm:inline">{t('saved')}</span>
-              </span>
-            )}
-            {dirty && <span className="hidden text-sm text-muted-foreground sm:inline">{t('unsaved')}</span>}
-            {!isNew && (
-              <OverflowMenu open={menuOpen} onOpenChange={setMenuOpen} label={t('overflow.label')}>
-                <OverflowMenuItem
-                  disabled={dirty}
-                  title={dirty ? t('copy.saveFirst') : undefined}
-                  onClick={() => {
-                    setCopyName(t('copy.defaultName', { name: name.trim() }));
-                    setCopying(true);
-                  }}
-                >
-                  <Copy className="size-4" />
-                  {t('copy.action')}
-                </OverflowMenuItem>
-                <OverflowMenuItem destructive onClick={() => setConfirmDelete(true)}>
-                  <Trash2 className="size-4" />
-                  {t('delete')}
-                </OverflowMenuItem>
-              </OverflowMenu>
-            )}
-            {actions}
-          </div>
+      {/* ── Action bar: stays reachable while the form scrolls ─────────────── */}
+      <div className="sticky -top-4 z-20 -mx-4 flex items-center justify-between gap-3 bg-background/95 px-4 py-3 backdrop-blur md:-top-6 lg:-top-8">
+        <h1 className="truncate text-sm font-medium text-muted-foreground">{isNew ? t('newTitle') : t('editTitle')}</h1>
+        <div className="flex shrink-0 items-center gap-2">
+          {justSaved && !dirty ? (
+            <span role="status" className="inline-flex items-center gap-1 text-sm text-brand-700 dark:text-brand-300">
+              <Check className="size-4" />
+              <span className="hidden sm:inline">{t('saved')}</span>
+            </span>
+          ) : null}
+          {dirty ? <span className="hidden text-sm text-muted-foreground md:inline">{t('unsaved')}</span> : null}
+          <Button type="button" variant="ghost" onClick={cancel} disabled={pending}>
+            {t('cancel')}
+          </Button>
+          <Button type="submit" disabled={pending || (!dirty && !isNew)} className="min-w-32">
+            {pending ? t('saving') : t('save')}
+          </Button>
+          {!isNew ? (
+            <OverflowMenu open={menuOpen} onOpenChange={setMenuOpen} label={t('overflow.label')}>
+              <OverflowMenuItem
+                disabled={dirty}
+                title={dirty ? t('copy.saveFirst') : undefined}
+                onClick={() => {
+                  setMenuOpen(false);
+                  setCopyName(t('copy.defaultName', { name: name.trim() }));
+                  setCopying(true);
+                }}
+              >
+                <Copy className="size-4" />
+                {t('copy.action')}
+              </OverflowMenuItem>
+              <OverflowMenuItem
+                destructive
+                onClick={() => {
+                  setMenuOpen(false);
+                  setConfirmDelete(true);
+                }}
+              >
+                <Trash2 className="size-4" />
+                {t('delete')}
+              </OverflowMenuItem>
+            </OverflowMenu>
+          ) : null}
         </div>
-        {copyBanner && (
-          <Notice tone="info" onDismiss={() => setCopyBanner(false)} dismissLabel={t('dismiss')}>
-            {t('copy.banner')}
-          </Notice>
-        )}
-        {error && (
-          <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/15 dark:text-red-300">
-            {error}
-          </p>
-        )}
       </div>
 
-      {needsConversion && (
+      {copyBanner ? (
+        <div className="flex items-start gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-foreground">
+          <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span className="flex-1">{t('copy.banner')}</span>
+          <button type="button" onClick={() => setCopyBanner(false)} aria-label={t('dismiss')} className="text-muted-foreground hover:text-foreground">
+            <X className="size-4" />
+          </button>
+        </div>
+      ) : null}
+      {error ? (
+        <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/15 dark:text-red-300">
+          {error}
+        </p>
+      ) : null}
+      {showProblems && problems.length > 0 ? (
+        <ul ref={problemsRef} role="alert" className="flex flex-col gap-1 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/15 dark:text-red-300">
+          {problems.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {needsConversion ? (
         <Card className="border-amber-300 dark:border-amber-500/40">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">{t('convert.title')}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent className="flex flex-col gap-4 p-5 sm:p-7">
+            <h2 className="text-lg font-semibold text-foreground">{t('convert.title')}</h2>
             <p className="text-sm text-muted-foreground">
               {t('convert.body', {
                 amount: numberToField(initial.output.quantity),
                 unit: initial.output.unit,
-                price: initial.sellingPriceCents !== null ? money(initial.sellingPriceCents) : dash,
+                price: initial.sellingPriceCents !== null ? money(initial.sellingPriceCents) : DASH,
               })}
             </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field id="convert-portions" label={t('portions.label')}>
+              <Field id="convert-items" label={t('output.count')}>
                 <Input
-                  id="convert-portions"
+                  id="convert-items"
                   inputMode="numeric"
-                  value={convertPortionsText}
-                  onChange={(e) => setConvertPortionsText(e.target.value)}
+                  value={convertItemsText}
+                  onChange={(e) => setConvertItemsText(e.target.value)}
                   className="h-12 text-right text-base tabular-nums"
                 />
               </Field>
@@ -638,244 +689,118 @@ export function DishBuilder({
             </Button>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
-      {/* Compact folder + portions row — quiet, secondary to name and price. */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <Folder className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-          <Label htmlFor="dish-folder" className="sr-only">
-            {t('fields.folder')}
-          </Label>
-          <Select
-            id="dish-folder"
-            value={folderId ?? ''}
-            onChange={(e) => setFolderId(e.target.value === '' ? null : e.target.value)}
-            className="h-8 border-none bg-transparent px-1.5 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <option value="">{t('fields.unfiled')}</option>
-            {folders.map((f) => {
-              const path = folderAncestorLabel(folders, f.id);
-              return (
-                <option key={f.id} value={f.id}>
-                  {path ? `${path} › ${f.name}` : f.name}
-                </option>
-              );
-            })}
-          </Select>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-muted-foreground">{t('portions.compactPrefix')}</span>
-          <Input
-            id="portions"
-            inputMode="numeric"
-            value={portionsText}
-            aria-label={t('portions.ariaLabel', { count: portions ?? 0 })}
-            aria-invalid={!needsConversion && portions === null}
-            disabled={needsConversion}
-            onChange={(e) => setPortionsText(e.target.value)}
-            className="h-8 w-16 text-right text-sm tabular-nums"
-          />
-          <span className="text-muted-foreground">{t('portions.compactSuffix')}</span>
-        </div>
-      </div>
-
-      {/* Price + margin panel */}
-      <div ref={firstCardRef}>
-        <Card>
-          <CardContent className="flex flex-col gap-5 pt-6">
-            {/* Selling prices: excl. VAT is primary, incl. VAT + VAT rate are quiet and secondary. */}
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <Field id="price-excl" label={t('price.excl')} className="sm:max-w-64">
-                <MoneyInput
-                  id="price-excl"
-                  value={priceText('excl')}
-                  currency={currency}
-                  invalid={priceInvalid && priceDraft?.field === 'excl'}
-                  disabled={needsConversion}
-                  onChange={(v) => onPriceChange('excl', v)}
-                  onBlur={() => setPriceDraft(null)}
-                  size="lg"
-                />
-              </Field>
-              <div className="flex flex-col gap-3 sm:items-end">
-                <Field id="price-incl" label={t('price.incl')} className="sm:items-end">
-                  <MoneyInput
-                    id="price-incl"
-                    value={priceText('incl')}
-                    currency={currency}
-                    invalid={priceInvalid && priceDraft?.field === 'incl'}
-                    disabled={needsConversion}
-                    onChange={(v) => onPriceChange('incl', v)}
-                    onBlur={() => setPriceDraft(null)}
-                    size="sm"
-                  />
-                </Field>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <Label htmlFor="vat-rate" className="text-xs font-normal text-muted-foreground">
-                    {t('price.vatRate')}
-                  </Label>
-                  <div className="relative w-20">
-                    <Input
-                      id="vat-rate"
-                      inputMode="decimal"
-                      value={vatText}
-                      aria-invalid={!vatValid}
-                      placeholder={numberToField((defaultVatBps ?? 0) / 100)}
-                      onChange={(e) => {
-                        setVatText(e.target.value);
-                        setPriceDraft(null);
-                      }}
-                      className="h-8 pr-6 text-right text-sm tabular-nums"
-                    />
-                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                  </div>
-                </div>
-                <span className="text-right text-xs text-muted-foreground">
-                  {vatBlank
-                    ? defaultVatBps !== null
-                      ? t('price.vatDefault', { rate: formatPercentBps(defaultVatBps) })
-                      : t('price.vatNone')
-                    : vatValid
-                      ? t('price.vatOverride', { rate: formatPercentBps(vatBps) })
-                      : t('problems.vat')}
-                </span>
-              </div>
-            </div>
-
-            {/* Only three main results. */}
-            <dl className="flex flex-col gap-2 border-t border-border pt-4 text-sm">
-              <Row label={t('calc.costPerPortion')} value={costShown} />
-              <Row label={t('calc.leftPerPortion')} value={leftShown} strong negative={leftNegative} />
-              <Row label={t('calc.margin')} value={marginShown} strong negative={leftNegative} />
-            </dl>
-            <div className="flex flex-wrap items-center gap-2">
-              <LabourStatusChip label={labourStatusLabel} cost={labourCostShown} onClick={openLabourRow} />
-            </div>
-
-            {missingReason ? (
-              <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                {missingReason}
-              </p>
-            ) : null}
-
-            {/* Target-margin strip — soft teal/cyan, visually distinct. */}
-            <div className="flex flex-col gap-3 rounded-xl bg-accent-50 p-4 ring-1 ring-accent-200 dark:bg-accent-950/40 dark:ring-accent-800/60">
-              <h3 id="margin-calculator" className="text-sm font-semibold text-foreground">
-                {t('calc.title')}
-              </h3>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <Field id="target-margin" label={t('calc.target')}>
-                  <div className="relative">
-                    <Input
-                      id="target-margin"
-                      inputMode="decimal"
-                      value={targetText}
-                      placeholder="70"
-                      aria-invalid={targetText.trim() !== '' && targetBps === null}
-                      onChange={(e) => setTargetText(e.target.value)}
-                      className="bg-surface pr-8 text-right tabular-nums"
-                    />
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
-                  </div>
-                </Field>
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <span className="text-sm font-medium text-foreground">{t('calc.suggestedExcl')}</span>
-                  <span className="flex h-12 items-center justify-end rounded-lg bg-surface px-3 font-display text-lg font-semibold tabular-nums ring-1 ring-border">
-                    {suggestedExcl !== null ? money(suggestedExcl) : dash}
-                  </span>
-                </div>
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">{t('calc.suggestedIncl')}</span>
-                  <span className="flex h-9 items-center justify-end rounded-lg bg-surface px-3 text-sm tabular-nums ring-1 ring-border">
-                    {suggestedIncl !== null ? money(suggestedIncl) : dash}
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={suggestedExcl === null || needsConversion || suggestedExcl === priceExclCents}
-                  onClick={() => {
-                    if (suggestedExcl === null) return;
-                    setPriceExclCents(suggestedExcl);
-                    setPriceDraft(null);
-                  }}
-                >
-                  {t('calc.usePrice')}
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  {targetText.trim() !== '' && targetBps === null
-                    ? t('calc.targetInvalid')
-                    : targetBps !== null && suggestedExcl === null
-                      ? t('calc.suggestedNeedsCost')
-                      : t('calc.targetHint')}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Compact live summary — only once the pricing card has scrolled out of view. */}
-      {summaryPinned && (
-        <div
-          aria-hidden
-          className="sticky top-16 z-10 rounded-xl border border-accent-200 bg-accent-50/95 px-4 py-2.5 shadow-sm backdrop-blur dark:border-accent-800 dark:bg-accent-950/90"
-        >
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
-            <MiniStat label={t('calc.price')} value={priceShown} />
-            <MiniStat label={t('calc.costPerPortion')} value={costShown} />
-            <MiniStat label={t('calc.leftPerPortion')} value={leftShown} negative={leftNegative} />
-            <MiniStat label={t('calc.margin')} value={marginShown} negative={leftNegative} />
-          </dl>
-        </div>
-      )}
-
-      {/* Cost details: recipes, ingredients (always visible), labour + extras (expandable). */}
+      {/* ── Name, folder + items, recipes, direct ingredients ───────────────── */}
       <Card>
-        <CardHeader className="flex-row items-baseline justify-between gap-3 pb-3">
-          <CardTitle className="text-lg">{costsHeading}</CardTitle>
-          <span className="text-sm text-muted-foreground">{totalCostShown}</span>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-6">
-          {/* Recipes */}
-          <section className="flex flex-col gap-3">
-            <h3 className="text-sm font-semibold text-foreground">{t('recipes.title')}</h3>
+        <CardContent className="flex flex-col gap-6 p-5 sm:p-7">
+          <div className="flex flex-col gap-3">
+            <Label htmlFor="dish-name" className="sr-only">
+              {t('fields.name')}
+            </Label>
+            <input
+              id="dish-name"
+              value={name}
+              maxLength={200}
+              autoComplete="off"
+              autoFocus={isNew || justCopied}
+              placeholder={t('fields.namePlaceholder')}
+              aria-invalid={showProblems && payload.name === ''}
+              onChange={(e) => setName(e.target.value)}
+              className="h-14 w-full rounded-xl border border-border bg-surface px-4 font-display text-2xl font-semibold tracking-tight text-foreground transition-colors placeholder:font-normal placeholder:text-muted-foreground/60 hover:border-muted-foreground/40 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-16 sm:text-[28px] aria-[invalid=true]:border-red-500"
+            />
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Folder className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <Label htmlFor="dish-folder" className="sr-only">
+                  {t('fields.folder')}
+                </Label>
+                <Select
+                  id="dish-folder"
+                  value={folderId ?? ''}
+                  onChange={(e) => setFolderId(e.target.value === '' ? null : e.target.value)}
+                  className="h-10 max-w-60 border-none bg-transparent px-1.5 text-sm text-muted-foreground shadow-none hover:text-foreground"
+                >
+                  <option value="">{t('fields.unfiled')}</option>
+                  {folders.map((f) => {
+                    const path = folderAncestorLabel(folders, f.id);
+                    return (
+                      <option key={f.id} value={f.id}>
+                        {path ? `${path} › ${f.name}` : f.name}
+                      </option>
+                    );
+                  })}
+                </Select>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-muted-foreground">{t('output.prefix')}</span>
+                <Input
+                  id="dish-items"
+                  inputMode="numeric"
+                  value={itemsText}
+                  aria-label={t('output.count')}
+                  aria-invalid={!needsConversion && items === null}
+                  disabled={needsConversion}
+                  onChange={(e) => setItemsText(e.target.value)}
+                  className="h-10 w-20 text-right text-base tabular-nums"
+                />
+                <Input
+                  id="dish-item-label"
+                  value={labelText}
+                  maxLength={40}
+                  aria-label={t('output.label')}
+                  placeholder={t('output.labelPlaceholder', { unit: countUnit })}
+                  onChange={(e) => setLabelText(e.target.value)}
+                  className="h-10 w-36 text-base"
+                />
+                <InfoPopover label={t('infoLabel', { topic: t('output.topic') })}>{t('output.info')}</InfoPopover>
+              </div>
+            </div>
+          </div>
+
+          {/* Recipes — the g/kg switch here controls weights in both lists. */}
+          <section aria-labelledby="dish-recipes-heading" className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 id="dish-recipes-heading" className="flex items-center gap-1.5 text-lg font-semibold text-foreground">
+                {t('recipes.title')}
+                <InfoPopover label={t('infoLabel', { topic: t('recipes.topic') })}>{t('recipes.info')}</InfoPopover>
+              </h2>
+              <UnitSwitch value={displayUnit} onChange={changeDisplayUnit} label={t('unitSwitch')} />
+            </div>
             {recipeLines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('recipes.empty')}</p>
+              <p className="rounded-xl border border-dashed border-border px-4 py-4 text-center text-sm text-muted-foreground">
+                {t('recipes.empty')}
+              </p>
             ) : (
               <ul className="divide-y divide-border">
                 {recipeLines.map((line, index) => {
                   const option = recipeById.get(line.recipeId);
-                  const contribution = lineCost.get(recipeLineKey(line.recipeId)) ?? null;
-                  const perKg = excludeLabour ? option?.costPerKgWithoutLabourCents : option?.costPerKgCents;
-                  const q = parseNumber(line.quantity);
-                  const remove = () => setRecipeLines((prev) => prev.filter((_, i) => i !== index));
+                  const key = recipeLineKey(line.recipeId);
+                  const contribution = lineCost.get(key) ?? null;
+                  const removeLine = () => {
+                    setRecipeLines((prev) => prev.filter((_, i) => i !== index));
+                    recipeSearchRef.current?.focus();
+                  };
                   const hasWeight = option != null && option.yieldWeightGrams != null && option.yieldWeightGrams > 0;
-                  if (line.unit !== 'g') {
-                    // A line saved in recipe portions: kept exactly as saved (and costed as
-                    // before) until it is converted to grams or removed — never reinterpreted.
-                    const saved = parseNumber(line.quantity) ?? 0;
+                  if (line.unit === 'portion') {
+                    // Saved in recipe portions: kept and costed as saved until converted or
+                    // removed — never reinterpreted.
+                    const saved = line.amount ?? 0;
                     const grams =
                       hasWeight && option.yieldPortions > 0
-                        ? Math.round(((saved * (option.yieldWeightGrams as number)) / option.yieldPortions) * 10_000) / 10_000
+                        ? roundCanonical((saved * (option.yieldWeightGrams as number)) / option.yieldPortions)
                         : null;
                     return (
-                      <li key={line.recipeId} className="flex flex-col gap-2 py-3">
+                      <li key={key} className="flex flex-col gap-2 py-3">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                           <div className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-0 sm:flex-1">
-                            <span className="truncate font-medium text-foreground">{line.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {t('recipes.savedPortions', { count: saved })}
-                            </span>
+                            <span className="truncate text-[17px] font-semibold text-foreground">{line.name}</span>
+                            <span className="text-xs text-muted-foreground">{t('recipes.savedPortions', { count: saved })}</span>
                           </div>
-                          <span className="ml-auto w-24 text-right text-sm font-medium tabular-nums text-foreground">
-                            {contribution !== null ? money(contribution) : dash}
+                          <span className="ml-auto w-20 text-right text-sm tabular-nums text-muted-foreground">
+                            {contribution !== null ? money(contribution) : DASH}
                           </span>
-                          <Button type="button" variant="ghost" size="sm" aria-label={`${t('remove')} — ${line.name}`} onClick={remove}>
+                          <Button type="button" variant="ghost" aria-label={t('removeItem', { name: line.name })} onClick={removeLine} className="size-10 p-0">
                             <X />
                           </Button>
                         </div>
@@ -892,9 +817,7 @@ export function DishBuilder({
                               size="sm"
                               variant="outline"
                               onClick={() =>
-                                setRecipeLines((prev) =>
-                                  prev.map((l, i) => (i === index ? { ...l, quantity: numberToField(grams), unit: 'g' } : l)),
-                                )
+                                setRecipeLines((prev) => prev.map((l, i) => (i === index ? { ...l, unit: 'g', amount: grams, draft: null } : l)))
                               }
                             >
                               {t('recipes.convertToGrams', { grams: numberToField(grams) })}
@@ -909,205 +832,245 @@ export function DishBuilder({
                     );
                   }
                   return (
-                    <ComponentRow
-                      key={line.recipeId}
+                    <LineRow
+                      key={key}
                       name={line.name}
                       meta={
                         !option ? (
                           <Badge variant="negative">{t('unavailable')}</Badge>
                         ) : !hasWeight ? (
                           <Badge variant="warning">{t('recipes.noWeight')}</Badge>
-                        ) : perKg != null ? (
-                          <span>{t('recipes.perKg', { amount: money(perKg) })}</span>
+                        ) : option.ingredientCostPerKgCents !== null ? (
+                          <span className="tabular-nums">{t('recipes.perKg', { amount: money(option.ingredientCostPerKgCents) })}</span>
                         ) : (
                           <Badge variant="warning">{t('needsPricing')}</Badge>
                         )
                       }
-                      warning={option && !hasWeight ? t('recipes.needsWeight', { name: line.name }) : undefined}
-                      warningHref={option && !hasWeight ? `/recipes/${line.recipeId}` : undefined}
-                      warningLinkLabel={t('recipes.openRecipe')}
-                      quantity={line.quantity}
-                      quantityInvalid={q === null || q <= 0}
-                      onQuantity={(value) => setRecipeLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))}
-                      unit="g"
-                      units={[{ value: 'g', label: tUnits('g') }]}
-                      onUnit={() => undefined}
-                      contribution={contribution !== null ? money(contribution) : dash}
-                      removeLabel={t('remove')}
-                      onRemove={remove}
-                      quantityLabel={t('recipes.grams')}
-                      unitLabel={t('unit')}
+                      footer={
+                        option && !hasWeight ? (
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            {t('recipes.needsWeight', { name: line.name })}{' '}
+                            <Link href={`/recipes/${line.recipeId}`} className="font-medium underline underline-offset-2">
+                              {t('recipes.openRecipe')}
+                            </Link>
+                          </p>
+                        ) : option && option.legacyExtraCostCents > 0 ? (
+                          <p className="text-xs text-muted-foreground">{t('recipes.legacyCosts')}</p>
+                        ) : null
+                      }
+                      quantity={line.draft ?? (line.amount !== null ? canonicalToField(line.amount, displayUnit) : '')}
+                      quantityInvalid={line.draft !== null && line.draft.trim() !== '' && line.amount === null}
+                      quantityLabel={t('quantityFor', { name: line.name, unit: tUnits(displayUnit) })}
+                      unitLabel={tUnits(displayUnit)}
+                      onQuantity={(text) =>
+                        setRecipeLines((prev) =>
+                          prev.map((l, i) => (i === index ? { ...l, draft: text, amount: fieldToCanonical(text, displayUnit) } : l)),
+                        )
+                      }
+                      onQuantityBlur={() =>
+                        setRecipeLines((prev) => prev.map((l, i) => (i === index && l.amount !== null ? { ...l, draft: null } : l)))
+                      }
+                      onQuantityEnter={() => recipeSearchRef.current?.focus()}
+                      quantityRef={registerQuantity(key)}
+                      cost={contribution !== null ? money(contribution) : DASH}
+                      removeLabel={t('removeItem', { name: line.name })}
+                      onRemove={removeLine}
                     />
                   );
                 })}
               </ul>
             )}
-            <ComponentPicker
-              placeholder={t('recipes.add')}
-              emptyLabel={t('noMatches')}
-              options={recipeOptions
-                .filter((r) => !recipeLines.some((l) => l.recipeId === r.id))
-                .map((r) => {
-                  const perKg = excludeLabour ? r.costPerKgWithoutLabourCents : r.costPerKgCents;
-                  return {
-                    id: r.id,
-                    name: r.name,
-                    hint: !r.yieldWeightGrams
+            <DishSearch
+              ref={recipeSearchRef}
+              options={recipeOptions.map((r) => ({
+                id: r.id,
+                name: r.name,
+                hint:
+                  r.ingredientCostPerKgCents !== null
+                    ? t('recipes.perKg', { amount: money(r.ingredientCostPerKgCents) })
+                    : !r.yieldWeightGrams
                       ? t('recipes.noWeight')
-                      : perKg !== null
-                        ? t('recipes.perKg', { amount: money(perKg) })
-                        : t('needsPricing'),
-                  };
-                })}
-              onPick={(id) => {
-                const option = recipeById.get(id);
-                if (option) addRecipe(option);
-              }}
+                      : t('needsPricing'),
+              }))}
+              usedIds={new Set(recipeLines.map((l) => l.recipeId))}
+              placeholder={t('recipes.search')}
+              label={t('recipes.searchLabel')}
+              noMatches={(query) => t('noMatches', { query })}
+              addedLabel={t('added')}
+              onPick={pickRecipe}
             />
           </section>
 
-          {/* Direct ingredients and packaging */}
-          <section className="flex flex-col gap-3 border-t border-border pt-6">
-            <h3 className="text-sm font-semibold text-foreground">{t('ingredients.title')}</h3>
+          {/* Direct ingredients — food and packaging, explicitly classified. */}
+          <section aria-labelledby="dish-ingredients-heading" className="flex flex-col gap-3 border-t border-border pt-6">
+            <h2 id="dish-ingredients-heading" className="flex items-center gap-1.5 text-lg font-semibold text-foreground">
+              {t('ingredients.title')}
+              <InfoPopover label={t('infoLabel', { topic: t('ingredients.topic') })}>{t('ingredients.info')}</InfoPopover>
+            </h2>
             {ingredientLines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('ingredients.empty')}</p>
+              <p className="rounded-xl border border-dashed border-border px-4 py-4 text-center text-sm text-muted-foreground">
+                {t('ingredients.empty')}
+              </p>
             ) : (
               <ul className="divide-y divide-border">
                 {ingredientLines.map((line, index) => {
                   const option = ingredientById.get(line.ingredientId);
-                  const contribution = lineCost.get(ingredientLineKey(line.ingredientId)) ?? null;
-                  const q = parseNumber(line.quantity);
+                  const key = ingredientLineKey(line.ingredientId);
+                  const contribution = lineCost.get(key) ?? null;
+                  const unit = lineUnit(line);
                   return (
-                    <ComponentRow
-                      key={line.ingredientId}
+                    <LineRow
+                      key={key}
                       name={line.name}
                       meta={
-                        !option ? (
-                          <Badge variant="negative">{t('unavailable')}</Badge>
-                        ) : option.needsPricing ? (
-                          <Badge variant="warning">{t('needsPricing')}</Badge>
-                        ) : (
-                          <span>{t(`ingredients.per.${option.dimension}`, { amount: money(option.priceCents) })}</span>
-                        )
+                        <>
+                          {!option ? (
+                            <Badge variant="negative">{t('unavailable')}</Badge>
+                          ) : option.needsPricing ? (
+                            <Badge variant="warning">{t('needsPricing')}</Badge>
+                          ) : (
+                            <span className="tabular-nums">{t(`ingredients.per.${option.dimension}`, { amount: money(option.priceCents) })}</span>
+                          )}
+                          {option ? (
+                            <CostKindToggle
+                              value={line.costKind}
+                              name={line.name}
+                              onChange={(costKind) =>
+                                setIngredientLines((prev) => prev.map((l, i) => (i === index ? { ...l, costKind } : l)))
+                              }
+                              labels={{
+                                group: t('ingredients.kindLabel'),
+                                food: t('ingredients.food'),
+                                packaging: t('ingredients.packaging'),
+                                missing: t('ingredients.kindMissing'),
+                              }}
+                            />
+                          ) : null}
+                        </>
                       }
-                      quantity={line.quantity}
-                      quantityInvalid={q === null || q <= 0}
-                      onQuantity={(value) =>
-                        setIngredientLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: value } : l)))
-                      }
-                      unit={line.unit}
-                      units={(option ? ingredientUnitsFor(option.dimension) : [line.unit]).map((u) => ({ value: u, label: tUnits(u) }))}
-                      onUnit={(value) =>
+                      quantity={line.draft ?? (line.amount !== null ? canonicalToField(line.amount, unit) : '')}
+                      quantityInvalid={line.draft !== null && line.draft.trim() !== '' && line.amount === null}
+                      quantityLabel={t('quantityFor', { name: line.name, unit: tUnits(unit) })}
+                      unitLabel={tUnits(unit)}
+                      onQuantity={(text) =>
                         setIngredientLines((prev) =>
-                          prev.map((l, i) => (i === index ? { ...l, unit: value as DishIngredientUnit } : l)),
+                          prev.map((l, i) => (i === index ? { ...l, draft: text, amount: fieldToCanonical(text, unit) } : l)),
                         )
                       }
-                      contribution={contribution !== null ? money(contribution) : dash}
-                      removeLabel={t('remove')}
-                      onRemove={() => setIngredientLines((prev) => prev.filter((_, i) => i !== index))}
-                      quantityLabel={t('quantity')}
-                      unitLabel={t('unit')}
+                      onQuantityBlur={() =>
+                        setIngredientLines((prev) => prev.map((l, i) => (i === index && l.amount !== null ? { ...l, draft: null } : l)))
+                      }
+                      onQuantityEnter={() => ingredientSearchRef.current?.focus()}
+                      quantityRef={registerQuantity(key)}
+                      cost={contribution !== null ? money(contribution) : DASH}
+                      removeLabel={t('removeItem', { name: line.name })}
+                      onRemove={() => {
+                        setIngredientLines((prev) => prev.filter((_, i) => i !== index));
+                        ingredientSearchRef.current?.focus();
+                      }}
                     />
                   );
                 })}
               </ul>
             )}
-            <ComponentPicker
-              placeholder={t('ingredients.add')}
-              emptyLabel={t('noMatches')}
-              options={ingredientOptions
-                .filter((i) => !ingredientLines.some((l) => l.ingredientId === i.id))
-                .map((i) => ({
-                  id: i.id,
-                  name: i.name,
-                  hint: i.needsPricing ? t('needsPricing') : t(`ingredients.per.${i.dimension}`, { amount: money(i.priceCents) }),
-                }))}
-              onPick={(id) => {
-                const option = ingredientById.get(id);
-                if (option) addIngredient(option);
-              }}
+            <DishSearch
+              ref={ingredientSearchRef}
+              options={ingredientOptions.map((i) => ({
+                id: i.id,
+                name: i.name,
+                hint: i.needsPricing ? t('needsPricing') : t(`ingredients.per.${i.dimension}`, { amount: money(i.priceCents) }),
+              }))}
+              usedIds={new Set(ingredientLines.map((l) => l.ingredientId))}
+              placeholder={t('ingredients.search')}
+              label={t('ingredients.searchLabel')}
+              noMatches={(query) => t('noMatches', { query })}
+              addedLabel={t('added')}
+              onPick={pickIngredient}
             />
           </section>
+        </CardContent>
+      </Card>
 
-          {/* Labour + extra costs — expandable rows, collapsed status always visible. */}
+      {/* ── Labour + extra costs ──────────────────────────────────────────── */}
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-5 sm:p-7">
+          <section aria-labelledby="dish-labour-heading" className="flex flex-col gap-3">
+            <h2 id="dish-labour-heading" className="flex items-center gap-1.5 text-lg font-semibold text-foreground">
+              {t('labour.title')}
+              <InfoPopover label={t('infoLabel', { topic: t('labour.topic') })}>{t('labour.info')}</InfoPopover>
+            </h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Field id="labour-hours" label={t('labour.hours')}>
+                <Input
+                  id="labour-hours"
+                  ref={hoursRef}
+                  inputMode="decimal"
+                  value={hoursText}
+                  placeholder="0"
+                  aria-invalid={!labourBlank && !labourValid && hours === null}
+                  onChange={(e) => setHoursText(e.target.value)}
+                  className="h-12 text-right text-base tabular-nums"
+                />
+              </Field>
+              <Field id="labour-rate" label={t('labour.rate')}>
+                <MoneyInput
+                  id="labour-rate"
+                  value={rateText}
+                  currency={currency}
+                  invalid={!labourBlank && !labourValid && (rate === null || !Number.isFinite(rate))}
+                  onChange={setRateText}
+                />
+              </Field>
+              <div className="col-span-2 flex min-w-0 flex-col gap-1.5 sm:col-span-1">
+                <span className="text-sm font-medium text-foreground">{t('labour.cost')}</span>
+                <span
+                  className={cn(
+                    'flex h-12 items-center justify-end rounded-lg bg-surface-2 px-3 text-base font-semibold tabular-nums',
+                    labourBlank ? 'text-muted-foreground' : 'text-foreground',
+                  )}
+                >
+                  {labourBlank
+                    ? t('labour.notEntered')
+                    : cost.productionLabourCents !== null
+                      ? money(cost.productionLabourCents)
+                      : DASH}
+                </span>
+              </div>
+            </div>
+            {!labourBlank && !labourValid ? <p className="text-sm text-red-700 dark:text-red-300">{t('problems.labour')}</p> : null}
+            {labourValid && extraHours > 0 && cost.workHours !== null ? (
+              <p className="text-xs text-muted-foreground">
+                {t('labour.extraWork', { hours: numberToField(extraHours), total: numberToField(cost.workHours) })}
+              </p>
+            ) : null}
+          </section>
+
           <Accordion
-            type="multiple"
-            value={openCostSections}
-            onValueChange={setOpenCostSections}
-            className="border-t border-border pt-1"
+            type="single"
+            collapsible
+            value={extrasOpen ? 'extras' : ''}
+            onValueChange={(v) => setExtrasOpen(v === 'extras')}
+            className="border-t border-border"
           >
-            <AccordionItem value="labour">
-              <div ref={labourRowRef}>
-                <AccordionTrigger className="py-3">
-                  <span className="flex w-full items-center justify-between gap-3 pr-2">
-                    <span className="text-sm font-semibold text-foreground">{t('labour.title')}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {labourBlank ? t('labour.statusMissing') : (labourCostShown ?? t('labour.statusEntered'))}
+            <AccordionItem value="extras" className="border-b-0">
+              <div className="flex items-center gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <AccordionTrigger className="items-center py-4 hover:no-underline">
+                    <span className="flex w-full items-center justify-between gap-3 pr-1">
+                      <span className="text-base font-semibold text-foreground">{t('extras.title')}</span>
+                      <span className="text-sm tabular-nums text-muted-foreground">{extrasStatus}</span>
                     </span>
-                  </span>
-                </AccordionTrigger>
+                  </AccordionTrigger>
+                </div>
+                <InfoPopover label={t('infoLabel', { topic: t('extras.topic') })}>{t('extras.info')}</InfoPopover>
               </div>
               <AccordionContent>
-                <div className="flex flex-col gap-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <Field id="labour-hours" label={portions !== null ? t('labour.hoursFor', { count: portions }) : t('labour.hours')}>
-                      <Input
-                        id="labour-hours"
-                        inputMode="decimal"
-                        value={hoursText}
-                        placeholder={t('optional')}
-                        aria-invalid={!labourBlank && !labourValid}
-                        onChange={(e) => setHoursText(e.target.value)}
-                        className="h-12 text-right text-base tabular-nums"
-                      />
-                    </Field>
-                    <Field id="labour-rate" label={t('labour.rate')}>
-                      <MoneyInput
-                        id="labour-rate"
-                        value={rateText}
-                        currency={currency}
-                        placeholder={t('optional')}
-                        invalid={!labourBlank && !labourValid}
-                        onChange={setRateText}
-                      />
-                    </Field>
-                    <ReadOnly
-                      label={t('labour.cost')}
-                      value={labourBlank ? t('labour.notEnteredShort') : cost.productionLabourCents !== null ? money(cost.productionLabourCents) : dash}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">{t('labour.hint')}</p>
-                  {!labourBlank && !labourValid && <p className="text-sm text-red-700 dark:text-red-300">{t('problems.labour')}</p>}
-                  {labourValid && <Notice tone="info">{t('labour.replacesRecipeLabour')}</Notice>}
-                  {labourBlank && (
-                    <Notice tone="info">{cost.inheritsRecipeLabour ? t('labour.legacy') : t('labour.notEntered')}</Notice>
-                  )}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="extras">
-              <AccordionTrigger className="py-3">
-                <span className="flex w-full items-center justify-between gap-3 pr-2">
-                  <span className="text-sm font-semibold text-foreground">{t('extras.title')}</span>
-                  <span className="text-sm text-muted-foreground">{extrasStatusLabel}</span>
-                </span>
-              </AccordionTrigger>
-              <AccordionContent>
                 <div className="flex flex-col gap-3">
-                  <p className="text-sm text-muted-foreground">{t('extras.reminder')}</p>
-                  {extras.length > 0 && (
+                  {extras.length > 0 ? (
                     <ul className="flex flex-col gap-3">
                       {extras.map((extra, index) => {
                         const v = extraValues[index];
-                        const amount =
-                          v?.kind === 'work'
-                            ? Number.isFinite(v.hours) && Number.isFinite(v.hourlyCents)
-                              ? money(Math.round(v.hours * v.hourlyCents))
-                              : dash
-                            : v && Number.isFinite(v.amountCents)
-                              ? money(v.amountCents)
-                              : dash;
+                        const amount = extraValid(index) && v ? money(v.kind === 'work' ? Math.round(v.hours * v.hourlyCents) : v.amountCents) : DASH;
                         return (
                           <li key={extra.key} className="flex flex-wrap items-end gap-2 rounded-xl border border-border p-3">
                             <Field
@@ -1122,6 +1085,7 @@ export function DishBuilder({
                                 aria-invalid={extra.description.trim() === ''}
                                 placeholder={extra.kind === 'work' ? t('extras.workPlaceholder') : t('extras.expensePlaceholder')}
                                 onChange={(e) => patchExtra(extra.key, { description: e.target.value })}
+                                className="h-11 text-base"
                               />
                             </Field>
                             {extra.kind === 'work' ? (
@@ -1132,37 +1096,37 @@ export function DishBuilder({
                                     inputMode="decimal"
                                     value={extra.hours}
                                     onChange={(e) => patchExtra(extra.key, { hours: e.target.value })}
-                                    className="text-right tabular-nums"
+                                    className="h-11 text-right text-base tabular-nums"
                                   />
                                 </Field>
-                                <Field id={`extra-rate-${extra.key}`} label={t('extras.rate')} className="w-28">
-                                  <Input
+                                <Field id={`extra-rate-${extra.key}`} label={t('extras.rate')} className="w-32">
+                                  <MoneyInput
                                     id={`extra-rate-${extra.key}`}
-                                    inputMode="decimal"
+                                    size="sm"
                                     value={extra.rate}
-                                    onChange={(e) => patchExtra(extra.key, { rate: e.target.value })}
-                                    className="text-right tabular-nums"
+                                    currency={currency}
+                                    onChange={(value) => patchExtra(extra.key, { rate: value })}
                                   />
                                 </Field>
                               </>
                             ) : (
                               <Field id={`extra-amount-${extra.key}`} label={t('extras.amount')} className="w-32">
-                                <Input
+                                <MoneyInput
                                   id={`extra-amount-${extra.key}`}
-                                  inputMode="decimal"
+                                  size="sm"
                                   value={extra.amount}
-                                  onChange={(e) => patchExtra(extra.key, { amount: e.target.value })}
-                                  className="text-right tabular-nums"
+                                  currency={currency}
+                                  onChange={(value) => patchExtra(extra.key, { amount: value })}
                                 />
                               </Field>
                             )}
-                            <span className="flex h-10 w-24 items-center justify-end text-sm font-semibold tabular-nums">{amount}</span>
+                            <span className="flex h-11 w-20 items-center justify-end text-sm font-semibold tabular-nums">{amount}</span>
                             <Button
                               type="button"
                               variant="ghost"
-                              size="sm"
-                              aria-label={`${t('remove')} — ${extra.description}`}
+                              aria-label={t('removeItem', { name: extra.description || (extra.kind === 'work' ? t('extras.workLabel') : t('extras.expenseLabel')) })}
                               onClick={() => setExtras((prev) => prev.filter((e) => e.key !== extra.key))}
+                              className="size-10 p-0"
                             >
                               <X />
                             </Button>
@@ -1170,13 +1134,13 @@ export function DishBuilder({
                         );
                       })}
                     </ul>
-                  )}
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('work')])}>
+                    <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('work')])} className="min-h-11">
                       <Plus />
                       {t('extras.addWork')}
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('expense')])}>
+                    <Button type="button" variant="outline" onClick={() => setExtras((prev) => [...prev, blankExtra('expense')])} className="min-h-11">
                       <Plus />
                       {t('extras.addExpense')}
                     </Button>
@@ -1188,14 +1152,69 @@ export function DishBuilder({
         </CardContent>
       </Card>
 
-      {/* Notes — a quiet expandable section. */}
+      {/* ── Selling price, results, target ingredient margin ──────────────── */}
+      <Card>
+        <CardContent className="p-5 sm:p-7">
+          <DishPricingPanel
+            money={money}
+            currency={currency}
+            itemSingular={itemSingular}
+            itemPlural={itemPlural}
+            items={items}
+            disabled={needsConversion}
+            price={{
+              exclText: priceText('excl'),
+              inclText: priceText('incl'),
+              exclInvalid: priceInvalid && priceDraft?.field === 'excl',
+              inclInvalid: priceInvalid && priceDraft?.field === 'incl',
+              onChange: onPriceChange,
+              onBlur: () => {
+                if (!priceInvalid) setPriceDraft(null);
+              },
+            }}
+            vat={{
+              text: vatText,
+              invalid: !vatValid,
+              placeholder: numberToField((defaultVatBps ?? 0) / 100),
+              info:
+                defaultVatBps !== null
+                  ? t('price.vatInfo', { rate: `${numberToField(defaultVatBps / 100)}%` })
+                  : t('price.vatInfoNone'),
+              onChange: (text) => {
+                setVatText(text);
+                setPriceDraft(null);
+              },
+            }}
+            cost={cost}
+            results={results}
+            missing={missing}
+            target={{
+              text: targetText,
+              onChange: setTargetText,
+              invalid: targetInvalid,
+              targetBps,
+              suggestedExcl,
+              suggestedIncl,
+              canUse: suggestedExcl !== null && !needsConversion && suggestedExcl !== priceExclCents,
+              onUse: () => {
+                if (suggestedExcl === null) return;
+                setPriceExclCents(suggestedExcl);
+                setPriceDraft(null);
+              },
+              coverNote,
+            }}
+          />
+        </CardContent>
+      </Card>
+
+      {/* ── Notes (optional, quiet) ───────────────────────────────────────── */}
       <Card>
         <Accordion type="single" collapsible value={notesOpen ? 'notes' : ''} onValueChange={(v) => setNotesOpen(v === 'notes')}>
           <AccordionItem value="notes" className="border-b-0">
-            <AccordionTrigger className="px-6 py-4 hover:no-underline">
-              <span className="text-sm font-semibold text-foreground">{t('fields.notes')}</span>
+            <AccordionTrigger className="px-5 py-4 hover:no-underline sm:px-7">
+              <span className="text-base font-semibold text-foreground">{t('fields.notesOptional')}</span>
             </AccordionTrigger>
-            <AccordionContent className="px-6">
+            <AccordionContent className="px-5 sm:px-7">
               <Textarea
                 id="dish-notes"
                 aria-label={t('fields.notes')}
@@ -1208,14 +1227,6 @@ export function DishBuilder({
           </AccordionItem>
         </Accordion>
       </Card>
-
-      {!canSave && (dirty || !isNew) && (
-        <ul className="flex flex-col gap-1 text-sm text-red-700 dark:text-red-300">
-          {problems.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
-      )}
 
       <ConfirmDialog
         open={leaveTo !== null}
@@ -1243,14 +1254,7 @@ export function DishBuilder({
         onConfirm={makeCopy}
         onCancel={() => setCopying(false)}
       >
-        <Input
-          value={copyName}
-          maxLength={200}
-          autoFocus
-          aria-label={t('fields.name')}
-          onChange={(e) => setCopyName(e.target.value)}
-          className="mt-2 h-12"
-        />
+        <Input value={copyName} maxLength={200} autoFocus aria-label={t('fields.name')} onChange={(e) => setCopyName(e.target.value)} className="mt-2 h-12" />
       </ConfirmDialog>
 
       <ConfirmDialog
@@ -1265,412 +1269,5 @@ export function DishBuilder({
         onCancel={() => setConfirmDelete(false)}
       />
     </form>
-  );
-}
-
-// ── Pieces ───────────────────────────────────────────────────────────────────
-
-function Field({ id, label, children, className }: { id: string; label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
-      <Label htmlFor={id}>{label}</Label>
-      {children}
-    </div>
-  );
-}
-
-function MoneyInput({
-  id,
-  value,
-  currency,
-  onChange,
-  onBlur,
-  invalid,
-  disabled,
-  placeholder = '0.00',
-  size = 'md',
-}: {
-  id: string;
-  value: string;
-  currency: string;
-  onChange: (value: string) => void;
-  onBlur?: () => void;
-  invalid?: boolean;
-  disabled?: boolean;
-  placeholder?: string;
-  /** 'lg' = the primary selling price (excl. VAT); 'sm' = the quiet secondary price; 'md' = everywhere else. */
-  size?: 'sm' | 'md' | 'lg';
-}) {
-  return (
-    <div className="relative">
-      <Input
-        id={id}
-        inputMode="decimal"
-        value={value}
-        placeholder={placeholder}
-        aria-invalid={invalid}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-        className={cn(
-          'text-right tabular-nums',
-          size === 'lg' && 'h-14 pr-16 font-display text-2xl font-semibold sm:text-[28px]',
-          size === 'md' && 'h-12 pr-14 text-base',
-          size === 'sm' && 'h-9 w-36 pr-11 text-sm text-muted-foreground',
-        )}
-      />
-      <span
-        className={cn(
-          'pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground',
-          size === 'lg' && 'right-4 text-base',
-          size === 'md' && 'right-3.5 text-sm',
-          size === 'sm' && 'right-2.5 text-xs',
-        )}
-      >
-        {currency}
-      </span>
-    </div>
-  );
-}
-
-function ReadOnly({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <span className="text-sm font-medium text-foreground">{label}</span>
-      <span className="flex h-12 items-center justify-end rounded-lg bg-surface px-3 text-base font-semibold tabular-nums ring-1 ring-border">
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function MiniStat({ label, value, negative }: { label: string; value: string; negative?: boolean }) {
-  return (
-    <div className="flex min-w-0 items-baseline justify-between gap-2 sm:flex-col sm:items-start sm:gap-0">
-      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
-      <dd className={cn('text-sm font-semibold tabular-nums', negative ? 'text-red-700 dark:text-red-300' : 'text-foreground')}>
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-  strong,
-  negative,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-  negative?: boolean;
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-2">
-      <dt className={cn(strong ? 'font-medium text-foreground' : 'text-muted-foreground')}>{label}</dt>
-      <dd
-        className={cn(
-          'text-right tabular-nums',
-          strong ? 'font-display text-xl font-semibold' : 'font-medium',
-          negative ? 'text-red-700 dark:text-red-300' : 'text-foreground',
-        )}
-      >
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-/** The margin panel's actionable labour indicator — never a confirmed zero. */
-function LabourStatusChip({ label, cost, onClick }: { label: string; cost: string | null; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
-    >
-      {label}
-      {cost && <span className="tabular-nums text-foreground">{cost}</span>}
-    </button>
-  );
-}
-
-function Notice({
-  tone,
-  children,
-  onDismiss,
-  dismissLabel,
-}: {
-  tone: 'info' | 'warning';
-  children: React.ReactNode;
-  onDismiss?: () => void;
-  dismissLabel?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        'flex items-start gap-2 rounded-lg p-3 text-sm',
-        tone === 'info' ? 'bg-surface-2 text-foreground' : 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',
-      )}
-    >
-      {tone === 'info' ? <Info className="mt-0.5 size-4 shrink-0" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}
-      <div className="flex-1">{children}</div>
-      {onDismiss && (
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label={dismissLabel}
-          className="cursor-pointer text-muted-foreground hover:text-foreground"
-        >
-          <X className="size-4" />
-        </button>
-      )}
-    </div>
-  );
-}
-
-/** Small "⋮" menu (Make a copy / Delete dish) — no dropdown-menu package in the stack, so a minimal own implementation. */
-function OverflowMenu({
-  open,
-  onOpenChange,
-  label,
-  children,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  label: string;
-  children: React.ReactNode;
-}) {
-  const ref = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    if (!open) return;
-    function onDocPointer(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onOpenChange(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onOpenChange(false);
-    }
-    document.addEventListener('mousedown', onDocPointer);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDocPointer);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open, onOpenChange]);
-
-  return (
-    <div ref={ref} className="relative">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={label}
-        onClick={() => onOpenChange(!open)}
-      >
-        <MoreVertical />
-      </Button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-30 mt-1 min-w-44 rounded-xl border border-border bg-surface p-1 shadow-lg"
-        >
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OverflowMenuItem({
-  onClick,
-  disabled,
-  title,
-  destructive,
-  children,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-  destructive?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={disabled}
-      title={title}
-      onClick={onClick}
-      className={cn(
-        'flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent',
-        destructive ? 'text-red-700 dark:text-red-300' : 'text-foreground',
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ComponentRow({
-  name,
-  meta,
-  warning,
-  warningHref,
-  warningLinkLabel,
-  quantity,
-  quantityInvalid,
-  onQuantity,
-  unit,
-  units,
-  onUnit,
-  contribution,
-  removeLabel,
-  onRemove,
-  quantityLabel,
-  unitLabel,
-}: {
-  name: string;
-  meta: React.ReactNode;
-  warning?: string;
-  warningHref?: string;
-  warningLinkLabel?: string;
-  quantity: string;
-  quantityInvalid: boolean;
-  onQuantity: (value: string) => void;
-  unit: string;
-  units: { value: string; label: string }[];
-  onUnit: (value: string) => void;
-  contribution: string;
-  removeLabel: string;
-  onRemove: () => void;
-  quantityLabel: string;
-  unitLabel: string;
-}) {
-  return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
-      <div className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-0 sm:flex-1">
-        <span className="truncate font-medium text-foreground">{name}</span>
-        <span className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">{meta}</span>
-        {warning && (
-          <span className="text-xs text-amber-700 dark:text-amber-300">
-            {warning}
-            {warningHref && (
-              <>
-                {' '}
-                <Link href={warningHref} className="font-medium underline underline-offset-2">
-                  {warningLinkLabel}
-                </Link>
-              </>
-            )}
-          </span>
-        )}
-      </div>
-      <Input
-        inputMode="decimal"
-        value={quantity}
-        aria-label={`${quantityLabel} — ${name}`}
-        aria-invalid={quantityInvalid}
-        onChange={(e) => onQuantity(e.target.value)}
-        className="h-11 w-24 text-right text-base tabular-nums"
-      />
-      <div className="w-28">
-        {units.length === 1 ? (
-          <span className="flex h-11 items-center px-1 text-sm text-muted-foreground">{units[0]?.label}</span>
-        ) : (
-          <Select value={unit} aria-label={`${unitLabel} — ${name}`} onChange={(e) => onUnit(e.target.value)} className="h-11">
-            {units.map((u) => (
-              <option key={u.value} value={u.value}>
-                {u.label}
-              </option>
-            ))}
-          </Select>
-        )}
-      </div>
-      <span className="ml-auto w-24 text-right text-sm font-medium tabular-nums text-foreground">{contribution}</span>
-      <Button type="button" variant="ghost" size="sm" aria-label={`${removeLabel} — ${name}`} onClick={onRemove}>
-        <X />
-      </Button>
-    </li>
-  );
-}
-
-/** Type-to-filter picker; Enter adds the first match. */
-function ComponentPicker({
-  placeholder,
-  emptyLabel,
-  options,
-  onPick,
-}: {
-  placeholder: string;
-  emptyLabel: string;
-  options: { id: string; name: string; hint: string }[];
-  onPick: (id: string) => void;
-}) {
-  const [query, setQuery] = React.useState('');
-  const [open, setOpen] = React.useState(false);
-  const listId = React.useId();
-  const q = query.trim().toLowerCase();
-  const matches = (q ? options.filter((o) => o.name.toLowerCase().includes(q)) : options).slice(0, 8);
-
-  function pick(id: string) {
-    onPick(id);
-    setQuery('');
-    setOpen(false);
-  }
-
-  return (
-    <div className="relative">
-      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-      <Input
-        value={query}
-        placeholder={placeholder}
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-label={placeholder}
-        onFocus={() => setOpen(true)}
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            if (matches[0]) pick(matches[0].id);
-          }
-          if (e.key === 'Escape') setOpen(false);
-        }}
-        className="h-11 pl-9"
-      />
-      {open && (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute inset-x-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-lg"
-        >
-          {matches.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-muted-foreground">{emptyLabel}</li>
-          ) : (
-            matches.map((o) => (
-              <li key={o.id} role="option" aria-selected={false}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => pick(o.id)}
-                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2"
-                >
-                  <span className="truncate text-foreground">{o.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{o.hint}</span>
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-      )}
-    </div>
   );
 }

@@ -55,11 +55,13 @@ export function DishKitchenView({ dish }: { dish: KitchenDishDetail }) {
         <p className="text-sm text-muted-foreground">
           {t('output.makes')}{' '}
           <span className="font-medium text-foreground">
-            {tBatch('makes', {
-              unit: dish.output.unit,
-              count: dish.output.quantity,
-              amount: numberToField(dish.output.quantity),
-            })}
+            {dish.output.label
+              ? tBatch('makesLabel', { amount: numberToField(dish.output.quantity), label: dish.output.label })
+              : tBatch('makes', {
+                  unit: dish.output.unit,
+                  count: dish.output.quantity,
+                  amount: numberToField(dish.output.quantity),
+                })}
           </span>
           {dish.output.sizeDescription && ` · ${dish.output.sizeDescription}`}
         </p>

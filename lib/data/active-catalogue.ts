@@ -4,10 +4,11 @@ import {
   compositionCost,
   type DishComposition,
   type DishCost,
+  type DishCostKind,
   type DishCostLookups,
   type PriceBasis,
 } from '@/lib/calculations/dish';
-import { recipeCost } from '@/lib/calculations/recipeCost';
+import { lineCostCents } from '@/lib/calculations/recipeCost';
 import type { Dimension } from '@/lib/units';
 import type { TenantClient } from '@/lib/db/tenant';
 import { listRecipesWithLines } from '@/lib/data/recipes';
@@ -35,6 +36,8 @@ export type CatalogueIngredient = {
   priceCents: number;
   pendingPriceCents: number | null;
   needsPricing: boolean;
+  /** Food vs packaging in a Menu dish; null = not classified. */
+  costKind: DishCostKind | null;
 };
 
 export type CatalogueRecipeLine = {
@@ -80,12 +83,6 @@ export type CatalogueRecipe = {
    * joins the material bucket before the parent's loss adjustment.
    */
   componentHiddenCostCents: number;
-  /**
-   * The LABOUR part of `componentHiddenCostCents` (sub-recipe labour, scaled the same
-   * way). A Menu dish with its own production labour subtracts it — together with
-   * the recipe's own `laborCostCents` — so recipe labour is never counted twice.
-   */
-  componentLaborCostCents: number;
   /**
    * True when a component subtree could not be resolved (missing/trashed/
    * no-yield child, cycle, over-depth — corrupted data). Consumers must treat
@@ -170,6 +167,7 @@ export async function loadActiveCatalogue(
     priceCents: i.priceCents,
     pendingPriceCents: i.pendingPriceCents,
     needsPricing: i.needsPricing,
+    costKind: i.costKind,
   }));
 
   // ── Sub-recipe flattening ────────────────────────────────────────────────────
@@ -206,7 +204,7 @@ export async function loadActiveCatalogue(
   }
   const activeById = new Map(recipesWithLines.map((r) => [r.recipe.id, r]));
 
-  type Flattened = { lines: CatalogueRecipeLine[]; hiddenCents: number; laborCents: number } | null;
+  type Flattened = { lines: CatalogueRecipeLine[]; hiddenCents: number } | null;
   // Per-BATCH flattened subtree of a recipe (its own direct lines + descendants).
   const flatMemo = new Map<string, Flattened>();
   const flattenBatch = (
@@ -229,7 +227,6 @@ export async function loadActiveCatalogue(
       prepYieldBps: l.prepYieldBps ?? null,
     }));
     let hiddenCents = 0;
-    let laborCents = 0;
     for (const edge of edgesByParent.get(recipeId) ?? []) {
       if (depth >= MAX_COMPONENT_DEPTH || visited.has(edge.componentRecipeId)) {
         flatMemo.set(recipeId, null);
@@ -272,9 +269,8 @@ export async function loadActiveCatalogue(
       // inside the child's MATERIAL bucket (component raw costs), so they get
       // the child's loss adjustment too → scale like material.
       hiddenCents += batchScale * childHidden + materialScale * sub.hiddenCents;
-      laborCents += batchScale * child.recipe.laborCostCents + materialScale * sub.laborCents;
     }
-    const result = { lines: out, hiddenCents, laborCents };
+    const result = { lines: out, hiddenCents };
     flatMemo.set(recipeId, result);
     return result;
   };
@@ -313,7 +309,6 @@ export async function loadActiveCatalogue(
       packagingCostCents: recipe.packagingCostCents,
       lines: hasComponents && flattened ? flattened.lines : directLines,
       componentHiddenCostCents: hasComponents && flattened ? flattened.hiddenCents : 0,
-      componentLaborCostCents: hasComponents && flattened ? flattened.laborCents : 0,
       costUnresolved: hasComponents && flattened === null,
     };
   });
@@ -379,50 +374,48 @@ export function extraFromRow(row: {
   return row.amountCents !== null ? { kind: 'expense', amountCents: row.amountCents } : null;
 }
 
+export type CatalogueRecipeIngredientCost = {
+  /** Ingredient-only cost of one batch (flattened sub-recipes included), unrounded; null = unknown. */
+  ingredientCostCents: number | null;
+  /**
+   * Labour / energy / packaging still saved on the recipe (own + scaled sub-recipes)
+   * by the retired recipe editor. Never part of a Menu dish's cost — surfaced so the
+   * chef can enter what still applies under the dish's labour or extra costs.
+   */
+  legacyExtraCostCents: number;
+};
+
 /**
- * Honest per-portion recipe costs from the catalogue, with and without recipe labour
- * (own + nested sub-recipe labour). A recipe with an unpriced ingredient or an
- * unresolvable component tree costs as UNKNOWN (null) — never understated.
+ * Ingredient-only batch cost of every recipe — what a Menu dish pays for a recipe
+ * component (÷ finished weight = the yield-adjusted cost per kg). An unpriced
+ * ingredient or an unresolvable component tree makes it UNKNOWN (null), never
+ * understated. Prep-action loss inflates a line exactly as on the recipe page.
  */
-export function catalogueRecipeCosts(
+export function catalogueRecipeIngredientCosts(
   catalogue: Pick<ActiveCatalogue, 'ingredients' | 'recipes'>,
-): Map<string, { withLabour: number | null; withoutLabour: number | null; totalWithLabour: number | null; totalWithoutLabour: number | null }> {
+): Map<string, CatalogueRecipeIngredientCost> {
   const needsPricing = new Set(catalogue.ingredients.filter((i) => i.needsPricing).map((i) => i.id));
-  const out = new Map<string, { withLabour: number | null; withoutLabour: number | null; totalWithLabour: number | null; totalWithoutLabour: number | null }>();
+  const out = new Map<string, CatalogueRecipeIngredientCost>();
   for (const recipe of catalogue.recipes) {
-    const unknown =
-      recipe.costUnresolved || recipe.lines.some((l) => needsPricing.has(l.ingredientId));
-    if (unknown) {
-      out.set(recipe.id, { withLabour: null, withoutLabour: null, totalWithLabour: null, totalWithoutLabour: null });
-      continue;
-    }
-    const base = {
-      yieldPortions: recipe.yieldPortions,
-      yieldPercentage: recipe.yieldPercentage,
-      energyCostCents: recipe.energyCostCents,
-      packagingCostCents: recipe.packagingCostCents,
-      lines: recipe.lines.map((l) => ({
-        dimension: l.dimension,
-        priceCents: l.priceCents,
-        quantity: l.quantity,
-        prepYieldBps: l.prepYieldBps ?? undefined,
-      })),
-    };
-    const withLabour = recipeCost({
-      ...base,
-      laborCostCents: recipe.laborCostCents,
-      componentMaterialCostsCents: [recipe.componentHiddenCostCents],
-    });
-    const withoutLabour = recipeCost({
-      ...base,
-      laborCostCents: 0,
-      componentMaterialCostsCents: [recipe.componentHiddenCostCents - recipe.componentLaborCostCents],
-    });
+    const legacyExtraCostCents =
+      recipe.laborCostCents + recipe.energyCostCents + recipe.packagingCostCents + recipe.componentHiddenCostCents;
+    const unknown = recipe.costUnresolved || recipe.lines.some((l) => needsPricing.has(l.ingredientId));
+    const cost = unknown
+      ? null
+      : recipe.lines.reduce(
+          (sum, l) =>
+            sum +
+            lineCostCents({
+              dimension: l.dimension,
+              priceCents: l.priceCents,
+              quantity: l.quantity,
+              prepYieldBps: l.prepYieldBps ?? undefined,
+            }),
+          0,
+        );
     out.set(recipe.id, {
-      withLabour: withLabour.costPerPortionCents,
-      withoutLabour: withoutLabour.costPerPortionCents,
-      totalWithLabour: withLabour.totalCostCents,
-      totalWithoutLabour: withoutLabour.totalCostCents,
+      ingredientCostCents: cost !== null && Number.isFinite(cost) ? cost : null,
+      legacyExtraCostCents: Math.round(legacyExtraCostCents),
     });
   }
   return out;
@@ -432,15 +425,20 @@ export function catalogueRecipeCosts(
 export function catalogueDishLookups(
   catalogue: Pick<ActiveCatalogue, 'ingredients' | 'recipes'>,
 ): DishCostLookups {
-  const recipeCosts = catalogueRecipeCosts(catalogue);
+  const recipeCosts = catalogueRecipeIngredientCosts(catalogue);
   const recipeById = new Map(catalogue.recipes.map((r) => [r.id, r]));
   const ingredientById = new Map(catalogue.ingredients.map((i) => [i.id, i]));
   return {
-    recipeCostPerPortion: (id, { excludeLabour }) => {
-      const cost = recipeCosts.get(id);
-      return (excludeLabour ? cost?.withoutLabour : cost?.withLabour) ?? null;
+    recipe: (id) => {
+      const recipe = recipeById.get(id);
+      return recipe
+        ? {
+            yieldPortions: recipe.yieldPortions,
+            yieldWeightGrams: recipe.yieldWeightGrams,
+            ingredientCostCents: recipeCosts.get(id)?.ingredientCostCents ?? null,
+          }
+        : null;
     },
-    recipeYield: (id) => recipeById.get(id) ?? null,
     ingredient: (id) => ingredientById.get(id) ?? null,
   };
 }

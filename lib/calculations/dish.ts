@@ -4,22 +4,25 @@ import { lineTax, MAX_TAX_RATE_BPS } from '@/lib/calculations/tax';
 
 /**
  * Menu product maths — pure, no I/O. A product (stored in `menus`) is one BATCH:
- * recipe lines (by portion, g or kg) + direct ingredient lines (fruit, garnish,
- * boxes…) that make a stated output ("This batch makes 20 kg" / "50 cakes"), plus
- * optional production labour, extra work and expenses.
+ * recipe lines (by g, or portions saved earlier) + direct ingredient lines (fruit,
+ * garnish, boxes…) that make a stated output ("These quantities make 300 mini
+ * cakes"), plus optional production labour, extra work and expenses.
  *
- * Money is integer cents in and out; fractions survive internally (`exactTotalCents`)
- * and every displayed figure is rounded ONCE from the exact value — never a batch
- * total rebuilt from an already-rounded per-unit cost.
+ * Money is integer cents in and out; fractions survive internally (`exact…`) and
+ * every displayed figure is rounded ONCE from the exact value — never a batch total
+ * rebuilt from an already-rounded per-unit cost.
  *
- * Cost is complete-or-null: an unpriced ingredient, a trashed recipe, an
- * unconvertible gram line or invalid labour makes the cost unknown — never a
+ * Cost is complete-or-null: an unpriced ingredient, a trashed recipe, a recipe
+ * without a finished weight or invalid labour makes the cost unknown — never a
  * flattering partial sum.
  *
- * Labour (no double counting): when the product has its own production labour, it
- * is the COMPLETE labour estimate, so recipe labour (incl. nested sub-recipes) is
- * excluded from component costs; energy and packaging stay. When labour is not
- * entered, recipe costs are used exactly as before.
+ * Recipes enter a product at their INGREDIENT-ONLY cost (yield-adjusted: batch
+ * ingredient cost ÷ finished weight). Recipe labour, energy and packaging are never
+ * inherited: labour and extra costs belong to the Menu product, entered once there.
+ *
+ * Food vs packaging: recipe components are food. A direct ingredient counts as food
+ * or packaging by its stored `cost_kind`; an unclassified one still costs into the
+ * total, but the food-only ingredient margin stays unknown until it is classified.
  *
  * Every consumer — the builder, Menu lists, sales, Menu Engineering, CFO report,
  * daily close, profit leaks, cost impact, prep planner — goes through
@@ -131,7 +134,7 @@ export function recipePortionEquivalent(
 
 // ── Labour & extras ──────────────────────────────────────────────────────────
 
-/** Production labour for the whole batch; null = not entered (recipe labour applies). */
+/** Production labour for the whole batch: combined staff hours × employment cost per hour. Null = not entered. */
 export type DishLabour = { hours: number; hourlyCents: number } | null;
 
 export type DishExtra =
@@ -150,6 +153,16 @@ function workCents(hours: number, hourlyCents: number): number | null {
   return nonNegativeFinite(hours) && nonNegativeFinite(hourlyCents) ? hours * hourlyCents : null;
 }
 
+// ── Cost classification ──────────────────────────────────────────────────────
+
+/**
+ * What a direct ingredient counts as, stored on the ingredient (`cost_kind`).
+ * NULL = not classified yet. Never inferred from a name or a unit (a piece can be
+ * an egg as easily as a box).
+ */
+export const DISH_COST_KINDS = ['food', 'packaging'] as const;
+export type DishCostKind = (typeof DISH_COST_KINDS)[number];
+
 // ── Cost ─────────────────────────────────────────────────────────────────────
 
 export type DishComposition = {
@@ -166,17 +179,39 @@ export type DishIngredientPrice = {
   priceCents: number;
   /** An ingredient still needing a price costs as UNKNOWN, never as its stale/0 price. */
   needsPricing: boolean;
+  /** Absent/null = not classified (food-only figures stay unknown while it is in a dish). */
+  costKind?: DishCostKind | null;
+};
+
+export type DishRecipeCost = RecipeYield & {
+  /**
+   * Ingredient-only cost of ONE batch of the recipe (flattened sub-recipe
+   * ingredients included; no labour, energy or packaging), unrounded cents.
+   * Null = unknown (an unpriced ingredient or an unresolvable component tree).
+   */
+  ingredientCostCents: number | null;
 };
 
 export type DishCostLookups = {
-  /**
-   * Current cost per portion of an active recipe; null = unavailable/unpriced.
-   * `excludeLabour` drops the recipe's own and nested sub-recipe labour.
-   */
-  recipeCostPerPortion: (recipeId: string, options: { excludeLabour: boolean }) => number | null;
-  recipeYield: (recipeId: string) => RecipeYield | null;
+  /** An ACTIVE recipe's yield + ingredient-only batch cost; null = unavailable. */
+  recipe: (recipeId: string) => DishRecipeCost | null;
   ingredient: (ingredientId: string) => DishIngredientPrice | null;
 };
+
+/**
+ * Cost of a recipe line from the recipe's ingredient-only batch cost: grams through
+ * the finished weight (cost per kg, yield-adjusted), saved portions through the
+ * portion yield. Null when that basis is missing — never guessed.
+ */
+export function recipeLineCostCents(amount: number, unit: DishRecipeUnit, recipe: DishRecipeCost): number | null {
+  const batch = recipe.ingredientCostCents;
+  if (!positiveFinite(amount) || batch == null || !nonNegativeFinite(batch)) return null;
+  if (unit === 'portion') {
+    return positiveFinite(recipe.yieldPortions) ? (batch * amount) / recipe.yieldPortions : null;
+  }
+  const grams = unit === 'kg' ? amount * 1000 : amount;
+  return positiveFinite(recipe.yieldWeightGrams) ? (batch * grams) / recipe.yieldWeightGrams : null;
+}
 
 export const recipeLineKey = (recipeId: string) => `r:${recipeId}`;
 export const ingredientLineKey = (ingredientId: string) => `i:${ingredientId}`;
@@ -186,17 +221,29 @@ export const extraKey = (index: number) => `extra:${index}`;
 export type DishLineCost = { key: string; costCents: number | null };
 
 export type DishCost = {
+  /** Every ENTERED cost is known and the output is valid. Labour may still be not entered (`labourEntered`). */
   complete: boolean;
-  /** 'menu' = the product's own labour replaces recipe labour. */
-  labourMode: 'menu' | 'inherited';
-  /** Blank labour AND at least one recipe cost carries recipe labour. */
-  inheritsRecipeLabour: boolean;
-  /** Recipes + ingredients + packaging; null while any component is unknown. */
+  /** False = labour left blank: unknown, not a confirmed zero. */
+  labourEntered: boolean;
+  /** Recipes (ingredient-only) + direct food; null while a food line is unknown or a direct line is unclassified. */
+  foodCents: number | null;
+  exactFoodCents: number | null;
+  /** At least one recipe line or food-classified direct ingredient. */
+  hasFoodLines: boolean;
+  /** Direct packaging lines; null while one is unpriced. */
+  packagingCents: number | null;
+  /** Recipes + direct ingredients (food, packaging and unclassified); null while any is unknown. */
   componentsCents: number | null;
   /** Null when labour is not entered or can't be calculated. */
   productionLabourCents: number | null;
+  labourHours: number | null;
+  labourHourlyCents: number | null;
   extraWorkCents: number | null;
+  extraWorkHours: number | null;
   expensesCents: number | null;
+  /** Combined staff hours: production labour + extra work. Null while labour is not entered or invalid. */
+  workHours: number | null;
+  /** All entered costs; null unless `complete`. */
   totalCostCents: number | null;
   /** Unrounded total — the base for every derived figure. */
   exactTotalCents: number | null;
@@ -207,33 +254,31 @@ export type DishCost = {
   costPerKgCents: number | null;
   lineCosts: DishLineCost[];
   incompleteKeys: string[];
+  /** Direct ingredient lines whose ingredient is neither food nor packaging yet. */
+  unclassifiedKeys: string[];
 };
 
 export function compositionCost(dish: DishComposition, lookups: DishCostLookups): DishCost {
-  const labourMode = dish.labour === null ? 'inherited' : 'menu';
-  const excludeLabour = labourMode === 'menu';
   const lineCosts: DishLineCost[] = [];
   const incompleteKeys: string[] = [];
-  let components = 0;
-  let componentsKnown = true;
-  let inheritsRecipeLabour = false;
+  const unclassifiedKeys: string[] = [];
+  let food = 0;
+  let foodKnown = true;
+  let packaging = 0;
+  let packagingKnown = true;
+  let unclassified = 0;
+  let unclassifiedKnown = true;
+  let hasFoodLines = dish.recipeLines.length > 0;
 
   for (const line of dish.recipeLines) {
     const key = recipeLineKey(line.recipeId);
-    const yieldInfo = lookups.recipeYield(line.recipeId);
-    const eq = yieldInfo ? recipePortionEquivalent(line.quantity, line.unit, yieldInfo) : null;
-    const perPortion = lookups.recipeCostPerPortion(line.recipeId, { excludeLabour });
-    if (!excludeLabour && perPortion !== null) {
-      const withoutLabour = lookups.recipeCostPerPortion(line.recipeId, { excludeLabour: true });
-      if (withoutLabour !== null && withoutLabour !== perPortion) inheritsRecipeLabour = true;
-    }
-    const cost =
-      eq !== null && perPortion !== null && nonNegativeFinite(perPortion) ? perPortion * eq : null;
+    const recipe = lookups.recipe(line.recipeId);
+    const cost = recipe ? recipeLineCostCents(line.quantity, line.unit, recipe) : null;
     lineCosts.push({ key, costCents: cost === null ? null : Math.round(cost) });
     if (cost === null) {
-      componentsKnown = false;
+      foodKnown = false;
       incompleteKeys.push(key);
-    } else components += cost;
+    } else food += cost;
   }
 
   for (const line of dish.ingredientLines) {
@@ -244,10 +289,20 @@ export function compositionCost(dish: DishComposition, lookups: DishCostLookups)
         ? (ing.priceCents * line.quantity) / CANONICAL_PER_PRICE_UNIT[ing.dimension]
         : null;
     lineCosts.push({ key, costCents: cost === null ? null : Math.round(cost) });
-    if (cost === null) {
-      componentsKnown = false;
-      incompleteKeys.push(key);
-    } else components += cost;
+    if (cost === null) incompleteKeys.push(key);
+    const kind = ing?.costKind ?? null;
+    if (kind === 'food') {
+      hasFoodLines = true;
+      if (cost === null) foodKnown = false;
+      else food += cost;
+    } else if (kind === 'packaging') {
+      if (cost === null) packagingKnown = false;
+      else packaging += cost;
+    } else {
+      unclassifiedKeys.push(key);
+      if (cost === null) unclassifiedKnown = false;
+      else unclassified += cost;
+    }
   }
 
   let labour: number | null = null;
@@ -257,6 +312,7 @@ export function compositionCost(dish: DishComposition, lookups: DishCostLookups)
   }
 
   let extraWork = 0;
+  let extraWorkHours = 0;
   let expenses = 0;
   let extrasValid = true;
   dish.extras.forEach((extra, index) => {
@@ -269,14 +325,17 @@ export function compositionCost(dish: DishComposition, lookups: DishCostLookups)
     if (cents === null) {
       extrasValid = false;
       incompleteKeys.push(extraKey(index));
-    } else if (extra.kind === 'work') extraWork += cents;
-    else expenses += cents;
+    } else if (extra.kind === 'work') {
+      extraWork += cents;
+      extraWorkHours += extra.hours;
+    } else expenses += cents;
   });
 
   const saleUnits = outputSaleUnits(dish.output);
   const hasComponents = dish.recipeLines.length + dish.ingredientLines.length > 0;
+  const componentsKnown = foodKnown && packagingKnown && unclassifiedKnown;
   const labourValid = dish.labour === null || labour !== null;
-  const total = components + (labour ?? 0) + extraWork + expenses;
+  const total = food + packaging + unclassified + (labour ?? 0) + extraWork + expenses;
   const complete =
     hasComponents &&
     componentsKnown &&
@@ -285,16 +344,25 @@ export function compositionCost(dish: DishComposition, lookups: DishCostLookups)
     saleUnits !== null &&
     Number.isFinite(total) &&
     Number.isSafeInteger(Math.round(total));
+  const foodExact = foodKnown && unclassifiedKeys.length === 0 && Number.isFinite(food) ? food : null;
 
   const weightKg = outputWeightKg(dish.output);
   return {
     complete,
-    labourMode,
-    inheritsRecipeLabour,
-    componentsCents: hasComponents && componentsKnown ? Math.round(components) : null,
+    labourEntered: dish.labour !== null,
+    foodCents: foodExact === null ? null : Math.round(foodExact),
+    exactFoodCents: foodExact,
+    hasFoodLines,
+    packagingCents: packagingKnown ? Math.round(packaging) : null,
+    componentsCents: hasComponents && componentsKnown ? Math.round(food + packaging + unclassified) : null,
     productionLabourCents: labour === null ? null : Math.round(labour),
+    labourHours: labour === null || dish.labour === null ? null : dish.labour.hours,
+    labourHourlyCents: labour === null || dish.labour === null ? null : dish.labour.hourlyCents,
     extraWorkCents: extrasValid ? Math.round(extraWork) : null,
+    extraWorkHours: extrasValid ? roundHours(extraWorkHours) : null,
     expensesCents: extrasValid ? Math.round(expenses) : null,
+    workHours:
+      labour !== null && dish.labour !== null && extrasValid ? roundHours(dish.labour.hours + extraWorkHours) : null,
     totalCostCents: complete ? Math.round(total) : null,
     exactTotalCents: complete ? total : null,
     saleUnits,
@@ -302,6 +370,7 @@ export function compositionCost(dish: DishComposition, lookups: DishCostLookups)
     costPerKgCents: complete && weightKg ? Math.round(total / weightKg) : null,
     lineCosts,
     incompleteKeys,
+    unclassifiedKeys,
   };
 }
 
@@ -322,16 +391,6 @@ export function priceInclVat(priceExclCents: number, vatBps: number): number {
 /** Gross (incl. VAT) → net. */
 export function priceExclVat(priceInclCents: number, vatBps: number): number {
   return Math.round(priceInclCents / (1 + clampVat(vatBps) / BPS));
-}
-
-/**
- * Net price per sale unit that leaves `marginBps` of sales after costs:
- * price = cost ÷ (1 − margin). Pass the EXACT cost per sale unit.
- */
-export function priceForMargin(costPerSaleUnitCents: number | null, marginBps: number): number | null {
-  if (!positiveFinite(costPerSaleUnitCents)) return null;
-  if (!Number.isFinite(marginBps) || marginBps < 0 || marginBps >= BPS) return null;
-  return Math.round(costPerSaleUnitCents / (1 - marginBps / BPS));
 }
 
 /** Net price per sale unit at which total cost is `shareBps` of sales. */
@@ -407,46 +466,78 @@ export function scaleComposition<T extends DishComposition>(dish: T, newOutputQu
   };
 }
 
-// ── Per-portion pricing (the dish editor's margin calculator) ────────────────
+// ── Per-item results (the dish editor) ───────────────────────────────────────
 
-export type PortionPricing = {
+export type DishResults = {
   priceExclCents: number | null;
   priceInclCents: number | null;
-  /** Total entered cost ÷ portions, rounded for display. */
-  costPerPortionCents: number | null;
-  /** Unrounded cost per portion — the base for margin and suggested prices. */
-  exactCostPerPortionCents: number | null;
-  /** Selling price excl. VAT − cost per portion (still has to cover overheads + profit). */
-  amountLeftPerPortionCents: number | null;
-  /** amount left ÷ selling price excl. VAT. Margin, not markup. */
-  marginBps: number | null;
-  /** Total entered cost ÷ selling price ("Total cost %", not food cost). */
-  totalCostBps: number | null;
+  /** Price excl. VAT × saleable items — assumes every item sells. */
+  salesCents: number | null;
+  exactSalesCents: number | null;
+  /** All entered costs ÷ items. Null while a cost is unknown OR labour is not entered. */
+  totalCostPerItemCents: number | null;
+  exactTotalCostPerItemCents: number | null;
+  /** Food (recipes + direct food) ÷ items. Packaging, labour and extras are excluded. */
+  foodCostPerItemCents: number | null;
+  exactFoodCostPerItemCents: number | null;
+  /** (price excl. VAT − food cost) ÷ price. Not company profit. */
+  ingredientMarginBps: number | null;
+  /** Food cost ÷ price excl. VAT (100% − ingredient margin). */
+  foodCostBps: number | null;
+  /** Sales − all entered costs: what is left for other overheads and profit. */
+  remainingCents: number | null;
+  /** Remaining ÷ combined staff work hours. Null for missing or zero hours. */
+  earnedPerWorkHourCents: number | null;
 };
 
 /**
- * Per-portion view of a dish whose output is a COUNT of portions. Everything derives
- * from the exact total and is rounded once. A missing price or cost yields nulls —
- * never a zero or a flattering margin.
+ * The editor's three results, from the exact totals and rounded once:
+ *  - total cost / item: every entered cost (recipes, direct ingredients incl.
+ *    packaging, labour, extra work, expenses) ÷ items;
+ *  - ingredient margin: food only — (sales − food) ÷ sales;
+ *  - earned / work hour: (sales − every cost, labour included) ÷ combined staff hours.
+ * Unentered labour is unknown, not zero, so the total-cost results wait for it while
+ * the food-only margin does not. A missing price, cost or hour yields null — never a
+ * zero, an infinity or a flattering figure. Losses stay negative.
  */
-export function portionPricing(
-  cost: Pick<DishCost, 'exactTotalCents' | 'saleUnits'>,
-  priceExclCents: number | null,
-  vatBps: number,
-): PortionPricing {
+export function dishResults(cost: DishCost, priceExclCents: number | null, vatBps: number): DishResults {
   const price = priceExclCents != null && nonNegativeFinite(priceExclCents) ? priceExclCents : null;
-  const exactCost =
-    cost.exactTotalCents !== null && positiveFinite(cost.saleUnits)
-      ? cost.exactTotalCents / cost.saleUnits
-      : null;
-  const priced = price !== null && price > 0 && exactCost !== null;
+  const items = positiveFinite(cost.saleUnits) ? cost.saleUnits : null;
+  const sales = price !== null && items !== null ? price * items : null;
+  const totalKnown = cost.exactTotalCents !== null && cost.labourEntered && items !== null;
+  const totalPerItem = totalKnown ? (cost.exactTotalCents as number) / (items as number) : null;
+  const foodPerItem =
+    cost.exactFoodCents !== null && cost.hasFoodLines && items !== null ? cost.exactFoodCents / items : null;
+  const priced = price !== null && price > 0;
+  const remaining = priced && sales !== null && totalKnown ? sales - (cost.exactTotalCents as number) : null;
+  const hours = cost.workHours;
   return {
     priceExclCents: price,
     priceInclCents: price === null ? null : priceInclVat(price, vatBps),
-    costPerPortionCents: exactCost === null ? null : Math.round(exactCost),
-    exactCostPerPortionCents: exactCost,
-    amountLeftPerPortionCents: priced ? Math.round(price - exactCost) : null,
-    marginBps: priced ? Math.round(((price - exactCost) / price) * BPS) : null,
-    totalCostBps: priced ? Math.round((exactCost / price) * BPS) : null,
+    salesCents: sales === null ? null : Math.round(sales),
+    exactSalesCents: sales,
+    totalCostPerItemCents: totalPerItem === null ? null : Math.round(totalPerItem),
+    exactTotalCostPerItemCents: totalPerItem,
+    foodCostPerItemCents: foodPerItem === null ? null : Math.round(foodPerItem),
+    exactFoodCostPerItemCents: foodPerItem,
+    ingredientMarginBps: priced && foodPerItem !== null ? Math.round(((price - foodPerItem) / price) * BPS) : null,
+    foodCostBps: priced && foodPerItem !== null ? Math.round((foodPerItem / price) * BPS) : null,
+    remainingCents: remaining === null ? null : Math.round(remaining),
+    earnedPerWorkHourCents:
+      remaining !== null && hours !== null && positiveFinite(hours) ? Math.round(remaining / hours) : null,
   };
+}
+
+/**
+ * Net (excl. VAT) price per item that reaches `targetBps` INGREDIENT margin on the
+ * food cost per item: food ÷ (1 − target). Rounded UP to the cent so the target is
+ * never undershot (€2.0333 → €2.04). Labour, packaging and extras play no part.
+ * Null for a missing/zero food cost or a target outside 0 ≤ target < 100%.
+ */
+export function priceForIngredientMargin(foodCostPerItemCents: number | null, targetBps: number): number | null {
+  if (!positiveFinite(foodCostPerItemCents)) return null;
+  if (!Number.isFinite(targetBps) || targetBps < 0 || targetBps >= BPS) return null;
+  // toPrecision drops binary noise first, so an exact cent (203.99999…) stays 204.
+  const cents = Math.ceil(Number((foodCostPerItemCents / (1 - targetBps / BPS)).toPrecision(12)));
+  return Number.isSafeInteger(cents) && cents <= 2_147_483_647 ? cents : null;
 }

@@ -34,9 +34,10 @@ export default async function NewDishPage({
         name: '',
         folderId,
         // New dishes are priced per portion; one portion until the chef says otherwise.
-        output: { quantity: 1, unit: 'portion', sizeDescription: null, finishedWeightGrams: null },
+        output: { quantity: 1, unit: 'portion', sizeDescription: null, label: null, finishedWeightGrams: null },
         sellingPriceCents: null,
         vatRateBps: null,
+        displayUnit: 'g',
         labour: null,
         extras: [],
         notes: null,

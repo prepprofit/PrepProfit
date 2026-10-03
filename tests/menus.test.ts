@@ -105,7 +105,7 @@ describe('menu product data layer', () => {
     const [row] = await listManagerDishes(db, ORG_A, null, 'modified');
     // 360c / 4 portions = 90c; (300 − 90) / 300 = 70%.
     expect(row).toMatchObject({ costPerSaleUnitCents: 90, sellingPriceCents: 300, marginBps: 7_000, componentCount: 3 });
-    expect(row?.output).toEqual({ quantity: 4, unit: 'portion', sizeDescription: null, finishedWeightGrams: null });
+    expect(row?.output).toEqual({ quantity: 4, unit: 'portion', sizeDescription: null, label: null, finishedWeightGrams: null });
 
     // Cost is never stored: an ingredient price change re-costs on read.
     await db.update(ingredientsTable).set({ priceCents: 100 }).where(eq(ingredientsTable.id, ids.box.id));
@@ -300,9 +300,9 @@ describe('menu product data layer', () => {
     expect(cost?.costPerKgCents).toBe(138); // the kept weight still gives cost per kg
   });
 
-  it('never double-counts recipe labour (incl. nested) and keeps energy + packaging', async () => {
+  it('costs recipe components by their ingredients only — recipe labour, energy and packaging never inherited', async () => {
     // Base: sub-recipe with 300c labour; parent uses 500 g of it (half the batch) and
-    // has its own 400c labour, 100c energy, 60c packaging.
+    // has its own 400c labour, 100c energy, 60c packaging (left by the old editor).
     await db.update(recipesTable).set({ laborCostCents: 300 }).where(eq(recipesTable.id, ids.sponge.id));
     const parent = await createRecipe(db, ORG_A, {
       name: 'Layered base',
@@ -320,35 +320,119 @@ describe('menu product data layer', () => {
       recipeLines: [{ recipeId: parent.id, quantity: 2, unit: 'portion' as const }],
       ingredientLines: [],
     };
-    const legacy = await createDish(db, ORG_A, cake(ids, { name: 'Legacy', ...base }));
+    const blank = await createDish(db, ORG_A, cake(ids, { name: 'No labour yet', ...base }));
     const zero = await createDish(db, ORG_A, cake(ids, { name: 'Zero labour', ...base, labour: { hours: 0, hourlyCents: 0 } }));
     const withLabour = await createDish(db, ORG_A, cake(ids, { name: 'With labour', ...base, labour: { hours: 1, hourlyCents: 1_000 } }));
-    if (legacy.status !== 'ok' || zero.status !== 'ok' || withLabour.status !== 'ok') throw new Error('create failed');
+    if (blank.status !== 'ok' || zero.status !== 'ok' || withLabour.status !== 'ok') throw new Error('create failed');
 
     const costs = catalogueDishCosts(await loadActiveCatalogue(db, ORG_A));
-    // Parent batch: sponge half = flour 50c + labour 150c; own labour 400 + energy 100 + packaging 60.
-    expect(costs.get(legacy.menu.id)).toMatchObject({ totalCostCents: 760, labourMode: 'inherited', inheritsRecipeLabour: true });
-    // Labour excluded (own 400 + nested 150) → 50 + 100 + 60 = 210, energy + packaging kept.
-    expect(costs.get(zero.menu.id)).toMatchObject({ totalCostCents: 210, productionLabourCents: 0, labourMode: 'menu' });
-    expect(costs.get(withLabour.menu.id)).toMatchObject({ componentsCents: 210, productionLabourCents: 1_000, totalCostCents: 1_210 });
+    // Parent batch ingredients: half a sponge = 250 g flour = 50c. Nothing else.
+    expect(costs.get(blank.menu.id)).toMatchObject({ foodCents: 50, totalCostCents: 50, labourEntered: false, productionLabourCents: null });
+    expect(costs.get(zero.menu.id)).toMatchObject({ totalCostCents: 50, productionLabourCents: 0, labourEntered: true });
+    expect(costs.get(withLabour.menu.id)).toMatchObject({ componentsCents: 50, productionLabourCents: 1_000, totalCostCents: 1_050, workHours: 1 });
 
-    // The underlying recipes are untouched.
+    // The old costs stay visible on the option so the chef can re-enter what applies…
+    const options = await listDishBuilderOptions(db, ORG_A);
+    expect(options.recipes.find((r) => r.id === parent.id)).toMatchObject({
+      ingredientCostCents: 50,
+      ingredientCostPerKgCents: 63, // 50c ÷ 0.8 kg
+      legacyExtraCostCents: 710, // 400 + 100 + 60 + half the sponge's 300
+    });
+    // …and the underlying recipes are untouched.
     const [p] = await db.select().from(recipesTable).where(eq(recipesTable.id, parent.id));
     expect(p?.laborCostCents).toBe(400);
   });
 
-  it('builder options expose recipe costs with and without labour', async () => {
+  it('builder options expose the ingredient-only, yield-adjusted cost per kg', async () => {
     await db.update(recipesTable).set({ laborCostCents: 500 }).where(eq(recipesTable.id, ids.sponge.id));
     const options = await listDishBuilderOptions(db, ORG_A);
     expect(options.recipes).toEqual([
       expect.objectContaining({
         id: ids.sponge.id,
-        costPerPortionCents: 60,
-        costPerPortionWithoutLabourCents: 10,
-        costPerKgCents: 600,
-        costPerKgWithoutLabourCents: 100,
+        ingredientCostCents: 100, // 500 g flour at €2/kg
+        ingredientCostPerKgCents: 100, // ÷ 1 kg finished weight
+        legacyExtraCostCents: 500,
       }),
     ]);
+    expect(options.ingredients.map((i) => i.costKind)).toEqual([null, null, null]);
+  });
+
+  it('saves the item name and g/kg choice, and copies them', async () => {
+    const created = await createDish(
+      db,
+      ORG_A,
+      cake(ids, { output: { quantity: 300, unit: 'portion', sizeDescription: null, label: 'mini cakes', finishedWeightGrams: null }, displayUnit: 'kg' }),
+    );
+    if (created.status !== 'ok') throw new Error('create failed');
+    const detail = await getManagerDish(db, ORG_A, created.menu.id);
+    expect(detail?.output).toMatchObject({ quantity: 300, label: 'mini cakes' });
+    expect(detail?.displayUnit).toBe('kg');
+    // A save without a display unit keeps the stored one.
+    await updateDish(db, ORG_A, created.menu.id, cake(ids, { output: { quantity: 300, unit: 'portion', finishedWeightGrams: null } }));
+    const kept = await getManagerDish(db, ORG_A, created.menu.id);
+    expect(kept?.displayUnit).toBe('kg');
+    expect(kept?.output.label).toBeNull();
+
+    const copy = await duplicateDish(db, ORG_A, created.menu.id, 'Copy');
+    if (copy.status !== 'ok') throw new Error('copy failed');
+    expect((await getManagerDish(db, ORG_A, copy.menu.id))?.displayUnit).toBe('kg');
+    // A brand-new dish defaults to grams.
+    const fresh = await createDish(db, ORG_A, cake(ids, { name: 'Fresh' }));
+    if (fresh.status !== 'ok') throw new Error('create failed');
+    expect((await getManagerDish(db, ORG_A, fresh.menu.id))?.displayUnit).toBe('g');
+  });
+
+  it('stores explicit food / packaging choices on the ingredients — never guessed', async () => {
+    const created = await createDish(
+      db,
+      ORG_A,
+      cake(ids, {
+        labour: { hours: 1, hourlyCents: 1_000 },
+        ingredientLines: [
+          { ingredientId: ids.fruit.id, quantity: 0.1, unit: 'kg', costKind: 'food' },
+          { ingredientId: ids.box.id, quantity: 4, unit: 'piece', costKind: 'packaging' },
+        ],
+      }),
+    );
+    if (created.status !== 'ok') throw new Error('create failed');
+    expect(created.classifiedIngredients).toBe(2);
+    const kinds = await db.select({ id: ingredientsTable.id, costKind: ingredientsTable.costKind }).from(ingredientsTable);
+    expect(new Map(kinds.map((k) => [k.id, k.costKind]))).toEqual(
+      new Map([
+        [ids.flour.id, null], // only in a recipe: untouched
+        [ids.fruit.id, 'food'],
+        [ids.box.id, 'packaging'],
+      ]),
+    );
+    // Sponge (food, 40c) + fruit (food, 120c); boxes (packaging, 200c) only in the total.
+    const cost = catalogueDishCosts(await loadActiveCatalogue(db, ORG_A)).get(created.menu.id);
+    expect(cost).toMatchObject({ foodCents: 160, packagingCents: 200, totalCostCents: 1_360, unclassifiedKeys: [] });
+
+    // Saving again without a choice leaves the classification as it is; an unchanged
+    // choice writes nothing.
+    const again = await updateDish(db, ORG_A, created.menu.id, cake(ids, { labour: { hours: 1, hourlyCents: 1_000 } }));
+    expect(again.status === 'ok' && again.classifiedIngredients).toBe(0);
+    const repeat = await updateDish(
+      db,
+      ORG_A,
+      created.menu.id,
+      cake(ids, { ingredientLines: [{ ingredientId: ids.box.id, quantity: 4, unit: 'piece', costKind: 'packaging' }] }),
+    );
+    expect(repeat.status === 'ok' && repeat.classifiedIngredients).toBe(0);
+    const [box] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, ids.box.id));
+    expect(box?.costKind).toBe('packaging');
+  });
+
+  it('cannot classify another org’s ingredient through a dish', async () => {
+    const other = await seed(db, ORG_B);
+    const attempt = await createDish(
+      db,
+      ORG_A,
+      cake(ids, { ingredientLines: [{ ingredientId: other.box.id, quantity: 1, unit: 'piece', costKind: 'packaging' }] }),
+    );
+    expect(attempt.status).toBe('invalid_ingredient');
+    const [box] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, other.box.id));
+    expect(box?.costKind).toBeNull();
   });
 
   it('copies a product independently of the original', async () => {
@@ -542,7 +626,7 @@ describe('menu product data layer', () => {
     if (created.status !== 'ok') throw new Error('create failed');
     const dish = await getKitchenDish(db, ORG_A, created.menu.id);
     expect(dish?.allergens).toEqual([{ allergen: 'sulphites', presence: 'may_contain' }]);
-    expect(dish?.output).toEqual({ quantity: 50, unit: 'cake', sizeDescription: '18 cm', finishedWeightGrams: null });
+    expect(dish?.output).toEqual({ quantity: 50, unit: 'cake', sizeDescription: '18 cm', label: null, finishedWeightGrams: null });
     for (const key of ['sellingPriceCents', 'labour', 'extras', 'priceBasis', 'vatRateBps']) {
       expect(dish && key in dish).toBe(false);
     }

@@ -125,6 +125,11 @@ the second layer of defense exists.
   failed with `column "display_unit" does not exist` (Postgres `42703`) until the migration
   was applied. `tests/schema-migration-drift.test.ts` catches schema columns with no
   migration; it cannot see an unapplied prod DB, so the ordering above is the guard.
+- Head: **0057** (`0057_dish_editor_cost_kind`: nullable `ingredients.cost_kind`
+  ('food' | 'packaging', CHECK; NULL = unclassified), nullable `menus.output_label`
+  (1–40 chars) and `menus.display_unit` ('g' | 'kg', default 'g'). Additive — the
+  previous release keeps working — but the app selects every column of both tables, so
+  **apply 0057 before deploying the release that includes it**.
 - Historical note — head at Sprint 3.x was **0053** (`0052_supplier_vat_defaults`: `ingredient_suppliers.vat_rate_bps` +
   `organization_settings.default_purchase_vat_bps`; `0053_recipe_yield_model`:
   `recipes.yield_weight_source` / `yield_review_needed`, flags recipes with a non-100 yield
@@ -273,7 +278,7 @@ as every one of them purges data or sends real email.
 - [ ] All env vars set in Coolify, `NEXT_PUBLIC_*` ticked as Build Variables; a fresh
       deploy is green and `curl -s https://prepprofit.com/sign-in | grep -o 'pk_[a-z]*_'`
       returns `pk_live_`.
-- [ ] Migrations applied + verified (head = newest file in `drizzle/`, currently 0056); RLS enabled + forced on every business table.
+- [ ] Migrations applied + verified (head = newest file in `drizzle/`, currently 0057); RLS enabled + forced on every business table.
 - [ ] All six Scheduled Tasks exist with the full `node -e …` command; `ai-cost-report`
       returns 200 on a manual run.
 - [ ] Clerk webhook endpoint on the **apex** + secret set; a `user.created` test event is accepted.

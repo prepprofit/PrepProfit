@@ -1,5 +1,5 @@
 import type { Dimension } from '@/lib/units';
-import { recipeCost } from './recipeCost';
+import { lineCostCents, recipeCost } from './recipeCost';
 import { compositionCost, type DishComposition } from './dish';
 import { marginPercent, suggestedPriceCents, MARGIN_THRESHOLDS } from './margin';
 
@@ -71,8 +71,6 @@ export type CostImpactRecipe = {
   costUnresolved?: boolean;
   /** Finished batch weight (g) — converts a dish's gram lines to portions. */
   yieldWeightGrams?: number | null;
-  /** Sub-recipe LABOUR inside `componentHiddenCostCents` (excluded for Menu labour). */
-  componentLaborCostCents?: number;
 };
 
 /** A dish: recipe lines + direct ingredient lines; price per portion. */
@@ -151,15 +149,11 @@ export type ProjectedCostImpact = {
 /** Per-ingredient pricing view used when costing a recipe in one of the two worlds. */
 type PriceView = { priceCents: number; unpriced: boolean };
 
-/**
- * Cost a recipe per portion under a given pricing lens, or null when the cost
- * would be untrue (any line's ingredient is unpriced) or non-finite.
- */
-function recipeCostPerPortion(
+/** A recipe's lines priced under a lens, or null when any line's ingredient is unpriced. */
+function pricedLines(
   recipe: CostImpactRecipe,
   priceOf: (ingredientId: string) => PriceView,
-  excludeLabour = false,
-): number | null {
+): { dimension: Dimension; priceCents: number; quantity: number }[] | null {
   if (recipe.costUnresolved === true) return null;
   let anyUnpriced = false;
   const lines = recipe.lines.map((line) => {
@@ -167,20 +161,40 @@ function recipeCostPerPortion(
     if (view.unpriced) anyUnpriced = true;
     return { dimension: line.dimension, priceCents: view.priceCents, quantity: line.quantity };
   });
-  if (anyUnpriced) return null;
+  return anyUnpriced ? null : lines;
+}
 
+/**
+ * Cost a recipe per portion under a given pricing lens, or null when the cost
+ * would be untrue (any line's ingredient is unpriced) or non-finite.
+ */
+function recipeCostPerPortion(
+  recipe: CostImpactRecipe,
+  priceOf: (ingredientId: string) => PriceView,
+): number | null {
+  const lines = pricedLines(recipe, priceOf);
+  if (lines === null) return null;
   const cost = recipeCost({
     yieldPortions: recipe.yieldPortions,
     yieldPercentage: recipe.yieldPercentage,
-    laborCostCents: excludeLabour ? 0 : recipe.laborCostCents,
+    laborCostCents: recipe.laborCostCents,
     energyCostCents: recipe.energyCostCents,
     packagingCostCents: recipe.packagingCostCents,
     lines,
-    componentMaterialCostsCents: [
-      (recipe.componentHiddenCostCents ?? 0) - (excludeLabour ? (recipe.componentLaborCostCents ?? 0) : 0),
-    ],
+    componentMaterialCostsCents: [recipe.componentHiddenCostCents ?? 0],
   });
   return Number.isFinite(cost.costPerPortionCents) ? cost.costPerPortionCents : null;
+}
+
+/** Ingredient-only batch cost under a lens — what a Menu dish pays for a recipe component. */
+function recipeIngredientCost(
+  recipe: CostImpactRecipe,
+  priceOf: (ingredientId: string) => PriceView,
+): number | null {
+  const lines = pricedLines(recipe, priceOf);
+  if (lines === null) return null;
+  const cents = lines.reduce((sum, line) => sum + lineCostCents(line), 0);
+  return Number.isFinite(cents) ? cents : null;
 }
 
 /** Gross margin, or null when price or cost is missing/non-positive. */
@@ -288,14 +302,14 @@ export function projectPendingCostImpact(
     priceOf: (ingredientId: string) => PriceView,
   ) =>
     compositionCost(menu, {
-      recipeCostPerPortion: (id, { excludeLabour }) => {
-        const recipe = recipeById.get(id);
-        return recipe ? recipeCostPerPortion(recipe, priceOf, excludeLabour) : null;
-      },
-      recipeYield: (id) => {
+      recipe: (id) => {
         const recipe = recipeById.get(id);
         return recipe
-          ? { yieldPortions: recipe.yieldPortions, yieldWeightGrams: recipe.yieldWeightGrams ?? null }
+          ? {
+              yieldPortions: recipe.yieldPortions,
+              yieldWeightGrams: recipe.yieldWeightGrams ?? null,
+              ingredientCostCents: recipeIngredientCost(recipe, priceOf),
+            }
           : null;
       },
       ingredient: (id) => {

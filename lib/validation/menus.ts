@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  DISH_COST_KINDS,
   DISH_INGREDIENT_UNITS,
   DISH_OUTPUT_UNITS,
   DISH_RECIPE_UNITS,
@@ -16,8 +17,8 @@ import {
  * VAT is basis points. Manager-only at the action layer.
  *
  * A product may be saved while still empty (a draft). Labour is either absent (null
- * → recipe labour applies) or BOTH hours and hourly cost — partial labour is
- * rejected. The price basis must match the output kind (weight → per kg, count →
+ * → not entered; recipe labour is never inherited) or BOTH hours and hourly cost —
+ * partial labour is rejected. The price basis must match the output kind (weight → per kg, count →
  * per unit); a finished weight only belongs to a count batch.
  */
 
@@ -44,6 +45,11 @@ const ingredientLineSchema = z.object({
   /** Amount in `unit` (the server converts to canonical and checks the dimension). */
   quantity: amountSchema,
   unit: z.enum(DISH_INGREDIENT_UNITS),
+  /**
+   * The chef's explicit food / packaging choice for this ingredient, saved on the
+   * ingredient with the dish. Absent/null = leave the ingredient's classification as is.
+   */
+  costKind: z.enum(DISH_COST_KINDS).nullable().optional(),
 });
 
 const descriptionSchema = z.string().trim().min(1).max(120);
@@ -83,6 +89,8 @@ export const dishSchema = z
       quantity: amountSchema,
       unit: z.enum(DISH_OUTPUT_UNITS),
       sizeDescription: optionalText(80),
+      /** What one saleable item is called ("mini cakes"); blank = the unit's own name. */
+      label: optionalText(40),
       finishedWeightGrams: z
         .number()
         .positive()
@@ -93,6 +101,8 @@ export const dishSchema = z
     sellingPriceCents: z.number().int().min(0).max(2_147_483_647).nullable(),
     priceBasis: z.enum(PRICE_BASES),
     vatRateBps: z.number().int().min(0).max(10_000).nullable(),
+    /** The editor's g/kg switch; presentation only. Absent = keep the stored one (new dishes: g). */
+    displayUnit: z.enum(['g', 'kg']).optional(),
     labour: z.object({ hours: hoursSchema, hourlyCents: hourlyCentsSchema }).nullable(),
     extras: z.array(extraSchema).max(MAX_DISH_EXTRAS),
     notes: optionalText(1000),

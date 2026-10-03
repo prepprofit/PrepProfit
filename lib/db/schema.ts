@@ -291,6 +291,10 @@ export const ingredients = pgTable(
     // Free-text notes the manager keeps on the ingredient (e.g. a supplier discount
     // reminder). Optional, never parsed or used in any calculation.
     notes: text('notes'),
+    // What this item counts as in a Menu dish: 'food' (in the food-only ingredient
+    // margin) or 'packaging' (in total cost only). NULL = not classified yet — never
+    // inferred from the name or the unit. Set explicitly from the dish editor.
+    costKind: text('cost_kind', { enum: ['food', 'packaging'] }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     // Soft-delete: NULL = active. Reads filter `deleted_at IS NULL`.
@@ -302,6 +306,7 @@ export const ingredients = pgTable(
       sql`${t.vatRateBps} IS NULL OR (${t.vatRateBps} >= 0 AND ${t.vatRateBps} <= 10000)`,
     ),
     check('ingredients_notes_chk', sql`${t.notes} is null or char_length(${t.notes}) <= 1000`),
+    check('ingredients_cost_kind_chk', sql`${t.costKind} is null or ${t.costKind} in ('food', 'packaging')`),
     index('ingredients_org_idx').on(t.organizationId),
     index('ingredients_org_name_idx').on(t.organizationId, t.name),
     // Serves the /trash listing and keeps active-row filtering index-friendly.
@@ -1564,6 +1569,12 @@ export const menus = pgTable(
     labourHourlyCents: integer('labour_hourly_cents'),
     // Sales VAT for this dish in basis points; NULL = the org default rate.
     vatRateBps: integer('vat_rate_bps'),
+    // What one saleable item is called ("mini cakes"); NULL = the output unit's own
+    // name. A label only — never changes a quantity, cost or the price basis.
+    outputLabel: text('output_label'),
+    // The dish editor's one g/kg switch for weight quantities (recipes + direct
+    // ingredients). Presentation only: stored quantities stay canonical grams.
+    displayUnit: text('display_unit', { enum: ['g', 'kg'] }).notNull().default('g'),
     // Last time someone opened the dish (the "Last opened" sort). Metadata only.
     lastOpenedAt: timestamp('last_opened_at', { withTimezone: true }),
     createdAt: createdAt(),
@@ -1596,6 +1607,11 @@ export const menus = pgTable(
       'menus_vat_rate_chk',
       sql`${t.vatRateBps} is null or (${t.vatRateBps} >= 0 and ${t.vatRateBps} <= 10000)`,
     ),
+    check(
+      'menus_output_label_chk',
+      sql`${t.outputLabel} is null or char_length(${t.outputLabel}) between 1 and 40`,
+    ),
+    check('menus_display_unit_chk', sql`${t.displayUnit} in ('g', 'kg')`),
     // Composite FK: a dish can only be filed in a folder of its own organization.
     // Restrict: the app nulls folder_id before deleting a folder.
     foreignKey({
