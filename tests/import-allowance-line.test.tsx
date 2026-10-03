@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '@/lib/i18n/messages/en.json';
@@ -21,11 +20,9 @@ const base: ImportAllowance = {
 
 function render(method: 'photo' | 'invoice', allowance: ImportAllowance | null) {
   return renderToStaticMarkup(
-    createElement(
-      NextIntlClientProvider,
-      { locale: 'en', messages },
-      createElement(ImportAllowanceLine, { method, allowance }),
-    ),
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <ImportAllowanceLine method={method} allowance={allowance} />
+    </NextIntlClientProvider>,
   );
 }
 
