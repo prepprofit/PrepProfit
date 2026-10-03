@@ -387,6 +387,10 @@ export type RecipeWorkspaceHeaderDraft = {
    * id references a READY, non-deleted media row of THIS recipe. null clears.
    */
   coverMediaId?: string | null;
+  /** "Preparation method / notes" free text (recipe editor). null clears. */
+  notes?: string | null;
+  /** Remembered g/kg display unit — presentation only, never a stored quantity. */
+  displayUnit?: 'g' | 'kg';
   /** Yield calculator input (see `workspaceHeaderSchema.yield`). */
   yield?: { percentage: number; measuredGrams: number | null };
 };

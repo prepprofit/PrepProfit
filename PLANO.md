@@ -525,6 +525,28 @@ Acceptance criteria:
   costs + cost per batch / per kg only, legacy labour/energy shown for review with a
   remove action, kitchen presets. Subtitle, line notes, sections and portion options are
   preserved, just not edited there. Migrations 0052–0053.
+- **Recipe editor (create + edit).** "Add recipe" opens `/recipes/new` straight away
+  (`?folder=<id>` preselects; `?from=all|none` sets where Cancel returns); "Edit" opens
+  `/recipes/[id]/edit` — the same form with the saved data. Nothing is written until
+  "Save recipe": `createRecipeFromEditorAction` / `saveRecipeEditorAction` save the recipe
+  row, lines, finished weight, notes, folder, display unit and kitchen presets in ONE
+  `withOrg` transaction (any failure rolls everything back, so Cancel never leaves an
+  empty recipe; plan cap re-checked inside). Form order: large name, compact searchable
+  folder dropdown (hierarchy, "No folder", "+ New folder" in place), ingredients with ONE
+  g/kg switch (display only, remembered on save; per-row unit dropdowns removed; ml,
+  pieces and other typed units keep a compact label and are never converted to grams),
+  rows = drag handle · name · quantity · remove (keyboard reorder on the handle), one
+  "Find an ingredient…" search under the list (also offers recipes as sub-recipes; a
+  repeated pick focuses the existing row; Enter in a quantity returns to search), a
+  compact weight summary (honest: empty recipes say nothing about ml/pieces, ml/piece
+  lines are named and the subtotal labelled as such) with "Adjust finished weight" on
+  request, one "Preparation method / notes" text area (`recipes.notes`, up to 10,000
+  characters; numbered steps saved earlier are kept and still editable), and collapsed
+  optional kitchen presets (name + grams, decimals allowed — the same rows Kitchen Scale
+  reads; `syncRecipePresets` keeps ids stable). Kitchen Scale and prep cards now show the
+  notes after any numbered steps instead of hiding them. Scale, slideshow and prep tasks
+  stay on the saved recipe page. Unsaved edits are protected (Cancel, in-app links,
+  reload/close). No migration.
 
 ## Backlog - not scheduled until prioritized
 

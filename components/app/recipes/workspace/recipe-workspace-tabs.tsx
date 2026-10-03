@@ -62,20 +62,29 @@ export type UomTabItem = {
   missingAnchorDimensions: Dimension[];
 };
 
+/**
+ * The saved preparation method: the "Preparation method / notes" text the editor
+ * writes, plus any numbered steps an earlier editor saved (shown first, as before,
+ * with the text under a small "Notes" label). Text renders as TEXT — never HTML.
+ */
 export function MethodPanel({
   sections,
-  legacyNotes,
+  notes,
 }: {
   sections: MethodSectionView[];
-  legacyNotes: string | null;
+  notes: string | null;
 }) {
   const t = useTranslations('recipes.workspace.method');
   const hasSteps = sections.some((s) => s.steps.length > 0);
+  const text = notes?.trim() ? notes : null;
 
   return (
     <div className="flex flex-col gap-5">
-      {!hasSteps && !legacyNotes ? (
+      {!hasSteps && !text ? (
         <p className="text-sm text-muted-foreground">{t('empty')}</p>
+      ) : null}
+      {text && !hasSteps ? (
+        <p className="whitespace-pre-wrap text-base leading-relaxed text-foreground">{text}</p>
       ) : null}
       {sections.map((section) => (
         <section key={section.id}>
@@ -125,14 +134,12 @@ export function MethodPanel({
           </ol>
         </section>
       ))}
-      {legacyNotes ? (
+      {text && hasSteps ? (
         <section>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {t('legacyNotes')}
+            {t('notes')}
           </h3>
-          <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-            {legacyNotes}
-          </p>
+          <p className="whitespace-pre-wrap text-sm text-foreground">{text}</p>
         </section>
       ) : null}
     </div>

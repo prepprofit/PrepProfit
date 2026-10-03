@@ -169,8 +169,8 @@ export function RecipeFolderView({
         <div className="flex flex-wrap items-center gap-2">
           {viewToggle}
           <AddRecipeButton
-            folders={listing.folders.map((f) => ({ id: f.id, name: f.name, parentId: f.parentId }))}
             defaultFolderId={folderId}
+            scope={folderId ? undefined : activeKey === 'all' ? 'all' : 'none'}
             className="h-9 px-3"
           />
         </div>

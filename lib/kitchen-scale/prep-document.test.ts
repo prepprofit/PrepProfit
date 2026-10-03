@@ -119,21 +119,22 @@ describe('buildKitchenScaleDocument', () => {
       { title: '', steps: ['Preheat oven'] },
       { title: 'Dough', steps: ['Mix flour and butter'] },
     ]);
-    // Structured steps exist → legacy notes are not surfaced (no duplicate content).
-    expect(doc.legacyNotes).toBeNull();
+    // The editor's "Preparation method / notes" text is kept alongside numbered
+    // steps — nothing typed there is hidden from the kitchen.
+    expect(doc.methodNotes).toBe('Legacy prep notes');
   });
 
-  it('falls back to legacy notes only when there is no structured method', () => {
+  it('carries the notes text when there are no numbered steps', () => {
     const doc = buildKitchenScaleDocument(baseDto());
     expect(doc.method).toEqual([]);
-    expect(doc.legacyNotes).toBe('Legacy prep notes');
+    expect(doc.methodNotes).toBe('Legacy prep notes');
   });
 
-  it('omits legacy notes when blank and there is no structured method', () => {
+  it('omits the notes when blank', () => {
     const dto = baseDto({
       recipe: { ...baseDto().recipe, notes: '   ' },
     });
     const doc = buildKitchenScaleDocument(dto);
-    expect(doc.legacyNotes).toBeNull();
+    expect(doc.methodNotes).toBeNull();
   });
 });

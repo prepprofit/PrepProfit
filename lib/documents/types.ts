@@ -307,8 +307,8 @@ export type RecipePrepCardData = {
    *  !== 100`), clearly distinct from the input total. */
   expectedFinishedWeightGrams: number | null;
   method: RecipePrepCardMethodSection[];
-  /** Legacy free-text notes, shown ONLY when `method` is empty. */
-  legacyNotes: string | null;
+  /** "Preparation method / notes" text, shown after any numbered `method` steps. */
+  methodNotes: string | null;
 };
 
 export type RecipePrepCardLabels = {
@@ -328,6 +328,8 @@ export type RecipePrepCardLabels = {
   totalToWeigh: string;
   expectedFinishedWeight: string;
   method: string;
+  /** Heading for the notes text when numbered steps precede it. */
+  notes: string;
   footer: (recipeName: string) => string;
   /** Unit suffix by dimension (e.g. g / ml / ×). */
   units: Record<'weight' | 'volume' | 'count', string>;

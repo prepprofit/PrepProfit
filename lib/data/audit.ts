@@ -162,6 +162,9 @@ export type AuditAction =
   | 'recipePreset.update'
   | 'recipePreset.delete'
   | 'recipePreset.reorder'
+  // Recipe editor save: the presets list replaced with the recipe (metadata = recipe id +
+  // added/updated/removed COUNTS only — never a preset name or weight).
+  | 'recipePreset.sync'
   // Org settings
   | 'settings.update'
   // Purchase VAT bands (per-org lookup). metadata = the band's name + rate in bps,

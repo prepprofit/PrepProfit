@@ -48,7 +48,7 @@ export default async function KitchenScaleRecipePage({
         targetWeightGrams: p.targetWeightGrams,
       }))}
       method={doc.method}
-      legacyNotes={doc.legacyNotes}
+      methodNotes={doc.methodNotes}
       measurementSystem={settings.measurementSystem}
     />
   );

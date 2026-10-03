@@ -32,12 +32,12 @@ export type KitchenScaleRecipeDocument = {
   /** Usable yield after trim/loss (100 = no loss). */
   yieldPercentage: number;
   lines: KitchenScaleLine[];
-  /** Structured prep-method sections with their steps, in saved order. Empty
-   *  when the recipe has no structured method (see `legacyNotes`). */
+  /** Numbered prep-method sections with their steps, in saved order. Empty
+   *  when the recipe has none (see `methodNotes`). */
   method: KitchenScaleMethodSection[];
-  /** The pre-Recipes-2.0 free-text notes, shown ONLY as a fallback when the
-   *  recipe has no structured method steps at all — never alongside them. */
-  legacyNotes: string | null;
+  /** The "Preparation method / notes" text from the recipe editor (null when
+   *  blank). Shown after any numbered steps, so nothing typed there is hidden. */
+  methodNotes: string | null;
 };
 
 export function buildKitchenScaleDocument(
@@ -80,7 +80,7 @@ export function buildKitchenScaleDocument(
       .map((s) => ({ title: s.title, steps: stepsBySection.get(s.id) ?? [] }))
       .filter((s) => s.steps.length > 0),
   ];
-  const legacyNotes = method.length === 0 ? (dto.recipe.notes?.trim() || null) : null;
+  const methodNotes = dto.recipe.notes?.trim() || null;
 
   return {
     id: dto.recipe.id,
@@ -90,6 +90,6 @@ export function buildKitchenScaleDocument(
     yieldPercentage: dto.recipe.yieldPercentage,
     lines,
     method,
-    legacyNotes,
+    methodNotes,
   };
 }

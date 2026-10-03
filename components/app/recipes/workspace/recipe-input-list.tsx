@@ -2,95 +2,26 @@
 
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
-import { GripVertical, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { formatMoney } from '@/lib/format/money';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+import { formatMoney } from '@/lib/format/money';
 import { roundCanonical } from '@/lib/calculations/recipeScale';
+import { formatWeightForUnit, parseWeightInput, type WeightDisplayUnit } from '@/lib/format/weight';
 import {
-  convertQuantity,
-  effectiveAnchors,
-  type UomAnchors,
-} from '@/lib/calculations/uom';
-import {
-  dimensionOf,
-  unitLabel,
-  type Dimension,
-  type Unit,
-} from '@/lib/units';
-import {
-  formatWeightForUnit,
-  parseWeightInput,
-  gramsToDisplayNumber,
-  displayNumberToGrams,
-  type WeightDisplayUnit,
-} from '@/lib/format/weight';
+  canonicalQuantity,
+  formatAmount,
+  parseAmount,
+  quantityMode,
+  type DraftLine,
+  type DraftSection,
+} from '@/lib/recipes/editor-model';
 
 /**
- * The workspace's MERGED input sequence (plan §6.2/§9.2-9.3): section headers,
- * ingredient lines and sub-recipe lines in one visual order. This client model
- * mirrors `RecipeWorkspaceStructureDraft`: array position is the order the
- * save persists.
+ * The saved recipe's ingredient list (recipe page): section headers, ingredient lines
+ * and sub-recipe lines in one visual order, scaled client-side by the view's factor.
+ * Editing lives in the recipe editor; the shapes are shared through
+ * `lib/recipes/editor-model`.
  */
-export type DraftSection = { ref: string; id?: string; title: string };
-
-export type DraftLine =
-  | {
-      key: string;
-      kind: 'ingredient';
-      id?: string;
-      ingredientId: string;
-      name: string;
-      unitLabel: string;
-      dimension: Dimension;
-      quantity: number;
-      /** Fase 4: what the chef typed. Both set, or both null (canonical entry). */
-      enteredQuantity: number | null;
-      enteredUnit: Unit | null;
-      prepActionId: string | null;
-      /** Display-only prep name resolved server-side (view mode). */
-      prepName?: string | null;
-      note: string;
-      sectionRef: string | null;
-    }
-  | {
-      key: string;
-      kind: 'component';
-      id?: string;
-      componentRecipeId: string;
-      name: string;
-      quantityGrams: number;
-      note: string;
-      sectionRef: string | null;
-    };
-
-export type PickerOption = { id: string; name: string; dimension?: Dimension };
-
-/** Per-ingredient UoM context the line editor needs (anchors + prep picker). */
-export type LineUom = {
-  anchors: UomAnchors | null;
-  prepActions: { id: string; name: string; anchors: UomAnchors }[];
-};
-
-const ALL_UNITS: Unit[] = [
-  'g',
-  'kg',
-  'oz',
-  'lb',
-  'ml',
-  'l',
-  'floz',
-  'cup',
-  'tsp',
-  'tbsp',
-  'count',
-];
-
-function lineQuantity(line: DraftLine): number {
-  return line.kind === 'ingredient' ? line.quantity : line.quantityGrams;
-}
+export type { DraftLine, DraftSection, LineUom, PickerOption } from '@/lib/recipes/editor-model';
 
 function groupBySection(
   sections: DraftSection[],
@@ -131,7 +62,7 @@ export function RecipeInputListView({
   lineCosts?: Record<string, number | null>;
   currency?: string;
   noPriceLabel?: string;
-  /** Recipe-wide g/kg display preference for weight-dimension lines with no explicit entered unit. */
+  /** Recipe-wide g/kg display preference for weight lines (ml, pieces and other typed units keep their own). */
   displayUnit: WeightDisplayUnit;
 }) {
   const t = useTranslations('recipes.workspace');
@@ -142,19 +73,15 @@ export function RecipeInputListView({
     return <p className="text-sm text-muted-foreground">{t('emptyLines')}</p>;
   }
 
-  const followsDisplayUnit = (line: DraftLine, entered: boolean): boolean =>
-    !entered && (line.kind === 'component' || line.dimension === 'weight');
-
-  const commitAnchor = (line: DraftLine, entered: boolean) => {
-    // The typed target is relative to what is DISPLAYED (entered pair, or the
-    // g/kg display unit, when present) — both scale linearly, so the factor is
-    // the same either way; a display-unit line's typed number is converted
-    // back to canonical grams before being used as the scale target.
-    const raw = followsDisplayUnit(line, entered) ? parseWeightInput(target, displayUnit) : Number(target.replace(',', '.'));
+  /** The base the typed target scales against, in the unit that is DISPLAYED. */
+  const commitAnchor = (line: DraftLine) => {
+    const mode = quantityMode(line);
+    // Weight lines are typed in the g/kg display unit and compared in grams; an
+    // entered unit (cup, oz…) or ml/pieces compare in their own unit — both scale
+    // linearly, so the factor is the same either way.
+    const raw = mode.kind === 'weight' ? parseWeightInput(target, displayUnit) : parseAmount(target);
     const base =
-      line.kind === 'ingredient' && line.enteredQuantity !== null
-        ? line.enteredQuantity
-        : lineQuantity(line);
+      mode.kind === 'entered' && line.kind === 'ingredient' ? (line.enteredQuantity ?? 0) : canonicalQuantity(line);
     if (raw !== null && Number.isFinite(raw) && raw > 0 && base > 0) {
       onAnchorScale(base, raw);
     }
@@ -165,28 +92,20 @@ export function RecipeInputListView({
     <div className="flex flex-col gap-4">
       {groupBySection(sections, lines).map((group) => (
         <div key={group.section?.ref ?? '__default'}>
-          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {group.section?.title ?? t('defaultSection')}
-          </h3>
+          {group.section ? (
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.section.title}</h3>
+          ) : null}
           <ul className="divide-y divide-border">
             {group.lines.map((line) => {
-              const scaled = roundCanonical(lineQuantity(line) * factor);
-              // Fase 4: show what the chef TYPED (scaled) when present; the
-              // canonical amount stays the anchor-scale + cost source.
-              const entered =
-                line.kind === 'ingredient' &&
-                line.enteredQuantity !== null &&
-                line.enteredUnit !== null
-                  ? {
-                      value: roundCanonical(line.enteredQuantity * factor),
-                      label: unitLabel(line.enteredUnit),
-                    }
-                  : null;
-              // Weight-dimension lines with no explicit entered unit (ingredients
-              // AND sub-recipe components, both canonical grams) follow the
-              // recipe-wide g/kg selector — a display-only conversion, never
-              // stored, so factor scaling still runs on the canonical grams first.
-              const usesDisplayUnit = followsDisplayUnit(line, entered !== null);
+              const mode = quantityMode(line);
+              const scaled = roundCanonical(canonicalQuantity(line) * factor);
+              const shown =
+                mode.kind === 'weight'
+                  ? formatWeightForUnit(scaled, displayUnit)
+                  : mode.kind === 'entered' && line.kind === 'ingredient'
+                    ? formatAmount(roundCanonical((line.enteredQuantity ?? 0) * factor))
+                    : formatAmount(scaled, 2);
+              const label = mode.kind === 'weight' ? displayUnit : mode.label;
               return (
                 <li key={line.key} className="flex items-start gap-3 py-2.5">
                   {editingKey === line.key ? (
@@ -194,9 +113,9 @@ export function RecipeInputListView({
                       autoFocus
                       value={target}
                       onChange={(e) => setTarget(e.target.value)}
-                      onBlur={() => commitAnchor(line, entered !== null)}
+                      onBlur={() => commitAnchor(line)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitAnchor(line, entered !== null);
+                        if (e.key === 'Enter') commitAnchor(line);
                         if (e.key === 'Escape') setEditingKey(null);
                       }}
                       inputMode="decimal"
@@ -209,35 +128,18 @@ export function RecipeInputListView({
                       className="w-24 shrink-0 rounded px-1 text-right font-medium tabular-nums underline-offset-2 hover:underline"
                       onClick={() => {
                         setEditingKey(line.key);
-                        setTarget(
-                          entered
-                            ? String(entered.value)
-                            : usesDisplayUnit
-                              ? formatWeightForUnit(scaled, displayUnit)
-                              : String(scaled),
-                        );
+                        setTarget(shown);
                       }}
                       title={t('scale')}
                     >
-                      {entered ? entered.value : usesDisplayUnit ? formatWeightForUnit(scaled, displayUnit) : scaled}{' '}
-                      <span className="text-muted-foreground">
-                        {entered
-                          ? entered.label
-                          : usesDisplayUnit
-                            ? displayUnit
-                            : line.kind === 'ingredient'
-                              ? line.unitLabel
-                              : 'g'}
-                      </span>
+                      {shown} <span className="text-muted-foreground">{label}</span>
                     </button>
                   )}
                   <div className="min-w-0">
                     <p className="text-base leading-snug">
                       {line.name}
                       {line.kind === 'ingredient' && line.prepName ? (
-                        <span className="ml-1 text-muted-foreground">
-                          · {line.prepName}
-                        </span>
+                        <span className="ml-1 text-muted-foreground">· {line.prepName}</span>
                       ) : null}
                       {line.kind === 'component' ? (
                         <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted-foreground">
@@ -245,9 +147,7 @@ export function RecipeInputListView({
                         </span>
                       ) : null}
                     </p>
-                    {line.note ? (
-                      <p className="text-xs text-muted-foreground">{line.note}</p>
-                    ) : null}
+                    {line.note ? <p className="text-xs text-muted-foreground">{line.note}</p> : null}
                   </div>
                   {lineCosts && currency ? (
                     <span className="ml-auto shrink-0 pl-3 text-right text-sm tabular-nums">
@@ -267,407 +167,5 @@ export function RecipeInputListView({
         </div>
       ))}
     </div>
-  );
-}
-
-/**
- * Editable ingredient list: one flat list in saved order — quantity, unit, prep,
- * remove — reordered with the dotted handle (drag, touch, or arrow keys). Line notes
- * and section assignments aren't edited here; the values already stored are kept
- * untouched on save.
- */
-export function RecipeInputListEdit({
-  lines,
-  ingredientOptions,
-  componentOptions,
-  lineUom,
-  onLinesChange,
-  displayUnit,
-}: {
-  lines: DraftLine[];
-  ingredientOptions: PickerOption[];
-  componentOptions: PickerOption[];
-  /** UoM context per ingredient id (anchors + prep picker). Missing = none. */
-  lineUom: Record<string, LineUom>;
-  onLinesChange: (lines: DraftLine[]) => void;
-  /** Recipe-wide g/kg display preference for weight-dimension lines with no explicit entered unit. */
-  displayUnit: WeightDisplayUnit;
-}) {
-  const t = useTranslations('recipes.workspace');
-  const usesDisplayUnit = (line: DraftLine): boolean =>
-    line.kind === 'component' || (line.dimension === 'weight' && line.enteredUnit === null);
-
-  const uomFor = (ingredientId: string): LineUom =>
-    lineUom[ingredientId] ?? { anchors: null, prepActions: [] };
-
-  /** Anchors in effect for a line given its selected prep action. */
-  const anchorsFor = (
-    line: Extract<DraftLine, { kind: 'ingredient' }>,
-  ): UomAnchors | null => {
-    const uom = uomFor(line.ingredientId);
-    const prep = uom.prepActions.find((p) => p.id === line.prepActionId);
-    return effectiveAnchors(uom.anchors, prep?.anchors ?? null);
-  };
-
-  /** Units offered for a line: same dimension always; others only when convertible. */
-  const unitOptionsFor = (
-    line: Extract<DraftLine, { kind: 'ingredient' }>,
-  ): Unit[] => {
-    const anchors = anchorsFor(line);
-    return ALL_UNITS.filter(
-      (u) =>
-        dimensionOf(u) === line.dimension ||
-        convertQuantity(1, u, line.dimension, anchors).ok,
-    );
-  };
-
-  const moveLineTo = React.useCallback(
-    (from: number, to: number) => {
-      if (from === to || from < 0 || to < 0 || from >= lines.length || to >= lines.length) return;
-      const next = [...lines];
-      const [line] = next.splice(from, 1);
-      next.splice(to, 0, line!);
-      onLinesChange(next);
-    },
-    [lines, onLinesChange],
-  );
-
-  // Drag to reorder with a pointer (mouse, pen or touch) on the handle; the arrow
-  // keys do the same from the focused handle. Order = array position = saved order.
-  const [draggingKey, setDraggingKey] = React.useState<string | null>(null);
-  const handleRefs = React.useRef(new Map<string, HTMLButtonElement>());
-  const focusAfterMove = React.useRef<string | null>(null);
-  React.useEffect(() => {
-    const key = focusAfterMove.current;
-    if (!key) return;
-    focusAfterMove.current = null;
-    handleRefs.current.get(key)?.focus();
-  });
-  const onHandlePointerMove = (e: React.PointerEvent) => {
-    if (!draggingKey) return;
-    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-line-key]');
-    const overKey = over?.dataset.lineKey;
-    if (!overKey || overKey === draggingKey) return;
-    moveLineTo(
-      lines.findIndex((l) => l.key === draggingKey),
-      lines.findIndex((l) => l.key === overKey),
-    );
-  };
-
-  const updateLine = (key: string, patch: Partial<DraftLine>) => {
-    onLinesChange(
-      lines.map((l) => (l.key === key ? ({ ...l, ...patch } as DraftLine) : l)),
-    );
-  };
-
-  const addIngredient = (ingredientId: string) => {
-    const option = ingredientOptions.find((o) => o.id === ingredientId);
-    if (!option) return;
-    onLinesChange([
-      ...lines,
-      {
-        key: `new-${crypto.randomUUID()}`,
-        kind: 'ingredient',
-        ingredientId: option.id,
-        name: option.name,
-        unitLabel: '',
-        dimension: option.dimension ?? 'weight',
-        quantity: 0,
-        enteredQuantity: null,
-        enteredUnit: null,
-        prepActionId: null,
-        note: '',
-        sectionRef: null,
-      },
-    ]);
-  };
-
-  const addComponent = (componentRecipeId: string) => {
-    const option = componentOptions.find((o) => o.id === componentRecipeId);
-    if (!option) return;
-    if (
-      lines.some(
-        (l) => l.kind === 'component' && l.componentRecipeId === option.id,
-      )
-    ) {
-      return; // one line per component pair (DB unique)
-    }
-    onLinesChange([
-      ...lines,
-      {
-        key: `new-${crypto.randomUUID()}`,
-        kind: 'component',
-        componentRecipeId: option.id,
-        name: option.name,
-        quantityGrams: 0,
-        note: '',
-        sectionRef: null,
-      },
-    ]);
-  };
-
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 px-1 text-xs font-medium text-muted-foreground" aria-hidden>
-        <span className="w-5 shrink-0" />
-        <span className="flex-1">{t('ingredients')}</span>
-        <span className="w-24 shrink-0 text-right">{t('quantityColumn', { unit: displayUnit })}</span>
-        <span className="w-8 shrink-0" />
-      </div>
-      <ul className="flex flex-col divide-y divide-border">
-        {lines.map((line, index) => {
-          const onDisplayUnit = usesDisplayUnit(line);
-          return (
-          <li
-            key={line.key}
-            data-line-key={line.key}
-            className={cn(
-              'flex flex-wrap items-center gap-2 rounded-md px-1 py-2',
-              draggingKey === line.key && 'bg-accent-50 ring-1 ring-accent-400 dark:bg-accent-500/10',
-            )}
-          >
-            <button
-              type="button"
-              ref={(el) => {
-                if (el) handleRefs.current.set(line.key, el);
-                else handleRefs.current.delete(line.key);
-              }}
-              aria-label={t('reorderHandle', { name: line.name })}
-              aria-describedby="reorder-help"
-              title={t('reorderTitle')}
-              className="inline-flex h-9 w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
-              onPointerDown={(e) => {
-                e.currentTarget.setPointerCapture(e.pointerId);
-                setDraggingKey(line.key);
-              }}
-              onPointerMove={onHandlePointerMove}
-              onPointerUp={() => setDraggingKey(null)}
-              onPointerCancel={() => setDraggingKey(null)}
-              onKeyDown={(e) => {
-                const to =
-                  e.key === 'ArrowUp' ? index - 1 : e.key === 'ArrowDown' ? index + 1 : e.key === 'Home' ? 0 : e.key === 'End' ? lines.length - 1 : null;
-                if (to === null) return;
-                e.preventDefault();
-                focusAfterMove.current = line.key;
-                moveLineTo(index, to);
-              }}
-            >
-              <GripVertical className="size-4" aria-hidden />
-            </button>
-            <span className="min-w-32 flex-1 truncate text-base font-medium text-foreground">
-              {line.name}
-              {line.kind === 'component' ? (
-                <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted-foreground">
-                  {t('subRecipe')}
-                </span>
-              ) : null}
-            </span>
-            {line.kind === 'ingredient' &&
-            uomFor(line.ingredientId).prepActions.length > 0 ? (
-              <Select
-                value={line.prepActionId ?? ''}
-                onChange={(e) =>
-                  updateLine(line.key, {
-                    prepActionId: e.target.value === '' ? null : e.target.value,
-                  })
-                }
-                className="h-8 w-28 shrink-0 text-xs"
-                aria-label={t('prepAction')}
-              >
-                <option value="">{t('noPrep')}</option>
-                {uomFor(line.ingredientId).prepActions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            ) : null}
-            <DecimalInput
-              value={
-                onDisplayUnit
-                  ? gramsToDisplayNumber(lineQuantity(line), displayUnit)
-                  : line.kind === 'ingredient' && line.enteredUnit !== null
-                    ? (line.enteredQuantity ?? 0)
-                    : lineQuantity(line)
-              }
-              onValue={(amount) => {
-                if (onDisplayUnit) {
-                  const grams = roundCanonical(displayNumberToGrams(amount, displayUnit));
-                  if (line.kind !== 'ingredient') updateLine(line.key, { quantityGrams: grams });
-                  else updateLine(line.key, { quantity: grams });
-                  return;
-                }
-                if (line.kind !== 'ingredient') {
-                  updateLine(line.key, { quantityGrams: amount });
-                  return;
-                }
-                if (line.enteredUnit === null) {
-                  updateLine(line.key, { quantity: amount });
-                  return;
-                }
-                const converted = convertQuantity(
-                  amount,
-                  line.enteredUnit,
-                  line.dimension,
-                  anchorsFor(line),
-                );
-                updateLine(line.key, {
-                  enteredQuantity: amount,
-                  quantity: converted.ok
-                    ? roundCanonical(converted.canonical)
-                    : line.quantity,
-                });
-              }}
-              className="h-9 w-24 shrink-0 text-right tabular-nums"
-              ariaLabel={`${t('quantity')} — ${line.name}`}
-              invalidLabel={t('quantityInvalid')}
-            />
-            {onDisplayUnit ? (
-              <span className="w-8 shrink-0 text-xs text-muted-foreground">{displayUnit}</span>
-            ) : line.kind === 'ingredient' ? (
-              <Select
-                value={line.enteredUnit ?? ''}
-                onChange={(e) => {
-                  const unit = e.target.value === '' ? null : (e.target.value as Unit);
-                  if (unit === null) {
-                    // Back to canonical entry: the canonical amount stays.
-                    updateLine(line.key, {
-                      enteredUnit: null,
-                      enteredQuantity: null,
-                    });
-                    return;
-                  }
-                  const amount = line.enteredQuantity ?? lineQuantity(line);
-                  const converted = convertQuantity(
-                    amount,
-                    unit,
-                    line.dimension,
-                    anchorsFor(line),
-                  );
-                  updateLine(line.key, {
-                    enteredUnit: unit,
-                    enteredQuantity: amount,
-                    quantity: converted.ok
-                      ? roundCanonical(converted.canonical)
-                      : line.quantity,
-                  });
-                }}
-                className="h-8 w-20 shrink-0 text-xs"
-                aria-label={t('enteredUnit')}
-              >
-                <option value="">{line.unitLabel}</option>
-                {unitOptionsFor(line).map((u) => (
-                  <option key={u} value={u}>
-                    {unitLabel(u) || t('uom.eachUnit')}
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <span className="w-8 shrink-0 text-xs text-muted-foreground">g</span>
-            )}
-            <div className="flex shrink-0 items-center">
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="size-8 p-0"
-                onClick={() =>
-                  onLinesChange(lines.filter((l) => l.key !== line.key))
-                }
-                aria-label={t('removeLine')}
-              >
-                <Trash2 />
-              </Button>
-            </div>
-          </li>
-        );
-        })}
-      </ul>
-
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Select
-          value=""
-          onChange={(e) => e.target.value && addIngredient(e.target.value)}
-          className="h-10 w-full sm:w-56"
-          aria-label={t('addIngredient')}
-        >
-          <option value="">{t('addIngredient')}</option>
-          {ingredientOptions.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </Select>
-        <Select
-          value=""
-          onChange={(e) => e.target.value && addComponent(e.target.value)}
-          className="h-10 w-full sm:w-56"
-          aria-label={t('addSubRecipe')}
-        >
-          <option value="">{t('addSubRecipe')}</option>
-          {componentOptions.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </Select>
-      </div>
-      <p id="reorder-help" className="sr-only">
-        {t('reorderHelp')}
-      </p>
-    </div>
-  );
-}
-
-/**
- * A quantity field that keeps what the cook TYPES ("0,", "1.5", "") while editing
- * and only reports a number when the text is a valid amount ≥ 0 — so decimals with
- * a comma or point can be typed, and clearing the field doesn't snap it to 0.
- */
-function DecimalInput({
-  value,
-  onValue,
-  className,
-  ariaLabel,
-  invalidLabel,
-}: {
-  value: number;
-  onValue: (value: number) => void;
-  className?: string;
-  ariaLabel: string;
-  invalidLabel: string;
-}) {
-  const [text, setText] = React.useState(String(value));
-  const [focused, setFocused] = React.useState(false);
-  const parse = (raw: string): number | null => {
-    const trimmed = raw.trim().replace(',', '.');
-    if (!/^(\d+(\.\d*)?|\.\d+)$/.test(trimmed)) return null;
-    const n = Number(trimmed);
-    return Number.isFinite(n) && n >= 0 ? n : null;
-  };
-  // Follow outside changes (e.g. a unit switch) while not being typed in.
-  React.useEffect(() => {
-    if (!focused) setText(String(value));
-  }, [value, focused]);
-  const invalid = parse(text) === null;
-  return (
-    <Input
-      value={text}
-      inputMode="decimal"
-      aria-label={ariaLabel}
-      aria-invalid={invalid}
-      title={invalid ? invalidLabel : undefined}
-      onFocus={() => setFocused(true)}
-      onBlur={() => {
-        setFocused(false);
-        if (parse(text) === null) setText(String(value));
-      }}
-      onChange={(e) => {
-        setText(e.target.value);
-        const n = parse(e.target.value);
-        if (n !== null) onValue(n);
-      }}
-      className={className}
-    />
   );
 }

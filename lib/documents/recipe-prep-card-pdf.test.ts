@@ -21,7 +21,7 @@ const data: RecipePrepCardData = {
   yieldPercentage: 90,
   expectedFinishedWeightGrams: 1125,
   method: [{ title: '', steps: ['Mix, then proof overnight.'] }],
-  legacyNotes: null,
+  methodNotes: null,
 };
 
 describe('renderRecipePrepCardPdf', () => {
@@ -54,14 +54,14 @@ describe('renderRecipePrepCardPdf', () => {
 
   it('renders with legacy notes instead of structured steps', async () => {
     const buffer = await renderRecipePrepCardPdf(
-      { ...data, method: [], legacyNotes: 'Proof overnight in the fridge.' },
+      { ...data, method: [], methodNotes: 'Proof overnight in the fridge.' },
       labels,
     );
     expect(buffer.length).toBeGreaterThan(0);
   });
 
   it('renders with no preparation method at all (omits the section)', async () => {
-    const buffer = await renderRecipePrepCardPdf({ ...data, method: [], legacyNotes: null }, labels);
+    const buffer = await renderRecipePrepCardPdf({ ...data, method: [], methodNotes: null }, labels);
     expect(buffer.length).toBeGreaterThan(0);
   });
 

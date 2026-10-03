@@ -86,7 +86,7 @@ export function KitchenScaleWorkspace({
   lines,
   presets,
   method,
-  legacyNotes,
+  methodNotes,
   measurementSystem,
 }: {
   recipeId: string;
@@ -95,7 +95,7 @@ export function KitchenScaleWorkspace({
   lines: WorkbenchLine[];
   presets: WorkbenchPreset[];
   method: KitchenScaleMethodSection[];
-  legacyNotes: string | null;
+  methodNotes: string | null;
   measurementSystem: MeasurementSystem;
 }) {
   const t = useTranslations('kitchenScale.workspace');
@@ -528,7 +528,7 @@ export function KitchenScaleWorkspace({
       </div>
 
       {/* Preparation method — expandable, below ingredients */}
-      {(method.length > 0 || legacyNotes) && (
+      {(method.length > 0 || methodNotes) && (
         <div className="rounded-xl border border-border bg-surface">
           <button
             type="button"
@@ -565,9 +565,17 @@ export function KitchenScaleWorkspace({
                       </ol>
                     </div>
                   ))
-                : (
-                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{legacyNotes}</p>
-                )}
+                : null}
+              {methodNotes ? (
+                <div>
+                  {method.length > 0 ? (
+                    <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t('methodNotes')}
+                    </h3>
+                  ) : null}
+                  <p className="whitespace-pre-wrap text-sm text-foreground">{methodNotes}</p>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

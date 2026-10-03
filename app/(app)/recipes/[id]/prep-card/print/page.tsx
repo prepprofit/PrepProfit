@@ -191,7 +191,7 @@ export default async function RecipePrepCardPrintPage({
             </div>
           )}
 
-          {(data.method.length > 0 || data.legacyNotes) && (
+          {(data.method.length > 0 || data.methodNotes) && (
             <div className="mt-6">
               <h2 className="text-[12pt] font-bold uppercase tracking-wide text-[#096567]">
                 {labels.method}
@@ -212,9 +212,15 @@ export default async function RecipePrepCardPrintPage({
                     </ol>
                   </div>
                 ))
-              ) : (
-                <p className="mt-2 whitespace-pre-wrap text-[10.5pt]">{data.legacyNotes}</p>
-              )}
+              ) : null}
+              {data.methodNotes ? (
+                <div className="mt-2.5">
+                  {data.method.length > 0 ? (
+                    <h3 className="mb-1 text-[11pt] font-bold text-neutral-900">{labels.notes}</h3>
+                  ) : null}
+                  <p className="whitespace-pre-wrap text-[10.5pt]">{data.methodNotes}</p>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

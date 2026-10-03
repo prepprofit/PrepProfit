@@ -97,7 +97,7 @@ export function buildRecipePrepCardData(
     yieldPercentage: doc.yieldPercentage,
     expectedFinishedWeightGrams,
     method: doc.method,
-    legacyNotes: doc.legacyNotes,
+    methodNotes: doc.methodNotes,
   };
 }
 

@@ -121,3 +121,32 @@ export function validMoveDestinations<T extends FolderTreeNode>(
   excluded.add(id);
   return all.filter((f) => !excluded.has(f.id));
 }
+
+/**
+ * Every folder in tree (depth-first) order with its depth — for indented pickers.
+ * Siblings keep `all`'s own order. Folders whose parent is missing (or a corrupt
+ * cycle) are still listed, at top level, so nothing becomes unreachable.
+ */
+export function folderTreeOrder<T extends FolderTreeNode>(all: readonly T[]): { folder: T; depth: number }[] {
+  const ids = new Set(all.map((f) => f.id));
+  const out: { folder: T; depth: number }[] = [];
+  const visited = new Set<string>();
+  const walk = (parentId: string | null, depth: number) => {
+    for (const folder of all) {
+      const isRoot = folder.parentId === null || !ids.has(folder.parentId);
+      if ((parentId === null ? !isRoot : folder.parentId !== parentId) || visited.has(folder.id)) continue;
+      visited.add(folder.id);
+      out.push({ folder, depth });
+      walk(folder.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  for (const folder of all) {
+    if (!visited.has(folder.id)) {
+      visited.add(folder.id);
+      out.push({ folder, depth: 0 });
+      walk(folder.id, 1);
+    }
+  }
+  return out;
+}

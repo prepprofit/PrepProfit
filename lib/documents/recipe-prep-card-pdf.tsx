@@ -185,13 +185,21 @@ function RecipePrepCardDocument({
                 ))}
               </View>
             ))}
+            {data.methodNotes ? (
+              <View>
+                <Text style={styles.sectionTitle} minPresenceAhead={30}>
+                  {safeText(labels.notes)}
+                </Text>
+                <Text style={styles.notesText}>{safeText(data.methodNotes)}</Text>
+              </View>
+            ) : null}
           </View>
-        ) : data.legacyNotes ? (
+        ) : data.methodNotes ? (
           <View>
             <Text style={styles.methodHeading} minPresenceAhead={40}>
               {labels.method}
             </Text>
-            <Text style={styles.notesText}>{safeText(data.legacyNotes)}</Text>
+            <Text style={styles.notesText}>{safeText(data.methodNotes)}</Text>
           </View>
         ) : null}
 

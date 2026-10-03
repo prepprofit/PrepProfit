@@ -1,4 +1,4 @@
-import { and, count, eq, isNull, max, sql } from 'drizzle-orm';
+import { and, count, eq, inArray, isNull, max, sql } from 'drizzle-orm';
 import { recipePresets, recipes } from '@/lib/db/schema';
 import type { RecipePreset } from '@/lib/db/schema';
 import type { TenantClient } from '@/lib/db/tenant';
@@ -275,4 +275,125 @@ export async function reorderRecipePresets(
       );
   }
   return { status: 'ok', count: orderedPresetIds.length };
+}
+
+export type SyncRecipePresetsOutcome =
+  | { status: 'ok'; added: number; updated: number; removed: number }
+  | { status: 'not_found' }
+  | { status: 'duplicate' }
+  | { status: 'limit_reached' };
+
+/**
+ * Replaces a recipe's presets with `drafts` (the recipe editor saves them with the
+ * rest of the recipe, in one transaction). Array position becomes `sort_order`; a
+ * preset with an `id` is updated in place (ids stay stable for Kitchen Scale prep-card
+ * links), one without is inserted, and a stored preset absent from the list is
+ * removed. Unknown/foreign ids are `not_found` and nothing is written. Renames run in
+ * two phases so swapping two names never trips the case-insensitive unique index.
+ * Runs in the caller's `withOrg` transaction, after the parent recipe is locked.
+ */
+export async function syncRecipePresets(
+  db: TenantClient,
+  organizationId: string,
+  recipeId: string,
+  drafts: (PresetInput & { id?: string })[],
+): Promise<SyncRecipePresetsOutcome> {
+  if (drafts.length > MAX_RECIPE_PRESETS) return { status: 'limit_reached' };
+  const lowerNames = new Set(drafts.map((d) => d.name.toLowerCase()));
+  if (lowerNames.size !== drafts.length) return { status: 'duplicate' };
+  if (!(await parentRecipeIsActive(db, organizationId, recipeId))) {
+    return { status: 'not_found' };
+  }
+
+  const current = await db
+    .select({
+      id: recipePresets.id,
+      name: recipePresets.name,
+      targetWeightGrams: recipePresets.targetWeightGrams,
+      sortOrder: recipePresets.sortOrder,
+    })
+    .from(recipePresets)
+    .where(
+      and(
+        eq(recipePresets.organizationId, organizationId),
+        eq(recipePresets.recipeId, recipeId),
+      ),
+    )
+    .orderBy(recipePresets.id)
+    .for('update');
+  const currentById = new Map(current.map((p) => [p.id, p]));
+
+  const keptIds = new Set<string>();
+  for (const draft of drafts) {
+    if (draft.id === undefined) continue;
+    if (!currentById.has(draft.id) || keptIds.has(draft.id)) return { status: 'not_found' };
+    keptIds.add(draft.id);
+  }
+
+  const removedIds = current.filter((p) => !keptIds.has(p.id)).map((p) => p.id);
+  if (removedIds.length > 0) {
+    await db
+      .delete(recipePresets)
+      .where(
+        and(
+          eq(recipePresets.organizationId, organizationId),
+          eq(recipePresets.recipeId, recipeId),
+          inArray(recipePresets.id, removedIds),
+        ),
+      );
+  }
+
+  // Phase 1: park every renamed preset on a name unique to its id.
+  const renamed = drafts.filter(
+    (d) => d.id !== undefined && currentById.get(d.id)!.name !== d.name,
+  );
+  for (const draft of renamed) {
+    await db
+      .update(recipePresets)
+      .set({ name: `\u0001${draft.id}` })
+      .where(
+        and(
+          eq(recipePresets.organizationId, organizationId),
+          eq(recipePresets.recipeId, recipeId),
+          eq(recipePresets.id, draft.id!),
+        ),
+      );
+  }
+
+  // Phase 2: final names, weights and order.
+  let added = 0;
+  let updated = 0;
+  for (const [index, draft] of drafts.entries()) {
+    if (draft.id === undefined) {
+      await db.insert(recipePresets).values({
+        organizationId,
+        recipeId,
+        name: draft.name,
+        targetWeightGrams: draft.targetWeightGrams,
+        sortOrder: index,
+      });
+      added += 1;
+      continue;
+    }
+    const before = currentById.get(draft.id)!;
+    if (
+      before.name === draft.name &&
+      Number(before.targetWeightGrams) === draft.targetWeightGrams &&
+      before.sortOrder === index
+    ) {
+      continue;
+    }
+    await db
+      .update(recipePresets)
+      .set({ name: draft.name, targetWeightGrams: draft.targetWeightGrams, sortOrder: index })
+      .where(
+        and(
+          eq(recipePresets.organizationId, organizationId),
+          eq(recipePresets.recipeId, recipeId),
+          eq(recipePresets.id, draft.id),
+        ),
+      );
+    updated += 1;
+  }
+  return { status: 'ok', added, updated, removed: removedIds.length };
 }

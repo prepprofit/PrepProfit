@@ -24,6 +24,7 @@ const labels: RecipePrepCardLabels = {
   totalToWeigh: 'Total to weigh',
   expectedFinishedWeight: 'Expected finished weight',
   method: 'Preparation',
+  notes: 'Notes',
   footer: (recipeName) => recipeName,
   units: { weight: 'g', volume: 'ml', count: '×' },
 };
@@ -49,7 +50,7 @@ function makeDoc(over: Partial<KitchenScaleRecipeDocument> = {}): KitchenScaleRe
       { id: 'l2', name: 'Eggs', dimension: 'count', quantity: 3, isSubRecipe: false },
     ],
     method: [],
-    legacyNotes: null,
+    methodNotes: null,
     ...over,
   };
 }

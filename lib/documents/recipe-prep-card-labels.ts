@@ -24,6 +24,7 @@ export function buildRecipePrepCardLabels(
     totalToWeigh: t('totalToWeigh'),
     expectedFinishedWeight: t('expectedFinishedWeight'),
     method: t('method'),
+    notes: t('notes'),
     footer: (recipeName) => t('footer', { recipeName }),
     units: {
       weight: t('units.weight'),

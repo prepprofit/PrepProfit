@@ -57,7 +57,6 @@ export function RecipeHome({
   const results = React.useMemo(() => searchLibrary(recipes, query), [recipes, query]);
   const showResults = query.trim() !== '';
   const rootFolders = React.useMemo(() => folderChildren(listing.folders, null), [listing.folders]);
-  const folderOptions = listing.folders.map((f) => ({ id: f.id, name: f.name, parentId: f.parentId }));
 
   const recipeName = React.useCallback((id: string) => recipes.find((r) => r.id === id)?.name, [recipes]);
   const admin = useFolderAdmin({ listing, parentId: null, recipeName });
@@ -84,7 +83,7 @@ export function RecipeHome({
             className="h-12 rounded-2xl pl-12 text-base shadow-sm"
           />
         </div>
-        <AddRecipeButton folders={folderOptions} defaultFolderId={null} className="h-9 shrink-0 self-end px-3 sm:self-auto" />
+        <AddRecipeButton defaultFolderId={null} className="h-9 shrink-0 self-end px-3 sm:self-auto" />
       </div>
 
       {admin.error && (

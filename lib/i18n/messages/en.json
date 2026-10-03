@@ -293,7 +293,8 @@
         "invalid_yield": "This recipe has no usable batch size to scale from.",
         "invalid_factor": "That scale isn't valid.",
         "overflow": "That batch is too large — try a smaller target."
-      }
+      },
+      "methodNotes": "Notes"
     }
   },
   "navGroups": {
@@ -1381,12 +1382,12 @@
         "yieldSummary": "{pct}% yield"
       },
       "method": {
-        "empty": "No structured method yet.",
-        "legacyNotes": "Notes (legacy)",
+        "empty": "No preparation method yet.",
         "step": "Step {number}",
         "stepPlaceholder": "Describe this step…",
         "addStep": "Add step",
-        "removeStep": "Remove step"
+        "removeStep": "Remove step",
+        "notes": "Notes"
       },
       "slideshow": {
         "open": "Slideshow",
@@ -2015,6 +2016,124 @@
       "subRecipe": "sub-recipe",
       "makes": "Makes {amount} {unit}",
       "finishedWeight": "Finished weight {grams} g"
+    },
+    "editor": {
+      "newTitle": "New recipe",
+      "editTitle": "Edit recipe",
+      "save": "Save recipe",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "nameLabel": "Recipe name",
+      "namePlaceholder": "e.g. Lemon tart",
+      "nameRequired": "Give the recipe a name.",
+      "planLimit": "You've reached your plan's recipe limit. Upgrade to add more recipes.",
+      "conflictTitle": "Someone else saved this recipe",
+      "conflictBody": "Your changes were NOT saved. Copy anything you need, then reload the recipe to see the latest version.",
+      "folder": {
+        "label": "Folder",
+        "none": "No folder",
+        "search": "Search folders…",
+        "empty": "No folder matches.",
+        "new": "New folder",
+        "newName": "Folder name",
+        "newNamePlaceholder": "e.g. Cakes",
+        "nameRequired": "Give the folder a name.",
+        "inside": "Inside",
+        "topLevel": "Top level",
+        "create": "Create folder",
+        "creating": "Creating…",
+        "back": "Back"
+      },
+      "ingredients": {
+        "title": "Ingredients",
+        "unitSwitch": "Weight unit for ingredients",
+        "empty": "No ingredients yet. Find one below to start.",
+        "search": "Find an ingredient…",
+        "searchLabel": "Find an ingredient to add",
+        "noMatches": "Nothing matches “{query}”.",
+        "groupRecipes": "Recipes",
+        "subRecipe": "Recipe",
+        "inRecipe": "In recipe",
+        "quantity": "Quantity of {name}",
+        "quantityInvalid": "Enter an amount like 250, 0,5 or 0.5.",
+        "remove": "Remove {name}",
+        "reorder": "Reorder {name}",
+        "reorderHelp": "Drag the handle, or focus it and press the up or down arrow keys, to change the order.",
+        "moved": "{name} moved to position {position} of {total}.",
+        "added": "{name} added. Enter its quantity.",
+        "alreadyAdded": "{name} is already in this recipe.",
+        "prep": "Prep for {name}",
+        "noPrep": "No prep",
+        "needsWeight": "Enter a weight",
+        "componentNeedsWeight": "Enter a weight for {name} — recipes used as ingredients are measured by weight."
+      },
+      "weight": {
+        "total": "Total ingredient weight: {weight}",
+        "partial": "Weighed ingredients: {weight}",
+        "empty": "Add ingredients to see the total weight.",
+        "unweighed": "{count, plural, one {# ingredient is} other {# ingredients are}} measured in ml or pieces ({names}), so the total isn't complete.",
+        "missingQuantity": "{count, plural, one {# ingredient has} other {# ingredients have}} no quantity yet.",
+        "infoLabel": "About ingredient weight and finished weight",
+        "info": "The total adds up ingredients measured by weight, including recipes used as ingredients. Ingredients in ml or pieces are never converted to grams. Finished weight is what the batch weighs after cooking or trimming — cost per kg uses it. Changing it never changes ingredient quantities.",
+        "adjust": "Adjust finished weight",
+        "hide": "Hide",
+        "finishedLine": "Finished weight: {weight}",
+        "measured": "measured",
+        "calculated": "calculated",
+        "ingredientTotal": "Ingredient total",
+        "yieldPercent": "Yield after loss",
+        "finished": "Finished weight",
+        "percentInvalid": "Enter a whole yield % from 1 to 100.",
+        "finishedInvalid": "Enter a finished weight above 0, or a yield %.",
+        "weighBatch": "Some ingredients are in ml or pieces — weigh the finished batch to set its finished weight.",
+        "reviewNeeded": "Check this finished weight: it was saved when yield increased ingredient cost. It now reduces the finished weight instead — open Edit and save to confirm."
+      },
+      "method": {
+        "label": "Preparation method / notes",
+        "placeholder": "Type or paste the method…",
+        "remaining": "{count, plural, one {# character left} other {# characters left}}",
+        "stepsTitle": "Numbered steps",
+        "stepsInfoLabel": "About numbered steps",
+        "stepsInfo": "This recipe also has numbered steps saved separately. They're kept exactly as they are and still show in the slideshow and on prep cards. Clear a step's text to remove it.",
+        "step": "Step {number}",
+        "removeStep": "Remove step {number}"
+      },
+      "presets": {
+        "title": "Kitchen presets",
+        "optional": "Optional",
+        "count": "{count, plural, one {# preset} other {# presets}}",
+        "infoLabel": "About kitchen presets",
+        "info": "Named weights Kitchen Scale offers for this recipe, e.g. “18 cm cake — 450 g” or “Individual portion — 44.5 g”.",
+        "name": "Preset name",
+        "namePlaceholder": "e.g. 18 cm cake",
+        "weight": "Weight in grams",
+        "weightFor": "Weight in grams for {name}",
+        "weightPlaceholder": "450",
+        "untitled": "new preset",
+        "add": "Add preset",
+        "remove": "Remove preset {name}",
+        "errors": {
+          "nameRequired": "Give this preset a name, or remove it.",
+          "weightRequired": "Enter a weight above 0 g for this preset.",
+          "duplicate": "Two presets have the same name."
+        }
+      },
+      "details": {
+        "title": "Saved recipe details",
+        "savedNote": "Shows the saved recipe. Your changes appear here after you save.",
+        "cost": "Cost",
+        "nutrition": "Nutrition & allergens",
+        "photo": "Photo",
+        "addPhoto": "Add a photo",
+        "removePhoto": "Remove photo"
+      },
+      "discard": {
+        "title": "Leave without saving?",
+        "body": "Your changes to this recipe haven't been saved.",
+        "bodyNew": "This recipe hasn't been saved. Nothing will be created if you leave.",
+        "confirm": "Discard changes",
+        "keep": "Keep editing"
+      }
     }
   },
   "inventory": {
@@ -3096,7 +3215,8 @@
       "weight": "g",
       "volume": "ml",
       "count": "×"
-    }
+    },
+    "notes": "Notes"
   },
   "plDocument": {
     "title": "PROFIT & LOSS",
