@@ -84,6 +84,19 @@ Planned additions must land only in their sprint:
 - Store provider/cost/status metadata, not raw sensitive image contents, unless an explicit retention decision is approved.
 - AI features require entitlement checks, usage limits, rate limits, audit logs, and stable error codes.
 
+## TypeSafe / Jev suggestions
+
+- When a feature needs semantic judgment that plain code cannot do (matching messy names to
+  records, categorising text, verifying extracted fields, ranking search results), proactively
+  suggest whether TypeSafe's Jev model fits, and which step it would handle. Use the
+  `typesafe-ai` skill for the design.
+- Suggest only. Jev is not part of the approved stack yet: do not add it to code until the user
+  approves it and it is recorded in PLANO.md.
+- Keep rules, calculations, and exact lookups in code; Jev only supplies the judgments.
+- Once approved, a Jev integration follows the AI rules above: server-side only (API key never
+  reaches the client), Zod-validated output, human confirmation for low-confidence answers,
+  entitlement checks, usage and rate limits, audit logs, and stable error codes.
+
 ## Testing rules
 
 - RLS tests cover reads and writes: SELECT isolation, INSERT `WITH CHECK`, UPDATE retag attempts, and DELETE reachability.
